@@ -66,6 +66,16 @@ export default function ServicesManager({ initial }: Props) {
       {/* Hidden input carries JSON back to the parent <form> */}
       <input type="hidden" name="services" value={json} readOnly />
 
+      {/* Column headers */}
+      {services.length > 0 && (
+        <div className="px-4 flex items-center gap-4 text-xs text-neutral-600 font-medium uppercase tracking-wider">
+          <span className="flex-1">Servicio</span>
+          <span className="w-16 text-center">Duración</span>
+          <span className="w-16 text-right">Precio</span>
+          <span className="w-16" />
+        </div>
+      )}
+
       {/* Service cards */}
       {services.map((svc, i) => (
         <div key={i} className="bg-[#0f0f0f] border border-[#262626] rounded-xl overflow-hidden">

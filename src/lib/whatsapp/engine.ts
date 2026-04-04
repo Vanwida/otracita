@@ -748,9 +748,9 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
         barber: w.barber || null,
         date: offeredDate,
         time: offeredTime,
+        duration: 30,
         status: 'confirmed',
         googleEventId: result.eventId || null,
-        reminderSent: false,
       });
 
       await db.update(waitlist).set({ status: 'booked' }).where(eq(waitlist.id, w.id));
