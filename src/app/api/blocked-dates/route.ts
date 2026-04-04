@@ -5,7 +5,7 @@ import { clients } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 export async function POST(req: NextRequest) {
-  const { data: session } = await auth.getSession();
+  const session = await auth.api.getSession({ headers: req.headers });
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

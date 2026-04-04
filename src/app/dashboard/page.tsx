@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { db } from "@/db"
 import { analytics, clients, subscriptions, bookings, customers } from "@/db/schema"
 import { eq, sql, gte, and, or } from "drizzle-orm"
@@ -10,7 +11,7 @@ import { Suspense } from "react";
 
 export default async function DashboardOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   const { period = 'lifetime' } = await searchParams
-  const { data: session } = await auth.getSession();
+  const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user) {
     redirect("/login");

@@ -29,7 +29,7 @@ Reglas:
 - Si el problema requiere acceso al sistema o configuración manual, indica que el equipo lo gestionará por WhatsApp`;
 
 export async function POST(request: Request) {
-  const { data: session } = await auth.getSession();
+  const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

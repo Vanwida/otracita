@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { auth } from "@/lib/auth/server"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { LayoutDashboard, Settings, LogOut, MessageSquare, Wrench, Shield } from "lucide-react"
@@ -10,7 +11,7 @@ import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { data: session } = await auth.getSession()
+  const session = await auth.api.getSession({ headers: await headers() })
 
   if (!session?.user) {
     redirect("/login")
@@ -114,7 +115,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             action={async () => {
               "use server"
               const { auth: serverAuth } = await import("@/lib/auth/server")
-              await serverAuth.signOut();
+              const { headers: getHeaders } = await import("next/headers")
+              await serverAuth.api.signOut({ headers: await getHeaders() });
               const { redirect: nav } = await import("next/navigation")
               nav("/login");
             }}
@@ -177,7 +179,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           action={async () => {
             "use server"
             const { auth: serverAuth } = await import("@/lib/auth/server")
-            await serverAuth.signOut();
+            const { headers: getHeaders } = await import("next/headers")
+            await serverAuth.api.signOut({ headers: await getHeaders() });
             const { redirect: nav } = await import("next/navigation")
             nav("/login");
           }}

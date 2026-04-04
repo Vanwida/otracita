@@ -40,25 +40,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create account via Neon Auth — try signup first
-    const { error: signUpError } = await auth.signUp.email({
-      email,
-      password,
-      name: email.split('@')[0],
-    });
-
-    if (signUpError) {
-      // Account might already exist, that's okay — we'll sign in below
+    // Try sign up first, then sign in if already exists
+    try {
+      await auth.api.signUpEmail({
+        body: { email, password, name: email.split('@')[0] },
+        headers: request.headers,
+      });
+    } catch (signUpError) {
+      // Account might already exist — proceed to sign in
       console.log('Signup note:', signUpError);
     }
 
     // Sign in to set the session cookie
-    const { error: signInError } = await auth.signIn.email({
-      email,
-      password,
-    });
-
-    if (signInError) {
+    try {
+      await auth.api.signInEmail({
+        body: { email, password },
+        headers: request.headers,
+      });
+    } catch (signInError) {
       console.error('Sign-in error:', signInError);
       return Response.json(
         { error: 'Error al iniciar sesion. Intenta de nuevo.' },

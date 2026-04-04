@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
@@ -13,7 +14,7 @@ interface ServiceItem {
 }
 
 export default async function SettingsPage() {
-  const { data: session } = await auth.getSession();
+  const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user?.email) {
     redirect("/login");
@@ -30,7 +31,8 @@ export default async function SettingsPage() {
   async function updateSettings(formData: FormData) {
     "use server"
     const { auth: serverAuth } = await import("@/lib/auth/server")
-    const { data: sessionConfig } = await serverAuth.getSession()
+    const { headers: getHeaders } = await import("next/headers")
+    const sessionConfig = await serverAuth.api.getSession({ headers: await getHeaders() })
     if (!sessionConfig?.user?.email) return
 
     const businessName = formData.get("businessName") as string
@@ -48,7 +50,7 @@ export default async function SettingsPage() {
       // ignore
     }
 
-    const email = sessionConfig.user.email
+    const email = sessionConfig!.user.email
 
     try {
       const { db } = await import("@/db")
@@ -72,7 +74,7 @@ export default async function SettingsPage() {
       } else {
         await db.insert(clients).values({
           businessName: businessName || "Mi Negocio",
-          ownerName: sessionConfig.user.name || "Dueno",
+          ownerName: sessionConfig!.user.name || "Dueno",
           email: email,
           phone: whatsappNumber || "",
           whatsappNumber: whatsappNumber,

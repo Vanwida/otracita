@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
-  const { data: session } = await auth.getSession()
+  const session = await auth.api.getSession({ headers: request.headers })
   if (!session?.user?.email) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 })
   }

@@ -1,41 +1,45 @@
 export const dynamic = 'force-dynamic';
 
-import { auth } from '@/lib/auth/server';
+import { auth } from '@/lib/auth';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
-  const { data: session } = await auth.getSession();
+
+  // Check existing session
+  const session = await auth.api.getSession({ headers: await headers() });
   if (session?.user) {
     redirect('/dashboard');
   }
 
   async function handleLogin(formData: FormData) {
-    "use server"
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
+    'use server';
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
 
     if (!email || !password) return;
 
-    // First attempt to sign in
-    const { error: signInError } = await auth.signIn.email({ email, password });
-
-    if (signInError) {
-      // If sign in fails, attempt to sign up (new user)
-      const { error: signUpError } = await auth.signUp.email({
-        email,
-        password,
-        name: email.split("@")[0]
+    try {
+      // Try sign in first
+      const res = await auth.api.signInEmail({
+        body: { email, password },
+        headers: await headers(),
       });
-
-      if (signUpError) {
-        console.error("Neon Auth Error:", signInError, signUpError);
-        const msg = encodeURIComponent(signUpError.message || signInError.message || 'Error de autenticación');
+      if (res) redirect('/dashboard');
+    } catch {
+      // User might not exist — try sign up
+      try {
+        await auth.api.signUpEmail({
+          body: { email, password, name: email.split('@')[0] },
+          headers: await headers(),
+        });
+        redirect('/dashboard');
+      } catch (err) {
+        const msg = encodeURIComponent(err instanceof Error ? err.message : 'Error de autenticación');
         redirect(`/login?error=${msg}`);
       }
     }
-
-    redirect("/dashboard");
   }
 
   return (
@@ -44,9 +48,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="mb-8 text-center">
           <img src="/logo.svg" alt="Agendalo Logo" className="mx-auto h-12 w-12" />
           <h2 className="mt-4 text-2xl font-bold tracking-tight">Acceso Clientes</h2>
-          <p className="mt-2 text-sm text-gray-400">Ingresa tu correo y contraseña para acceder mediante Neon Auth.</p>
+          <p className="mt-2 text-sm text-gray-400">Ingresa tu correo y contraseña para acceder.</p>
         </div>
-        
+
         {error && (
           <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
             {decodeURIComponent(error)}
@@ -77,5 +81,5 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </form>
       </div>
     </div>
-  )
+  );
 }

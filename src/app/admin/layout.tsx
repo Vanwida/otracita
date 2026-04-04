@@ -1,12 +1,13 @@
 export const dynamic = 'force-dynamic'
 
 import { auth } from "@/lib/auth/server"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Users, LayoutDashboard, LogOut, FileText, Shield } from "lucide-react"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { data: session } = await auth.getSession()
+  const session = await auth.api.getSession({ headers: await headers() })
 
   if (!session?.user) {
     redirect("/login")
@@ -75,7 +76,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <form
             action={async () => {
               "use server"
-              await auth.signOut()
+              const { headers: getHeaders } = await import("next/headers")
+              await auth.api.signOut({ headers: await getHeaders() })
               redirect("/login")
             }}
           >

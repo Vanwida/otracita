@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 
 export async function POST(req: NextRequest) {
-  const { data: session } = await auth.getSession()
+  const session = await auth.api.getSession({ headers: req.headers })
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
