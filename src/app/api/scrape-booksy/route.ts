@@ -13,48 +13,71 @@ export async function POST(request: Request) {
       return Response.json({ error: 'URL de Booksy no válida' }, { status: 400 });
     }
 
-    // Use Grok with live web search to extract structured data from the Booksy page.
-    // This avoids the obfuscated Nuxt bundle problem with raw HTML parsing.
+    // Fetch the page HTML ourselves, then send it to Grok for extraction.
+    // Booksy uses an obfuscated Nuxt bundle so regex won't work — Grok reads the raw text.
+    const pageRes = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'es-ES,es;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+
+    if (!pageRes.ok) {
+      return Response.json({ error: 'No se pudo acceder a la página de Booksy' }, { status: 400 });
+    }
+
+    const html = await pageRes.text();
+
+    // Extract the string table from the Nuxt bundle — all literal strings are in the last
+    // function call arguments, separated by commas. We pull every quoted string and send
+    // the most relevant ones to Grok.
+    const stringMatches = [...html.matchAll(/"([^"\\]{2,100})"/g)].map(m => m[1]);
+    const unique = [...new Set(stringMatches)];
+
+    // Keep strings that look like service names, prices, addresses, or business names
+    const relevant = unique.filter(s =>
+      /[A-ZÁÉÍÓÚ]/.test(s[0]) || // Starts with capital (names)
+      /^\d{1,3}$/.test(s) ||      // Short number (prices)
+      s.includes(',') ||           // Address-like
+      /\d{2}:\d{2}/.test(s)       // Time
+    ).slice(0, 400); // Cap at 400 strings to stay within token budget
+
     const completion = await grok.chat.completions.create({
       model: 'grok-3-fast',
       messages: [
         {
           role: 'system',
-          content: `You are a data extractor. Visit the given Booksy URL and extract the business data.
-Return ONLY valid JSON with this exact structure (no markdown, no explanation):
+          content: `You are a data extractor for a barbershop booking app. You will receive raw strings extracted from a Booksy barbershop page. Extract the business data.
+
+Return ONLY valid JSON, no markdown:
 {
   "businessName": "string",
-  "address": "string",
-  "phone": "string",
+  "address": "full address string",
+  "phone": "phone number",
   "services": [
-    { "name": "service name in Spanish, clean and short", "duration": number_minutes, "price": number_euros }
+    { "name": "clean Spanish service name", "duration": number_minutes, "price": number_euros }
   ]
 }
 
-Rules for services:
-- Include ALL services listed on the page
-- name: clean Spanish name, remove English translations, remove ALL CAPS, no marketing text
-- duration: estimate in minutes if not shown (corte: 30, barba: 20, corte+barba: 50, ritual/premium: 60)
-- price: integer euros (0 if free or not shown)
-- Deduplicate identical services`,
+Rules:
+- Include ALL barbershop services (cortes, barbas, rituales, etc.)
+- name: short clean Spanish, no ALL CAPS, no English translations, no marketing text
+- duration: estimate if not listed (corte: 30, barba: 20, corte+barba: 50, ritual/premium: 60)
+- price: integer euros
+- Deduplicate
+- Return empty array if no services found`,
         },
         {
           role: 'user',
-          content: `Extract all business data and services from this Booksy page: ${url}`,
+          content: `Booksy URL: ${url}\n\nExtracted page strings:\n${relevant.join('\n')}`,
         },
       ],
-      // @ts-expect-error — xAI live_search extension
-      search_parameters: {
-        mode: 'on',
-        sources: [{ type: 'web' }],
-      },
       max_tokens: 2000,
       temperature: 0,
     });
 
     const content = completion.choices[0].message.content || '';
-
-    // Extract JSON from response
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error('Grok response had no JSON:', content.slice(0, 300));
