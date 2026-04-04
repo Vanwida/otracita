@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     ).slice(0, 400); // Cap at 400 strings to stay within token budget
 
     const completion = await grok.chat.completions.create({
-      model: 'grok-3-fast',
+      model: 'grok-4-1-fast-non-reasoning',
       messages: [
         {
           role: 'system',
@@ -153,7 +153,7 @@ async function fallbackHtmlScrape(url: string) {
   // Clean with Grok
   try {
     const cleaning = await grok.chat.completions.create({
-      model: 'grok-3-fast',
+      model: 'grok-4-1-fast-non-reasoning',
       messages: [
         {
           role: 'system',
