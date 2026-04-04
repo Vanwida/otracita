@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic';
 import { auth } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
   const { data: session } = await auth.getSession();
   if (session?.user) {
     redirect('/dashboard');
@@ -18,18 +19,19 @@ export default async function LoginPage() {
 
     // First attempt to sign in
     const { error: signInError } = await auth.signIn.email({ email, password });
-    
+
     if (signInError) {
-      // If sign in fails (likely user doesn't exist), attempt to sign up
-      const { error: signUpError } = await auth.signUp.email({ 
-        email, 
-        password, 
-        name: email.split("@")[0] 
+      // If sign in fails, attempt to sign up (new user)
+      const { error: signUpError } = await auth.signUp.email({
+        email,
+        password,
+        name: email.split("@")[0]
       });
-      
+
       if (signUpError) {
-        console.error("Neon Auth Error:", signUpError);
-        return;
+        console.error("Neon Auth Error:", signInError, signUpError);
+        const msg = encodeURIComponent(signUpError.message || signInError.message || 'Error de autenticación');
+        redirect(`/login?error=${msg}`);
       }
     }
 
@@ -45,6 +47,12 @@ export default async function LoginPage() {
           <p className="mt-2 text-sm text-gray-400">Ingresa tu correo y contraseña para acceder mediante Neon Auth.</p>
         </div>
         
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+            {decodeURIComponent(error)}
+          </div>
+        )}
+
         <form action={handleLogin} className="flex flex-col gap-4">
           <input
             name="email"
