@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #050505;
+  color: #FAFAFA;
+}
+
+/* Base utility for glass containers */
+@layer utilities {
+  .glass-card {
+    @apply bg-white/[0.02] border border-white/[0.05] backdrop-blur-md rounded-2xl;
+  }
+  .glass-card-hover {
+    @apply hover:bg-white/[0.04] hover:border-emerald-500/20 transition-all duration-300;
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
+  }
+}
+
+/* Smooth custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f1f1f;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #10B981;
+}
+
+/* Custom glow animation */
+@keyframes slow-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-slow-spin {
+  animation: slow-spin 20s linear infinite;
 }

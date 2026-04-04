@@ -1,0 +1,10 @@
+[
+  {
+    "session_id": "34690715-224c-4393-b204-f0db2f161425",
+    "transcript_path": "/Users/alexsolecarretero/.claude/projects/-Users-alexsolecarretero-Public-projects-alex-freelance/34690715-224c-4393-b204-f0db2f161425.jsonl",
+    "cwd": "/Users/alexsolecarretero/Public/projects/alex-freelance/reserva",
+    "hook_event_name": "PreCompact",
+    "trigger": "auto",
+    "custom_instructions": null
+  }
+]

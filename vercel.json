@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/reminders?secret=agendalo-cron-2024",
+      "schedule": "0 10 * * *"
+    }
+  ]
+}

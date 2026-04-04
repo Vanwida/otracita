@@ -1,0 +1,73 @@
+export const dynamic = 'force-dynamic';
+
+import { auth } from '@/lib/auth/server';
+import { redirect } from 'next/navigation';
+
+export default async function LoginPage() {
+  const { data: session } = await auth.getSession();
+  if (session?.user) {
+    redirect('/dashboard');
+  }
+
+  async function handleLogin(formData: FormData) {
+    "use server"
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+
+    if (!email || !password) return;
+
+    // First attempt to sign in
+    const { error: signInError } = await auth.signIn.email({ email, password });
+    
+    if (signInError) {
+      // If sign in fails (likely user doesn't exist), attempt to sign up
+      const { error: signUpError } = await auth.signUp.email({ 
+        email, 
+        password, 
+        name: email.split("@")[0] 
+      });
+      
+      if (signUpError) {
+        console.error("Neon Auth Error:", signUpError);
+        return;
+      }
+    }
+
+    redirect("/dashboard");
+  }
+
+  return (
+    <div className="flex h-screen items-center justify-center bg-[#050505] text-[#FAFAFA]">
+      <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-xl shadow-2xl shadow-indigo-500/10">
+        <div className="mb-8 text-center">
+          <img src="/logo.svg" alt="Agendalo Logo" className="mx-auto h-12 w-12" />
+          <h2 className="mt-4 text-2xl font-bold tracking-tight">Acceso Clientes</h2>
+          <p className="mt-2 text-sm text-gray-400">Ingresa tu correo y contraseña para acceder mediante Neon Auth.</p>
+        </div>
+        
+        <form action={handleLogin} className="flex flex-col gap-4">
+          <input
+            name="email"
+            type="email"
+            placeholder="correo@tupeluqueria.com"
+            required
+            className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm outline-none transition-all placeholder:text-gray-600 focus:border-indigo-500/50 focus:bg-white/10"
+          />
+          <input
+            name="password"
+            type="password"
+            placeholder="Contraseña"
+            required
+            className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm outline-none transition-all placeholder:text-gray-600 focus:border-indigo-500/50 focus:bg-white/10"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-indigo-500 py-3 text-sm font-bold text-white transition-all hover:bg-indigo-400 active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+          >
+            Entrar al Dashboard
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
