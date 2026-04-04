@@ -117,6 +117,7 @@ export const waitlist = pgTable('waitlist', {
   customerPhone: text('customer_phone').notNull(),
   customerName: text('customer_name'),
   date: text('date').notNull(), // YYYY-MM-DD
+  time: text('time'), // HH:MM — null means "any slot on that day"
   service: text('service'),
   barber: text('barber'),
   status: text('status').notNull().default('waiting'), // waiting, notified, booked, expired

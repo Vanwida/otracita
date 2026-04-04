@@ -65,6 +65,7 @@ interface ConversationContext {
   cancelBookingId?: string;
   isChanging?: boolean;
   waitlistDate?: string;
+  waitlistTime?: string; // specific time for waitlist, null = any slot
   isWaitlistFlow?: boolean;
   lang?: 'es' | 'en';
 }
@@ -548,15 +549,6 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   }
 
   // -----------------------------------------------------------------------
-  // Global waitlist trigger: intercept from any step
-  // -----------------------------------------------------------------------
-  const waitlistKeywords = ['lista de espera', 'lista espera', 'apuntarme', 'avisame si', 'avísame si', 'waitlist', 'join waitlist', 'notify me', 'avisa si se libera'];
-  if (waitlistKeywords.some(k => lower.includes(k))) {
-    await startWaitlistFlow(conversation, config, token, msg, lang);
-    return;
-  }
-
-  // -----------------------------------------------------------------------
   // State machine: handle mid-flow interactions first
   // -----------------------------------------------------------------------
 
@@ -640,17 +632,28 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   // -- Waitlist button responses --
   if (interactiveId === 'waitlist_yes') {
     const ctx = getContext(conversation);
+    const waitlistDate = ctx.waitlistDate || '';
+    const waitlistTime = ctx.waitlistTime || null; // null = any slot on that day
+
     await db.insert(waitlist).values({
       clientId: config.id,
       customerPhone: msg.from,
       customerName: ctx.customerName || null,
-      date: ctx.waitlistDate || '',
+      date: waitlistDate,
+      time: waitlistTime,
       service: conversation.selectedService || null,
       barber: ctx.selectedBarber || null,
     });
+
+    // Confirm message — mention specific time if applicable
+    const formattedDate = waitlistDate ? formatDateSpanish(waitlistDate) : '';
+    const timeHint = waitlistTime
+      ? (lang === 'en' ? ` at ${waitlistTime}` : ` a las ${waitlistTime}`)
+      : '';
     const waitlistConfirmMsg = lang === 'en'
-      ? "✅ We'll let you know if a slot opens up. Anything else?"
-      : '✅ Te avisaremos si se libera un hueco. ¿Quieres hacer algo más?';
+      ? `✅ Done! I'll notify you if a slot opens up${timeHint} on ${formattedDate}. Anything else?`
+      : `✅ ¡Listo! Te aviso si se libera un hueco${timeHint} el ${formattedDate}. ¿Quieres algo más?`;
+
     await sendWhatsAppButtons(
       msg.phoneNumberId,
       msg.from,
@@ -661,14 +664,33 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
       ],
       token
     );
-    await updateConversation(conversation.id, { step: 'idle' });
+    await updateConversation(conversation.id, { step: 'idle', context: { ...ctx, waitlistDate: undefined, waitlistTime: undefined } });
     await trackAnalytics(config.id, 'messagesReplied');
     return;
   }
 
   if (interactiveId === 'waitlist_no') {
-    // Re-show date picker
+    // If they had a specific time in mind, re-show slots for that date
+    const ctx = getContext(conversation);
+    if (ctx.waitlistTime && ctx.waitlistDate && config.googleCalendarId) {
+      const bh = getBusinessHoursForDate(ctx.waitlistDate, config.hours);
+      const businessHours = bh || { start: '10:00', end: '20:00' };
+      const duration = ctx.serviceDuration || 30;
+      try {
+        const slots = await getAvailableSlots(config.googleCalendarId, ctx.waitlistDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
+        if (slots.length > 0) {
+          const slotsHeader = lang === 'en'
+            ? `Other available slots for ${formatDateSpanish(ctx.waitlistDate)}:`
+            : `Otros huecos disponibles para ${formatDateSpanish(ctx.waitlistDate)}:`;
+          await sendSlotsMessage(msg, token, slots, ctx.waitlistDate, slotsHeader, lang);
+          await updateConversation(conversation.id, { step: 'choosing_slot', context: { ...ctx, waitlistTime: undefined } });
+          return;
+        }
+      } catch { /* fall through to date picker */ }
+    }
+    // Otherwise re-show date picker
     await sendDatePicker(msg, config, token, lang);
+    await updateConversation(conversation.id, { step: 'choosing_date' });
     return;
   }
 
@@ -1499,6 +1521,41 @@ async function handleSlotSelection(
     return;
   }
 
+  // Validate the slot is actually available (re-check calendar)
+  if (config.googleCalendarId) {
+    const bh = getBusinessHoursForDate(selectedDate, config.hours);
+    const businessHours = bh || { start: '10:00', end: '20:00' };
+    const duration = ctx.serviceDuration || 30;
+    try {
+      const available = await getAvailableSlots(config.googleCalendarId, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
+      const isAvailable = available.some(s => s.start === selectedTime);
+      if (!isAvailable) {
+        // Slot is taken — offer waitlist for this specific time
+        const formattedDate = formatDateSpanish(selectedDate);
+        const takenMsg = lang === 'en'
+          ? `Sorry, ${selectedTime} on ${formattedDate} is not available.\n\nWould you like me to notify you if that slot opens up?`
+          : `Lo siento, el hueco de las ${selectedTime} del ${formattedDate} no está disponible.\n\n¿Quieres que te avise si se libera ese hueco?`;
+        await sendWhatsAppButtons(
+          msg.phoneNumberId, msg.from, takenMsg,
+          [
+            { id: 'waitlist_yes', title: lang === 'en' ? 'Yes, notify me' : 'Sí, avísame' },
+            { id: 'waitlist_no', title: lang === 'en' ? 'Try another time' : 'Probar otro horario' },
+          ],
+          token
+        );
+        // Store date + specific time in context for waitlist
+        await updateConversation(conversation.id, {
+          context: { ...ctx, selectedDate, waitlistDate: selectedDate, waitlistTime: selectedTime } as ConversationContext,
+        });
+        await trackAnalytics(config.id, 'messagesReplied');
+        return;
+      }
+    } catch (err) {
+      console.error('Slot validation error:', err);
+      // If calendar check fails, proceed optimistically
+    }
+  }
+
   await updateConversation(conversation.id, {
     step: 'confirming',
     selectedSlot: `${selectedDate}_${selectedTime}`,
@@ -2043,29 +2100,32 @@ async function notifyWaitlist(
   barber: string | null,
   token: string
 ): Promise<void> {
-  // Find people waiting for this date
-  const waiting = await db.select().from(waitlist)
+  if (!config.whatsappPhoneNumberId) return;
+
+  // 1. First: notify anyone waiting for this specific time slot
+  // 2. Then: notify anyone waiting for any slot on this day
+  const allWaiting = await db.select().from(waitlist)
     .where(and(
       eq(waitlist.clientId, config.id),
       eq(waitlist.date, date),
       eq(waitlist.status, 'waiting')
     ))
-    .orderBy(waitlist.createdAt)
-    .limit(1); // Notify first person in line
+    .orderBy(waitlist.createdAt);
 
-  if (waiting.length === 0) return;
+  if (allWaiting.length === 0) return;
 
-  const person = waiting[0];
+  // Prioritise exact-time matches, then any-slot
+  const exactMatch = time ? allWaiting.find(w => w.time === time) : null;
+  const person = exactMatch || allWaiting[0];
+
   const name = person.customerName ? `${person.customerName}, ` : '';
   const barberText = barber ? ` con ${barber}` : '';
   const timeText = time ? ` a las ${time}` : '';
 
-  if (!config.whatsappPhoneNumberId) return;
-
   await sendWhatsAppButtons(
     config.whatsappPhoneNumberId,
     person.customerPhone,
-    `${name}se ha liberado un hueco!\n\n${service}${barberText}\n${formatDateSpanish(date)}${timeText}\n\n¿Lo quieres?`,
+    `${name}¡se ha liberado un hueco!\n\n${service}${barberText}\n${formatDateSpanish(date)}${timeText}\n\n¿Lo quieres?`,
     [
       { id: 'waitlist_accept', title: 'Sí, resérvalo!' },
       { id: 'waitlist_decline', title: 'No, gracias' },

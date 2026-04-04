@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { LayoutDashboard, Settings, LogOut, MessageSquare, Wrench, Shield } from "lucide-react"
+import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
@@ -133,6 +134,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="flex-1 overflow-y-auto pt-14 pb-16 lg:pt-0 lg:pb-0">
         {children}
       </main>
+
+      <DashboardChatWidget />
 
       {/* Mobile Bottom Nav — hidden on lg+ */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-[#0a0a0a] border-t border-[#1f1f1f] flex items-center justify-around px-2 lg:hidden">
