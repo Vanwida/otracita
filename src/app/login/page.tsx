@@ -1,47 +1,45 @@
-export const dynamic = 'force-dynamic';
+'use client';
 
-import { auth } from '@/lib/auth';
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { authClient } from '@/lib/auth/client';
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default function LoginPage() {
+  const router = useRouter();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Check existing session
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (session?.user) {
-    redirect('/dashboard');
-  }
-
-  async function handleLogin(formData: FormData) {
-    'use server';
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
 
-    if (!email || !password) return;
+    setLoading(true);
+    setError('');
 
-    try {
-      // Try sign in first
-      const res = await auth.api.signInEmail({
-        body: { email, password },
-        headers: await headers(),
-      });
-      if (res) redirect('/dashboard');
-    } catch (signInErr) {
-      if ((signInErr as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw signInErr;
-      // User might not exist — try sign up
-      try {
-        await auth.api.signUpEmail({
-          body: { email, password, name: email.split('@')[0] },
-          headers: await headers(),
-        });
-        redirect('/dashboard');
-      } catch (err) {
-        if ((err as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw err;
-        const msg = encodeURIComponent(err instanceof Error ? err.message : 'Error de autenticación');
-        redirect(`/login?error=${msg}`);
-      }
+    // Try sign in first
+    const { error: signInError } = await authClient.signIn.email({ email, password });
+
+    if (!signInError) {
+      router.push('/dashboard');
+      return;
     }
+
+    // User might not exist — try sign up
+    const { error: signUpError } = await authClient.signUp.email({
+      email,
+      password,
+      name: email.split('@')[0],
+    });
+
+    if (!signUpError) {
+      router.push('/dashboard');
+      return;
+    }
+
+    setError(signUpError.message || 'Error de autenticación');
+    setLoading(false);
   }
 
   return (
@@ -55,11 +53,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
         {error && (
           <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-            {decodeURIComponent(error)}
+            {error}
           </div>
         )}
 
-        <form action={handleLogin} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
             name="email"
             type="email"
@@ -76,9 +74,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           />
           <button
             type="submit"
-            className="rounded-lg bg-indigo-500 py-3 text-sm font-bold text-white transition-all hover:bg-indigo-400 active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+            disabled={loading}
+            className="rounded-lg bg-indigo-500 py-3 text-sm font-bold text-white transition-all hover:bg-indigo-400 active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Entrar al Dashboard
+            {loading ? 'Entrando...' : 'Entrar al Dashboard'}
           </button>
         </form>
       </div>
