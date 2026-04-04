@@ -4,6 +4,7 @@ import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { auth } from "@/lib/auth/server";
 import BlockedDatesManager from "@/app/dashboard/_components/BlockedDatesManager";
+import ServicesManager from "@/app/dashboard/_components/ServicesManager";
 
 interface ServiceItem {
   name: string
@@ -192,16 +193,11 @@ export default async function SettingsPage() {
 
         {/* Services */}
         <div className="border-t border-[#1f1f1f] pt-8 space-y-4">
-          <h2 className="text-lg font-semibold text-white">Servicios</h2>
-          <p className="text-sm text-neutral-500">Lista de servicios que ofrece tu negocio (formato JSON). Para editarlos visualmente, usa la pagina de Setup.</p>
-          <textarea
-            id="services"
-            name="services"
-            rows={5}
-            defaultValue={existingServices.length > 0 ? JSON.stringify(existingServices, null, 2) : ""}
-            placeholder={'[\n  { "name": "Corte de pelo", "duration": "30", "price": "15" }\n]'}
-            className="w-full bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors font-mono resize-none"
-          />
+          <div>
+            <h2 className="text-lg font-semibold text-white">Servicios</h2>
+            <p className="text-sm text-neutral-500 mt-1">Los servicios que ofrece tu negocio. El bot los usará para las reservas.</p>
+          </div>
+          <ServicesManager initial={existingServices.map(s => ({ name: String(s.name), duration: s.duration, price: s.price }))} />
         </div>
 
         <div className="pt-4 flex items-center justify-end">
