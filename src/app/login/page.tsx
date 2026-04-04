@@ -27,7 +27,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         headers: await headers(),
       });
       if (res) redirect('/dashboard');
-    } catch {
+    } catch (signInErr) {
+      if ((signInErr as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw signInErr;
       // User might not exist — try sign up
       try {
         await auth.api.signUpEmail({
@@ -36,6 +37,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         });
         redirect('/dashboard');
       } catch (err) {
+        if ((err as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw err;
         const msg = encodeURIComponent(err instanceof Error ? err.message : 'Error de autenticación');
         redirect(`/login?error=${msg}`);
       }
