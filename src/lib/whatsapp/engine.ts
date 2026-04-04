@@ -65,7 +65,6 @@ interface ConversationContext {
   cancelBookingId?: string;
   isChanging?: boolean;
   waitlistDate?: string;
-  waitlistTime?: string; // specific time for waitlist, null = any slot
   isWaitlistFlow?: boolean;
   lang?: 'es' | 'en';
 }
@@ -633,69 +632,58 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   if (interactiveId === 'waitlist_yes') {
     const ctx = getContext(conversation);
     const waitlistDate = ctx.waitlistDate || '';
-    const waitlistTime = ctx.waitlistTime || null; // null = any slot on that day
+    const barber = ctx.selectedBarber && ctx.selectedBarber !== T[lang].noPreference ? ctx.selectedBarber : null;
 
     await db.insert(waitlist).values({
       clientId: config.id,
       customerPhone: msg.from,
       customerName: ctx.customerName || null,
       date: waitlistDate,
-      time: waitlistTime,
+      time: null, // any slot on that day
       service: conversation.selectedService || null,
-      barber: ctx.selectedBarber || null,
+      barber, // null = any barber, or specific barber name
     });
 
-    // Confirm message — mention specific time if applicable
     const formattedDate = waitlistDate ? formatDateSpanish(waitlistDate) : '';
-    const timeHint = waitlistTime
-      ? (lang === 'en' ? ` at ${waitlistTime}` : ` a las ${waitlistTime}`)
-      : '';
-    const waitlistConfirmMsg = lang === 'en'
-      ? `✅ Done! I'll notify you if a slot opens up${timeHint} on ${formattedDate}. Anything else?`
-      : `✅ ¡Listo! Te aviso si se libera un hueco${timeHint} el ${formattedDate}. ¿Quieres algo más?`;
+    const barberHint = barber ? (lang === 'en' ? ` with ${barber}` : ` con ${barber}`) : '';
+    const confirmMsg = lang === 'en'
+      ? `✅ Done! You're on the waitlist${barberHint} for ${formattedDate}. I'll message you as soon as a slot opens up. 🔔\n\nWould you also like to book another day just in case?`
+      : `✅ ¡Apuntado! Estás en la lista de espera${barberHint} para el ${formattedDate}. Te aviso en cuanto se libere un hueco. 🔔\n\n¿Quieres también reservar otro día por si acaso?`;
 
     await sendWhatsAppButtons(
-      msg.phoneNumberId,
-      msg.from,
-      waitlistConfirmMsg,
+      msg.phoneNumberId, msg.from, confirmMsg,
       [
-        { id: 'action_book', title: lang === 'en' ? 'Try another date' : 'Probar otra fecha' },
-        { id: 'action_done', title: lang === 'en' ? "That's all" : 'Eso es todo' },
+        { id: 'waitlist_also_book', title: lang === 'en' ? 'Yes, book another day' : 'Sí, reservar otro día' },
+        { id: 'action_done', title: lang === 'en' ? "No, that's fine" : 'No, está bien' },
       ],
       token
     );
-    await updateConversation(conversation.id, { step: 'idle', context: { ...ctx, waitlistDate: undefined, waitlistTime: undefined } });
+    await updateConversation(conversation.id, { step: 'idle', context: { ...ctx, waitlistDate: undefined } });
     await trackAnalytics(config.id, 'messagesReplied');
     return;
   }
 
   if (interactiveId === 'waitlist_no') {
-    // If they had a specific time in mind, re-show slots for that date
-    const ctx = getContext(conversation);
-    if (ctx.waitlistTime && ctx.waitlistDate && config.googleCalendarId) {
-      const bh = getBusinessHoursForDate(ctx.waitlistDate, config.hours);
-      const businessHours = bh || { start: '10:00', end: '20:00' };
-      const duration = ctx.serviceDuration || 30;
-      try {
-        const slots = await getAvailableSlots(config.googleCalendarId, ctx.waitlistDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
-        if (slots.length > 0) {
-          const slotsHeader = lang === 'en'
-            ? `Other available slots for ${formatDateSpanish(ctx.waitlistDate)}:`
-            : `Otros huecos disponibles para ${formatDateSpanish(ctx.waitlistDate)}:`;
-          await sendSlotsMessage(msg, token, slots, ctx.waitlistDate, slotsHeader, lang);
-          await updateConversation(conversation.id, { step: 'choosing_slot', context: { ...ctx, waitlistTime: undefined } });
-          return;
-        }
-      } catch { /* fall through to date picker */ }
-    }
-    // Otherwise re-show date picker
+    // User declined waitlist — just show date picker to try another day
     await sendDatePicker(msg, config, token, lang);
     await updateConversation(conversation.id, { step: 'choosing_date' });
     return;
   }
 
+  if (interactiveId === 'waitlist_also_book') {
+    // User wants to book another day as backup — restart date selection
+    const ctx = getContext(conversation);
+    const alsoBookMsg = lang === 'en'
+      ? 'Sure! Which day would you like to book?'
+      : '¡Claro! ¿Qué día quieres reservar?';
+    await sendWhatsAppMessage(msg.phoneNumberId, msg.from, alsoBookMsg, token);
+    await sendDatePicker(msg, config, token, lang);
+    await updateConversation(conversation.id, { step: 'choosing_date', context: { ...ctx } });
+    return;
+  }
+
   if (interactiveId === 'waitlist_accept') {
-    // Find their waitlist entry
+    // Find their notified waitlist entry
     const entry = await db.select().from(waitlist)
       .where(and(
         eq(waitlist.clientId, config.id),
@@ -704,19 +692,84 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
       ))
       .limit(1);
 
-    if (entry.length > 0) {
-      const w = entry[0];
-      // Mark waitlist as booked
-      await db.update(waitlist)
-        .set({ status: 'booked' })
-        .where(eq(waitlist.id, w.id));
-
-      // Start a booking flow for them with the service pre-selected
-      const waitlistAcceptMsg = lang === 'en' ? "✅ Great! Let's book your slot." : '✅ ¡Genial! Vamos a reservar tu hueco.';
-      await sendWhatsAppMessage(msg.phoneNumberId, msg.from, waitlistAcceptMsg, token);
-      const freshConversation = await getOrCreateConversation(config.id, msg.from);
-      await startBookingFlow(freshConversation, config, token, msg, w.customerName, lang);
+    if (entry.length === 0) {
+      await sendWhatsAppMessage(msg.phoneNumberId, msg.from,
+        lang === 'en' ? "Sorry, this offer has already expired." : 'Lo siento, esta oferta ya ha caducado.',
+        token);
+      return;
     }
+
+    const w = entry[0];
+    // The offered slot is stored in w.time (set when we notified them)
+    const offeredTime = w.time;
+    const offeredDate = w.date;
+
+    if (!offeredTime || !offeredDate || !config.googleCalendarId) {
+      await sendWhatsAppMessage(msg.phoneNumberId, msg.from,
+        lang === 'en' ? "Sorry, something went wrong. Please book normally." : 'Lo siento, algo salió mal. Por favor reserva directamente.',
+        token);
+      return;
+    }
+
+    // Cancel any existing confirmed booking this user has (the "backup" booking)
+    const existingBookings = await db.select().from(bookings)
+      .where(and(
+        eq(bookings.clientId, config.id),
+        eq(bookings.customerPhone, msg.from),
+        eq(bookings.status, 'confirmed'),
+        gte(bookings.date, offeredDate) // only future bookings
+      ));
+
+    for (const bk of existingBookings) {
+      if (bk.googleEventId) {
+        await deleteCalendarEvent(config.googleCalendarId, bk.googleEventId);
+      }
+      await db.update(bookings).set({ status: 'cancelled', cancelledAt: new Date() }).where(eq(bookings.id, bk.id));
+    }
+
+    // Create the new booking for the offered slot
+    const result = await createBooking(
+      config.googleCalendarId,
+      offeredDate,
+      offeredTime,
+      w.service || 'Servicio',
+      30, // duration (we don't store it in waitlist — use default)
+      w.customerName || msg.from,
+      msg.from,
+      w.barber || undefined
+    );
+
+    if (result.success) {
+      await db.insert(bookings).values({
+        clientId: config.id,
+        customerPhone: msg.from,
+        customerName: w.customerName || null,
+        service: w.service || 'Servicio',
+        barber: w.barber || null,
+        date: offeredDate,
+        time: offeredTime,
+        status: 'confirmed',
+        googleEventId: result.eventId || null,
+        reminderSent: false,
+      });
+
+      await db.update(waitlist).set({ status: 'booked' }).where(eq(waitlist.id, w.id));
+      await trackAnalytics(config.id, 'bookingsMade');
+      await incrementCustomerBookings(config.id, msg.from);
+
+      const cancelledCount = existingBookings.length;
+      const confirmedMsg = lang === 'en'
+        ? `✅ Booked!\n\n📋 *${w.service}*${w.barber ? `\n💈 ${w.barber}` : ''}\n📅 ${formatDateSpanish(offeredDate)}\n🕐 ${offeredTime}${cancelledCount > 0 ? `\n\n_(Your previous booking has been cancelled)_` : ''}`
+        : `✅ ¡Reservado!\n\n📋 *${w.service}*${w.barber ? `\n💈 ${w.barber}` : ''}\n📅 ${formatDateSpanish(offeredDate)}\n🕐 ${offeredTime}${cancelledCount > 0 ? `\n\n_(Tu reserva anterior ha sido cancelada)_` : ''}`;
+
+      await sendWhatsAppMessage(msg.phoneNumberId, msg.from, confirmedMsg, token);
+    } else {
+      await sendWhatsAppMessage(msg.phoneNumberId, msg.from,
+        lang === 'en' ? "Sorry, the slot was taken by someone else. I'll keep you on the waitlist." : 'Lo siento, alguien reservó ese hueco antes. Te mantengo en la lista de espera.',
+        token);
+      await db.update(waitlist).set({ status: 'waiting', time: null, notifiedAt: null }).where(eq(waitlist.id, w.id));
+    }
+    await trackAnalytics(config.id, 'messagesReplied');
     return;
   }
 
@@ -1521,41 +1574,6 @@ async function handleSlotSelection(
     return;
   }
 
-  // Validate the slot is actually available (re-check calendar)
-  if (config.googleCalendarId) {
-    const bh = getBusinessHoursForDate(selectedDate, config.hours);
-    const businessHours = bh || { start: '10:00', end: '20:00' };
-    const duration = ctx.serviceDuration || 30;
-    try {
-      const available = await getAvailableSlots(config.googleCalendarId, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
-      const isAvailable = available.some(s => s.start === selectedTime);
-      if (!isAvailable) {
-        // Slot is taken — offer waitlist for this specific time
-        const formattedDate = formatDateSpanish(selectedDate);
-        const takenMsg = lang === 'en'
-          ? `Sorry, ${selectedTime} on ${formattedDate} is not available.\n\nWould you like me to notify you if that slot opens up?`
-          : `Lo siento, el hueco de las ${selectedTime} del ${formattedDate} no está disponible.\n\n¿Quieres que te avise si se libera ese hueco?`;
-        await sendWhatsAppButtons(
-          msg.phoneNumberId, msg.from, takenMsg,
-          [
-            { id: 'waitlist_yes', title: lang === 'en' ? 'Yes, notify me' : 'Sí, avísame' },
-            { id: 'waitlist_no', title: lang === 'en' ? 'Try another time' : 'Probar otro horario' },
-          ],
-          token
-        );
-        // Store date + specific time in context for waitlist
-        await updateConversation(conversation.id, {
-          context: { ...ctx, selectedDate, waitlistDate: selectedDate, waitlistTime: selectedTime } as ConversationContext,
-        });
-        await trackAnalytics(config.id, 'messagesReplied');
-        return;
-      }
-    } catch (err) {
-      console.error('Slot validation error:', err);
-      // If calendar check fails, proceed optimistically
-    }
-  }
-
   await updateConversation(conversation.id, {
     step: 'confirming',
     selectedSlot: `${selectedDate}_${selectedTime}`,
@@ -2102,8 +2120,33 @@ async function notifyWaitlist(
 ): Promise<void> {
   if (!config.whatsappPhoneNumberId) return;
 
-  // 1. First: notify anyone waiting for this specific time slot
-  // 2. Then: notify anyone waiting for any slot on this day
+  // Check if someone is currently being waited on (notified < 30 min ago)
+  const currentlyNotified = await db.select().from(waitlist)
+    .where(and(
+      eq(waitlist.clientId, config.id),
+      eq(waitlist.date, date),
+      eq(waitlist.status, 'notified')
+    ))
+    .limit(1);
+
+  if (currentlyNotified.length > 0) {
+    const notifiedEntry = currentlyNotified[0];
+    const notifiedAt = notifiedEntry.notifiedAt;
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+    if (notifiedAt && notifiedAt > thirtyMinAgo) {
+      // Still within 30-min window — don't notify anyone else yet
+      return;
+    }
+
+    // 30 min passed with no response — expire and move on
+    await db.update(waitlist)
+      .set({ status: 'expired' })
+      .where(eq(waitlist.id, notifiedEntry.id));
+  }
+
+  // Find next person in queue for this date
+  // If a barber is specified: match people waiting for that barber OR any barber (null)
   const allWaiting = await db.select().from(waitlist)
     .where(and(
       eq(waitlist.clientId, config.id),
@@ -2114,27 +2157,28 @@ async function notifyWaitlist(
 
   if (allWaiting.length === 0) return;
 
-  // Prioritise exact-time matches, then any-slot
-  const exactMatch = time ? allWaiting.find(w => w.time === time) : null;
-  const person = exactMatch || allWaiting[0];
+  // Prioritise entries matching the specific barber, then any-barber entries
+  const person = barber
+    ? (allWaiting.find(w => w.barber === barber) || allWaiting.find(w => !w.barber) || allWaiting[0])
+    : allWaiting[0];
 
   const name = person.customerName ? `${person.customerName}, ` : '';
-  const barberText = barber ? ` con ${barber}` : '';
+  const barberText = barber ? (` con ${barber}`) : '';
   const timeText = time ? ` a las ${time}` : '';
+
+  // Store offered time in the waitlist entry so we know what to book on accept
+  await db.update(waitlist)
+    .set({ status: 'notified', notifiedAt: new Date(), time })
+    .where(eq(waitlist.id, person.id));
 
   await sendWhatsAppButtons(
     config.whatsappPhoneNumberId,
     person.customerPhone,
-    `${name}¡se ha liberado un hueco!\n\n${service}${barberText}\n${formatDateSpanish(date)}${timeText}\n\n¿Lo quieres?`,
+    `${name}¡se ha liberado un hueco!\n\n${service}${barberText}\n${formatDateSpanish(date)}${timeText}\n\n¿Lo reservamos?`,
     [
-      { id: 'waitlist_accept', title: 'Sí, resérvalo!' },
-      { id: 'waitlist_decline', title: 'No, gracias' },
+      { id: 'waitlist_accept', title: '✅ Sí, resérvalo' },
+      { id: 'waitlist_decline', title: '❌ No, gracias' },
     ],
     token
   );
-
-  // Mark as notified
-  await db.update(waitlist)
-    .set({ status: 'notified', notifiedAt: new Date() })
-    .where(eq(waitlist.id, person.id));
 }
