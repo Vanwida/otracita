@@ -333,7 +333,7 @@ function BookingRow({
       {/* Status / Action */}
       <div className="shrink-0 ml-auto">
         {isNoShow ? (
-          <span className="text-xs text-neutral-600">No Show</span>
+          <NoShowButton bookingId={booking.id} initiallyMarked={true} />
         ) : canMarkNoShow ? (
           <NoShowButton bookingId={booking.id} />
         ) : (

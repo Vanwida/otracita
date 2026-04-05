@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 
 type State = 'idle' | 'confirm' | 'loading' | 'done' | 'undoing'
 
-export default function NoShowButton({ bookingId }: { bookingId: string }) {
+export default function NoShowButton({ bookingId, initiallyMarked = false }: { bookingId: string; initiallyMarked?: boolean }) {
   const router = useRouter()
-  const [state, setState] = useState<State>('idle')
+  const [state, setState] = useState<State>(initiallyMarked ? 'done' : 'idle')
 
   const markNoShow = async () => {
     setState('loading')
