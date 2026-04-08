@@ -17,6 +17,7 @@ export interface BarbershopConfig {
   hours: Record<string, string> | null;
   address: string;
   googleCalendarId?: string;
+  useDbAvailability: boolean;
   whatsappPhoneNumberId: string;
   whatsappAccessToken: string;
   blockedDates: string[];
@@ -47,6 +48,7 @@ export async function getClientByPhoneNumberId(
     hours: (client.chatbotHours as Record<string, string>) || null,
     address: client.address || '',
     googleCalendarId: client.googleCalendarId || undefined,
+    useDbAvailability: client.useDbAvailability ?? false,
     whatsappPhoneNumberId: phoneNumberId,
     whatsappAccessToken:
       client.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '',

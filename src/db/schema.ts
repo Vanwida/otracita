@@ -18,6 +18,8 @@ export const clients = pgTable('clients', {
   // Booksy integration
   booksyProfileUrl: text('booksy_profile_url'),
   booksyServices: jsonb('booksy_services'), // scraped services from Booksy
+  booksyInboundEmail: text('booksy_inbound_email').unique(), // sync-{clientId}@inbound.agendalo.com
+  useDbAvailability: boolean('use_db_availability').notNull().default(false), // feature flag: use DB instead of GCal for availability
   // Google Calendar
   googleCalendarId: text('google_calendar_id'),
   googleCalendarConnected: boolean('google_calendar_connected').default(false),
@@ -105,6 +107,9 @@ export const bookings = pgTable('bookings', {
   price: integer('price'), // euros
   status: text('status').notNull().default('confirmed'), // confirmed, cancelled, completed, no_show
   googleEventId: text('google_event_id'),
+  source: text('source').notNull().default('bot'), // 'bot' | 'booksy'
+  booksyBookingId: text('booksy_booking_id'), // Booksy reference ID for dedup + update matching
+  rawEmailSnippet: text('raw_email_snippet'), // first 500 chars of parsed email, for debugging
   reminderSent: boolean('reminder_sent').default(false),
   cancelledAt: timestamp('cancelled_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

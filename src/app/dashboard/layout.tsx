@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Settings, LogOut, MessageSquare, Wrench, Shield } from "lucide-react"
+import { LayoutDashboard, Settings, LogOut, MessageSquare, Wrench, Shield, Calendar } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
@@ -56,6 +56,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           >
             <LayoutDashboard className="h-4 w-4" />
             Vista General
+          </Link>
+          <Link
+            href="/dashboard/calendar"
+            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-[#1a1a1a] transition-colors"
+          >
+            <Calendar className="h-4 w-4" />
+            Calendario
           </Link>
           <Link
             href="/dashboard/setup"
@@ -149,6 +156,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <span className="text-[10px] font-medium">Inicio</span>
         </Link>
 
+        <Link
+          href="/dashboard/calendar"
+          className="flex flex-col items-center gap-0.5 px-3 py-2 text-neutral-500 hover:text-white transition-colors"
+        >
+          <Calendar className="h-5 w-5" />
+          <span className="text-[10px] font-medium">Calendario</span>
+        </Link>
         <Link
           href="/dashboard/setup"
           className="flex flex-col items-center gap-0.5 px-3 py-2 text-neutral-500 hover:text-white transition-colors"

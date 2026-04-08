@@ -12,6 +12,7 @@ import {
   getTomorrowDate,
   formatDateSpanish,
 } from '@/lib/google-calendar';
+import { getAvailableSlotsFromDB } from '@/lib/availability';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -1445,7 +1446,7 @@ async function handleDateSelection(
     return;
   }
 
-  if (!config.googleCalendarId) {
+  if (!config.useDbAvailability && !config.googleCalendarId) {
     const internalErrMsg = lang === 'en' ? 'Internal error. Please try again.' : 'Error interno. Intenta de nuevo.';
     await sendWhatsAppMessage(msg.phoneNumberId, msg.from, internalErrMsg, token);
     await updateConversation(conversation.id, { step: 'idle', selectedService: null, selectedSlot: null, context: null });
@@ -1458,7 +1459,9 @@ async function handleDateSelection(
   const businessHours = bh || { start: '10:00', end: '20:00' };
 
   try {
-    const slots = await getAvailableSlots(config.googleCalendarId, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
+    const slots = config.useDbAvailability
+      ? await getAvailableSlotsFromDB(config.id, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates)
+      : await getAvailableSlots(config.googleCalendarId!, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
 
     if (slots.length === 0) {
       const noSlotsMsg = lang === 'en'
@@ -1618,29 +1621,18 @@ async function handleConfirmation(
     const ctx = getContext(conversation);
     const slot = conversation.selectedSlot; // "2026-04-02_17:00"
 
-    // If we have calendar integration and a valid slot, create the event
-    if (config.googleCalendarId && slot) {
+    // If we have a valid slot, create the booking via DB or GCal path
+    if (slot) {
       const [date, time] = slot.split('_');
 
       if (date && time) {
         const serviceName = conversation.selectedService || 'Servicio';
         const barber = ctx.selectedBarber;
         const custName = ctx.customerName || msg.from;
+        let bookingSuccess = false;
 
-        // Build event title: "Service - Barber - CustomerName (Phone)"
-        const result = await createBooking(
-          config.googleCalendarId,
-          date,
-          time,
-          serviceName,
-          ctx.serviceDuration || 30,
-          custName,
-          `${custName} (${msg.from})`,
-          barber
-        );
-
-        if (result.success) {
-          // Save booking to DB
+        if (config.useDbAvailability) {
+          // DB path: insert directly, no GCal event
           try {
             await db.insert(bookings).values({
               clientId: config.id,
@@ -1653,16 +1645,57 @@ async function handleConfirmation(
               duration: ctx.serviceDuration || 30,
               price: ctx.servicePrice || null,
               status: 'confirmed',
-              googleEventId: result.eventId || null,
+              googleEventId: null,
+              source: 'bot',
             });
+            bookingSuccess = true;
           } catch (err) {
             console.error('Error saving booking to DB:', err);
           }
+        } else if (config.googleCalendarId) {
+          // GCal path: original behavior (createBooking + db insert)
+          const result = await createBooking(
+            config.googleCalendarId,
+            date,
+            time,
+            serviceName,
+            ctx.serviceDuration || 30,
+            custName,
+            `${custName} (${msg.from})`,
+            barber
+          );
 
-          // Increment customer bookings
+          if (result.success) {
+            try {
+              await db.insert(bookings).values({
+                clientId: config.id,
+                customerPhone: msg.from,
+                customerName: ctx.customerName || null,
+                service: serviceName,
+                barber: barber || null,
+                date,
+                time,
+                duration: ctx.serviceDuration || 30,
+                price: ctx.servicePrice || null,
+                status: 'confirmed',
+                googleEventId: result.eventId || null,
+                source: 'bot',
+              });
+            } catch (err) {
+              console.error('Error saving booking to DB:', err);
+            }
+            bookingSuccess = true;
+          } else {
+            console.error('Booking creation failed:', result.error);
+            const bookErrMsg = lang === 'en'
+              ? 'There was an error creating your booking. Please try again or contact us directly.'
+              : 'Ha habido un error al crear la reserva. Por favor, intenta de nuevo o contacta directamente con nosotros.';
+            await sendWhatsAppMessage(msg.phoneNumberId, msg.from, bookErrMsg, token);
+          }
+        }
+
+        if (bookingSuccess) {
           await incrementCustomerBookings(config.id, msg.from);
-
-          // Track booking analytics
           await trackAnalytics(config.id, 'bookingsMade');
 
           const noPreferenceLabel = T[lang].noPreference;
@@ -1681,12 +1714,6 @@ async function handleConfirmation(
             ],
             token
           );
-        } else {
-          console.error('Booking creation failed:', result.error);
-          const bookErrMsg = lang === 'en'
-            ? 'There was an error creating your booking. Please try again or contact us directly.'
-            : 'Ha habido un error al crear la reserva. Por favor, intenta de nuevo o contacta directamente con nosotros.';
-          await sendWhatsAppMessage(msg.phoneNumberId, msg.from, bookErrMsg, token);
         }
       } else {
         // Malformed slot — fallback
@@ -1696,7 +1723,7 @@ async function handleConfirmation(
         await sendWhatsAppMessage(msg.phoneNumberId, msg.from, fallbackConfirmMsg, token);
       }
     } else {
-      // No calendar — basic confirmation
+      // No slot — basic confirmation
       const basicConfirmMsg = lang === 'en'
         ? `Your appointment has been booked! See you at ${config.businessName}.${config.address ? `\n\nAddress: ${config.address}` : ''}`
         : `Tu cita ha sido reservada! Te esperamos en ${config.businessName}.${config.address ? `\n\nDireccion: ${config.address}` : ''}`;
