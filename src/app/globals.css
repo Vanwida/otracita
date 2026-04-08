@@ -1,23 +1,69 @@
 @import "tailwindcss";
 
+/* ─── Design Tokens ─────────────────────────────────── */
+@theme {
+  /* Surfaces */
+  --color-canvas:   #f9fafb;   /* page/app background */
+  --color-surface:  #ffffff;   /* card, panel, input background */
+  --color-overlay:  #f3f4f6;   /* subtle section tint, table row headers */
+
+  /* Borders */
+  --color-line:       #e5e7eb; /* standard border */
+  --color-line-strong: #d1d5db;
+
+  /* Text */
+  --color-ink:   #111827;  /* primary text */
+  --color-ink-2: #6b7280;  /* secondary / labels */
+  --color-ink-3: #9ca3af;  /* muted / placeholder */
+
+  /* Sidebar — stays dark */
+  --color-sidebar:       #0a0a0a;
+  --color-sidebar-line:  #1f1f1f;
+  --color-sidebar-hover: #1a1a1a;
+  --color-sidebar-text:  #a3a3a3;
+  --color-sidebar-card:  #141414;
+
+  /* Calendar events */
+  --color-event-booksy:  oklch(0.696 0.17 162);  /* emerald — Booksy imported */
+  --color-event-native:  oklch(0.491 0.27 292);  /* violet  — WhatsApp / manual */
+  --color-event-noshow:  oklch(0.628 0.258 29);  /* red     — no-show / cancelled */
+
+  /* Current time indicator */
+  --color-time-now: oklch(0.628 0.258 29);  /* same red */
+
+  /* Today column tint */
+  --color-today-tint: oklch(0.985 0.02 162); /* barely-there green */
+}
+
 html {
   scroll-behavior: smooth;
 }
 
 body {
-  background-color: #050505;
-  color: #FAFAFA;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 /* Base utility for glass containers */
 @layer utilities {
+  .blocked-overlay {
+    background:
+      repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 6px,
+        oklch(0 0 0 / 0.04) 6px,
+        oklch(0 0 0 / 0.04) 12px
+      );
+  }
+
   .glass-card {
     @apply bg-white/[0.02] border border-white/[0.05] backdrop-blur-md rounded-2xl;
   }
   .glass-card-hover {
     @apply hover:bg-white/[0.04] hover:border-emerald-500/20 transition-all duration-300;
   }
-  
+
   .text-glow {
     text-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
   }
@@ -28,10 +74,10 @@ body {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #050505;
+  background: var(--color-canvas);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f1f1f;
+  background: var(--color-line-strong);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {

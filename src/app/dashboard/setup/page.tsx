@@ -142,8 +142,8 @@ export default function SetupPage() {
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Configura tu Chatbot</h1>
-        <p className="text-neutral-500">Completa estos pasos para que tu asistente IA esté listo.</p>
+        <h1 className="text-3xl font-bold text-ink mb-2">Configura tu Chatbot</h1>
+        <p className="text-ink-2">Completa estos pasos para que tu asistente IA esté listo.</p>
       </div>
 
       {/* Step indicator */}
@@ -156,28 +156,28 @@ export default function SetupPage() {
                 onClick={() => s.num < step && setStep(s.num)}
                 className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   step === s.num
-                    ? "bg-emerald-500 text-black"
+                    ? "bg-emerald-500 text-white"
                     : step > s.num
-                      ? "bg-[#1a1a1a] text-emerald-400 cursor-pointer"
-                      : "bg-[#141414] text-neutral-500 border border-[#262626]"
+                      ? "bg-emerald-50 text-emerald-600 cursor-pointer"
+                      : "bg-surface border border-line text-ink-3"
                 }`}
               >
                 {step > s.num ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                 <span className="hidden sm:inline text-xs">{s.label}</span>
               </button>
-              {s.num < 4 && <ChevronRight className="h-4 w-4 text-neutral-700" />}
+              {s.num < 4 && <ChevronRight className="h-4 w-4 text-line-strong" />}
             </div>
           )
         })}
       </div>
 
-      <div className="bg-[#141414] border border-[#262626] rounded-xl p-4 md:p-8">
+      <div className="bg-surface border border-line rounded-xl p-4 md:p-8">
 
         {/* ─── STEP 1: Import from Booksy or Manual ─── */}
         {step === 1 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-white">¿Tienes Booksy?</h2>
-            <p className="text-sm text-neutral-500">
+            <h2 className="text-xl font-semibold text-ink">¿Tienes Booksy?</h2>
+            <p className="text-sm text-ink-2">
               Si usas Booksy, podemos importar tus servicios, precios y datos automáticamente. Si no, los añades tú.
             </p>
 
@@ -185,19 +185,19 @@ export default function SetupPage() {
               <div className="grid grid-cols-2 gap-4 mt-6">
                 <button
                   onClick={() => setHasBooksy(true)}
-                  className="flex flex-col items-center gap-3 rounded-xl border border-[#262626] bg-[#0f0f0f] p-6 text-center transition-colors hover:border-[#333] hover:bg-[#1a1a1a]"
+                  className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-6 text-center transition-colors hover:border-emerald-500 hover:bg-canvas"
                 >
-                  <Search className="h-8 w-8 text-neutral-400" />
-                  <span className="text-sm font-bold text-white">Sí, tengo Booksy</span>
-                  <span className="text-xs text-neutral-500">Importamos todo automáticamente</span>
+                  <Search className="h-8 w-8 text-ink-3" />
+                  <span className="text-sm font-bold text-ink">Sí, tengo Booksy</span>
+                  <span className="text-xs text-ink-2">Importamos todo automáticamente</span>
                 </button>
                 <button
                   onClick={() => { setHasBooksy(false); setStep(2) }}
-                  className="flex flex-col items-center gap-3 rounded-xl border border-[#262626] bg-[#0f0f0f] p-6 text-center transition-colors hover:border-[#333] hover:bg-[#1a1a1a]"
+                  className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-6 text-center transition-colors hover:border-emerald-500 hover:bg-canvas"
                 >
-                  <User className="h-8 w-8 text-neutral-400" />
-                  <span className="text-sm font-bold text-white">No, configuro manual</span>
-                  <span className="text-xs text-neutral-500">Añado mis datos paso a paso</span>
+                  <User className="h-8 w-8 text-ink-3" />
+                  <span className="text-sm font-bold text-ink">No, configuro manual</span>
+                  <span className="text-xs text-ink-2">Añado mis datos paso a paso</span>
                 </button>
               </div>
             )}
@@ -205,15 +205,15 @@ export default function SetupPage() {
             {hasBooksy === true && (
               <div className="space-y-4 mt-6">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium text-neutral-400">URL de tu perfil de Booksy</label>
+                  <label className="text-sm font-medium text-ink-2">URL de tu perfil de Booksy</label>
                   <input
                     type="text"
                     value={booksyUrl}
                     onChange={(e) => setBooksyUrl(e.target.value)}
                     placeholder="https://booksy.com/es-es/..."
-                    className="bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+                    className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
                   />
-                  <p className="text-xs text-neutral-600">Copia la URL de tu perfil público de Booksy</p>
+                  <p className="text-xs text-ink-3">Copia la URL de tu perfil público de Booksy</p>
                 </div>
 
                 {booksyUrl.includes('booksy.com') && (
@@ -221,7 +221,7 @@ export default function SetupPage() {
                     type="button"
                     onClick={handleScrapeBooksy}
                     disabled={scraping}
-                    className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-4 text-sm font-bold text-black transition-colors active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-4 text-sm font-bold text-white transition-colors active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {scraping ? (
                       <>
@@ -242,13 +242,13 @@ export default function SetupPage() {
 
                 <button
                   onClick={() => { setHasBooksy(false); setStep(2) }}
-                  className="w-full text-center text-xs text-neutral-600 hover:text-neutral-400 transition-colors mt-2"
+                  className="w-full text-center text-xs text-ink-3 hover:text-ink-2 transition-colors mt-2"
                 >
                   O configura manualmente →
                 </button>
 
                 {error && (
-                  <div className="bg-[#141414] border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{error}</div>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{error}</div>
                 )}
               </div>
             )}
@@ -259,8 +259,8 @@ export default function SetupPage() {
         {step === 2 && (
           <div className="space-y-8">
             {scraped && (
-              <div className="bg-[#141414] border border-[#262626] rounded-xl p-4">
-                <p className="text-sm text-emerald-400">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                <p className="text-sm text-emerald-700">
                   ✅ Datos importados desde Booksy. Revisa y edita lo que necesites.
                 </p>
               </div>
@@ -268,7 +268,7 @@ export default function SetupPage() {
 
             {/* Business Info */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Datos del Negocio</h2>
+              <h2 className="text-lg font-semibold text-ink">Datos del Negocio</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <InputField label="Nombre del Negocio" value={businessName} onChange={setBusinessName} placeholder="Ej. Barbería Central" required />
                 <InputField label="Tu Nombre" value={ownerName} onChange={setOwnerName} placeholder="Ej. Carlos García" required />
@@ -279,13 +279,13 @@ export default function SetupPage() {
             </div>
 
             {/* Divider */}
-            <div className="border-t border-[#1f1f1f]" />
+            <div className="border-t border-line" />
 
             {/* Services */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white">Servicios</h2>
-                <span className="text-xs text-neutral-600">{services.filter(s => s.name.trim()).length} servicios</span>
+                <h2 className="text-lg font-semibold text-ink">Servicios</h2>
+                <span className="text-xs text-ink-3">{services.filter(s => s.name.trim()).length} servicios</span>
               </div>
 
               <div className="space-y-3">
@@ -296,7 +296,7 @@ export default function SetupPage() {
                       value={service.name}
                       onChange={(e) => updateService(i, "name", e.target.value)}
                       placeholder="Nombre del servicio"
-                      className="flex-1 bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+                      className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
                     />
                     <div className="flex gap-2 sm:contents">
                       <input
@@ -304,7 +304,7 @@ export default function SetupPage() {
                         value={service.duration}
                         onChange={(e) => updateService(i, "duration", e.target.value)}
                         placeholder="Min"
-                        className="w-20 bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors text-center"
+                        className="w-20 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors text-center"
                       />
                       <div className="relative w-24">
                         <input
@@ -312,14 +312,14 @@ export default function SetupPage() {
                           value={service.price}
                           onChange={(e) => updateService(i, "price", e.target.value)}
                           placeholder="€"
-                          className="w-full bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors text-center"
+                          className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors text-center"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => removeService(i)}
                         disabled={services.length <= 1}
-                        className="shrink-0 rounded-lg p-3 text-neutral-600 hover:text-red-400 hover:bg-[#1a1a1a] transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+                        className="shrink-0 rounded-lg p-3 text-ink-3 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -331,7 +331,7 @@ export default function SetupPage() {
               <button
                 type="button"
                 onClick={addService}
-                className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-[#333] px-4 py-3 text-sm text-neutral-500 hover:border-[#444] hover:text-neutral-300 transition-colors w-full"
+                className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-line px-4 py-3 text-sm text-ink-3 hover:border-line-strong hover:text-ink-2 transition-colors w-full"
               >
                 <Plus className="h-4 w-4" />
                 Añadir servicio
@@ -339,18 +339,18 @@ export default function SetupPage() {
             </div>
 
             {/* Divider */}
-            <div className="border-t border-[#1f1f1f]" />
+            <div className="border-t border-line" />
 
             {/* Barbers */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Equipo / Barberos</h2>
-              <p className="text-xs text-neutral-600">Añade los profesionales de tu negocio. El chatbot preguntará con quién quiere reservar.</p>
+              <h2 className="text-lg font-semibold text-ink">Equipo / Barberos</h2>
+              <p className="text-xs text-ink-3">Añade los profesionales de tu negocio. El chatbot preguntará con quién quiere reservar.</p>
 
               <div className="flex flex-wrap gap-2">
                 {barbers.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-full bg-[#1a1a1a] border border-[#262626] px-4 py-2">
-                    <span className="text-sm text-neutral-300">{b}</span>
-                    <button onClick={() => setBarbers(barbers.filter((_, j) => j !== i))} className="text-neutral-600 hover:text-red-400 transition-colors">
+                  <div key={i} className="flex items-center gap-2 rounded-full bg-overlay border border-line px-4 py-2">
+                    <span className="text-sm text-ink-2">{b}</span>
+                    <button onClick={() => setBarbers(barbers.filter((_, j) => j !== i))} className="text-ink-3 hover:text-red-500 transition-colors">
                       <X className="h-3 w-3" />
                     </button>
                   </div>
@@ -370,7 +370,7 @@ export default function SetupPage() {
                     }
                   }}
                   placeholder="Nombre del barbero"
-                  className="flex-1 bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+                  className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
                 />
                 <button
                   type="button"
@@ -380,7 +380,7 @@ export default function SetupPage() {
                       setNewBarber("")
                     }
                   }}
-                  className="rounded-lg bg-[#1a1a1a] border border-[#262626] px-4 py-3 text-sm text-neutral-300 hover:bg-[#222] hover:border-[#333] transition-colors"
+                  className="rounded-lg bg-overlay border border-line px-4 py-3 text-sm text-ink-2 hover:bg-canvas hover:border-line-strong transition-colors"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -388,15 +388,15 @@ export default function SetupPage() {
             </div>
 
             {/* Divider */}
-            <div className="border-t border-[#1f1f1f]" />
+            <div className="border-t border-line" />
 
             {/* Hours */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Horario</h2>
+              <h2 className="text-lg font-semibold text-ink">Horario</h2>
               <div className="space-y-2">
                 {DAYS.map((day) => (
                   <div key={day} className="flex items-center gap-3">
-                    <span className="text-sm text-neutral-400 w-24 shrink-0">{DAY_LABELS[day]}</span>
+                    <span className="text-sm text-ink-2 w-24 shrink-0">{DAY_LABELS[day]}</span>
                     <select
                       value={hours[day] === 'Cerrado' ? 'closed' : 'open'}
                       onChange={(e) => {
@@ -406,7 +406,7 @@ export default function SetupPage() {
                           setHours({ ...hours, [day]: '10:00-20:00' })
                         }
                       }}
-                      className="bg-[#0f0f0f] border border-[#262626] rounded-lg p-2 text-sm text-white outline-none w-24 focus:border-emerald-500 transition-colors"
+                      className="bg-surface border border-line rounded-lg p-2 text-sm text-ink outline-none w-24 focus:border-emerald-500 transition-colors"
                     >
                       <option value="open">Abierto</option>
                       <option value="closed">Cerrado</option>
@@ -417,7 +417,7 @@ export default function SetupPage() {
                         value={hours[day]}
                         onChange={(e) => setHours({ ...hours, [day]: e.target.value })}
                         placeholder="10:00-20:00"
-                        className="flex-1 bg-[#0f0f0f] border border-[#262626] rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none transition-colors text-center"
+                        className="flex-1 bg-surface border border-line rounded-lg p-2 text-sm text-ink focus:border-emerald-500 outline-none transition-colors text-center"
                       />
                     )}
                   </div>
@@ -430,8 +430,8 @@ export default function SetupPage() {
         {/* ─── STEP 3: Calendar ─── */}
         {step === 3 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-white">Conecta tu Calendario</h2>
-            <p className="text-sm text-neutral-500">
+            <h2 className="text-xl font-semibold text-ink">Conecta tu Calendario</h2>
+            <p className="text-sm text-ink-2">
               El chatbot necesita ver tu calendario para mostrar huecos disponibles y crear reservas automáticamente.
             </p>
 
@@ -442,23 +442,23 @@ export default function SetupPage() {
               placeholder="abc123@group.calendar.google.com"
             />
 
-            <div className="bg-[#141414] border border-[#262626] rounded-xl p-4">
-              <p className="text-sm text-neutral-300 font-medium mb-2">¿Necesitas ayuda?</p>
-              <p className="text-sm text-neutral-400">
+            <div className="bg-canvas border border-line rounded-xl p-4">
+              <p className="text-sm text-ink font-medium mb-2">¿Necesitas ayuda?</p>
+              <p className="text-sm text-ink-2">
                 Nuestro equipo te ayuda a conectar tu Booksy con Google Calendar gratis.{" "}
                 <a
                   href="https://wa.me/34644288663?text=Hola!%20Necesito%20ayuda%20para%20conectar%20mi%20calendario"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-emerald-500 underline font-medium hover:text-emerald-400 transition-colors"
+                  className="text-emerald-600 underline font-medium hover:text-emerald-500 transition-colors"
                 >
                   Escríbenos por WhatsApp
                 </a>
               </p>
             </div>
 
-            <div className="bg-[#141414] border border-[#262626] rounded-xl p-4">
-              <p className="text-xs text-neutral-500">
+            <div className="bg-canvas border border-line rounded-xl p-4">
+              <p className="text-xs text-ink-2">
                 💡 Si usas Booksy, activa "Reserve with Google" en Booksy → Configuración → Reservas Online.
                 Esto sincroniza automáticamente tu calendario de Booksy con Google Calendar.
               </p>
@@ -469,7 +469,7 @@ export default function SetupPage() {
         {/* ─── STEP 4: Confirm ─── */}
         {step === 4 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-white">Todo listo — revisa y confirma</h2>
+            <h2 className="text-xl font-semibold text-ink">Todo listo — revisa y confirma</h2>
 
             <div className="space-y-4">
               <ReviewSection title="Tu Negocio">
@@ -485,7 +485,7 @@ export default function SetupPage() {
                     <ReviewItem key={i} label={s.name} value={`${s.duration}min · ${s.price}€`} />
                   ))
                 ) : (
-                  <p className="text-neutral-600 text-sm italic">Sin servicios</p>
+                  <p className="text-ink-3 text-sm italic">Sin servicios</p>
                 )}
               </ReviewSection>
 
@@ -510,17 +510,17 @@ export default function SetupPage() {
             </div>
 
             {error && (
-              <div className="bg-[#141414] border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{error}</div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{error}</div>
             )}
           </div>
         )}
 
         {/* Navigation */}
-        <div className="flex items-center justify-between mt-10 pt-6 border-t border-[#262626]">
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-line">
           {step > 1 ? (
             <button
               onClick={() => setStep(step - 1)}
-              className="flex items-center gap-2 rounded-lg border border-[#262626] px-5 py-3 text-sm font-medium text-neutral-400 hover:bg-[#1a1a1a] hover:text-white transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-line px-5 py-3 text-sm font-medium text-ink-2 hover:bg-canvas hover:text-ink transition-colors"
             >
               <ChevronLeft className="h-4 w-4" />
               Atrás
@@ -533,7 +533,7 @@ export default function SetupPage() {
             <button
               onClick={() => setStep(step + 1)}
               disabled={step === 2 && (!businessName.trim() || !ownerName.trim() || !phone.trim())}
-              className="flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-6 py-3 text-sm font-bold text-black transition-colors active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-6 py-3 text-sm font-bold text-white transition-colors active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Siguiente
               <ChevronRight className="h-4 w-4" />
@@ -544,7 +544,7 @@ export default function SetupPage() {
             <button
               onClick={handleSubmit}
               disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-8 py-3 text-sm font-bold text-black transition-colors active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-8 py-3 text-sm font-bold text-white transition-colors active:scale-95 disabled:opacity-50"
             >
               {saving ? "Activando..." : "Confirmar y Activar"}
               <Check className="h-4 w-4" />
@@ -561,8 +561,8 @@ function InputField({ label, value, onChange, placeholder, required = false }: {
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-neutral-400">
-        {label} {required && <span className="text-red-400">*</span>}
+      <label className="text-sm font-medium text-ink-2">
+        {label} {required && <span className="text-red-500">*</span>}
       </label>
       <input
         type="text"
@@ -570,7 +570,7 @@ function InputField({ label, value, onChange, placeholder, required = false }: {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        className="bg-[#0f0f0f] border border-[#262626] rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+        className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
       />
     </div>
   )
@@ -578,8 +578,8 @@ function InputField({ label, value, onChange, placeholder, required = false }: {
 
 function ReviewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[#0f0f0f] border border-[#262626] rounded-xl p-5">
-      <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3">{title}</h3>
+    <div className="bg-canvas border border-line rounded-xl p-5">
+      <h3 className="text-xs font-bold text-ink-2 uppercase tracking-wider mb-3">{title}</h3>
       <div className="space-y-2">{children}</div>
     </div>
   )
@@ -588,8 +588,8 @@ function ReviewSection({ title, children }: { title: string; children: React.Rea
 function ReviewItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-sm gap-4">
-      <span className="text-neutral-500 shrink-0">{label}</span>
-      <span className="text-white font-medium text-right truncate">{value || "—"}</span>
+      <span className="text-ink-2 shrink-0">{label}</span>
+      <span className="text-ink font-medium text-right truncate">{value || "—"}</span>
     </div>
   )
 }

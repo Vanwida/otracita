@@ -10,7 +10,6 @@ import {
   isSameMonth,
   isSameDay,
 } from 'date-fns';
-import { es } from 'date-fns/locale';
 import type { CalendarEvent } from './types';
 
 const DAY_HEADERS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -41,13 +40,13 @@ export default function MonthGrid({
   const getEventsForDay = (dateStr: string) => events.filter(e => e.date === dateStr);
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col">
+    <div className="flex-1 overflow-hidden flex flex-col bg-surface">
       {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 border-b border-[#1a1a1a] shrink-0">
+      <div className="grid grid-cols-7 border-b border-line shrink-0">
         {DAY_HEADERS.map(d => (
           <div
             key={d}
-            className="py-2 text-center text-[10px] font-bold uppercase tracking-widest text-neutral-600"
+            className="py-2 text-center text-[10px] font-bold uppercase tracking-widest text-ink-2"
           >
             {d}
           </div>
@@ -72,19 +71,13 @@ export default function MonthGrid({
               <div
                 key={dateStr}
                 onClick={() => onSlotClick(dateStr, '10:00')}
-                className={`relative p-1.5 border-r border-b border-[#1a1a1a] last-of-type:border-r-0 cursor-pointer transition-colors hover:bg-[#141414] ${
-                  isBlocked ? 'bg-[#111]' : ''
+                className={`relative p-1.5 border-r border-b border-line last-of-type:border-r-0 cursor-pointer transition-colors hover:bg-canvas ${
+                  isBlocked ? 'bg-overlay' : ''
                 } ${!isCurrentMonth ? 'opacity-30' : ''}`}
               >
                 {/* Blocked pattern */}
                 {isBlocked && isCurrentMonth && (
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      background:
-                        'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255,255,255,0.02) 4px, rgba(255,255,255,0.02) 8px)',
-                    }}
-                  />
+                  <div className="absolute inset-0 pointer-events-none blocked-overlay" />
                 )}
 
                 {/* Day number */}
@@ -92,8 +85,8 @@ export default function MonthGrid({
                   <span
                     className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full ${
                       isToday
-                        ? 'bg-emerald-500 text-black'
-                        : 'text-neutral-400'
+                        ? 'bg-emerald-500 text-white'
+                        : 'text-ink-2'
                     }`}
                   >
                     {format(day, 'd')}
@@ -104,6 +97,18 @@ export default function MonthGrid({
                 <div className="space-y-0.5">
                   {dayEvents.slice(0, MAX_VISIBLE).map(event => {
                     const isBooksy = event.source === 'booksy';
+                    const isCancelledOrNoShow =
+                      event.status === 'cancelled' || event.status === 'no_show';
+
+                    let colorClass = '';
+                    if (isCancelledOrNoShow) {
+                      colorClass = 'bg-event-noshow/15 text-event-noshow';
+                    } else if (isBooksy) {
+                      colorClass = 'bg-event-booksy/20 text-event-booksy';
+                    } else {
+                      colorClass = 'bg-event-native/20 text-event-native';
+                    }
+
                     return (
                       <div
                         key={event.id}
@@ -112,11 +117,7 @@ export default function MonthGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${
-                          isBooksy
-                            ? 'bg-violet-600/20 text-violet-300'
-                            : 'bg-emerald-600/20 text-emerald-300'
-                        }`}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${colorClass}`}
                         title={event.title}
                       >
                         {event.time} {event.customerName || event.customerPhone}
@@ -124,7 +125,7 @@ export default function MonthGrid({
                     );
                   })}
                   {extra > 0 && (
-                    <div className="text-[10px] text-neutral-600 pl-1.5">+{extra} más</div>
+                    <div className="text-[10px] text-ink-3 pl-1.5">+{extra} más</div>
                   )}
                 </div>
               </div>

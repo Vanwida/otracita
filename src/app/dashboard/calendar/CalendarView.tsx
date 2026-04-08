@@ -6,6 +6,8 @@ import {
   endOfWeek,
   addWeeks,
   subWeeks,
+  addDays,
+  subDays,
   format,
   startOfMonth,
   endOfMonth,
@@ -16,6 +18,7 @@ import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Plus, Loader2 } from 'lucide-react';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
+import DayGrid from './DayGrid';
 import BookingDetailPanel from './BookingDetailPanel';
 import NewBookingPanel from './NewBookingPanel';
 import type { CalendarEvent } from './types';
@@ -27,11 +30,9 @@ interface Props {
   hours: Record<string, string> | null;
 }
 
-export default function CalendarView({ services, barbers, blockedDates }: Props) {
-  const [weekStart, setWeekStart] = useState<Date>(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 }),
-  );
-  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+export default function CalendarView({ services, barbers, blockedDates, hours }: Props) {
+  const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
   const [selectedBooking, setSelectedBooking] = useState<CalendarEvent | null>(null);
   const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
@@ -43,14 +44,20 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
   const [loading, setLoading] = useState(false);
 
   const fetchEvents = useCallback(() => {
-    const start =
-      viewMode === 'week'
-        ? format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-        : format(startOfMonth(weekStart), 'yyyy-MM-dd');
-    const end =
-      viewMode === 'week'
-        ? format(endOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-        : format(endOfMonth(weekStart), 'yyyy-MM-dd');
+    let start: string;
+    let end: string;
+
+    if (viewMode === 'day') {
+      start = format(currentDay, 'yyyy-MM-dd');
+      end = format(currentDay, 'yyyy-MM-dd');
+    } else if (viewMode === 'week') {
+      const ws = startOfWeek(currentDay, { weekStartsOn: 1 });
+      start = format(ws, 'yyyy-MM-dd');
+      end = format(endOfWeek(currentDay, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    } else {
+      start = format(startOfMonth(currentDay), 'yyyy-MM-dd');
+      end = format(endOfMonth(currentDay), 'yyyy-MM-dd');
+    }
 
     setLoading(true);
     fetch(`/api/dashboard/calendar?start=${start}&end=${end}&barber=${selectedBarber}`)
@@ -64,31 +71,40 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
       .finally(() => {
         setLoading(false);
       });
-  }, [weekStart, viewMode, selectedBarber]);
+  }, [currentDay, viewMode, selectedBarber]);
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
   const rangeLabel = () => {
+    if (viewMode === 'day') {
+      return format(currentDay, "EEEE, d 'de' MMMM yyyy", { locale: es });
+    }
     if (viewMode === 'week') {
-      const ws = startOfWeek(weekStart, { weekStartsOn: 1 });
-      const we = endOfWeek(weekStart, { weekStartsOn: 1 });
+      const ws = startOfWeek(currentDay, { weekStartsOn: 1 });
+      const we = endOfWeek(currentDay, { weekStartsOn: 1 });
       const startDay = format(ws, 'd');
       const endFull = format(we, "d MMM yyyy", { locale: es });
       return `${startDay}–${endFull}`;
     }
-    return format(weekStart, 'MMMM yyyy', { locale: es });
+    return format(currentDay, 'MMMM yyyy', { locale: es });
   };
 
   const handlePrev = () => {
-    if (viewMode === 'week') setWeekStart(w => subWeeks(w, 1));
-    else setWeekStart(w => subMonths(w, 1));
+    if (viewMode === 'day') setCurrentDay(d => subDays(d, 1));
+    else if (viewMode === 'week') setCurrentDay(d => subWeeks(d, 1));
+    else setCurrentDay(d => subMonths(d, 1));
   };
 
   const handleNext = () => {
-    if (viewMode === 'week') setWeekStart(w => addWeeks(w, 1));
-    else setWeekStart(w => addMonths(w, 1));
+    if (viewMode === 'day') setCurrentDay(d => addDays(d, 1));
+    else if (viewMode === 'week') setCurrentDay(d => addWeeks(d, 1));
+    else setCurrentDay(d => addMonths(d, 1));
+  };
+
+  const handleTodayClick = () => {
+    setCurrentDay(new Date());
   };
 
   const handleSlotClick = (date: string, time: string) => {
@@ -102,17 +118,23 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
     setSelectedBooking(event);
   };
 
+  const VIEW_LABELS: Record<'day' | 'week' | 'month', string> = {
+    day: 'Día',
+    week: 'Semana',
+    month: 'Mes',
+  };
+
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a]">
+    <div className="flex flex-col h-full bg-canvas">
       {/* Controls bar */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1f1f1f] flex-wrap shrink-0">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface flex-wrap shrink-0">
         {/* Title */}
-        <h1 className="text-base font-bold text-white mr-1">Calendario</h1>
+        <h1 className="text-base font-bold text-ink mr-1">Calendario</h1>
 
         {/* Today */}
         <button
-          onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
-          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#1a1a1a] border border-[#262626] text-neutral-300 hover:text-white hover:border-[#333] transition-colors"
+          onClick={handleTodayClick}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-overlay border border-line text-ink-2 hover:bg-canvas transition-colors"
         >
           Hoy
         </button>
@@ -121,34 +143,34 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
         <div className="flex items-center gap-1">
           <button
             onClick={handlePrev}
-            className="p-1.5 rounded-lg hover:bg-[#1a1a1a] text-neutral-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="text-sm text-neutral-300 min-w-[140px] text-center capitalize">
+          <span className="text-sm text-ink-2 min-w-[160px] text-center capitalize">
             {rangeLabel()}
           </span>
           <button
             onClick={handleNext}
-            className="p-1.5 rounded-lg hover:bg-[#1a1a1a] text-neutral-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Week / Month toggle */}
-        <div className="flex rounded-lg bg-[#141414] border border-[#1f1f1f] p-0.5">
-          {(['week', 'month'] as const).map(m => (
+        {/* Day / Week / Month toggle */}
+        <div className="flex rounded-lg bg-overlay border border-line p-0.5">
+          {(['day', 'week', 'month'] as const).map(m => (
             <button
               key={m}
               onClick={() => setViewMode(m)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                 viewMode === m
-                  ? 'bg-[#262626] text-white'
-                  : 'text-neutral-500 hover:text-neutral-300'
+                  ? 'bg-surface shadow-sm text-ink'
+                  : 'text-ink-2 hover:text-ink'
               }`}
             >
-              {m === 'week' ? 'Semana' : 'Mes'}
+              {VIEW_LABELS[m]}
             </button>
           ))}
         </div>
@@ -158,7 +180,7 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
           <select
             value={selectedBarber}
             onChange={e => setSelectedBarber(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded-lg bg-[#141414] border border-[#262626] text-neutral-300 hover:border-[#333] focus:outline-none focus:border-emerald-500/50 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink-2 hover:border-line-strong focus:outline-none focus:border-emerald-500 transition-colors"
           >
             <option value="all">Todos los barberos</option>
             {barbers.map(b => (
@@ -183,14 +205,24 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
         </button>
 
         {/* Loading indicator */}
-        {loading && <Loader2 className="h-4 w-4 text-neutral-500 animate-spin" />}
+        {loading && <Loader2 className="h-4 w-4 text-ink-3 animate-spin" />}
       </div>
 
       {/* Grid */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {viewMode === 'week' ? (
+        {viewMode === 'day' ? (
+          <DayGrid
+            date={currentDay}
+            events={events}
+            barbers={barbers}
+            blockedDates={blockedDates}
+            hours={hours}
+            onEventClick={handleEventClick}
+            onSlotClick={handleSlotClick}
+          />
+        ) : viewMode === 'week' ? (
           <WeekGrid
-            weekStart={startOfWeek(weekStart, { weekStartsOn: 1 })}
+            weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
             events={events}
             blockedDates={blockedDates}
             onEventClick={handleEventClick}
@@ -198,7 +230,7 @@ export default function CalendarView({ services, barbers, blockedDates }: Props)
           />
         ) : (
           <MonthGrid
-            monthStart={startOfMonth(weekStart)}
+            monthStart={startOfMonth(currentDay)}
             events={events}
             blockedDates={blockedDates}
             onEventClick={handleEventClick}

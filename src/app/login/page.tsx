@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const email = formData.get('email') as string;
@@ -43,16 +43,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center bg-[#050505] text-[#FAFAFA]">
-      <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-xl shadow-2xl shadow-indigo-500/10">
+    <div className="flex h-screen items-center justify-center bg-canvas">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 shadow-sm">
         <div className="mb-8 text-center">
           <img src="/logo.svg" alt="Agendalo Logo" className="mx-auto h-12 w-12" />
-          <h2 className="mt-4 text-2xl font-bold tracking-tight">Acceso Clientes</h2>
-          <p className="mt-2 text-sm text-gray-400">Ingresa tu correo y contraseña para acceder.</p>
+          <h2 className="mt-4 text-2xl font-bold tracking-tight text-ink">Acceso Clientes</h2>
+          <p className="mt-2 text-sm text-ink-3">Ingresa tu correo y contraseña para acceder.</p>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
             {error}
           </div>
         )}
@@ -63,19 +63,19 @@ export default function LoginPage() {
             type="email"
             placeholder="correo@tupeluqueria.com"
             required
-            className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm outline-none transition-all placeholder:text-gray-600 focus:border-indigo-500/50 focus:bg-white/10"
+            className="rounded-lg border border-line bg-surface p-3 text-sm text-ink outline-none transition-all placeholder:text-ink-3 focus:border-emerald-500"
           />
           <input
             name="password"
             type="password"
             placeholder="Contraseña"
             required
-            className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm outline-none transition-all placeholder:text-gray-600 focus:border-indigo-500/50 focus:bg-white/10"
+            className="rounded-lg border border-line bg-surface p-3 text-sm text-ink outline-none transition-all placeholder:text-ink-3 focus:border-emerald-500"
           />
           <button
             type="submit"
             disabled={loading}
-            className="rounded-lg bg-indigo-500 py-3 text-sm font-bold text-white transition-all hover:bg-indigo-400 active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg bg-emerald-600 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-500 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Entrando...' : 'Entrar al Dashboard'}
           </button>

@@ -25,9 +25,9 @@ interface Props {
 }
 
 const INPUT_CLASS =
-  'w-full px-3 py-2 text-sm rounded-lg bg-[#141414] border border-[#262626] text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-emerald-500/50 transition-colors';
+  'w-full px-3 py-2 text-sm rounded-lg bg-surface border border-line text-ink placeholder-ink-3 focus:outline-none focus:border-emerald-500 transition-colors';
 
-const LABEL_CLASS = 'block text-[11px] font-bold uppercase tracking-widest text-neutral-600 mb-1.5';
+const LABEL_CLASS = 'block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5';
 
 export default function NewBookingPanel({
   isOpen,
@@ -68,7 +68,7 @@ export default function NewBookingPanel({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -126,7 +126,7 @@ export default function NewBookingPanel({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+            className="fixed inset-0 z-40 bg-black/20 lg:hidden"
           />
 
           <motion.div
@@ -135,14 +135,14 @@ export default function NewBookingPanel({
             animate={{ x: 0 }}
             exit={{ x: 320 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed right-0 top-0 z-50 h-full w-80 bg-[#0f0f0f] border-l border-[#1f1f1f] flex flex-col shadow-2xl"
+            className="fixed right-0 top-0 z-50 h-full w-80 bg-surface border-l border-line flex flex-col shadow-xl"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#1f1f1f]">
-              <span className="text-sm font-semibold text-white">Nueva Reserva</span>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+              <span className="text-sm font-semibold text-ink">Nueva Reserva</span>
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg hover:bg-[#1a1a1a] text-neutral-500 hover:text-white transition-colors"
+                className="p-1.5 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -265,7 +265,7 @@ export default function NewBookingPanel({
 
               {/* Error */}
               {error && (
-                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {error}
                 </p>
               )}

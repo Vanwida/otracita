@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { format, addDays, isSameDay } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
 import type { CalendarEvent } from './types';
 
 const PX_PER_MIN = 2;
-const GRID_START = 8 * 60;   // 08:00
-const GRID_END = 22 * 60;    // 22:00
+const GRID_START = 8 * 60;  // 08:00
+const GRID_END = 22 * 60;   // 22:00
 const TOTAL_HEIGHT = (GRID_END - GRID_START) * PX_PER_MIN; // 1680px
 
 function toMinutes(hhmm: string): number {
@@ -16,33 +16,42 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-function getCurrentTimeMinutes(): number {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
-}
-
 const HOUR_LABELS = Array.from({ length: GRID_END / 60 - GRID_START / 60 }, (_, i) => {
   const h = GRID_START / 60 + i;
   return { label: `${String(h).padStart(2, '0')}:00`, top: i * 60 * PX_PER_MIN };
 });
 
+function parseBusinessHours(hoursStr: string | undefined): { open: number; close: number } | null {
+  if (!hoursStr || hoursStr === 'Cerrado') return null;
+  const match = hoursStr.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  if (!match) return null;
+  return { open: toMinutes(match[1]), close: toMinutes(match[2]) };
+}
+
+function getCurrentTimeMinutes(): number {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
 interface Props {
-  weekStart: Date;
+  date: Date;
   events: CalendarEvent[];
+  barbers: Array<{ name: string }>;
   blockedDates: string[];
+  hours: Record<string, string> | null;
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
 }
 
-export default function WeekGrid({
-  weekStart,
+export default function DayGrid({
+  date,
   events,
+  barbers,
   blockedDates,
+  hours,
   onEventClick,
   onSlotClick,
 }: Props) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const today = new Date();
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -62,14 +71,34 @@ export default function WeekGrid({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const dateStr = format(date, 'yyyy-MM-dd');
+  const isBlocked = blockedDates.includes(dateStr);
+  const dayOfWeek = format(date, 'EEEE', { locale: es }).toLowerCase();
+
+  // Parse business hours for today
+  const todayHoursStr = hours?.[dayOfWeek];
+  const businessHours = parseBusinessHours(todayHoursStr);
+
+  // Current time indicator position
+  const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
   const currentTimePx =
-    currentTimeMin >= GRID_START && currentTimeMin <= GRID_END
+    isToday && currentTimeMin >= GRID_START && currentTimeMin <= GRID_END
       ? (currentTimeMin - GRID_START) * PX_PER_MIN
       : null;
 
-  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
-    if ((e.target as HTMLElement).closest('[data-event]')) return;
+  // Columns: if barbers configured, one per barber; otherwise one "Todos"
+  const columns =
+    barbers.length > 0
+      ? barbers.map(b => ({ key: b.name, label: b.name }))
+      : [{ key: 'all', label: 'Todos' }];
 
+  const getEventsForColumn = (colKey: string) => {
+    if (colKey === 'all') return events.filter(e => e.date === dateStr);
+    return events.filter(e => e.date === dateStr && (e.barber === colKey || e.barber === null));
+  };
+
+  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, colKey: string) => {
+    if ((e.target as HTMLElement).closest('[data-event]')) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const clickedMinutes = Math.floor(y / PX_PER_MIN) + GRID_START;
@@ -79,16 +108,14 @@ export default function WeekGrid({
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     onSlotClick(dateStr, time);
+    void colKey;
   };
-
-  const getEventsForDay = (dateStr: string) =>
-    events.filter(e => e.date === dateStr);
 
   return (
     <div className="flex flex-1 overflow-hidden bg-surface">
       {/* Time gutter */}
-      <div className="w-12 shrink-0 relative bg-surface border-r border-line" style={{ height: TOTAL_HEIGHT + 32 }}>
-        <div className="h-8" /> {/* header spacer */}
+      <div className="w-12 shrink-0 bg-surface border-r border-line relative" style={{ height: TOTAL_HEIGHT + 40 }}>
+        <div className="h-10" /> {/* header spacer */}
         <div className="relative" style={{ height: TOTAL_HEIGHT }}>
           {/* Current time dot in gutter */}
           {currentTimePx !== null && (
@@ -111,43 +138,50 @@ export default function WeekGrid({
         </div>
       </div>
 
-      {/* Day columns scroll wrapper */}
+      {/* Columns scroll wrapper */}
       <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollRef}>
-        <div className="flex min-w-0" style={{ minWidth: '560px' }}>
-          {days.map(day => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const isToday = isSameDay(day, today);
-            const isBlocked = blockedDates.includes(dateStr);
-            const dayEvents = getEventsForDay(dateStr);
+        <div className="flex min-w-0" style={{ minWidth: `${columns.length * 160}px` }}>
+          {columns.map(col => {
+            const colEvents = getEventsForColumn(col.key);
 
             return (
               <div
-                key={dateStr}
-                className={`flex-1 flex flex-col border-r border-line last:border-r-0 min-w-0 ${isToday ? 'bg-today-tint' : 'bg-surface'}`}
+                key={col.key}
+                className="flex-1 flex flex-col border-r border-line last:border-r-0 min-w-0"
               >
                 {/* Column header */}
-                <div className="h-8 flex flex-col items-center justify-center border-b border-line shrink-0">
-                  <span
-                    className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-emerald-600' : 'text-ink-2'}`}
-                  >
-                    {format(day, 'EEE', { locale: es })}
-                  </span>
-                  <span
-                    className={`text-xs font-bold leading-none ${isToday ? 'text-emerald-600' : 'text-ink-2'}`}
-                  >
-                    {format(day, 'd')}
-                  </span>
+                <div className="h-10 flex items-center justify-center px-2 border-b border-line bg-overlay shrink-0">
+                  <span className="text-xs font-bold text-ink-2 truncate">{col.label}</span>
                 </div>
 
                 {/* Column body */}
                 <div
                   className="relative cursor-pointer"
                   style={{ height: TOTAL_HEIGHT }}
-                  onClick={e => handleColumnClick(e, dateStr)}
+                  onClick={e => handleColumnClick(e, col.key)}
                 >
+                  {/* Business hours dimming — before open */}
+                  {businessHours && businessHours.open > GRID_START && (
+                    <div
+                      className="absolute left-0 right-0 top-0 bg-overlay pointer-events-none z-10"
+                      style={{ height: (businessHours.open - GRID_START) * PX_PER_MIN }}
+                    />
+                  )}
+
+                  {/* Business hours dimming — after close */}
+                  {businessHours && businessHours.close < GRID_END && (
+                    <div
+                      className="absolute left-0 right-0 bg-overlay pointer-events-none z-10"
+                      style={{
+                        top: (businessHours.close - GRID_START) * PX_PER_MIN,
+                        height: (GRID_END - businessHours.close) * PX_PER_MIN,
+                      }}
+                    />
+                  )}
+
                   {/* Blocked overlay */}
                   {isBlocked && (
-                    <div className="absolute inset-0 z-10 pointer-events-none blocked-overlay" />
+                    <div className="absolute inset-0 z-20 pointer-events-none blocked-overlay" />
                   )}
 
                   {/* Hour lines */}
@@ -168,8 +202,8 @@ export default function WeekGrid({
                     />
                   ))}
 
-                  {/* Current time indicator */}
-                  {isToday && currentTimePx !== null && (
+                  {/* Current time line */}
+                  {currentTimePx !== null && (
                     <div
                       className="absolute left-0 right-0 z-30 pointer-events-none"
                       style={{ top: currentTimePx }}
@@ -179,10 +213,10 @@ export default function WeekGrid({
                   )}
 
                   {/* Events */}
-                  {dayEvents.map(event => {
+                  {colEvents.map(event => {
                     const startMin = toMinutes(event.time);
                     const top = (startMin - GRID_START) * PX_PER_MIN;
-                    const height = Math.max(event.duration * PX_PER_MIN, 20);
+                    const height = Math.max(event.duration * PX_PER_MIN, 24);
                     const isBooksy = event.source === 'booksy';
                     const isCancelledOrNoShow =
                       event.status === 'cancelled' || event.status === 'no_show';
@@ -195,6 +229,11 @@ export default function WeekGrid({
                     } else {
                       colorClass = 'bg-event-native text-white';
                     }
+
+                    const endMin = startMin + event.duration;
+                    const endH = Math.floor(endMin / 60);
+                    const endM = endMin % 60;
+                    const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 
                     return (
                       <div
@@ -213,10 +252,17 @@ export default function WeekGrid({
                           <Lock className="absolute top-1 right-1 h-3 w-3 opacity-70" />
                         )}
                         <p className="text-[10px] font-semibold leading-tight truncate">
-                          {event.time} {event.customerName || event.customerPhone}
+                          {event.time} – {endTime}
                         </p>
                         {height > 28 && (
-                          <p className="text-[9px] opacity-80 truncate">{event.service}</p>
+                          <p className="text-[10px] leading-tight truncate font-medium">
+                            {event.customerName || event.customerPhone}
+                          </p>
+                        )}
+                        {height > 44 && (
+                          <p className="text-[9px] leading-tight truncate opacity-80">
+                            {event.service}
+                          </p>
                         )}
                       </div>
                     );

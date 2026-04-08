@@ -14,5 +14,13 @@
     "hook_event_name": "PreCompact",
     "trigger": "auto",
     "custom_instructions": null
+  },
+  {
+    "session_id": "3d78d5b6-3068-4bcf-8fab-09ebfe5665dc",
+    "transcript_path": "/Users/alexsolecarretero/.claude/projects/-Users-alexsolecarretero-Public-projects-alex-freelance/3d78d5b6-3068-4bcf-8fab-09ebfe5665dc.jsonl",
+    "cwd": "/Users/alexsolecarretero/Public/projects/alex-freelance/reserva",
+    "hook_event_name": "PreCompact",
+    "trigger": "auto",
+    "custom_instructions": null
   }
 ]
