@@ -22,15 +22,15 @@ export default function StatsPeriodTabs() {
   }
 
   return (
-    <div className="flex items-center gap-1 bg-[#0f0f0f] border border-[#262626] rounded-lg p-1">
+    <div className="flex items-center gap-1 bg-overlay border border-line rounded-lg p-1">
       {PERIODS.map(p => (
         <button
           key={p.key}
           onClick={() => set(p.key)}
           className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
             current === p.key
-              ? 'bg-[#1f1f1f] text-white'
-              : 'text-neutral-500 hover:text-neutral-300'
+              ? 'bg-surface shadow-sm text-ink'
+              : 'text-ink-3 hover:text-ink-2'
           }`}
         >
           {p.label}

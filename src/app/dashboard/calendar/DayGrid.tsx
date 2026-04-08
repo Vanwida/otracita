@@ -86,15 +86,24 @@ export default function DayGrid({
       ? (currentTimeMin - GRID_START) * PX_PER_MIN
       : null;
 
-  // Columns: if barbers configured, one per barber; otherwise one "Todos"
+  // Columns: if barbers configured, one per barber + one for unassigned; otherwise one "Todos"
+  const hasUnassigned =
+    barbers.length > 0 &&
+    events.some(e => e.date === dateStr && !e.barber && e.status !== 'cancelled');
+
   const columns =
     barbers.length > 0
-      ? barbers.map(b => ({ key: b.name, label: b.name }))
+      ? [
+          ...(hasUnassigned ? [{ key: '__unassigned__', label: 'Sin asignar' }] : []),
+          ...barbers.map(b => ({ key: b.name, label: b.name })),
+        ]
       : [{ key: 'all', label: 'Todos' }];
 
   const getEventsForColumn = (colKey: string) => {
     if (colKey === 'all') return events.filter(e => e.date === dateStr);
-    return events.filter(e => e.date === dateStr && (e.barber === colKey || e.barber === null));
+    if (colKey === '__unassigned__')
+      return events.filter(e => e.date === dateStr && !e.barber);
+    return events.filter(e => e.date === dateStr && e.barber === colKey);
   };
 
   const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, colKey: string) => {

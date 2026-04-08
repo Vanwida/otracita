@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { LayoutDashboard, Settings, LogOut, MessageSquare, Wrench, Shield, Calendar } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
+import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
@@ -37,9 +38,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <img src="/logo.svg" alt="Agendalo" className="h-7 w-7" />
           <span className="font-bold text-ink text-base tracking-wide">Agendalo</span>
         </Link>
-        <div className="h-8 w-8 rounded-full bg-overlay border border-line flex items-center justify-center text-xs font-bold text-ink-2 shrink-0">
-          {session.user.email?.charAt(0).toUpperCase()}
-        </div>
+        <MobileSidebar email={email} isAdmin={isAdmin} needsSetup={needsSetup} />
       </div>
 
       {/* Sidebar — hidden on mobile, shown on lg+ */}
@@ -87,7 +86,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <div className="pt-3 mt-4 border-t border-sidebar-line">
               <Link
                 href="/admin"
-                className="flex items-center gap-3 rounded-lg border border-[#2a2a2a] px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-white hover:bg-sidebar-hover hover:border-[#333] transition-colors"
+                className="flex items-center gap-3 rounded-lg border border-sidebar-line px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-white hover:bg-sidebar-hover hover:border-sidebar-text transition-colors"
               >
                 <Shield className="h-4 w-4" />
                 <span className="font-semibold">Panel Admin</span>
@@ -97,7 +96,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </nav>
 
         {needsSetup && (
-          <div className="bg-sidebar-card border border-[#262626] rounded-xl p-4 mb-4">
+          <div className="bg-sidebar-card border border-sidebar-line rounded-xl p-4 mb-4">
             <p className="text-[11px] font-bold uppercase tracking-widest text-amber-500 mb-1">Setup Inicial</p>
             <p className="text-xs text-neutral-500 leading-relaxed">Entrena tu IA para empezar a agendar.</p>
             <Link
@@ -110,7 +109,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         )}
 
         <div className="border-t border-sidebar-line pt-4 mt-4">
-          <div className="flex items-center gap-3 mb-3 rounded-lg bg-sidebar-card border border-[#262626] p-3">
+          <div className="flex items-center gap-3 mb-3 rounded-lg bg-sidebar-card border border-sidebar-line p-3">
             <div className="h-7 w-7 rounded-full bg-sidebar-line border border-[#333] text-neutral-300 flex items-center justify-center font-bold text-xs shrink-0">
               {session.user.email?.charAt(0).toUpperCase()}
             </div>
