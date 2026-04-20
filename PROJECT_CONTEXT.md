@@ -1,0 +1,168 @@
+# PROJECT_CONTEXT — otracita
+
+> **For the AI assistant**: everything relevant about this project lives here.
+> Keep it up to date as work progresses.
+
+---
+
+## What this is
+
+**otracita** (otracita.es) is a WhatsApp chatbot SaaS for barbershops in Spain.
+
+**Tagline**: *Que no se te escape otra cita.*
+
+**Value prop**: the AI receptionist that answers WhatsApp 24/7, closes reservations on its own, and syncs them with the barbershop's existing Booksy.
+
+**Target market**: Spanish barberías (Barcelona first). Spain-only for now — hence `.es` domain. Later could expand to LATAM, but not now.
+
+**Current brand** (3rd iteration):
+- v1: *Reserva* — internal codename, never shipped
+- v2: *Agendalo* — shipped at `agendalo.aistudios.pro` until 2026-04-20
+- v3: **otracita** — current, at `otracita.es`
+
+---
+
+## Status (2026-04-20)
+
+- ✅ MVP live on production at `agendalo.aistudios.pro` AND `otracita.es` (DNS propagating)
+- ✅ Security hardened (HMAC signatures, multi-tenancy, URL validation, migrations baseline)
+- ✅ Full rebrand to otracita (light theme, terracotta/cream palette, Fraunces+Inter)
+- ✅ Hero video rendered with HyperFrames, on landing
+- ⏳ Booksy email sync: code done, no email service attached
+- ⏳ Voice bot: prototype works in browser, Twilio bridge pending
+- ⏳ **0 paying clients** — biggest open item
+
+---
+
+## Tech stack
+
+| Layer | Tool |
+|---|---|
+| Framework | Next.js 16 (breaking changes — see `AGENTS.md`) |
+| Deploy | Vercel, project `vanwidas-projects/reserva` |
+| DB | Neon Postgres `reserva-aistudios` |
+| ORM | Drizzle with versioned migrations (baseline 0000) |
+| Auth | Better Auth (self-hosted in Postgres) |
+| Messaging | Meta WhatsApp Cloud API (direct, no BSP) |
+| AI | OpenAI GPT-4o-mini for intent · xAI Grok Realtime for voice |
+| Payments | Stripe (checkout → account creation → dashboard) |
+| Calendar | Google Calendar API (legacy, per-client flag `useDbAvailability`) |
+
+---
+
+## Brand system
+
+| Token | Value | Use |
+|---|---|---|
+| `--color-brand` | `#C9653C` | Terracotta — primary actions, accents |
+| `--color-canvas` | `#F7F3EE` | Bone white — page background |
+| `--color-ink` | `#2A1D14` | Espresso — primary text |
+| `--color-gold` | `#D4A574` | Muted gold — premium highlights |
+| `--color-success` | `#5E8B6B` | Sage green |
+| Display font | **Fraunces** (next/font) | Headings, wordmark |
+| Body font | **Inter** (next/font) | Paragraphs, UI |
+
+Vibe: modern Spanish artisan. NOT Silicon Valley tech. Warm, confident, unashamed of being Spanish-first. Light theme everywhere (including sidebar — no dark per user).
+
+---
+
+## Key files
+
+| Path | Purpose |
+|---|---|
+| `src/app/page.tsx` | Landing page |
+| `src/app/layout.tsx` | Root + metadata + fonts |
+| `src/app/globals.css` | Brand tokens + utilities |
+| `src/app/dashboard/*` | Authed dashboard |
+| `src/app/api/whatsapp/route.ts` | Meta webhook (HMAC verified) |
+| `src/app/api/email/inbound/route.ts` | Postmark-shaped inbound email webhook |
+| `src/app/api/scrape-booksy/route.ts` | Booksy page extractor (auth-gated) |
+| `src/lib/whatsapp/engine.ts` | Bot conversation engine (~2200 lines — refactor TODO) |
+| `src/lib/auth/require-client-access.ts` | Multi-tenancy guard used by all tenant APIs |
+| `src/lib/booksy-email-parser.ts` | Parses Booksy confirmation emails |
+| `src/db/schema.ts` | Drizzle schema (clients, bookings, conversations, etc.) |
+| `drizzle/` | SQL migrations — see `docs/migrations.md` for workflow |
+| `public/hero.mp4` | Landing hero video, rendered from `/otracita-hero-video/` |
+
+---
+
+## Hero video (HyperFrames)
+
+Source lives OUTSIDE the project at `../otracita-hero-video/`.
+
+**Re-render workflow:**
+```bash
+cd ../otracita-hero-video
+# edit index.html
+npx hyperframes lint
+npx hyperframes render
+cp renders/<latest>.mp4 ../reserva/public/hero.mp4
+```
+
+12-second composition: title → phone chat mockup → agenda filling → logo reveal. Autoplay muted loop on landing.
+
+---
+
+## Deploy workflow
+
+Vercel is **not** connected to GitHub — always deploy manually:
+
+```bash
+cd /Users/alexsolecarretero/Public/projects/alex-freelance/reserva
+source ~/.openclaw/credentials/vanwida-tokens.env
+npx vercel deploy --prod --token="$VERCEL_TOKEN"
+```
+
+Commits MUST use author `vanwida@aistudios.pro` / `Vanwida`.
+
+**Rollback** if bad deploy: `npx vercel rollback --token=$VERCEL_TOKEN`.
+
+---
+
+## External accounts
+
+| Service | What for | Where to find creds |
+|---|---|---|
+| Vercel | Deploy | `~/.openclaw/credentials/vanwida-tokens.env` (`VERCEL_TOKEN`) |
+| GoDaddy | DNS for otracita.es | Alex's personal GoDaddy |
+| Meta Business | WhatsApp Cloud API | App ID 2437648270030506 |
+| Neon | Postgres | `DATABASE_URL` in Vercel |
+| Google Cloud | Calendar API service account | `GOOGLE_SERVICE_ACCOUNT_KEY` in Vercel |
+| xAI | Grok Realtime (voice) | `XAI_API_KEY` in Vercel |
+| OpenAI | GPT-4o-mini | `OPENAI_API_KEY` in Vercel |
+| Stripe | Payments | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` in Vercel |
+
+---
+
+## Pricing
+
+**One plan only**: 29€/mes — WhatsApp AI Bot (29€ launch, 39€ normal).
+
+Features included: 24/7 responses, Booksy sync, bilingual ES/EN, cancel in 1 click, no lock-in.
+
+Ads tier was removed from the main pricing — will live on a separate Vanwida landing when it comes.
+
+---
+
+## Open items by priority
+
+| # | Item | Why |
+|---|---|---|
+| 1 | **Get 3 paying pilot clients** | Nothing else matters until this is real |
+| 2 | Activate Booksy email sync (Postmark ~$15/mo) | Once first client onboards |
+| 3 | Twilio bridge for voice bot (Railway ~$5/mo) | Only after biz validation |
+| 4 | Separate landing for Ads service | When ready to offer as upsell |
+| 5 | Passive Booksy email parse-rate monitor | Once emails flow |
+| 6 | GitHub repo rename from `agendalo` to `otracita` | Cosmetic |
+| 7 | Refactor `src/lib/whatsapp/engine.ts` (~2200 lines) | Tech debt |
+| 8 | Voice bot → Go microservice | Future TODO, after biz validation — see memory |
+
+---
+
+## Non-negotiables
+
+- **Spanish-first**: all user-facing copy in Spanish (or bilingual ES/EN for the bot itself)
+- **Light theme only**: no dark surfaces anywhere
+- **No fake numbers**: never claim user counts or review counts the product doesn't have
+- **Author all commits** as `vanwida@aistudios.pro`
+- **Don't deploy without explicit OK** from Alex — production is real money risk
