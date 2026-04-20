@@ -156,7 +156,7 @@ export async function createBooking(
       requestBody: {
         summary: titleParts.join(' - '),
         description: [
-          'Reserva via Agendalo WhatsApp Bot',
+          'Reserva via otracita',
           `Cliente: ${customerName}`,
           `Telefono: ${customerPhone}`,
           `Servicio: ${serviceName}`,

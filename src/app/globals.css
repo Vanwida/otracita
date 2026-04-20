@@ -1,38 +1,61 @@
 @import "tailwindcss";
 
-/* ─── Design Tokens ─────────────────────────────────── */
+/* ─── otracita Brand Tokens ──────────────────────────── */
+/*
+ * Brand system: modern Spanish artisan.
+ * Warm terracotta primary, bone white canvas, espresso text, muted gold accent.
+ * Light theme throughout — no dark surfaces.
+ */
 @theme {
-  /* Surfaces */
-  --color-canvas:   #f9fafb;   /* page/app background */
-  --color-surface:  #ffffff;   /* card, panel, input background */
-  --color-overlay:  #f3f4f6;   /* subtle section tint, table row headers */
+  /* ─── Brand ─── */
+  --color-brand:         #C9653C;   /* terracota — primary actions, accents */
+  --color-brand-ink:     #FFFFFF;   /* text on brand */
+  --color-brand-soft:    #E8C4A8;   /* tinted background for hero/cards */
+  --color-brand-softer:  #F4E3D4;   /* barely-there terracotta tint */
+  --color-brand-strong:  #A34F2C;   /* hover/pressed state */
 
-  /* Borders */
-  --color-line:       #e5e7eb; /* standard border */
-  --color-line-strong: #d1d5db;
+  /* ─── Accent ─── */
+  --color-gold:      #D4A574;       /* premium gold — highlights, stars */
+  --color-gold-soft: #EDD9BF;
 
-  /* Text */
-  --color-ink:   #111827;  /* primary text */
-  --color-ink-2: #6b7280;  /* secondary / labels */
-  --color-ink-3: #9ca3af;  /* muted / placeholder */
+  /* ─── Semantic ─── */
+  --color-success:   #5E8B6B;       /* sage green — confirmed bookings */
+  --color-warning:   #C9924D;       /* warm amber — warnings */
+  --color-danger:    #B24D3F;       /* muted red — cancellations, no-shows */
 
-  /* Sidebar — stays dark */
-  --color-sidebar:       #0a0a0a;
-  --color-sidebar-line:  #1f1f1f;
-  --color-sidebar-hover: #1a1a1a;
-  --color-sidebar-text:  #a3a3a3;
-  --color-sidebar-card:  #141414;
+  /* ─── Surfaces ─── */
+  --color-canvas:    #F7F3EE;       /* page background — bone white w/ warmth */
+  --color-surface:   #FFFFFF;       /* cards, panels, inputs */
+  --color-overlay:   #F0EBE3;       /* section tints, table headers */
 
-  /* Calendar events */
-  --color-event-booksy:  oklch(0.696 0.17 162);  /* emerald — Booksy imported */
-  --color-event-native:  oklch(0.491 0.27 292);  /* violet  — WhatsApp / manual */
-  --color-event-noshow:  oklch(0.628 0.258 29);  /* red     — no-show / cancelled */
+  /* ─── Borders ─── */
+  --color-line:         #E8DDD0;    /* standard border */
+  --color-line-strong:  #C9BBAA;    /* stronger borders */
 
-  /* Current time indicator */
-  --color-time-now: oklch(0.628 0.258 29);  /* same red */
+  /* ─── Text ─── */
+  --color-ink:    #2A1D14;          /* primary text — espresso */
+  --color-ink-2:  #6B5D4F;          /* secondary / labels */
+  --color-ink-3:  #9C8F7E;          /* muted / placeholder */
 
-  /* Today column tint */
-  --color-today-tint: oklch(0.985 0.02 162); /* barely-there green */
+  /* ─── Sidebar (light, warm) ─── */
+  --color-sidebar:       #F0EBE3;
+  --color-sidebar-line:  #E8DDD0;
+  --color-sidebar-hover: #E8DDD0;
+  --color-sidebar-text:  #6B5D4F;
+  --color-sidebar-card:  #FFFFFF;
+  --color-sidebar-active: #C9653C;
+
+  /* ─── Calendar events (legible on light) ─── */
+  --color-event-booksy:  oklch(0.62 0.16 162);   /* emerald — Booksy imported */
+  --color-event-native:  oklch(0.55 0.22 292);   /* violet — WhatsApp / manual */
+  --color-event-noshow:  oklch(0.58 0.22 29);    /* red — no-show / cancelled */
+
+  --color-time-now:      oklch(0.58 0.22 29);
+  --color-today-tint:    oklch(0.96 0.03 50);    /* warm cream — today column */
+
+  /* ─── Typography ─── */
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-body:    var(--font-inter), system-ui, sans-serif;
 }
 
 html {
@@ -42,9 +65,17 @@ html {
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);
+  font-family: var(--font-body);
 }
 
-/* Base utility for glass containers */
+/* Serif display for branded headings / hero */
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+/* Utilities */
 @layer utilities {
   .blocked-overlay {
     background:
@@ -57,19 +88,27 @@ body {
       );
   }
 
-  .glass-card {
-    @apply bg-white/[0.02] border border-white/[0.05] backdrop-blur-md rounded-2xl;
+  /* Warm card with terracotta hover ring */
+  .card {
+    @apply bg-[var(--color-surface)] border border-[var(--color-line)] rounded-2xl transition-all duration-200;
   }
-  .glass-card-hover {
-    @apply hover:bg-white/[0.04] hover:border-emerald-500/20 transition-all duration-300;
+  .card-hover {
+    @apply hover:border-[var(--color-brand)] hover:shadow-[0_8px_30px_rgba(201,101,60,0.08)];
   }
 
-  .text-glow {
-    text-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
+  /* Primary CTA button */
+  .btn-primary {
+    @apply bg-[var(--color-brand)] text-[var(--color-brand-ink)] font-medium px-5 py-3 rounded-xl
+           hover:bg-[var(--color-brand-strong)] transition-colors duration-200;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-[var(--color-ink)] font-medium px-5 py-3 rounded-xl
+           border border-[var(--color-line)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]
+           transition-colors duration-200;
   }
 }
 
-/* Smooth custom scrollbar for webkit */
+/* Warm scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -81,14 +120,14 @@ body {
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #10B981;
+  background: var(--color-brand);
 }
 
-/* Custom glow animation */
-@keyframes slow-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* Subtle entrance animation */
+@keyframes gentle-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.animate-slow-spin {
-  animation: slow-spin 20s linear infinite;
+.animate-gentle-rise {
+  animation: gentle-rise 0.6s ease-out forwards;
 }

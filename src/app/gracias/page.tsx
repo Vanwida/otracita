@@ -124,7 +124,7 @@ function GraciasContent() {
           <CheckIcon />
 
           <h1 className="mt-8 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Bienvenido a Agendalo!
+            Bienvenido a otracita
           </h1>
           <p className="mt-4 text-gray-400">
             Tu pago se ha procesado correctamente. Crea tu contrasena para
@@ -267,9 +267,9 @@ function ThankYouShell({ children }: { children: React.ReactNode }) {
       {/* Logo top-left */}
       <div className="absolute left-6 top-5 z-20">
         <a href="/" className="flex items-center gap-3">
-          <img src="/logo.svg" alt="Agendalo" className="h-10 w-10" />
+          <img src="/logo.svg" alt="otracita" className="h-10 w-10" />
           <span className="text-xl font-bold tracking-tight text-white">
-            Agendalo
+            otracita
           </span>
         </a>
       </div>

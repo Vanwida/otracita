@@ -18,7 +18,7 @@ export const clients = pgTable('clients', {
   // Booksy integration
   booksyProfileUrl: text('booksy_profile_url'),
   booksyServices: jsonb('booksy_services'), // scraped services from Booksy
-  booksyInboundEmail: text('booksy_inbound_email').unique(), // sync-{clientId}@inbound.agendalo.com
+  booksyInboundEmail: text('booksy_inbound_email').unique(), // sync-{clientId}@inbound.otracita.es
   useDbAvailability: boolean('use_db_availability').notNull().default(false), // feature flag: use DB instead of GCal for availability
   // Google Calendar
   googleCalendarId: text('google_calendar_id'),

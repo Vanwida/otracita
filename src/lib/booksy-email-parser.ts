@@ -61,7 +61,7 @@ function parsePrice(textBody: string): number | null {
 
 function parseService(textBody: string): string | null {
   // Boilerplate patterns to skip
-  const boilerplate = /^(AGENDALO|BOOKSY|CONFIRMAD|CANCELAD|MODIFICAD|RESERVA|CITA|BOOKING|WWW\.|HTTP|UNSUBSCRIBE|DARSE DE BAJA)/i;
+  const boilerplate = /^(AGENDALO|OTRACITA|BOOKSY|CONFIRMAD|CANCELAD|MODIFICAD|RESERVA|CITA|BOOKING|WWW\.|HTTP|UNSUBSCRIBE|DARSE DE BAJA)/i;
 
   const lines = textBody.split('\n');
   for (const rawLine of lines) {

@@ -10,6 +10,8 @@ export const auth = betterAuth({
     autoSignIn: true,
   },
   trustedOrigins: [
+    'https://otracita.es',
+    'https://www.otracita.es',
     'https://agendalo.aistudios.pro',
     'https://reserva.aistudios.pro',
     'http://localhost:3000',

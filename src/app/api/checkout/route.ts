@@ -21,7 +21,7 @@ const PLANS: Record<string, { name: string; price: number; currency: string; des
   },
 };
 
-const SITE_URL = 'https://agendalo.aistudios.pro';
+const SITE_URL = 'https://otracita.es';
 
 export async function POST(request: Request) {
   try {

@@ -11,7 +11,7 @@ interface Message {
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Hola 👋 Soy el asistente de soporte de Agendalo. ¿En qué puedo ayudarte?",
+  content: "Hola 👋 Soy el asistente de soporte de otracita. ¿En qué puedo ayudarte?",
 };
 
 const QUICK_REPLIES = [
@@ -95,7 +95,7 @@ export default function DashboardChatWidget() {
                   <Bot className="h-4 w-4 text-indigo-400" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Soporte Agendalo</p>
+                  <p className="text-sm font-semibold text-white">Soporte otracita</p>
                   <p className="text-[11px] text-emerald-400 font-medium">IA · Online</p>
                 </div>
               </div>

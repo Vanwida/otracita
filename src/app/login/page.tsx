@@ -46,7 +46,7 @@ export default function LoginPage() {
     <div className="flex h-screen items-center justify-center bg-canvas">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <img src="/logo.svg" alt="Agendalo Logo" className="mx-auto h-12 w-12" />
+          <img src="/logo.svg" alt="otracita" className="mx-auto h-12 w-12" />
           <h2 className="mt-4 text-2xl font-bold tracking-tight text-ink">Acceso Clientes</h2>
           <p className="mt-2 text-sm text-ink-3">Ingresa tu correo y contraseña para acceder.</p>
         </div>

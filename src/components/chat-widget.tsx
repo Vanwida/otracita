@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const WA_URL =
-  "https://wa.me/34711248500?text=Hola!%20Quiero%20probar%20el%20chatbot%20de%20Ag%C3%A9ndalo%20%F0%9F%A4%96";
+  "https://wa.me/34711248500?text=Hola!%20Quiero%20probar%20el%20chatbot%20de%20otracita%20%F0%9F%A4%96";
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -18,12 +18,12 @@ export default function ChatWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="w-72 rounded-2xl border border-white/10 bg-gray-950 p-5 shadow-2xl"
+            className="w-72 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_20px_60px_rgba(42,29,20,0.15)]"
           >
-            <p className="text-sm font-bold text-white">Prueba el bot en vivo</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-gray-400">
-              Nuestro chatbot de IA responde al instante.{" "}
-              <span className="text-gray-300 font-medium">Sin humanos al otro lado</span> — solo la IA gestionando tu agenda.
+            <p className="text-sm font-bold text-[var(--color-ink)]">Prueba el bot en vivo</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-ink-2)]">
+              Responde al instante, 24/7.{" "}
+              <span className="text-[var(--color-ink)] font-medium">Sin humanos al otro lado</span> — solo la IA gestionando tu agenda.
             </p>
             <a
               href={WA_URL}
