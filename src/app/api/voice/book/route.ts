@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/server';
 import { db } from '@/db';
-import { clients, bookings } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { bookings } from '@/db/schema';
+import { assignBarber } from '@/lib/availability';
+import {
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access';
 
 interface ServiceConfig {
   name: string;
@@ -11,11 +14,9 @@ interface ServiceConfig {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const access = await requireClientAccess(req);
+  if (!access.ok) return accessErrorResponse(access);
+  const { client } = access;
 
   let body: {
     customerName: string;
@@ -48,15 +49,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid time format' }, { status: 400 });
   }
 
-  const [client] = await db
-    .select()
-    .from(clients)
-    .where(eq(clients.email, session.user.email));
-
-  if (!client) {
-    return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-  }
-
   const services = (client.chatbotServices as ServiceConfig[]) || [];
   const matched = services.find(
     s => s.name.toLowerCase() === service.toLowerCase()
@@ -64,12 +56,20 @@ export async function POST(req: NextRequest) {
   const duration = matched?.duration ?? 30;
   const price = matched?.price ?? null;
 
+  // Auto-assign barber if none specified
+  const barberNames = ((client.booksyServices as Array<{ name: string }>) || []).map(b => b.name);
+  const resolvedBarber =
+    barber ||
+    (barberNames.length > 0
+      ? await assignBarber(client.id, barberNames, date, time, duration)
+      : null);
+
   await db.insert(bookings).values({
     clientId: client.id,
     customerPhone: customerPhone || 'voice',
     customerName,
     service,
-    barber: barber || null,
+    barber: resolvedBarber,
     date,
     time,
     duration,

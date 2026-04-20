@@ -1,23 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/server';
 import { db } from '@/db';
-import { bookings, clients } from '@/db/schema';
+import { bookings } from '@/db/schema';
 import { eq, and, gte, lte, ne } from 'drizzle-orm';
+import {
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access';
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const [client] = await db
-    .select()
-    .from(clients)
-    .where(eq(clients.email, session.user.email));
-
-  if (!client) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
+  const access = await requireClientAccess(req);
+  if (!access.ok) return accessErrorResponse(access);
+  const { client } = access;
 
   const { searchParams } = req.nextUrl;
   const start = searchParams.get('start'); // YYYY-MM-DD

@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { db } from '@/db';
 import { clients, bookings } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { parseBooksyEmail } from '@/lib/booksy-email-parser';
+import { parseBooksyEmail, type BooksyBookingData } from '@/lib/booksy-email-parser';
 
 interface PostmarkInboundPayload {
   To?: string;
@@ -14,84 +15,71 @@ interface PostmarkInboundPayload {
   MessageID?: string;
 }
 
-async function parsePayload(req: NextRequest): Promise<PostmarkInboundPayload | null> {
-  const secret = process.env.POSTMARK_INBOUND_SECRET;
-
-  if (secret) {
-    let body: string;
-    try {
-      body = await req.text();
-    } catch {
-      return null;
-    }
-
-    const signature = req.headers.get('x-postmark-signature') ?? '';
-    const { createHmac } = await import('crypto');
-    const expected = createHmac('sha256', secret).update(body).digest('hex');
-
-    if (signature !== expected) {
-      return null; // signal invalid signature
-    }
-
-    try {
-      return JSON.parse(body) as PostmarkInboundPayload;
-    } catch {
-      return null;
-    }
-  }
-
-  // No secret configured — dev mode, parse directly
+function verifySignature(body: string, signature: string, secret: string): boolean {
+  const expected = createHmac('sha256', secret).update(body).digest('hex');
+  if (expected.length !== signature.length) return false;
   try {
-    return (await req.json()) as PostmarkInboundPayload;
+    return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
   } catch {
-    return null;
+    return false;
   }
+}
+
+function buildBookingValues(
+  clientId: string,
+  data: BooksyBookingData,
+  rawSnippet: string,
+) {
+  return {
+    clientId,
+    customerPhone: data.customerPhone ?? 'booksy',
+    customerName: data.customerName ?? null,
+    service: data.service ?? 'Servicio Booksy',
+    barber: data.barber ?? null,
+    date: data.date ?? new Date().toISOString().split('T')[0],
+    time: data.time ?? '10:00',
+    duration: data.duration ?? 30,
+    price: data.price ?? null,
+    status: 'confirmed' as const,
+    source: 'booksy' as const,
+    booksyBookingId: data.booksyBookingId ?? null,
+    rawEmailSnippet: rawSnippet,
+  };
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
   const secret = process.env.POSTMARK_INBOUND_SECRET;
+  if (!secret) {
+    console.error('POSTMARK_INBOUND_SECRET not configured — rejecting inbound email webhook');
+    return Response.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
 
-  // Parse and (optionally) verify the payload
+  let body: string;
+  try {
+    body = await req.text();
+  } catch {
+    return Response.json({ error: 'Invalid body' }, { status: 400 });
+  }
+
+  const signature = req.headers.get('x-postmark-signature') ?? '';
+  if (!verifySignature(body, signature, secret)) {
+    return Response.json({ error: 'Invalid signature' }, { status: 401 });
+  }
+
   let payload: PostmarkInboundPayload;
-
-  if (secret) {
-    let body: string;
-    try {
-      body = await req.text();
-    } catch {
-      return Response.json({ ok: true });
-    }
-
-    const signature = req.headers.get('x-postmark-signature') ?? '';
-    const { createHmac } = await import('crypto');
-    const expected = createHmac('sha256', secret).update(body).digest('hex');
-
-    if (signature !== expected) {
-      return Response.json({ error: 'Invalid signature' }, { status: 401 });
-    }
-
-    try {
-      payload = JSON.parse(body) as PostmarkInboundPayload;
-    } catch {
-      return Response.json({ ok: true });
-    }
-  } else {
-    try {
-      payload = (await req.json()) as PostmarkInboundPayload;
-    } catch {
-      return Response.json({ ok: true });
-    }
+  try {
+    payload = JSON.parse(body) as PostmarkInboundPayload;
+  } catch {
+    return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
   try {
-    // Extract the To address
     const toField = payload.To ?? payload.OriginalRecipient ?? '';
     const emailMatch = toField.match(/([^<\s]+@[^>\s]+)/);
     const toEmail = emailMatch ? emailMatch[1].replace(/[<>]/g, '').toLowerCase() : '';
 
     if (!toEmail) return Response.json({ ok: true });
 
-    // Look up client by booksyInboundEmail
     const [client] = await db
       .select()
       .from(clients)
@@ -102,7 +90,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       return Response.json({ ok: true });
     }
 
-    // Parse the email
     const subject = payload.Subject ?? '';
     const textBody =
       payload.TextBody ??
@@ -118,21 +105,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     const rawSnippet = textBody.substring(0, 500);
 
     if (data.type === 'new') {
-      const values = {
-        clientId: client.id,
-        customerPhone: data.customerPhone ?? 'booksy',
-        customerName: data.customerName ?? null,
-        service: data.service ?? 'Servicio Booksy',
-        barber: data.barber ?? null,
-        date: data.date ?? new Date().toISOString().split('T')[0],
-        time: data.time ?? '10:00',
-        duration: data.duration ?? 30,
-        price: data.price ?? null,
-        status: 'confirmed' as const,
-        source: 'booksy' as const,
-        booksyBookingId: data.booksyBookingId ?? null,
-        rawEmailSnippet: rawSnippet,
-      };
+      const values = buildBookingValues(client.id, data, rawSnippet);
 
       if (data.booksyBookingId) {
         const [existing] = await db
@@ -173,22 +146,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           })
           .where(eq(bookings.id, existing.id));
       } else {
-        // Not found by booking ID — insert as new
-        await db.insert(bookings).values({
-          clientId: client.id,
-          customerPhone: data.customerPhone ?? 'booksy',
-          customerName: data.customerName ?? null,
-          service: data.service ?? 'Servicio Booksy',
-          barber: data.barber ?? null,
-          date: data.date ?? new Date().toISOString().split('T')[0],
-          time: data.time ?? '10:00',
-          duration: data.duration ?? 30,
-          price: data.price ?? null,
-          status: 'confirmed' as const,
-          source: 'booksy' as const,
-          booksyBookingId: data.booksyBookingId,
-          rawEmailSnippet: rawSnippet,
-        });
+        await db.insert(bookings).values(buildBookingValues(client.id, data, rawSnippet));
       }
     } else if (data.type === 'cancelled' && data.booksyBookingId) {
       await db
@@ -208,6 +166,5 @@ export async function POST(req: NextRequest): Promise<Response> {
     console.error('Error processing inbound email webhook:', error);
   }
 
-  // Always return 200 — Postmark retries on non-200
   return Response.json({ ok: true });
 }

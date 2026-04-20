@@ -1,6 +1,65 @@
 import { db } from '@/db';
 import { bookings } from '@/db/schema';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, inArray } from 'drizzle-orm';
+
+/**
+ * When no barber preference is given, assign to the barber with the fewest
+ * bookings that day among those who are free at the requested slot.
+ * Ties broken randomly so the same barber isn't always picked.
+ */
+export async function assignBarber(
+  clientId: string,
+  barberNames: string[],
+  date: string,
+  time: string,
+  duration: number,
+): Promise<string | null> {
+  if (barberNames.length === 0) return null;
+
+  const [h, m] = time.split(':').map(Number);
+  const newStart = h * 60 + m;
+  const newEnd = newStart + duration;
+
+  const dayBookings = await db
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, clientId),
+        eq(bookings.date, date),
+        ne(bookings.status, 'cancelled'),
+        inArray(bookings.barber, barberNames),
+      ),
+    );
+
+  // Find barbers who have a conflicting booking at this slot
+  const busyBarbers = new Set<string>();
+  for (const b of dayBookings) {
+    if (!b.barber) continue;
+    const bStart = parseMinutes(b.time);
+    const bEnd = bStart + b.duration;
+    if (newStart < bEnd && newEnd > bStart) {
+      busyBarbers.add(b.barber);
+    }
+  }
+
+  const freeBarbers = barberNames.filter(name => !busyBarbers.has(name));
+  if (freeBarbers.length === 0) return null;
+
+  // Count bookings per free barber today
+  const countMap: Record<string, number> = {};
+  for (const name of freeBarbers) countMap[name] = 0;
+  for (const b of dayBookings) {
+    if (b.barber && countMap[b.barber] !== undefined) {
+      countMap[b.barber]++;
+    }
+  }
+
+  // Sort by fewest bookings, shuffle ties
+  const minCount = Math.min(...freeBarbers.map(n => countMap[n]));
+  const candidates = freeBarbers.filter(n => countMap[n] === minCount);
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
 
 export interface TimeSlot {
   start: string; // HH:MM

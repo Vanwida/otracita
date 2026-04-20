@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/server';
-import { db } from '@/db';
-import { clients } from '@/db/schema';
-import { eq } from 'drizzle-orm';
 import { getAvailableSlotsFromDB } from '@/lib/availability';
+import {
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access';
 
 interface ServiceConfig {
   name: string;
@@ -32,11 +32,9 @@ function getHoursForDate(
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const access = await requireClientAccess(req);
+  if (!access.ok) return accessErrorResponse(access);
+  const { client } = access;
 
   let body: { date: string; service: string; barber?: string };
   try {
@@ -53,15 +51,6 @@ export async function POST(req: NextRequest) {
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
-  }
-
-  const [client] = await db
-    .select()
-    .from(clients)
-    .where(eq(clients.email, session.user.email));
-
-  if (!client) {
-    return NextResponse.json({ error: 'Client not found' }, { status: 404 });
   }
 
   const services = (client.chatbotServices as ServiceConfig[]) || [];

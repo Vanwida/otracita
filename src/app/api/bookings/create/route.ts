@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/server';
 import { db } from '@/db';
-import { bookings, clients } from '@/db/schema';
+import { bookings } from '@/db/schema';
 import { eq, and, ne } from 'drizzle-orm';
+import { assignBarber } from '@/lib/availability';
+import {
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access';
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -23,19 +27,9 @@ function hasTimeOverlap(
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const [client] = await db
-    .select()
-    .from(clients)
-    .where(eq(clients.email, session.user.email));
-
-  if (!client) {
-    return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-  }
+  const access = await requireClientAccess(req);
+  if (!access.ok) return accessErrorResponse(access);
+  const { client } = access;
 
   let body: {
     customerName?: string;
@@ -99,6 +93,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Auto-assign barber if none specified
+  const barberNames = ((client.booksyServices as Array<{ name: string }>) || []).map(b => b.name);
+  const resolvedBarber =
+    barber ||
+    (barberNames.length > 0
+      ? await assignBarber(client.id, barberNames, date, time, duration)
+      : null);
+
   const [created] = await db
     .insert(bookings)
     .values({
@@ -106,7 +108,7 @@ export async function POST(req: NextRequest) {
       customerPhone,
       customerName: customerName || null,
       service,
-      barber: barber || null,
+      barber: resolvedBarber,
       date,
       time,
       duration,

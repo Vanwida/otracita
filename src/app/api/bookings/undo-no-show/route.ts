@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { bookings, customers } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { auth } from '@/lib/auth/server'
+import {
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access'
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers })
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const access = await requireClientAccess(req)
+  if (!access.ok) return accessErrorResponse(access)
+  const { client, isAdmin } = access
 
   const { bookingId } = await req.json()
   if (!bookingId) {
@@ -19,6 +21,9 @@ export async function POST(req: NextRequest) {
   const booking = bookingRows[0]
   if (!booking || booking.status !== 'no_show') {
     return NextResponse.json({ error: 'Booking not found or not a no-show' }, { status: 404 })
+  }
+  if (!isAdmin && booking.clientId !== client.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Revert booking status
