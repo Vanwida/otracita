@@ -5,6 +5,7 @@ import FaqAccordion from "@/components/faq-accordion";
 import PricingCards from "@/components/pricing-cards";
 import VideoSection from "@/components/video-section";
 import ChatWidget from "@/components/chat-widget";
+import { Wordmark } from "@/components/brand";
 
 const WHATSAPP_URL =
   "https://wa.me/34684000939?text=Hola!%20Me%20interesa%20otracita%20para%20mi%20negocio";
@@ -69,11 +70,8 @@ export default function Home() {
 
       {/* ─── Nav ─── */}
       <nav className="relative z-50 flex items-center justify-between px-6 py-6 mx-auto max-w-6xl">
-        <a href="/" className="flex items-center gap-3 group">
-          <img src="/logo.svg" alt="otracita" className="h-9 w-9" />
-          <span className="font-display text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
-            otracita
-          </span>
+        <a href="/" className="flex items-center group text-[var(--color-ink)]">
+          <Wordmark height={36} />
         </a>
         <div className="flex items-center gap-6">
           <a href="#como-funciona" className="hidden sm:block text-sm font-medium text-[var(--color-ink-2)] hover:text-[var(--color-ink)] transition-colors">
@@ -343,9 +341,8 @@ export default function Home() {
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-10 sm:grid-cols-4">
             <div className="sm:col-span-2">
-              <a href="/" className="flex items-center gap-3">
-                <img src="/logo.svg" alt="otracita" className="h-8 w-8" />
-                <span className="font-display text-xl font-semibold tracking-tight text-[var(--color-ink)]">otracita</span>
+              <a href="/" className="flex items-center text-[var(--color-ink)]">
+                <Wordmark height={32} />
               </a>
               <p className="mt-4 text-sm leading-relaxed text-[var(--color-ink-2)] max-w-xs">
                 La recepcionista de IA que no deja escapar ni una cita. Hecho en Barcelona para barberías de Barcelona.

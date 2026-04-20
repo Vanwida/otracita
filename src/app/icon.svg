@@ -1,18 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
-  <rect width="48" height="48" rx="10" fill="#F7F3EE"/>
-  <circle cx="24" cy="24" r="18" fill="#C9653C"/>
-  <g transform="translate(24 24) rotate(-10)">
-    <path d="M -8.4 0
-             C -8.4 -4.5, -4.5 -7, 0 -7
-             C 4.5 -7, 8.4 -4.5, 8.4 0
-             C 8.4 4.5, 4.5 7, 0 7
-             C -4.5 7, -8.4 4.5, -8.4 0 Z
-             M -5.2 0
-             C -5.2 2.85, -2.85 4.35, 0 4.35
-             C 2.85 4.35, 5.2 2.85, 5.2 0
-             C 5.2 -2.85, 2.85 -4.35, 0 -4.35
-             C -2.85 -4.35, -5.2 -2.85, -5.2 0 Z"
-          fill="#F7F3EE"
-          fill-rule="evenodd"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 96" fill="none">
+  <rect width="120" height="96" fill="#F7F3EE"/>
+  <text x="8" y="76" font-family="Fraunces, Georgia, 'Times New Roman', serif" font-size="78" font-weight="600" fill="#2A1D14" letter-spacing="-6">oc</text>
+  <circle cx="101" cy="50" r="5" fill="#C9653C"/>
 </svg>

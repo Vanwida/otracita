@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Wordmark } from '@/components/brand';
 
 export default function GraciasPage() {
   return (
@@ -266,11 +267,8 @@ function ThankYouShell({ children }: { children: React.ReactNode }) {
 
       {/* Logo top-left */}
       <div className="absolute left-6 top-5 z-20">
-        <a href="/" className="flex items-center gap-3">
-          <img src="/logo.svg" alt="otracita" className="h-10 w-10" />
-          <span className="text-xl font-bold tracking-tight text-white">
-            otracita
-          </span>
+        <a href="/" className="flex items-center text-white">
+          <Wordmark height={32} dividerColor="rgba(247,243,238,0.2)" />
         </a>
       </div>
 

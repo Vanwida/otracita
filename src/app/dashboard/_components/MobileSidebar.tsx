@@ -8,6 +8,7 @@ import {
   LayoutDashboard, Calendar, Wrench, Settings, MessageSquare, Shield, LogOut,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth/client'
+import { Wordmark } from '@/components/brand'
 
 interface Props {
   email: string
@@ -57,9 +58,8 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
         }`}
       >
         <div className="flex items-center justify-between mb-8">
-          <Link href="/" className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="otracita" className="h-7 w-7" />
-            <span className="font-display font-semibold text-ink text-lg tracking-tight">otracita</span>
+          <Link href="/" className="flex items-center text-ink">
+            <Wordmark height={28} />
           </Link>
           <button
             onClick={() => setOpen(false)}

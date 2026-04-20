@@ -1,20 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
-  <!-- otracita monogram: warm terracotta disc with an italic serif "o"
-       echoing the Fraunces wordmark. The stylized "o" reads as both the
-       first letter of the brand and an open mouth that speaks. -->
-  <circle cx="24" cy="24" r="22" fill="#C9653C"/>
-  <g transform="translate(24 24) rotate(-10)">
-    <path d="M -10 0
-             C -10 -5.4, -5.4 -8.4, 0 -8.4
-             C 5.4 -8.4, 10 -5.4, 10 0
-             C 10 5.4, 5.4 8.4, 0 8.4
-             C -5.4 8.4, -10 5.4, -10 0 Z
-             M -6.2 0
-             C -6.2 3.4, -3.4 5.2, 0 5.2
-             C 3.4 5.2, 6.2 3.4, 6.2 0
-             C 6.2 -3.4, 3.4 -5.2, 0 -5.2
-             C -3.4 -5.2, -6.2 -3.4, -6.2 0 Z"
-          fill="#F7F3EE"
-          fill-rule="evenodd"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 96" fill="none">
+  <!-- otracita monogram "ligadura": "oc" set in a serif with a terracotta brand-dot
+       at the c's tittle. Nods to old letterpress barbería signage. -->
+  <text x="8" y="76" font-family="Fraunces, Georgia, 'Times New Roman', serif" font-size="78" font-weight="600" fill="#2A1D14" letter-spacing="-6">oc</text>
+  <circle cx="101" cy="50" r="5" fill="#C9653C"/>
 </svg>
