@@ -180,6 +180,13 @@ export default async function NegocioPage() {
             invoiceNumberNext: client.invoiceNumberNext,
             hasEmittedInvoices,
           },
+          connect: {
+            status: client.stripeConnectStatus,
+            accountId: client.stripeConnectAccountId,
+            activatedAt: client.stripeConnectActivatedAt
+              ? client.stripeConnectActivatedAt.toISOString()
+              : null,
+          },
         }}
         save={saveBusiness}
       />

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt } from 'lucide-react'
+import { useEffect, useState, useTransition } from 'react'
+import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt, CreditCard } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
 import TeamEditor from './TeamEditor'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
 import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
+import ConnectSettings, { type ConnectInitial } from './ConnectSettings'
 
 interface ServiceItem {
   name: string
@@ -27,12 +28,13 @@ interface Props {
     hours: HoursMap | null
     blockedDates: string[]
     invoicing: InvoicingInitial
+    connect: ConnectInitial
   }
   /** Server action that saves the core business fields (everything except blocked dates). */
   save: (formData: FormData) => Promise<void>
 }
 
-type TabKey = 'info' | 'services' | 'team' | 'hours' | 'facturacion' | 'blocked'
+type TabKey = 'info' | 'services' | 'team' | 'hours' | 'facturacion' | 'cobros' | 'blocked'
 
 interface Tab {
   key: TabKey
@@ -46,6 +48,7 @@ const TABS: Tab[] = [
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'hours', label: 'Horario', icon: Clock },
   { key: 'facturacion', label: 'Facturación', icon: Receipt },
+  { key: 'cobros', label: 'Cobros online', icon: CreditCard },
   { key: 'blocked', label: 'Días bloqueados', icon: CalendarX },
 ]
 
@@ -60,6 +63,20 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
   const [tab, setTab] = useState<TabKey>('info')
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
+
+  // Allow deep-linking: ?tab=cobros lands the user on the Cobros tab so the
+  // "Activa cobros" CTA in BookingDetailPanel can bring them to the right
+  // place in one click.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('tab')
+    if (!raw) return
+    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'facturacion', 'cobros', 'blocked']
+    if ((valid as string[]).includes(raw)) {
+      setTab(raw as TabKey)
+    }
+  }, [])
 
   const onSubmit = (formData: FormData) => {
     startTransition(async () => {
@@ -100,6 +117,10 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
             <p className="text-sm text-ink-2 mt-1">Bloquea fechas específicas (vacaciones, festivos) para que el bot no ofrezca esos días.</p>
           </div>
           <BlockedDatesManager initialDates={initial.blockedDates} clientId={clientId} />
+        </div>
+      ) : tab === 'cobros' ? (
+        <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-4">
+          <ConnectSettings initial={initial.connect} />
         </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">

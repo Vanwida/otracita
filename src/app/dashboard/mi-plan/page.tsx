@@ -9,6 +9,7 @@ import { eq, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { CreditCard, Calendar, Receipt, AlertCircle, FileText, ArrowRight } from 'lucide-react'
 import OpenStripePortalButton from '@/app/dashboard/_components/OpenStripePortalButton'
+import OnlinePaymentsSummary from '@/app/dashboard/_components/OnlinePaymentsSummary'
 import { stripe } from '@/lib/stripe'
 import { PLANS } from '@/lib/stripe'
 
@@ -195,6 +196,10 @@ export default async function MiPlanPage() {
           </div>
         )}
       </div>
+
+      {/* Online payments (Stripe Connect) summary — what the barber receives
+          from THEIR customers. Distinct from the subscription they pay us. */}
+      <OnlinePaymentsSummary connectStatus={client.stripeConnectStatus} />
     </div>
   )
 }

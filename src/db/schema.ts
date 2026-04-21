@@ -31,9 +31,16 @@ export const clients = pgTable('clients', {
   // Status
   status: text('status').notNull().default('pending'), // pending, onboarding, active, paused, cancelled
   plan: text('plan').notNull().default('chatbot'), // chatbot, ads, full
-  // Stripe
+  // Stripe (platform subscription — what the barber pays otracita)
   stripeCustomerId: text('stripe_customer_id'),
   stripeSubscriptionId: text('stripe_subscription_id'),
+  // Stripe Connect (Express account — where the barber RECEIVES payments
+  // from their own customers). The account is owned by the barber; we only
+  // hold the reference. status transitions: 'none' -> 'pending' -> 'active'
+  // (or 'restricted' if Stripe requires more info).
+  stripeConnectAccountId: text('stripe_connect_account_id'),
+  stripeConnectStatus: text('stripe_connect_status').default('none').notNull(),
+  stripeConnectActivatedAt: timestamp('stripe_connect_activated_at', { withTimezone: true }),
   // Chatbot config
   chatbotGreeting: text('chatbot_greeting'),
   chatbotServices: jsonb('chatbot_services'), // array of services they offer
@@ -214,8 +221,45 @@ export const invoices = pgTable('invoices', {
   type: text('type').notNull(),                                // 'ticket' | 'invoice'
   status: text('status').default('issued').notNull(),          // 'issued' | 'voided' | 'rectified'
   notes: text('notes'),
+  // When the associated online payment (via Stripe Checkout) succeeds we
+  // record the timestamp here. We do NOT change `status` — the fiscal
+  // lifecycle (issued/voided/rectified) is independent from whether the
+  // customer chose to settle via the QR-code flow.
+  paidOnlineAt: timestamp('paid_online_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   clientNumberUnique: unique('invoices_client_number_unique').on(table.clientId, table.number),
 }));
+
+// Online payments — money flowing from the END CUSTOMER to the BARBER via
+// Stripe Connect (destination charges). Rows are created when the barber
+// generates a payment link for a booking; the Stripe webhook flips status
+// to 'succeeded' on `checkout.session.completed`.
+//
+// Amount fields are in cents (EUR). `stripeCheckoutSessionId` is UNIQUE to
+// make webhook retries idempotent at the DB level (belt + braces with the
+// `processed_stripe_events` ledger).
+export const payments = pgTable('payments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  bookingId: uuid('booking_id').references(() => bookings.id),
+  invoiceId: uuid('invoice_id').references(() => invoices.id),
+  // Stripe identifiers — populated as the flow progresses
+  stripeCheckoutSessionId: text('stripe_checkout_session_id').unique(),
+  stripePaymentIntentId: text('stripe_payment_intent_id'),
+  stripeChargeId: text('stripe_charge_id'),
+  // Amounts (cents)
+  amountCents: integer('amount_cents').notNull(),
+  applicationFeeCents: integer('application_fee_cents').default(0).notNull(),
+  currency: text('currency').default('eur').notNull(),
+  // Flow
+  type: text('type').notNull(),       // 'full' | 'deposit'  (MVP only 'full')
+  status: text('status').notNull(),   // 'pending' | 'succeeded' | 'failed' | 'refunded' | 'cancelled'
+  description: text('description'),   // shown on Stripe Checkout and receipt
+  paymentLinkUrl: text('payment_link_url'),  // hosted Stripe Checkout URL
+  // Audit
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 

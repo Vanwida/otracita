@@ -1,8 +1,11 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { X, Copy, Check, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode } from 'lucide-react';
+import { useState, useTransition, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { CalendarEvent } from './types';
@@ -10,10 +13,145 @@ import type { CalendarEvent } from './types';
 interface Props {
   booking: CalendarEvent | null;
   onClose: () => void;
+  /**
+   * Stripe Connect account state for the current tenant. Drives the gate
+   * between "activa cobros" CTA and the real payment link generator.
+   */
+  stripeConnectStatus: 'none' | 'pending' | 'active' | 'restricted' | string;
 }
 
-export default function BookingDetailPanel({ booking, onClose }: Props) {
+interface PaymentSnapshot {
+  id: string;
+  status: 'pending' | 'succeeded' | 'failed' | 'refunded' | 'cancelled' | string;
+  amountCents: number;
+  currency: string;
+  paymentUrl: string | null;
+  paidAt: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
+// Used both for the existing-payment fetch and the newly-created one.
+interface PaymentLinkData {
+  payment: PaymentSnapshot;
+  qrCodeDataUrl: string | null; // only present after generation (not for already-paid rows)
+}
+
+const MIN_AMOUNT_EUROS = 0.5;
+const MAX_AMOUNT_EUROS = 5000;
+
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus }: Props) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  // Payment state — separate from the no-show state above.
+  const [paymentData, setPaymentData] = useState<PaymentLinkData | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [amountEuros, setAmountEuros] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+
+  const isNoShow = booking?.status === 'no_show';
+  const canMarkNoShow = booking?.status === 'confirmed' || booking?.status === 'no_show';
+  const canCharge =
+    !!booking &&
+    booking.price !== null &&
+    (booking.status === 'confirmed' || booking.status === 'no_show');
+
+  const connectActive = stripeConnectStatus === 'active';
+
+  // Reset payment state whenever the booking changes.
+  useEffect(() => {
+    setPaymentData(null);
+    setPaymentError(null);
+    setLinkCopied(false);
+    if (booking) {
+      setAmountEuros(booking.price != null ? String(booking.price) : '');
+      const customer = booking.customerName || booking.customerPhone;
+      setDescription(`${booking.service} — ${customer}`);
+    } else {
+      setAmountEuros('');
+      setDescription('');
+    }
+  }, [booking?.id, booking?.price, booking?.service, booking?.customerName, booking?.customerPhone, booking]);
+
+  // Fetch existing payment for this booking on open — so we can surface
+  // "already paid" or "pending link" state without the barber clicking.
+  useEffect(() => {
+    if (!booking || !canCharge || !connectActive) return;
+    const controller = new AbortController();
+    fetch(`/api/payments/by-booking?bookingId=${encodeURIComponent(booking.id)}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (!data || !data.payment) return;
+        setPaymentData({ payment: data.payment, qrCodeDataUrl: null });
+      })
+      .catch(() => {
+        /* aborted or network — ignore silently */
+      });
+    return () => controller.abort();
+  }, [booking, booking?.id, canCharge, connectActive]);
+
+  // Poll a 'pending' payment every ~4s so the UI flips to "paid" without
+  // a manual refresh once the customer completes checkout. Stops on unmount
+  // or when status transitions away from 'pending'.
+  useEffect(() => {
+    if (!paymentData || paymentData.payment.status !== 'pending') return;
+    const id = paymentData.payment.id;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/${id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status && data.status !== paymentData.payment.status) {
+          setPaymentData((prev) =>
+            prev
+              ? {
+                  qrCodeDataUrl: prev.qrCodeDataUrl,
+                  payment: {
+                    ...prev.payment,
+                    status: data.status,
+                    paidAt: data.paidAt,
+                  },
+                }
+              : prev,
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [paymentData]);
+
+  async function toggleNoShow() {
+    if (!booking) return;
+    setError(null);
+    const endpoint = isNoShow ? '/api/bookings/undo-no-show' : '/api/bookings/no-show';
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || 'No se pudo actualizar');
+        return;
+      }
+      startTransition(() => router.refresh());
+    } catch {
+      setError('Error de red');
+    }
+  }
 
   const copyPhone = () => {
     if (!booking) return;
@@ -21,6 +159,61 @@ export default function BookingDetailPanel({ booking, onClose }: Props) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const copyLink = () => {
+    if (!paymentData?.payment.paymentUrl) return;
+    navigator.clipboard.writeText(paymentData.payment.paymentUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  const generateLink = useCallback(async () => {
+    if (!booking) return;
+    setPaymentError(null);
+    setPaymentLoading(true);
+    try {
+      const amountNumber = Number(amountEuros);
+      if (!Number.isFinite(amountNumber) || amountNumber < MIN_AMOUNT_EUROS || amountNumber > MAX_AMOUNT_EUROS) {
+        setPaymentError(`El importe debe estar entre ${MIN_AMOUNT_EUROS} € y ${MAX_AMOUNT_EUROS} €.`);
+        setPaymentLoading(false);
+        return;
+      }
+      const amountCents = Math.round(amountNumber * 100);
+
+      const res = await fetch('/api/payments/create-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: booking.id,
+          amountCents,
+          description: description.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPaymentError(data.error || 'No se pudo generar el link');
+        setPaymentLoading(false);
+        return;
+      }
+      setPaymentData({
+        qrCodeDataUrl: data.qrCodeDataUrl ?? null,
+        payment: {
+          id: data.paymentId,
+          status: 'pending',
+          amountCents: data.amountCents ?? amountCents,
+          currency: 'eur',
+          paymentUrl: data.paymentUrl,
+          paidAt: null,
+          description: description.trim() || null,
+          createdAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      setPaymentError('Error de red');
+    } finally {
+      setPaymentLoading(false);
+    }
+  }, [booking, amountEuros, description]);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -65,6 +258,9 @@ export default function BookingDetailPanel({ booking, onClose }: Props) {
         return status;
     }
   };
+
+  const alreadyPaid = paymentData?.payment.status === 'succeeded';
+  const hasPendingLink = paymentData?.payment.status === 'pending' && paymentData?.payment.paymentUrl;
 
   return (
     <AnimatePresence>
@@ -197,6 +393,178 @@ export default function BookingDetailPanel({ booking, onClose }: Props) {
                     Precio
                   </p>
                   <p className="text-sm font-semibold text-brand">{booking.price} €</p>
+                </div>
+              )}
+
+              {/* No-show toggle — works for all booking sources (bot, Booksy,
+                  walk-in). Marking no-show also voids the associated invoice
+                  in the background (API-side), so the barber only needs one
+                  click here to keep both booking and fiscal state consistent. */}
+              {canMarkNoShow && (
+                <div className="pt-2 border-t border-line space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                    ¿El cliente se presentó?
+                  </p>
+                  {isNoShow ? (
+                    <button
+                      type="button"
+                      onClick={toggleNoShow}
+                      disabled={pending}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-surface border border-line hover:border-brand hover:text-brand px-4 py-2.5 text-sm font-semibold text-ink transition-colors disabled:opacity-60"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                      Deshacer no-show
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={toggleNoShow}
+                      disabled={pending}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-danger/10 border border-danger/30 hover:bg-danger/15 px-4 py-2.5 text-sm font-semibold text-danger transition-colors disabled:opacity-60"
+                    >
+                      <UserX className="h-4 w-4" />
+                      Marcar no-show
+                    </button>
+                  )}
+                  <p className="text-[11px] text-ink-3 leading-relaxed">
+                    Por defecto asumimos que se presentó. Marca no-show solo si no vino — se anulará la factura automáticamente.
+                  </p>
+                  {error && <p className="text-xs text-danger">{error}</p>}
+                </div>
+              )}
+
+              {/* Cobrar online — only for chargeable bookings (confirmed or
+                  no_show, with a price). Two states:
+                    A) Connect not active -> CTA to activate.
+                    B) Connect active     -> amount + description + QR flow. */}
+              {canCharge && (
+                <div className="pt-2 border-t border-line space-y-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                    Cobrar online
+                  </p>
+
+                  {!connectActive ? (
+                    <div className="rounded-xl border border-line bg-overlay p-3 space-y-2">
+                      <p className="text-xs text-ink-2 leading-relaxed">
+                        Activa los cobros online para generar enlaces de pago y QR para tus clientes.
+                      </p>
+                      <Link
+                        href="/dashboard/negocio?tab=cobros"
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Activar cobros online
+                      </Link>
+                    </div>
+                  ) : alreadyPaid ? (
+                    <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-1">
+                      <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
+                        <Check className="h-4 w-4" /> Pagado online
+                      </p>
+                      <p className="text-xs text-ink-2">
+                        {(paymentData!.payment.amountCents / 100).toFixed(2)} € ·{' '}
+                        {paymentData!.payment.paidAt
+                          ? format(parseISO(paymentData!.payment.paidAt), "d MMM yyyy 'a las' HH:mm", { locale: es })
+                          : ''}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {!hasPendingLink && (
+                        <>
+                          <div className="flex flex-col gap-1.5">
+                            <label htmlFor="pay-amount" className="text-[11px] font-medium text-ink-2">
+                              Importe (€)
+                            </label>
+                            <input
+                              id="pay-amount"
+                              type="number"
+                              min={MIN_AMOUNT_EUROS}
+                              max={MAX_AMOUNT_EUROS}
+                              step="0.01"
+                              value={amountEuros}
+                              onChange={(e) => setAmountEuros(e.target.value)}
+                              className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label htmlFor="pay-desc" className="text-[11px] font-medium text-ink-2">
+                              Concepto (opcional)
+                            </label>
+                            <input
+                              id="pay-desc"
+                              type="text"
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              maxLength={200}
+                              className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={generateLink}
+                            disabled={paymentLoading}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+                          >
+                            {paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                            Generar link de pago
+                          </button>
+                        </>
+                      )}
+
+                      {hasPendingLink && (
+                        <div className="space-y-3">
+                          <p className="text-[11px] text-ink-3 leading-relaxed">
+                            Pide al cliente que escanee con la cámara de su móvil. Se actualizará solo cuando pague.
+                          </p>
+
+                          {paymentData?.qrCodeDataUrl ? (
+                            <div className="flex items-center justify-center rounded-xl border border-line bg-surface p-3">
+                              <Image
+                                src={paymentData.qrCodeDataUrl}
+                                alt="QR de pago"
+                                width={240}
+                                height={240}
+                                unoptimized
+                                className="h-60 w-60"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center rounded-xl border border-line bg-overlay p-5 text-xs text-ink-3">
+                              QR no disponible en este dispositivo. Comparte el link manualmente.
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={paymentData!.payment.paymentUrl!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-2 text-xs font-medium text-ink-2 transition-colors"
+                            >
+                              <LinkIcon className="h-3.5 w-3.5" />
+                              Abrir link
+                            </a>
+                            <button
+                              type="button"
+                              onClick={copyLink}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-2 text-xs font-medium text-ink-2 transition-colors"
+                            >
+                              {linkCopied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                              {linkCopied ? 'Copiado' : 'Copiar'}
+                            </button>
+                          </div>
+
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning border border-warning/20 px-2.5 py-1 text-[11px] font-medium">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Esperando pago
+                          </div>
+                        </div>
+                      )}
+
+                      {paymentError && <p className="text-xs text-danger">{paymentError}</p>}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

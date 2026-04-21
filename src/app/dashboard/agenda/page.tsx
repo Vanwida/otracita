@@ -31,6 +31,7 @@ export default async function CalendarPage() {
       barbers={barbers}
       blockedDates={blockedDates}
       hours={hours}
+      stripeConnectStatus={client.stripeConnectStatus}
     />
   );
 }

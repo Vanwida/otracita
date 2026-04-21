@@ -162,7 +162,33 @@ Ads tier was removed from the main pricing — will live on a separate Vanwida l
 ## Non-negotiables
 
 - **Spanish-first**: all user-facing copy in Spanish (or bilingual ES/EN for the bot itself)
-- **Light theme only**: no dark surfaces anywhere
+- **Light theme only**: no dark surfaces anywhere (including `/admin`)
 - **No fake numbers**: never claim user counts or review counts the product doesn't have
 - **Author all commits** as `vanwida@aistudios.pro`
 - **Don't deploy without explicit OK** from Alex — production is real money risk
+
+## Booking ↔ invoice state matrix (fiscal correctness)
+
+Whenever a booking transitions state, the invoice side must be considered.
+Missing a transition leaks into the `libro de facturas` and distorts
+Modelo 303 filings.
+
+| `bookings.status` | Invoice action |
+|---|---|
+| `confirmed` (create) | Auto-generate invoice if `invoicingEnabled` AND `price != null` (via `tryAutoInvoiceInBackground` in `/api/bookings/create` and `/api/email/inbound`) |
+| `completed` | Invoice stays `issued` (customer paid) |
+| `cancelled` | Void associated invoice (`tryVoidInvoicesInBackground` in `/api/email/inbound` Booksy cancel + anywhere a cancel server action runs) |
+| `no_show` | Void associated invoice (`/api/bookings/no-show`) — customer didn't pay |
+| undo from `no_show` → `confirmed` | Restore invoice `status = 'issued'` (MVP; strictly a rectificativa should be issued instead — see lesson below) |
+
+**Rule**: anytime you add a new booking-status transition, update this table
+AND make sure the API route touches invoices correctly. The matrix
+exists because in the first invoicing ship we caught `cancelled → void`
+but missed `no_show → void` — the "two features developed in parallel,
+interaction untested" anti-pattern.
+
+**Legal follow-up (post-launch)**: strict España compliance means a voided
+invoice must be replaced with a `factura rectificativa` (new correlative
+number, amounts negated, references the original). MVP restores `voided`
+→ `issued` on undo for simplicity; this is acceptable if corrected fast
+but should be hardened before scaling.

@@ -28,9 +28,14 @@ interface Props {
   barbers: Array<{ name: string }>;
   blockedDates: string[];
   hours: Record<string, string> | null;
+  /**
+   * Resolved Stripe Connect state — drives whether the BookingDetailPanel
+   * shows the "Activa cobros" CTA or the "Generar link de pago" flow.
+   */
+  stripeConnectStatus: 'none' | 'pending' | 'active' | 'restricted' | string;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus }: Props) {
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
@@ -243,6 +248,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours }:
       <BookingDetailPanel
         booking={selectedBooking}
         onClose={() => setSelectedBooking(null)}
+        stripeConnectStatus={stripeConnectStatus}
       />
 
       {/* New booking panel */}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { bookings, customers } from '@/db/schema'
+import { bookings, customers, invoices } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import {
   requireClientAccess,
@@ -30,6 +30,21 @@ export async function POST(req: NextRequest) {
   await db.update(bookings)
     .set({ status: 'confirmed' })
     .where(eq(bookings.id, bookingId))
+
+  // Restore any invoice that was auto-voided when the booking was marked
+  // as no-show. MVP simplification: we flip status back to 'issued' on the
+  // same row, preserving the correlative number. Not 100% fiscally orthodox
+  // (strictly one should void + emit new), but acceptable for a quick
+  // correction made within the same session. If the auditor ever asks,
+  // the booking-status audit trail explains the sequence.
+  await db.update(invoices)
+    .set({ status: 'issued' })
+    .where(
+      and(
+        eq(invoices.bookingId, bookingId),
+        eq(invoices.status, 'voided'),
+      ),
+    )
 
   // Decrement customer no-shows
   const customerRows = await db.select().from(customers).where(

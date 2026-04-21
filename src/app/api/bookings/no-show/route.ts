@@ -6,6 +6,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
+import { tryVoidInvoicesInBackground } from '@/lib/invoicing'
 
 export async function POST(req: NextRequest) {
   const access = await requireClientAccess(req)
@@ -31,6 +32,12 @@ export async function POST(req: NextRequest) {
   await db.update(bookings)
     .set({ status: 'no_show' })
     .where(eq(bookings.id, bookingId))
+
+  // Void any issued invoice linked to this booking — a no-show means the
+  // customer never paid, so the document must be annulled (legally this
+  // should be a factura rectificativa; MVP does a simple void + alert Alex
+  // to emit rectificativa manually if the customer had already paid).
+  tryVoidInvoicesInBackground(bookingId)
 
   // Update customer reputation
   const customerRows = await db.select().from(customers).where(
