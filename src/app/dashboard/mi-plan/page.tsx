@@ -1,12 +1,13 @@
 export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { clients, subscriptions } from '@/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { CreditCard, Calendar, Receipt, AlertCircle } from 'lucide-react'
+import { CreditCard, Calendar, Receipt, AlertCircle, FileText, ArrowRight } from 'lucide-react'
 import OpenStripePortalButton from '@/app/dashboard/_components/OpenStripePortalButton'
 import { stripe } from '@/lib/stripe'
 import { PLANS } from '@/lib/stripe'
@@ -21,7 +22,15 @@ interface InvoiceSummary {
   pdfUrl: string | null
 }
 
-export default async function FacturacionPage() {
+// -----------------------------------------------------------------------------
+// "Mi plan" — what the TENANT pays US (otracita subscription). Previously
+// lived at /dashboard/facturacion, renamed to free that sidebar slot for the
+// new feature that lets the barber emit invoices to THEIR customers.
+//
+// Kept the Stripe-portal UX identical; added a CTA card at the top to guide
+// users to the new invoicing feature without making them hunt for it.
+// -----------------------------------------------------------------------------
+export default async function MiPlanPage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -68,9 +77,29 @@ export default async function FacturacionPage() {
   return (
     <div className="p-4 md:p-8 max-w-4xl">
       <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Facturación</h1>
-        <p className="text-ink-2">Tu plan, próximos cobros y facturas pasadas.</p>
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Mi plan</h1>
+        <p className="text-ink-2">Tu suscripción a otracita: plan, próximos cobros y facturas pasadas.</p>
       </div>
+
+      {/* CTA: point users to the NEW feature (facturas a sus clientes) */}
+      <Link
+        href="/dashboard/facturas"
+        className="group block bg-brand-softer border border-brand/20 rounded-2xl p-5 md:p-6 mb-6 hover:border-brand hover:shadow-[0_8px_30px_rgba(201,101,60,0.08)] transition-all"
+      >
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="h-12 w-12 rounded-xl bg-brand border border-brand flex items-center justify-center shrink-0">
+            <FileText className="h-5 w-5 text-brand-ink" />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-strong mb-1">Nuevo</p>
+            <h2 className="font-display text-xl md:text-2xl font-semibold text-ink">Gestiona las facturas de tus clientes</h2>
+            <p className="text-sm text-ink-2 mt-1">
+              Activa la facturación automática y emite tickets/facturas con cada reserva. Exporta CSV mensual para tu gestor.
+            </p>
+          </div>
+          <ArrowRight className="h-5 w-5 text-brand mt-3 shrink-0 group-hover:translate-x-1 transition-transform" />
+        </div>
+      </Link>
 
       {/* Plan card */}
       <div className="bg-surface border border-line rounded-2xl p-5 md:p-6 mb-6">
@@ -126,7 +155,7 @@ export default async function FacturacionPage() {
       <div className="bg-surface border border-line rounded-2xl overflow-hidden">
         <div className="px-5 py-4 md:px-6 border-b border-line flex items-center gap-2">
           <Receipt className="h-4 w-4 text-ink-3" />
-          <h2 className="text-base font-semibold text-ink">Últimas facturas</h2>
+          <h2 className="text-base font-semibold text-ink">Últimas facturas de tu plan</h2>
         </div>
 
         {invoicesError ? (

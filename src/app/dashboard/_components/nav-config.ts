@@ -6,6 +6,7 @@ import {
   Store,
   Bot,
   CreditCard,
+  FileText,
   HelpCircle,
   type LucideIcon,
 } from 'lucide-react';
@@ -44,12 +45,16 @@ export const PRIMARY_NAV: NavSection = {
 };
 
 // Configuration nav — set-and-forget business config.
+// "Facturación" = docs the tenant emits to THEIR customers (core feature).
+// "Mi plan"     = the subscription we charge THE TENANT (payment admin).
+// The naming split makes clear who is billing whom.
 export const CONFIG_NAV: NavSection = {
   heading: 'Configuración',
   items: [
     { href: '/dashboard/negocio', icon: Store, label: 'Mi negocio' },
     { href: '/dashboard/bot', icon: Bot, label: 'El bot' },
-    { href: '/dashboard/facturacion', icon: CreditCard, label: 'Facturación' },
+    { href: '/dashboard/facturas', icon: FileText, label: 'Facturación' },
+    { href: '/dashboard/mi-plan', icon: CreditCard, label: 'Mi plan' },
   ],
 };
 

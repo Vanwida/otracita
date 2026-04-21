@@ -10,6 +10,7 @@ import {
   type CriticalField,
 } from '@/lib/booksy-email-llm';
 import { notifyAlex } from '@/lib/notify-alex';
+import { tryAutoInvoiceInBackground } from '@/lib/invoicing';
 
 interface PostmarkInboundPayload {
   To?: string;
@@ -354,6 +355,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (finalData && status !== 'partial' && status !== 'failed') {
       try {
         bookingId = await applyBookingFromData(client.id, finalData, rawSnippet);
+        // Auto-invoice when the tenant has it enabled. Safe on 'modified'
+        // events too — `generateInvoiceFromBooking` is idempotent.
+        if (bookingId && client.invoicingEnabled && finalData.type !== 'cancelled') {
+          tryAutoInvoiceInBackground(bookingId);
+        }
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : String(err);
         console.error('[email-inbound] applyBookingFromData failed:', err);

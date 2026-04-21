@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Store, Scissors, Users, Clock, CalendarX, Check } from 'lucide-react'
+import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
 import TeamEditor from './TeamEditor'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
+import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
 
 interface ServiceItem {
   name: string
@@ -25,12 +26,13 @@ interface Props {
     barbers: string[]
     hours: HoursMap | null
     blockedDates: string[]
+    invoicing: InvoicingInitial
   }
   /** Server action that saves the core business fields (everything except blocked dates). */
   save: (formData: FormData) => Promise<void>
 }
 
-type TabKey = 'info' | 'services' | 'team' | 'hours' | 'blocked'
+type TabKey = 'info' | 'services' | 'team' | 'hours' | 'facturacion' | 'blocked'
 
 interface Tab {
   key: TabKey
@@ -43,6 +45,7 @@ const TABS: Tab[] = [
   { key: 'services', label: 'Servicios', icon: Scissors },
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'hours', label: 'Horario', icon: Clock },
+  { key: 'facturacion', label: 'Facturación', icon: Receipt },
   { key: 'blocked', label: 'Días bloqueados', icon: CalendarX },
 ]
 
@@ -157,6 +160,18 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
               <p className="text-sm text-ink-2 mt-1">Horas de apertura por día. El bot solo ofrecerá huecos dentro de este rango.</p>
             </div>
             <HoursEditor initial={initial.hours} />
+          </div>
+
+          {/* ─── Facturación ─── */}
+          <div className={tab === 'facturacion' ? 'space-y-4' : 'hidden'}>
+            <div>
+              <h2 className="text-lg font-semibold text-ink">Facturación</h2>
+              <p className="text-sm text-ink-2 mt-1">
+                Emite tickets y facturas automáticamente por cada reserva confirmada.
+                Los datos fiscales aparecen en cada documento que recibe tu cliente.
+              </p>
+            </div>
+            <InvoicingSettings initial={initial.invoicing} />
           </div>
 
           <div className="pt-4 flex items-center justify-end gap-3 border-t border-line">

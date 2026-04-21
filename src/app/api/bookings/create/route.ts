@@ -7,6 +7,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
+import { tryAutoInvoiceInBackground, shouldAutoInvoiceBooking } from '@/lib/invoicing';
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -117,6 +118,12 @@ export async function POST(req: NextRequest) {
       source: 'bot',
     })
     .returning();
+
+  // Auto-invoice in the background when the tenant has invoicing enabled and
+  // the booking is billable (confirmed + priced). Never blocks booking creation.
+  if (created && shouldAutoInvoiceBooking(created) && client.invoicingEnabled) {
+    tryAutoInvoiceInBackground(created.id);
+  }
 
   return NextResponse.json(created, { status: 201 });
 }

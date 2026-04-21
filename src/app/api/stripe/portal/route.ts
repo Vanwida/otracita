@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: client.stripeCustomerId,
-      return_url: 'https://otracita.es/dashboard/facturacion',
+      return_url: 'https://otracita.es/dashboard/mi-plan',
     })
 
     return Response.json({ url: session.url })

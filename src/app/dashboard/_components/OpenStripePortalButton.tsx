@@ -10,7 +10,7 @@ interface Props {
 
 /**
  * POSTs to `/api/stripe/portal`, reads the hosted-portal URL, and redirects.
- * Kept as its own small client component so `/dashboard/facturacion` can stay
+ * Kept as its own small client component so `/dashboard/mi-plan` can stay
  * a server component for data fetching.
  */
 export default function OpenStripePortalButton({ disabled = false, disabledReason }: Props) {

@@ -15,7 +15,7 @@ const FAQS: Faq[] = [
     q: '¿Cómo cancelo mi suscripción?',
     a: (
       <>
-        Desde <a className="text-brand hover:text-brand-strong underline underline-offset-2" href="/dashboard/facturacion">Facturación</a>, pulsa
+        Desde <a className="text-brand hover:text-brand-strong underline underline-offset-2" href="/dashboard/mi-plan">Mi plan</a>, pulsa
         &ldquo;Gestionar suscripción&rdquo;. Se abrirá el portal de Stripe donde puedes cancelar en un clic. Seguirás teniendo acceso hasta el final del periodo ya pagado.
       </>
     ),

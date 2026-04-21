@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique } from 'drizzle-orm/pg-core';
 
 
 // Clients (barbershops that buy our service)
@@ -34,6 +34,16 @@ export const clients = pgTable('clients', {
   chatbotServices: jsonb('chatbot_services'), // array of services they offer
   chatbotHours: jsonb('chatbot_hours'), // business hours
   blockedDates: jsonb('blocked_dates').$type<string[]>().default([]),
+  // Invoicing (what the barber emits to THEIR customers — tickets/facturas)
+  fiscalName: text('fiscal_name'),                                             // legal/trade name on emitted invoices
+  fiscalNif: text('fiscal_nif'),                                               // NIF/CIF of the emitting business
+  fiscalAddress: text('fiscal_address'),
+  fiscalCity: text('fiscal_city'),
+  fiscalPostalCode: text('fiscal_postal_code'),
+  ivaRate: integer('iva_rate').default(21).notNull(),                          // IVA percentage applied (Spain default 21%)
+  invoicingEnabled: boolean('invoicing_enabled').default(false).notNull(),
+  invoiceNumberPrefix: text('invoice_number_prefix').default('').notNull(),    // e.g. "FAC-2026-" (empty = numbers only)
+  invoiceNumberNext: integer('invoice_number_next').default(1).notNull(),
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -163,4 +173,35 @@ export const emailParseLog = pgTable('email_parse_log', {
   alertSent: boolean('alert_sent').default(false),
   errorMessage: text('error_message'),
 });
+
+// Invoices / tickets emitted by the client (barbershop) to their own customers.
+// Amounts stored in integer cents to avoid float drift. One row per fiscal doc.
+// `bookingId` is nullable to allow future manual invoices (not auto-generated).
+export const invoices = pgTable('invoices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  bookingId: uuid('booking_id').references(() => bookings.id), // null = manual invoice
+  number: text('number').notNull(),                            // "FAC-2026-0001" (unique per client)
+  issueDate: date('issue_date').notNull(),
+  // Customer snapshot at issue time (we don't FK to customers — name/phone is enough, and customer may be walk-in)
+  customerName: text('customer_name'),
+  customerPhone: text('customer_phone'),
+  customerNif: text('customer_nif'),                           // null => ticket (B2C); set => factura (B2B)
+  customerAddress: text('customer_address'),
+  // Service snapshot (copied from booking at generation time so edits don't distort history)
+  serviceName: text('service_name').notNull(),
+  barberName: text('barber_name'),
+  // Amounts in cents (EUR by default). Convention: price includes IVA (Spanish retail norm).
+  subtotalCents: integer('subtotal_cents').notNull(),          // base imponible
+  ivaRate: integer('iva_rate').notNull(),                      // percentage applied at issue time
+  ivaAmountCents: integer('iva_amount_cents').notNull(),
+  totalCents: integer('total_cents').notNull(),
+  currency: text('currency').default('EUR').notNull(),
+  type: text('type').notNull(),                                // 'ticket' | 'invoice'
+  status: text('status').default('issued').notNull(),          // 'issued' | 'voided' | 'rectified'
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  clientNumberUnique: unique('invoices_client_number_unique').on(table.clientId, table.number),
+}));
 
