@@ -159,6 +159,21 @@ Ads tier was removed from the main pricing — will live on a separate Vanwida l
 
 ---
 
+## Stripe account structure
+
+otracita shares **one Stripe account** with Alex's other projects:
+- Account: `acct_1T41xuBnAKM0wJqO` (aistudios.pro · `vanwida@aistudios.pro`)
+- Standard account, ES, EUR
+- Connect Platform enabled with `transfers: active` capability
+- Platform Agreement already accepted
+
+**Decision log (2026-04-21)**: considered splitting into a dedicated otracita
+account under a Vanwida organization. Declined — keeping everything in
+`aistudios.pro` for operational simplicity. Known trade-off: when a barber
+goes through Stripe Connect Express onboarding, the platform name shown is
+"aistudios.pro", not "otracita". Acceptable for MVP. Revisit if/when
+otracita becomes its own legal entity.
+
 ## Non-negotiables
 
 - **Spanish-first**: all user-facing copy in Spanish (or bilingual ES/EN for the bot itself)
