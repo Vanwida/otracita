@@ -11,27 +11,42 @@ const faqs: FaqItem[] = [
   {
     question: "¿Necesito cambiar de Booksy?",
     answer:
-      "No. Seguirás usando Booksy como siempre. Nosotros conectamos tu WhatsApp con tu agenda para que el bot sepa cuándo tienes hueco y reserve en piloto automático.",
+      "No. Seguirás usando Booksy como siempre — nosotros conectamos tu WhatsApp con tu agenda para que el bot sepa cuándo tienes hueco y reserve en piloto automático. Si quieres, con el tiempo puedes dejar Booksy: nuestra agenda + facturación + cobros lo cubren entero.",
+  },
+  {
+    question: "¿Cómo funciona la facturación para mi gestor?",
+    answer:
+      "Cada reserva confirmada con precio genera automáticamente un ticket (o factura completa si el cliente aporta NIF). A fin de mes descargas el Libro de Facturas Emitidas en PDF y un Excel gestor-friendly con IVA desglosado. Lo adjuntas al email de tu gestor y listo para el Modelo 303.",
+  },
+  {
+    question: "¿Puedo cobrar con tarjeta sin tener datáfono?",
+    answer:
+      "Sí — opcional. Activas los cobros online en 10 minutos (Stripe gestiona el KYC), y desde la agenda puedes generar un QR para cualquier cita. El cliente escanea con su móvil, paga con tarjeta o Apple Pay, y el dinero va directo a tu banco. Si ya tienes datáfono propio, lo ignoras y sigues como siempre.",
+  },
+  {
+    question: "¿Y si un cliente no se presenta y ya había factura emitida?",
+    answer:
+      "Marcas la reserva como no-show con un click y automáticamente se anula la factura. El dato no cuenta en tus exports al gestor. Todo limpio.",
   },
   {
     question: "¿Qué pasa si un cliente reserva por Booksy y otro por WhatsApp a la misma hora?",
     answer:
-      "El calendario está sincronizado. Si un hueco se ocupa por Booksy, el bot deja de ofrecerlo por WhatsApp al instante.",
+      "El calendario está sincronizado. Si un hueco se ocupa por Booksy, el bot deja de ofrecerlo por WhatsApp al instante — cero dobles reservas.",
   },
   {
     question: "¿Y si no sé conectar Booksy?",
     answer:
-      "No te preocupes. Nuestro equipo te hace la configuración inicial totalmente gratis. En 48h estás activo.",
+      "No te preocupes. Nuestro equipo te hace la configuración inicial totalmente gratis — Meta WhatsApp + sync con tu Booksy + primer test. En menos de 48h estás activo.",
   },
   {
     question: "¿Puedo probarlo antes?",
     answer:
-      "Escríbenos por WhatsApp y te hacemos una demo en directo. Ves exactamente cómo respondería a tus clientes.",
+      "Escríbenos por WhatsApp y te hacemos una demo en directo. Ves exactamente cómo respondería a tus clientes y cómo se vería tu panel.",
   },
   {
     question: "¿Tiene permanencia?",
     answer:
-      "Ninguna. Cancelas en 1 click cuando quieras. Si salvas 1 o 2 clientes al mes, ya te sale rentable.",
+      "Ninguna. Cancelas desde el panel en 1 click cuando quieras. Si salvas 1 o 2 clientes al mes, ya te sale rentable.",
   },
 ];
 

@@ -18,28 +18,34 @@ const FEATURES = [
       "El bot gestiona el flujo entero: servicio → barbero → día → hora → confirmación. Sincronizado con tu Booksy.",
   },
   {
-    emoji: "❌",
-    title: "Cancelaciones y cambios",
+    emoji: "🧾",
+    title: "Facturación automática",
     description:
-      "Los clientes cancelan o reagendan sin que toques el móvil. El hueco se libera al instante.",
+      "Tickets y facturas se emiten solos con cada reserva. Exporta un PDF mensual para tu gestor — listo para el Modelo 303.",
+  },
+  {
+    emoji: "💳",
+    title: "Cobros online con QR",
+    description:
+      "Genera un QR desde la agenda, el cliente paga con tarjeta o Apple Pay desde su móvil. Sin datáfono.",
+  },
+  {
+    emoji: "🏪",
+    title: "Walk-ins en segundos",
+    description:
+      "Cliente sin cita que entra y paga. Factura generada en 10 segundos desde el móvil del barbero.",
   },
   {
     emoji: "🔔",
     title: "Recordatorios 24h",
     description:
-      "El bot avisa el día antes. El cliente confirma o cancela desde el propio WhatsApp.",
+      "El bot avisa el día antes. El cliente confirma o cancela desde el propio WhatsApp — menos no-shows.",
   },
   {
-    emoji: "📋",
-    title: "Lista de espera",
+    emoji: "❌",
+    title: "Cancelaciones y cambios",
     description:
-      "Cuando se cancela una cita, el siguiente de la lista recibe un aviso automático. Cero huecos perdidos.",
-  },
-  {
-    emoji: "🧠",
-    title: "Memoria de clientes",
-    description:
-      "Reconoce a los que vuelven y los saluda por su nombre. El cliente se siente como en casa.",
+      "Clientes reagendan sin que toques el móvil. El hueco se libera al instante y si hay lista de espera, se rellena solo.",
   },
   {
     emoji: "🌍",
@@ -48,16 +54,10 @@ const FEATURES = [
       "Detecta el idioma automáticamente. Hecho a medida para el turismo de Barcelona.",
   },
   {
-    emoji: "⭐",
-    title: "Reputación automática",
-    description:
-      "Registra no-shows y bloquea clientes problemáticos sin que hagas nada.",
-  },
-  {
     emoji: "📊",
-    title: "Dashboard del barbero",
+    title: "Panel para el barbero",
     description:
-      "Panel web para ver reservas del día, marcar no-shows, y entender tu negocio de un vistazo.",
+      "Agenda unificada Booksy + WhatsApp, clientes, facturas, cobros. Todo en un solo sitio.",
   },
 ];
 
@@ -118,8 +118,7 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mx-auto mt-8 max-w-2xl text-lg text-[var(--color-ink-2)] sm:text-xl leading-relaxed"
           >
-            La recepcionista de IA que contesta por WhatsApp cuando tú estás cortando,
-            cierra reservas solo, y <span className="text-[var(--color-ink)] font-medium">las sincroniza con tu Booksy sin tocar nada</span>.
+            La recepcionista de IA que contesta por WhatsApp, cierra reservas solo, <span className="text-[var(--color-ink)] font-medium">emite la factura automáticamente</span> y cobra por QR si te hace falta. Todo sin tocar el móvil ni cambiar de Booksy.
           </motion.p>
 
           <motion.div
@@ -269,8 +268,52 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ─── Anti-Booksy / Suite completa ─── */}
+      <section className="relative z-20 px-6 py-32 bg-[var(--color-canvas)]">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-16">
+            <span className="text-[var(--color-brand)] font-semibold tracking-wider uppercase text-sm">
+              Más que un bot
+            </span>
+            <h2 className="mt-3 font-display text-4xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-5xl">
+              La suite que Booksy no te da
+            </h2>
+            <p className="mt-4 text-lg text-[var(--color-ink-2)] max-w-2xl mx-auto">
+              Reservas, facturación y cobros en una sola herramienta. Lo que antes resolvías con 3 apps, aquí en una.
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            <SuiteCard
+              eyebrow="24/7"
+              title="Reservas por WhatsApp"
+              description="Tus clientes reservan chateando, sin app ni descargas. El bot sincroniza con Booksy si ya lo usas."
+              points={["Bot bilingüe ES/EN", "Lista de espera automática", "Recordatorios 24h"]}
+            />
+            <SuiteCard
+              eyebrow="Para tu gestor"
+              title="Facturación automática"
+              description="Tickets y facturas se emiten solos con cada reserva. Libro PDF mensual listo para el Modelo 303."
+              points={["Export Excel gestor-friendly", "Datos fiscales del emisor", "Libro de Facturas Emitidas"]}
+            />
+            <SuiteCard
+              eyebrow="Sin datáfono"
+              title="Cobros online opcionales"
+              description="QR desde la agenda, el cliente paga con tarjeta o Apple Pay desde su móvil. Opcional: si tienes TPV, sigues con él."
+              points={["Stripe Connect (tu dinero, tu banco)", "QR o link por WhatsApp", "Seña al reservar (próximamente)"]}
+            />
+          </div>
+
+          <div className="mt-12 text-center">
+            <p className="text-sm text-[var(--color-ink-2)]">
+              <span className="font-semibold text-[var(--color-ink)]">Deja Booksy o úsalo junto con nosotros.</span> Tú decides.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* ─── Trust Section ─── */}
-      <section className="relative overflow-hidden border-b border-[var(--color-line)] bg-[var(--color-canvas)] px-6 py-24">
+      <section className="relative overflow-hidden border-y border-[var(--color-line)] bg-[var(--color-overlay)] px-6 py-24">
         <div className="relative z-10 mx-auto max-w-4xl text-center">
           <h2 className="font-display text-4xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-5xl">
             Sin fricción, sin letra pequeña
@@ -280,7 +323,9 @@ export default function Home() {
           <div className="mt-12 grid gap-4 text-left sm:grid-cols-2">
             <TrustPoint text="Bilingüe: ES y EN automático" />
             <TrustPoint text="Cancelación en 1 click, sin permanencia" />
-            <TrustPoint text="Dashboard web para ver tu agenda" />
+            <TrustPoint text="Libro de facturas PDF para tu gestor" />
+            <TrustPoint text="Cobros con QR sin datáfono" />
+            <TrustPoint text="Datos 100 % en España (Neon + Vercel EU)" />
             <TrustPoint text="Activo en menos de 48h" />
           </div>
         </div>
@@ -291,9 +336,9 @@ export default function Home() {
         <div className="mx-auto max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-5xl">
-              Un precio. Sin sorpresas.
+              Un precio. Todo incluido.
             </h2>
-            <p className="mt-4 text-[var(--color-ink-2)]">Si salva a 1 solo cliente al mes, ya se paga solo.</p>
+            <p className="mt-4 text-[var(--color-ink-2)]">Bot · facturación · cobros. Si salva a 1 cliente al mes, ya se paga solo.</p>
           </div>
           <PricingCards />
         </div>
@@ -429,6 +474,48 @@ function TrustPoint({ text }: { text: string }) {
       </svg>
       <span className="text-[var(--color-ink)] font-medium">{text}</span>
     </div>
+  );
+}
+
+function SuiteCard({
+  eyebrow,
+  title,
+  description,
+  points,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  points: string[];
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.5 }}
+      className="card card-hover p-8 flex flex-col"
+    >
+      <span className="text-xs font-semibold uppercase tracking-widest text-[var(--color-brand)]">
+        {eyebrow}
+      </span>
+      <h3 className="mt-3 font-display text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
+        {title}
+      </h3>
+      <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-2)]">
+        {description}
+      </p>
+      <ul className="mt-5 space-y-2 text-sm text-[var(--color-ink-2)]">
+        {points.map((p) => (
+          <li key={p} className="flex items-start gap-2">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-brand)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <span>{p}</span>
+          </li>
+        ))}
+      </ul>
+    </motion.div>
   );
 }
 
