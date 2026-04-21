@@ -156,9 +156,9 @@ export default function SetupPage() {
                 onClick={() => s.num < step && setStep(s.num)}
                 className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   step === s.num
-                    ? "bg-emerald-500 text-white"
+                    ? "bg-brand text-brand-ink"
                     : step > s.num
-                      ? "bg-emerald-50 text-emerald-600 cursor-pointer"
+                      ? "bg-brand-softer text-brand cursor-pointer"
                       : "bg-surface border border-line text-ink-3"
                 }`}
               >
@@ -185,7 +185,7 @@ export default function SetupPage() {
               <div className="grid grid-cols-2 gap-4 mt-6">
                 <button
                   onClick={() => setHasBooksy(true)}
-                  className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-6 text-center transition-colors hover:border-emerald-500 hover:bg-canvas"
+                  className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-6 text-center transition-colors hover:border-brand hover:bg-canvas"
                 >
                   <Search className="h-8 w-8 text-ink-3" />
                   <span className="text-sm font-bold text-ink">Sí, tengo Booksy</span>
@@ -193,7 +193,7 @@ export default function SetupPage() {
                 </button>
                 <button
                   onClick={() => { setHasBooksy(false); setStep(2) }}
-                  className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-6 text-center transition-colors hover:border-emerald-500 hover:bg-canvas"
+                  className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-6 text-center transition-colors hover:border-brand hover:bg-canvas"
                 >
                   <User className="h-8 w-8 text-ink-3" />
                   <span className="text-sm font-bold text-ink">No, configuro manual</span>
@@ -211,7 +211,7 @@ export default function SetupPage() {
                     value={booksyUrl}
                     onChange={(e) => setBooksyUrl(e.target.value)}
                     placeholder="https://booksy.com/es-es/..."
-                    className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
+                    className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
                   />
                   <p className="text-xs text-ink-3">Copia la URL de tu perfil público de Booksy</p>
                 </div>
@@ -221,7 +221,7 @@ export default function SetupPage() {
                     type="button"
                     onClick={handleScrapeBooksy}
                     disabled={scraping}
-                    className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-4 text-sm font-bold text-white transition-colors active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full rounded-xl bg-brand hover:bg-brand-strong px-4 py-4 text-sm font-bold text-brand-ink transition-colors active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {scraping ? (
                       <>
@@ -248,7 +248,7 @@ export default function SetupPage() {
                 </button>
 
                 {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{error}</div>
+                  <div className="bg-danger/10 border border-danger/30 rounded-xl p-4 text-danger text-sm">{error}</div>
                 )}
               </div>
             )}
@@ -259,8 +259,8 @@ export default function SetupPage() {
         {step === 2 && (
           <div className="space-y-8">
             {scraped && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                <p className="text-sm text-emerald-700">
+              <div className="bg-success/10 border border-success/30 rounded-xl p-4">
+                <p className="text-sm text-success">
                   ✅ Datos importados desde Booksy. Revisa y edita lo que necesites.
                 </p>
               </div>
@@ -296,7 +296,7 @@ export default function SetupPage() {
                       value={service.name}
                       onChange={(e) => updateService(i, "name", e.target.value)}
                       placeholder="Nombre del servicio"
-                      className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
+                      className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
                     />
                     <div className="flex gap-2 sm:contents">
                       <input
@@ -304,7 +304,7 @@ export default function SetupPage() {
                         value={service.duration}
                         onChange={(e) => updateService(i, "duration", e.target.value)}
                         placeholder="Min"
-                        className="w-20 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors text-center"
+                        className="w-20 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors text-center"
                       />
                       <div className="relative w-24">
                         <input
@@ -312,14 +312,14 @@ export default function SetupPage() {
                           value={service.price}
                           onChange={(e) => updateService(i, "price", e.target.value)}
                           placeholder="€"
-                          className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors text-center"
+                          className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors text-center"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => removeService(i)}
                         disabled={services.length <= 1}
-                        className="shrink-0 rounded-lg p-3 text-ink-3 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+                        className="shrink-0 rounded-lg p-3 text-ink-3 hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -350,7 +350,7 @@ export default function SetupPage() {
                 {barbers.map((b, i) => (
                   <div key={i} className="flex items-center gap-2 rounded-full bg-overlay border border-line px-4 py-2">
                     <span className="text-sm text-ink-2">{b}</span>
-                    <button onClick={() => setBarbers(barbers.filter((_, j) => j !== i))} className="text-ink-3 hover:text-red-500 transition-colors">
+                    <button onClick={() => setBarbers(barbers.filter((_, j) => j !== i))} className="text-ink-3 hover:text-danger transition-colors">
                       <X className="h-3 w-3" />
                     </button>
                   </div>
@@ -370,7 +370,7 @@ export default function SetupPage() {
                     }
                   }}
                   placeholder="Nombre del barbero"
-                  className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
+                  className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
                 />
                 <button
                   type="button"
@@ -406,7 +406,7 @@ export default function SetupPage() {
                           setHours({ ...hours, [day]: '10:00-20:00' })
                         }
                       }}
-                      className="bg-surface border border-line rounded-lg p-2 text-sm text-ink outline-none w-24 focus:border-emerald-500 transition-colors"
+                      className="bg-surface border border-line rounded-lg p-2 text-sm text-ink outline-none w-24 focus:border-brand transition-colors"
                     >
                       <option value="open">Abierto</option>
                       <option value="closed">Cerrado</option>
@@ -417,7 +417,7 @@ export default function SetupPage() {
                         value={hours[day]}
                         onChange={(e) => setHours({ ...hours, [day]: e.target.value })}
                         placeholder="10:00-20:00"
-                        className="flex-1 bg-surface border border-line rounded-lg p-2 text-sm text-ink focus:border-emerald-500 outline-none transition-colors text-center"
+                        className="flex-1 bg-surface border border-line rounded-lg p-2 text-sm text-ink focus:border-brand outline-none transition-colors text-center"
                       />
                     )}
                   </div>
@@ -450,7 +450,7 @@ export default function SetupPage() {
                   href="https://wa.me/34644288663?text=Hola!%20Necesito%20ayuda%20para%20conectar%20mi%20calendario"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-emerald-600 underline font-medium hover:text-emerald-500 transition-colors"
+                  className="text-brand underline font-medium hover:text-brand-strong transition-colors"
                 >
                   Escríbenos por WhatsApp
                 </a>
@@ -510,7 +510,7 @@ export default function SetupPage() {
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{error}</div>
+              <div className="bg-danger/10 border border-danger/30 rounded-xl p-4 text-danger text-sm">{error}</div>
             )}
           </div>
         )}
@@ -533,7 +533,7 @@ export default function SetupPage() {
             <button
               onClick={() => setStep(step + 1)}
               disabled={step === 2 && (!businessName.trim() || !ownerName.trim() || !phone.trim())}
-              className="flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-6 py-3 text-sm font-bold text-white transition-colors active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-lg bg-brand hover:bg-brand-strong px-6 py-3 text-sm font-bold text-brand-ink transition-colors active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Siguiente
               <ChevronRight className="h-4 w-4" />
@@ -544,7 +544,7 @@ export default function SetupPage() {
             <button
               onClick={handleSubmit}
               disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-8 py-3 text-sm font-bold text-white transition-colors active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-brand hover:bg-brand-strong px-8 py-3 text-sm font-bold text-brand-ink transition-colors active:scale-95 disabled:opacity-50"
             >
               {saving ? "Activando..." : "Confirmar y Activar"}
               <Check className="h-4 w-4" />
@@ -562,7 +562,7 @@ function InputField({ label, value, onChange, placeholder, required = false }: {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-medium text-ink-2">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label} {required && <span className="text-danger">*</span>}
       </label>
       <input
         type="text"
@@ -570,7 +570,7 @@ function InputField({ label, value, onChange, placeholder, required = false }: {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-emerald-500 outline-none transition-colors"
+        className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
       />
     </div>
   )

@@ -35,17 +35,17 @@ export default function BookingDetailPanel({ booking, onClose }: Props) {
 
   const sourceBadgeClass = (source: string) =>
     source === 'booksy'
-      ? 'bg-emerald-100 text-emerald-700'
-      : 'bg-violet-100 text-violet-700';
+      ? 'bg-success/15 text-success'
+      : 'bg-brand-softer text-brand';
 
   const statusBadge = (status: string) => {
     switch (status) {
       case 'confirmed':
         return 'bg-overlay text-ink-2';
       case 'no_show':
-        return 'bg-amber-100 text-amber-700';
+        return 'bg-warning/15 text-warning';
       case 'completed':
-        return 'bg-blue-100 text-blue-700';
+        return 'bg-success/15 text-success';
       default:
         return 'bg-overlay text-ink-2';
     }
@@ -138,7 +138,7 @@ export default function BookingDetailPanel({ booking, onClose }: Props) {
                     title="Copiar teléfono"
                   >
                     {copied ? (
-                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                      <Check className="h-3.5 w-3.5 text-success" />
                     ) : (
                       <Copy className="h-3.5 w-3.5" />
                     )}
@@ -196,7 +196,7 @@ export default function BookingDetailPanel({ booking, onClose }: Props) {
                   <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
                     Precio
                   </p>
-                  <p className="text-sm font-semibold text-emerald-600">{booking.price} €</p>
+                  <p className="text-sm font-semibold text-brand">{booking.price} €</p>
                 </div>
               )}
             </div>

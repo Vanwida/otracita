@@ -4,13 +4,15 @@ import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Settings, LogOut, MessageSquare, Wrench, Shield, Calendar } from "lucide-react"
+import { LogOut, Shield } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
+import MobileMoreTrigger from "@/app/dashboard/_components/MobileMoreTrigger"
 import { Wordmark } from "@/components/brand"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
+import { PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV, BOTTOM_NAV } from "@/app/dashboard/_components/nav-config"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -29,6 +31,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const email = session.user.email || ''
   const isAdmin = email === 'vanwida@aistudios.pro' || email.endsWith('@aistudios.pro') || email.toLowerCase().includes('alex')
 
+  const sections = [PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV]
+
   return (
     <div className="flex h-screen bg-canvas text-ink overflow-hidden">
 
@@ -46,48 +50,33 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Wordmark height={30} />
         </Link>
 
-        <nav className="flex-1 space-y-1">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            Vista General
-          </Link>
-          <Link
-            href="/dashboard/calendar"
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
-          >
-            <Calendar className="h-4 w-4" />
-            Calendario
-          </Link>
-          <Link
-            href="/dashboard/setup"
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
-          >
-            <Wrench className="h-4 w-4" />
-            Configuración Inicial
-          </Link>
-          <Link
-            href="/dashboard/settings"
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
-          >
-            <Settings className="h-4 w-4" />
-            Ajustes del Bot
-          </Link>
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-ink-3 cursor-not-allowed">
-            <MessageSquare className="h-4 w-4" />
-            Chats (Pronto)
-          </div>
+        <nav className="flex-1 space-y-6">
+          {sections.map((section) => (
+            <div key={section.heading} className="space-y-1">
+              <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
+                {section.heading}
+              </p>
+              {section.items.map(({ href, icon: Icon, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              ))}
+            </div>
+          ))}
 
           {isAdmin && (
-            <div className="pt-3 mt-4 border-t border-sidebar-line">
+            <div className="pt-3 mt-2 border-t border-sidebar-line">
               <Link
                 href="/admin"
                 className="flex items-center gap-3 rounded-lg border border-sidebar-line px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover hover:border-line-strong transition-colors"
               >
                 <Shield className="h-4 w-4" />
-                <span className="font-semibold">Panel Admin</span>
+                <span className="font-semibold">Panel admin</span>
               </Link>
             </div>
           )}
@@ -95,13 +84,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
         {needsSetup && (
           <div className="bg-sidebar-card border border-sidebar-line rounded-xl p-4 mb-4">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">Setup Inicial</p>
-            <p className="text-xs text-ink-2 leading-relaxed">Entrena tu IA para empezar a agendar.</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">Configuración pendiente</p>
+            <p className="text-xs text-ink-2 leading-relaxed">Termina de configurar tu bot para empezar a agendar.</p>
             <Link
               href="/dashboard/setup"
               className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-brand hover:text-brand-strong transition-colors"
             >
-              Comenzar →
+              Continuar →
             </Link>
           </div>
         )}
@@ -130,7 +119,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-danger hover:bg-sidebar-hover transition-colors"
             >
               <LogOut className="h-4 w-4" />
-              Cerrar Sesión
+              Cerrar sesión
             </button>
           </form>
         </div>
@@ -143,67 +132,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       <DashboardChatWidget />
 
-      {/* Mobile Bottom Nav */}
+      {/* Mobile Bottom Nav — 4 primary shortcuts + "Más" opens the drawer */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-surface border-t border-line flex items-center justify-around px-2 lg:hidden">
-        <Link
-          href="/dashboard"
-          className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
-        >
-          <LayoutDashboard className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Inicio</span>
-        </Link>
-
-        <Link
-          href="/dashboard/calendar"
-          className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
-        >
-          <Calendar className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Calendario</span>
-        </Link>
-        <Link
-          href="/dashboard/setup"
-          className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
-        >
-          <Wrench className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Setup</span>
-        </Link>
-
-        <Link
-          href="/dashboard/settings"
-          className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
-        >
-          <Settings className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Ajustes</span>
-        </Link>
-
-        {isAdmin && (
+        {BOTTOM_NAV.map(({ href, icon: Icon, label }) => (
           <Link
-            href="/admin"
+            key={href}
+            href={href}
             className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
           >
-            <Shield className="h-5 w-5" />
-            <span className="text-[10px] font-medium">Admin</span>
+            <Icon className="h-5 w-5" />
+            <span className="text-[10px] font-medium">{label}</span>
           </Link>
-        )}
-
-        <form
-          action={async () => {
-            "use server"
-            const { auth: serverAuth } = await import("@/lib/auth/server")
-            const { headers: getHeaders } = await import("next/headers")
-            await serverAuth.api.signOut({ headers: await getHeaders() });
-            const { redirect: nav } = await import("next/navigation")
-            nav("/login");
-          }}
-        >
-          <button
-            type="submit"
-            className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
-          >
-            <LogOut className="h-5 w-5" />
-            <span className="text-[10px] font-medium">Salir</span>
-          </button>
-        </form>
+        ))}
+        <MobileMoreTrigger />
       </nav>
 
     </div>

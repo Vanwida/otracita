@@ -85,7 +85,7 @@ export default function MonthGrid({
                   <span
                     className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full ${
                       isToday
-                        ? 'bg-emerald-500 text-white'
+                        ? 'bg-brand text-brand-ink'
                         : 'text-ink-2'
                     }`}
                   >

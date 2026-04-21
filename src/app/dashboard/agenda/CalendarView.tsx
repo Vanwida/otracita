@@ -180,7 +180,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours }:
           <select
             value={selectedBarber}
             onChange={e => setSelectedBarber(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink-2 hover:border-line-strong focus:outline-none focus:border-emerald-500 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink-2 hover:border-line-strong focus:outline-none focus:border-brand transition-colors"
           >
             <option value="all">Todos los barberos</option>
             {barbers.map(b => (
@@ -198,7 +198,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours }:
             setSelectedBooking(null);
             setIsNewBookingOpen(true);
           }}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           Nueva Reserva

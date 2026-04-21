@@ -3,12 +3,10 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import {
-  Menu, X,
-  LayoutDashboard, Calendar, Wrench, Settings, MessageSquare, Shield, LogOut,
-} from 'lucide-react'
+import { Menu, X, Shield, LogOut } from 'lucide-react'
 import { authClient } from '@/lib/auth/client'
 import { Wordmark } from '@/components/brand'
+import { PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV } from './nav-config'
 
 interface Props {
   email: string
@@ -16,12 +14,12 @@ interface Props {
   needsSetup: boolean
 }
 
-const NAV = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Vista General' },
-  { href: '/dashboard/calendar', icon: Calendar, label: 'Calendario' },
-  { href: '/dashboard/setup', icon: Wrench, label: 'Configuración Inicial' },
-  { href: '/dashboard/settings', icon: Settings, label: 'Ajustes del Bot' },
-] as const
+const SECTIONS = [PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV]
+
+// Event fired by `MobileMoreTrigger` (the bottom-nav "Más" button) so the
+// drawer can be opened from a sibling client component without lifting state
+// into the server-rendered layout.
+const OPEN_DRAWER_EVENT = 'otracita:open-drawer'
 
 export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
   const [open, setOpen] = useState(false)
@@ -29,6 +27,12 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
   const router = useRouter()
 
   useEffect(() => { setOpen(false) }, [pathname])
+
+  useEffect(() => {
+    const handler = () => setOpen(true)
+    window.addEventListener(OPEN_DRAWER_EVENT, handler)
+    return () => window.removeEventListener(OPEN_DRAWER_EVENT, handler)
+  }, [])
 
   const handleSignOut = async () => {
     await authClient.signOut()
@@ -64,54 +68,57 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
           <button
             onClick={() => setOpen(false)}
             className="p-1.5 rounded-lg text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
+            aria-label="Cerrar menú"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1">
-          {NAV.map(({ href, icon: Icon, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                pathname === href
-                  ? 'bg-sidebar-hover text-ink'
-                  : 'text-sidebar-text hover:text-ink hover:bg-sidebar-hover'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
+        <nav className="flex-1 space-y-6 overflow-y-auto">
+          {SECTIONS.map((section) => (
+            <div key={section.heading} className="space-y-1">
+              <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
+                {section.heading}
+              </p>
+              {section.items.map(({ href, icon: Icon, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    pathname === href
+                      ? 'bg-sidebar-hover text-ink'
+                      : 'text-sidebar-text hover:text-ink hover:bg-sidebar-hover'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              ))}
+            </div>
           ))}
 
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-ink-3 cursor-not-allowed">
-            <MessageSquare className="h-4 w-4" />
-            Chats (Pronto)
-          </div>
-
           {isAdmin && (
-            <div className="pt-3 mt-4 border-t border-sidebar-line">
+            <div className="pt-3 mt-2 border-t border-sidebar-line">
               <Link
                 href="/admin"
                 className="flex items-center gap-3 rounded-lg border border-sidebar-line px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
               >
                 <Shield className="h-4 w-4" />
-                <span className="font-semibold">Panel Admin</span>
+                <span className="font-semibold">Panel admin</span>
               </Link>
             </div>
           )}
         </nav>
 
         {needsSetup && (
-          <div className="bg-sidebar-card border border-sidebar-line rounded-xl p-4 mb-4">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">Setup Inicial</p>
-            <p className="text-xs text-ink-2 leading-relaxed">Entrena tu IA para empezar a agendar.</p>
+          <div className="bg-sidebar-card border border-sidebar-line rounded-xl p-4 mb-4 mt-4">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">Configuración pendiente</p>
+            <p className="text-xs text-ink-2 leading-relaxed">Termina de configurar tu bot para empezar a agendar.</p>
             <Link
               href="/dashboard/setup"
               className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-brand hover:text-brand-strong transition-colors"
             >
-              Comenzar →
+              Continuar →
             </Link>
           </div>
         )}
@@ -130,7 +137,7 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-danger hover:bg-sidebar-hover transition-colors"
           >
             <LogOut className="h-4 w-4" />
-            Cerrar Sesión
+            Cerrar sesión
           </button>
         </div>
       </div>

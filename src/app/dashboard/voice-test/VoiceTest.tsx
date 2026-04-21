@@ -598,21 +598,21 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
             {/* Pulse rings when listening */}
             {isListening && (
               <>
-                <span className="absolute inline-flex h-24 w-24 rounded-full bg-emerald-500/20 animate-ping" />
-                <span className="absolute inline-flex h-20 w-20 rounded-full bg-emerald-500/10 animate-ping [animation-delay:150ms]" />
+                <span className="absolute inline-flex h-24 w-24 rounded-full bg-success/20 animate-ping" />
+                <span className="absolute inline-flex h-20 w-20 rounded-full bg-success/10 animate-ping [animation-delay:150ms]" />
               </>
             )}
             {/* AI speaking indicator */}
             {isSpeaking && !isListening && (
-              <span className="absolute inline-flex h-24 w-24 rounded-full bg-blue-500/20 animate-ping [animation-delay:0ms]" />
+              <span className="absolute inline-flex h-24 w-24 rounded-full bg-brand/20 animate-ping [animation-delay:0ms]" />
             )}
 
             <div
               className={`relative h-20 w-20 rounded-full flex items-center justify-center transition-colors duration-300 ${
                 isListening
-                  ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30'
+                  ? 'bg-success shadow-lg'
                   : isSpeaking
-                  ? 'bg-blue-500 shadow-lg shadow-blue-500/30'
+                  ? 'bg-brand shadow-lg'
                   : isConnected
                   ? 'bg-overlay border border-line-strong'
                   : 'bg-overlay border border-line'
@@ -621,7 +621,7 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
               {isConnected ? (
                 <Mic
                   className={`h-8 w-8 ${
-                    isListening || isSpeaking ? 'text-white' : 'text-ink-2'
+                    isListening || isSpeaking ? 'text-brand-ink' : 'text-ink-2'
                   }`}
                 />
               ) : (
@@ -637,14 +637,14 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
             )}
             {status === 'connecting' && (
               <>
-                <Loader2 className="h-4 w-4 text-emerald-500 animate-spin" />
-                <span className="text-emerald-600">Conectando...</span>
+                <Loader2 className="h-4 w-4 text-brand animate-spin" />
+                <span className="text-brand">Conectando...</span>
               </>
             )}
             {status === 'connected' && (
               <>
-                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
-                <span className="text-emerald-600">
+                <span className="h-2 w-2 rounded-full bg-success shadow-sm" />
+                <span className="text-success">
                   {isListening
                     ? 'Escuchando...'
                     : isSpeaking
@@ -655,15 +655,15 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
             )}
             {status === 'error' && (
               <>
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                <span className="text-red-500">Error de conexión</span>
+                <span className="h-2 w-2 rounded-full bg-danger" />
+                <span className="text-danger">Error de conexión</span>
               </>
             )}
           </div>
 
           {/* Error message */}
           {errorMessage && (
-            <p className="text-xs text-red-500 text-center max-w-xs">{errorMessage}</p>
+            <p className="text-xs text-danger text-center max-w-xs">{errorMessage}</p>
           )}
 
           {/* CTA Button */}
@@ -671,7 +671,7 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
             <button
               onClick={startCall}
               disabled={isConnecting}
-              className="flex items-center gap-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-3 rounded-xl transition-colors shadow-md shadow-emerald-500/20"
+              className="flex items-center gap-2.5 bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink font-semibold text-sm px-6 py-3 rounded-xl transition-colors shadow-md"
             >
               {isConnecting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -683,7 +683,7 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
           ) : (
             <button
               onClick={stopCall}
-              className="flex items-center gap-2.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 hover:text-red-700 font-semibold text-sm px-6 py-3 rounded-xl transition-colors"
+              className="flex items-center gap-2.5 bg-danger/10 hover:bg-danger/15 border border-danger/30 text-danger font-semibold text-sm px-6 py-3 rounded-xl transition-colors"
             >
               <PhoneOff className="h-4 w-4" />
               Colgar
@@ -728,7 +728,7 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
                     className={`h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5 ${
                       entry.role === 'user'
                         ? 'bg-overlay border border-line text-ink-2'
-                        : 'bg-emerald-50 border border-emerald-200 text-emerald-600'
+                        : 'bg-brand-softer border border-brand/30 text-brand'
                     }`}
                   >
                     {entry.role === 'user' ? 'U' : 'IA'}
@@ -738,7 +738,7 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
                     className={`max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
                       entry.role === 'user'
                         ? 'bg-overlay border border-line text-ink rounded-tr-none'
-                        : 'bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-tl-none'
+                        : 'bg-brand-softer border border-brand/30 text-ink rounded-tl-none'
                     }`}
                   >
                     {entry.text}

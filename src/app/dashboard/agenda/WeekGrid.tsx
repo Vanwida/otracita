@@ -128,12 +128,12 @@ export default function WeekGrid({
                 {/* Column header */}
                 <div className="h-8 flex flex-col items-center justify-center border-b border-line shrink-0">
                   <span
-                    className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-emerald-600' : 'text-ink-2'}`}
+                    className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-brand' : 'text-ink-2'}`}
                   >
                     {format(day, 'EEE', { locale: es })}
                   </span>
                   <span
-                    className={`text-xs font-bold leading-none ${isToday ? 'text-emerald-600' : 'text-ink-2'}`}
+                    className={`text-xs font-bold leading-none ${isToday ? 'text-brand' : 'text-ink-2'}`}
                   >
                     {format(day, 'd')}
                   </span>

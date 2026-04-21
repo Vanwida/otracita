@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { db } from "@/db"
 import { analytics, clients, subscriptions, bookings, customers } from "@/db/schema"
 import { eq, sql, gte, and, or } from "drizzle-orm"
-import { CalendarCheck, CreditCard, AlertCircle, Clock, User, Scissors } from "lucide-react"
+import { CalendarCheck, CreditCard, AlertCircle, Clock, User, Scissors, Wrench, ArrowRight } from "lucide-react"
 import { auth } from "@/lib/auth/server";
 import NoShowButton from "./_components/NoShowButton";
 import StatsPeriodTabs from "./_components/StatsPeriodTabs";
@@ -21,10 +22,15 @@ export default async function DashboardOverview({ searchParams }: { searchParams
   const clientRecords = await db.select().from(clients).where(eq(clients.email, session.user.email))
   const client = clientRecords[0]
 
-  // Redirect pending clients to setup wizard
-  if (!client || client.status === 'pending') {
+  // No client record at all — user hasn't been through Stripe yet. Push to
+  // the setup wizard which will create the record.
+  if (!client) {
     redirect("/dashboard/setup");
   }
+
+  // Pending clients stay on the dashboard and see a prominent CTA below —
+  // setup is no longer a forced redirect.
+  const isPending = client.status === 'pending'
 
   // Compute period start date
   const now = new Date()
@@ -119,20 +125,41 @@ export default async function DashboardOverview({ searchParams }: { searchParams
       <div className="mb-6 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-ink mb-2">
-            Hola, <span className="text-emerald-500">{client?.businessName || session.user.email.split('@')[0]}</span>
+            Hola, <span className="text-brand">{client?.businessName || session.user.email.split('@')[0]}</span>
           </h1>
           <p className="text-ink-2 text-base">
             Resumen del rendimiento de tu chatbot IA.
           </p>
         </div>
 
-        {client?.status === 'pending' && (
-          <div className="bg-surface border border-line px-4 py-2 rounded-xl text-sm font-semibold text-amber-600 flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-            Configuracion Pendiente
+        {isPending && (
+          <div className="bg-surface border border-line px-4 py-2 rounded-xl text-sm font-semibold text-warning flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full bg-warning shrink-0" />
+            Configuración pendiente
           </div>
         )}
       </div>
+
+      {isPending && (
+        <div className="mb-8 bg-brand-softer border border-brand/30 rounded-2xl p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+            <Wrench className="h-5 w-5 text-brand" />
+          </div>
+          <div className="flex-1">
+            <p className="text-ink font-semibold text-base md:text-lg mb-1">Termina de configurar tu negocio</p>
+            <p className="text-ink-2 text-sm leading-relaxed max-w-2xl">
+              Añade tus servicios, horarios y conecta tu calendario para que el bot empiece a agendar citas automáticamente.
+            </p>
+          </div>
+          <Link
+            href="/dashboard/setup"
+            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
+          >
+            Termina tu configuración
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
 
       {/* Plan & Subscription Info */}
       {client && (
@@ -143,9 +170,9 @@ export default async function DashboardOverview({ searchParams }: { searchParams
           </div>
           <div className={`rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 border ${
             client.status === 'active'
-              ? 'bg-surface border-line text-emerald-600'
+              ? 'bg-surface border-line text-success'
               : client.status === 'pending'
-                ? 'bg-surface border-line text-amber-600'
+                ? 'bg-surface border-line text-warning'
                 : 'bg-surface border-line text-ink-3'
           }`}>
             Estado: <span className="uppercase tracking-wide ml-1">{client.status}</span>
@@ -160,13 +187,13 @@ export default async function DashboardOverview({ searchParams }: { searchParams
         </div>
       )}
 
-      {!hasData && (
+      {!hasData && !isPending && (
         <div className="mb-8 bg-surface border border-line rounded-xl p-5 flex flex-col md:flex-row md:items-center gap-4">
-          <AlertCircle className="h-8 w-8 text-amber-500 shrink-0" />
+          <AlertCircle className="h-8 w-8 text-warning shrink-0" />
           <div>
-            <p className="text-amber-600 font-semibold text-base mb-0.5">Tu chatbot aun no tiene datos</p>
+            <p className="text-warning font-semibold text-base mb-0.5">Tu chatbot aún no tiene datos</p>
             <p className="text-ink-2 text-sm leading-relaxed max-w-2xl">
-              Los datos apareceran aqui cuando tu chatbot empiece a recibir y responder mensajes por WhatsApp.
+              Los datos aparecerán aquí cuando tu chatbot empiece a recibir y responder mensajes por WhatsApp.
             </p>
           </div>
         </div>
@@ -337,7 +364,7 @@ function BookingRow({
         ) : canMarkNoShow ? (
           <NoShowButton bookingId={booking.id} />
         ) : (
-          <span className="text-xs text-emerald-600 font-medium">Confirmada</span>
+          <span className="text-xs text-success font-medium">Confirmada</span>
         )}
       </div>
     </div>
