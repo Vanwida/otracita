@@ -143,3 +143,24 @@ export const leads = pgTable('leads', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// Observability log for every Booksy inbound email parsed by /api/email/inbound.
+// Used by the admin email-health dashboard to detect silent regex failures and
+// LLM-assisted fallbacks BEFORE the client notices double-bookings in their
+// calendar. One row = one Postmark inbound webhook delivery we processed.
+export const emailParseLog = pgTable('email_parse_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').references(() => clients.id), // nullable — email may not match any client
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  toEmail: text('to_email'),
+  fromEmail: text('from_email'),
+  subject: text('subject'),
+  rawSnippet: text('raw_snippet'), // first 2000 chars of body
+  status: text('status').notNull(), // 'full' | 'partial' | 'failed' | 'unmatched_client' | 'llm_assisted'
+  parseSource: text('parse_source'), // 'regex' | 'llm'
+  parsedFields: jsonb('parsed_fields'), // the BooksyBookingData output
+  missingFields: text('missing_fields').array(), // which fields failed to extract
+  bookingId: uuid('booking_id').references(() => bookings.id), // if the email generated a booking
+  alertSent: boolean('alert_sent').default(false),
+  errorMessage: text('error_message'),
+});
+

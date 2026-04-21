@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { db } from "@/db"
 import { analytics, clients, subscriptions, bookings, customers } from "@/db/schema"
 import { eq, sql, gte, and, or } from "drizzle-orm"
-import { CalendarCheck, CreditCard, AlertCircle, Clock, User, Scissors, Wrench, ArrowRight } from "lucide-react"
+import { CalendarCheck, CheckCircle2, CreditCard, AlertCircle, Clock, User, Scissors, Wrench, ArrowRight } from "lucide-react"
 import { auth } from "@/lib/auth/server";
 import NoShowButton from "./_components/NoShowButton";
 import StatsPeriodTabs from "./_components/StatsPeriodTabs";
@@ -161,6 +161,10 @@ export default async function DashboardOverview({ searchParams }: { searchParams
         </div>
       )}
 
+      {isPending && (
+        <ActivationTracker client={client} />
+      )}
+
       {/* Plan & Subscription Info */}
       {client && (
         <div className="mb-8 flex items-center gap-3 flex-wrap">
@@ -301,6 +305,119 @@ export default async function DashboardOverview({ searchParams }: { searchParams
       </div>
     </div>
   )
+}
+
+// -----------------------------------------------------------------------------
+// Activation tracker — shown while client.status === 'pending'.
+//
+// 5 steps, each derived from fields on the `clients` row. Steps 3 and 4 flip
+// to "done" when our ops team wires up WhatsApp / Booksy for the client —
+// typically within 24h of signup.
+// -----------------------------------------------------------------------------
+
+type ClientForTracker = {
+  businessName: string | null;
+  phone: string | null;
+  chatbotServices: unknown;
+  whatsappPhoneNumberId: string | null;
+  booksyInboundEmail: string | null;
+  status: string;
+};
+
+function isServicesFilled(services: unknown): boolean {
+  if (services == null) return false;
+  if (Array.isArray(services)) return services.length > 0;
+  if (typeof services === 'object') return Object.keys(services as object).length > 0;
+  return false;
+}
+
+function ActivationTracker({ client }: { client: ClientForTracker }) {
+  const businessDataDone = Boolean(
+    client.businessName &&
+      client.phone &&
+      isServicesFilled(client.chatbotServices)
+  );
+  const whatsappDone = Boolean(client.whatsappPhoneNumberId);
+  const booksyDone = Boolean(client.booksyInboundEmail);
+  const botActive = client.status === 'active';
+
+  const opsPendingSubtitle =
+    'Nuestro equipo lo activa en 24h · Te avisaremos por WhatsApp cuando esté listo.';
+
+  const steps: Array<{ title: string; subtitle: string; done: boolean }> = [
+    {
+      title: 'Pago recibido',
+      subtitle: 'Tu suscripción está activa.',
+      done: true,
+    },
+    {
+      title: 'Datos del negocio',
+      subtitle: businessDataDone
+        ? 'Nombre, teléfono y servicios completados.'
+        : 'Añade el nombre, teléfono y servicios en la configuración.',
+      done: businessDataDone,
+    },
+    {
+      title: 'WhatsApp Business conectado',
+      subtitle: whatsappDone
+        ? 'Tu número de WhatsApp Business está conectado al bot.'
+        : opsPendingSubtitle,
+      done: whatsappDone,
+    },
+    {
+      title: 'Booksy sincronizado',
+      subtitle: booksyDone
+        ? 'Los emails de Booksy se sincronizan con tu agenda.'
+        : opsPendingSubtitle,
+      done: booksyDone,
+    },
+    {
+      title: 'Bot activo',
+      subtitle: botActive
+        ? 'El bot está respondiendo a tus clientes 24/7.'
+        : 'Se activa automáticamente cuando los pasos anteriores estén listos.',
+      done: botActive,
+    },
+  ];
+
+  return (
+    <div className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
+      <h2 className="font-display text-2xl md:text-3xl font-semibold text-ink mb-1">
+        Activando tu bot
+      </h2>
+      <p className="text-sm text-ink-2 mb-5">
+        Así va la activación de tu cuenta. Los pasos que dependen de nuestro equipo los hacemos por ti.
+      </p>
+
+      <ol className="space-y-3">
+        {steps.map((step, idx) => (
+          <li
+            key={step.title}
+            className="flex items-start gap-3 rounded-xl border border-line bg-canvas/60 p-3 md:p-4"
+          >
+            <div className="shrink-0 mt-0.5">
+              {step.done ? (
+                <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+              ) : (
+                <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
+              )}
+              <span className="sr-only">
+                {step.done ? 'Completado' : 'Pendiente'}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm md:text-base font-semibold text-ink">
+                {idx + 1}. {step.title}
+              </p>
+              <p className="text-xs md:text-sm text-ink-2 mt-0.5 leading-relaxed">
+                {step.subtitle}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
 
 function BookingRow({

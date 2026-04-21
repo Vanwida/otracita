@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { Users, LayoutDashboard, LogOut, FileText, Shield } from "lucide-react"
+import { Users, LayoutDashboard, LogOut, FileText, Shield, Activity } from "lucide-react"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -60,6 +60,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin/leads" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-gray-500 transition-all hover:bg-white/[0.04] hover:text-gray-300 hover:border-white/5 opacity-50 cursor-not-allowed">
             <FileText className="h-4 w-4" />
             Leads Web
+          </Link>
+          <Link href="/admin/email-health" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-gray-400 transition-all hover:bg-white/[0.04] hover:text-gray-200 hover:border-white/5">
+            <Activity className="h-4 w-4" />
+            Salud parser
           </Link>
         </nav>
         

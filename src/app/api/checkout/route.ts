@@ -1,23 +1,14 @@
 import Stripe from 'stripe';
 
+// Public pricing currently offers a single plan. Ads / full were removed from
+// the UI — if they come back we'll ship them behind a Vanwida sub-brand. Any
+// other plan key posted to /api/checkout is a bug or scrape attempt.
 const PLANS: Record<string, { name: string; price: number; currency: string; description: string }> = {
   chatbot: {
     name: 'WhatsApp Bot',
     price: 2900,
     currency: 'eur',
     description: 'Chatbot inteligente para WhatsApp + sincronizacion con Booksy',
-  },
-  ads: {
-    name: 'Bot + Ads',
-    price: 8000,
-    currency: 'eur',
-    description: 'Chatbot WhatsApp + gestion de Google Ads',
-  },
-  full: {
-    name: 'Todo incluido',
-    price: 9900,
-    currency: 'eur',
-    description: 'Chatbot WhatsApp + Google Ads + Meta Ads',
   },
 };
 
@@ -38,13 +29,15 @@ export async function POST(request: Request) {
     const plan = body.plan as string;
     const demo = body.demo === true;
 
+    // Validate plan first — applies to demo mode too so we don't emit
+    // shareable links for plans we don't actually sell.
+    if (!plan || !PLANS[plan]) {
+      return Response.json({ error: 'Plan no disponible' }, { status: 400 });
+    }
+
     // Demo mode — skip Stripe, go straight to success page
     if (demo) {
       return Response.json({ url: SITE_URL + '/gracias?demo=true&plan=' + plan });
-    }
-
-    if (!plan || !PLANS[plan]) {
-      return Response.json({ error: 'Plan invalido' }, { status: 400 });
     }
 
     const selectedPlan = PLANS[plan];

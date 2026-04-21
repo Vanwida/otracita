@@ -2,6 +2,9 @@ import { stripe } from '@/lib/stripe';
 import { db } from '@/db';
 import { clients, subscriptions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { notifyAlex } from '@/lib/notify-alex';
+
+const ADMIN_URL = 'https://otracita.es/admin';
 
 export async function POST(request: Request) {
   const body = await request.text();
@@ -50,8 +53,26 @@ export async function POST(request: Request) {
         status: 'active',
       });
 
-      // TODO: Send notification to Alex (WhatsApp/email)
       console.log(`New client signed up: ${businessName} (${plan})`);
+
+      // Notify Alex on WhatsApp (email fallback). Never throws — we must not
+      // let a notification failure break the Stripe webhook ack.
+      const notifyMessage = [
+        '🎉 Nuevo cliente otracita:',
+        '',
+        businessName || 'Sin nombre',
+        email,
+        phone || '(sin teléfono)',
+        `Plan: ${plan || 'chatbot'}`,
+        '',
+        `Activar en: ${ADMIN_URL}`,
+      ].join('\n');
+
+      try {
+        await notifyAlex(notifyMessage);
+      } catch (err) {
+        console.error('notifyAlex unexpected error:', err);
+      }
       break;
     }
 
