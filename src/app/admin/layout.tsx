@@ -51,9 +51,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <CheckSquare className="h-4 w-4 text-indigo-300" />
             Onboarding
           </Link>
-          <Link href="/admin/clients" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-gray-500 transition-all hover:bg-white/[0.04] hover:text-gray-300 hover:border-white/5 opacity-50 cursor-not-allowed">
-            <Users className="h-4 w-4" />
-            Clientes (SaaS)
+          <Link href="/admin/clients" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-indigo-200/80 transition-all hover:bg-indigo-500/10 hover:text-indigo-100 hover:border-indigo-500/30 hover:shadow-[0_0_15px_rgba(99,102,241,0.12)]">
+            <Users className="h-4 w-4 text-indigo-300" />
+            Clientes
           </Link>
           <Link href="/admin/leads" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-gray-500 transition-all hover:bg-white/[0.04] hover:text-gray-300 hover:border-white/5 opacity-50 cursor-not-allowed">
             <FileText className="h-4 w-4" />
