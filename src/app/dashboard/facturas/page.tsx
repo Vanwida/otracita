@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { clients, invoices } from '@/db/schema'
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { FileText, Download, ChevronRight, Receipt, AlertCircle } from 'lucide-react'
+import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // /dashboard/facturas — lista mensual de tickets y facturas que el barbero
@@ -146,20 +146,61 @@ export default async function FacturasPage({
         <StatCard label="Documentos emitidos" value={stats.count.toString()} hint={stats.count === 1 ? 'factura' : 'facturas'} />
       </div>
 
+      {/* Primary action: new manual invoice / walk-in */}
+      <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-brand-softer border border-brand/20 rounded-2xl p-4 md:p-5">
+        <div>
+          <p className="font-display text-lg font-semibold text-ink">
+            Nueva factura o walk-in
+          </p>
+          <p className="text-sm text-ink-2 mt-0.5">
+            Emite un ticket o factura sin reserva previa en segundos.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/facturas/nueva"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
+          prefetch={false}
+        >
+          <Plus className="h-4 w-4" />
+          Nueva factura / walk-in
+        </Link>
+      </div>
+
       {/* Controls */}
       <div className="mt-6 flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
         <div className="flex flex-col md:flex-row gap-3">
           <MonthSelect currentMonth={month} />
           <TypeSelect currentType={typeFilter} currentMonth={month} />
         </div>
-        <Link
-          href={`/api/invoices/export?month=${month}`}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
-          prefetch={false}
-        >
-          <Download className="h-4 w-4" />
-          Exportar CSV del mes
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Link
+            href={`/api/invoices/libro-pdf?month=${month}`}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-surface border border-line hover:border-brand hover:text-brand-strong px-4 py-3 text-sm font-semibold text-ink transition-colors"
+            prefetch={false}
+            title="Libro de facturas emitidas — PDF para adjuntar al Modelo 303"
+          >
+            <BookOpen className="h-4 w-4" />
+            Libro PDF
+          </Link>
+          <Link
+            href={`/api/invoices/export-xlsx?month=${month}`}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-surface border border-line hover:border-brand hover:text-brand-strong px-4 py-3 text-sm font-semibold text-ink transition-colors"
+            prefetch={false}
+            title="Exportar a Excel (.xlsx) con fórmulas"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Excel
+          </Link>
+          <Link
+            href={`/api/invoices/export?month=${month}`}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-3 text-sm font-semibold text-brand-ink transition-colors"
+            prefetch={false}
+            title="Exportar CSV compatible con Excel ES"
+          >
+            <Download className="h-4 w-4" />
+            CSV
+          </Link>
+        </div>
       </div>
 
       {/* Table */}
@@ -170,7 +211,7 @@ export default async function FacturasPage({
             No hay {typeFilter === 'ticket' ? 'tickets' : typeFilter === 'invoice' ? 'facturas' : 'documentos'} emitidos en {formatMonth(month)}.
           </p>
           <p className="text-sm text-ink-3 mt-2">
-            Se generarán automáticamente cuando se confirmen reservas con precio.
+            Se generarán automáticamente cuando se confirmen reservas con precio, o puedes emitir una manualmente.
           </p>
         </div>
       ) : (

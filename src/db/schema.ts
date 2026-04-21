@@ -15,6 +15,11 @@ export const clients = pgTable('clients', {
   // WhatsApp Cloud API
   whatsappPhoneNumberId: text('whatsapp_phone_number_id'), // Meta phone number ID
   whatsappAccessToken: text('whatsapp_access_token'), // per-client or shared token
+  // Meta onboarding tracking (admin-only operational metadata)
+  metaWebhookVerifiedAt: timestamp('meta_webhook_verified_at'),                // Alex marked webhook OK
+  metaTokenExpiresAt: timestamp('meta_token_expires_at'),                      // token expiry for alerting
+  onboardingTestMessageSentAt: timestamp('onboarding_test_message_sent_at'),   // first manual test OK
+  onboardingNotes: text('onboarding_notes'),                                   // free-form admin notes
   // Booksy integration
   booksyProfileUrl: text('booksy_profile_url'),
   booksyServices: jsonb('booksy_services'), // scraped services from Booksy

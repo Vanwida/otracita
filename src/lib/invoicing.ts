@@ -184,6 +184,137 @@ export function shouldAutoInvoiceBooking(booking: Pick<BookingRow, 'status' | 'p
   return booking.status === 'confirmed' && booking.price != null;
 }
 
+// -----------------------------------------------------------------------------
+// Manual invoicing — walk-in support.
+//
+// Barbers frequently get customers who walk in off the street with no prior
+// booking. Without a way to emit a fiscal doc for those, the barber must keep
+// a parallel ticket book (defeating the point of integrated invoicing). This
+// path lets them create a factura/ticket directly from the dashboard, reusing
+// the same atomic numbering sequence as booking-driven invoices.
+// -----------------------------------------------------------------------------
+
+export interface ManualInvoiceInput {
+  /** YYYY-MM-DD. Defaults to today if omitted. */
+  issueDate?: string;
+  customerName: string;
+  customerPhone?: string | null;
+  /** Presence of a NIF triggers `type='invoice'` instead of `type='ticket'`. */
+  customerNif?: string | null;
+  customerAddress?: string | null;
+  serviceName: string;
+  barberName?: string | null;
+  /** Price in euros, VAT-inclusive (Spanish retail convention). */
+  priceInEuros: number;
+  notes?: string | null;
+}
+
+export interface ManualInvoiceValidationError {
+  field: string;
+  message: string;
+}
+
+/**
+ * Validate a manual-invoice payload without touching the database. Returns a
+ * list of user-facing errors — caller maps to 400 response.
+ */
+export function validateManualInvoiceInput(
+  input: Partial<ManualInvoiceInput>,
+): ManualInvoiceValidationError[] {
+  const errors: ManualInvoiceValidationError[] = [];
+
+  if (!input.customerName || !input.customerName.trim()) {
+    errors.push({ field: 'customerName', message: 'El nombre del cliente es obligatorio.' });
+  }
+  if (!input.serviceName || !input.serviceName.trim()) {
+    errors.push({ field: 'serviceName', message: 'El concepto del servicio es obligatorio.' });
+  }
+  if (input.priceInEuros == null || Number.isNaN(Number(input.priceInEuros))) {
+    errors.push({ field: 'priceInEuros', message: 'El precio es obligatorio.' });
+  } else if (Number(input.priceInEuros) <= 0) {
+    errors.push({ field: 'priceInEuros', message: 'El precio debe ser mayor que cero.' });
+  }
+  if (input.issueDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.issueDate)) {
+    errors.push({ field: 'issueDate', message: 'Fecha inválida (formato YYYY-MM-DD).' });
+  }
+
+  return errors;
+}
+
+/**
+ * Generate a manual invoice for the given client. No booking row is linked
+ * (bookingId stays null). Uses the same atomic `invoiceNumberNext` counter as
+ * booking-driven invoices so numbering remains strictly sequential.
+ *
+ * Returns null if the client has invoicing disabled — caller should surface
+ * a friendly error to the UI.
+ */
+export async function generateManualInvoice(
+  clientId: string,
+  input: ManualInvoiceInput,
+): Promise<GenerateInvoiceResult | null> {
+  const [client] = await db
+    .select()
+    .from(clients)
+    .where(eq(clients.id, clientId));
+
+  if (!client) return null;
+  if (!client.invoicingEnabled) return null;
+
+  // Atomically reserve the next number — same pattern as the booking path so
+  // concurrent manual + auto invoicing cannot collide on a sequence value.
+  const [reserved] = await db
+    .update(clients)
+    .set({ invoiceNumberNext: sql`${clients.invoiceNumberNext} + 1` })
+    .where(eq(clients.id, client.id))
+    .returning({
+      reservedNumber: clients.invoiceNumberNext,
+      prefix: clients.invoiceNumberPrefix,
+    });
+
+  const reservedNumber = (reserved?.reservedNumber ?? 1) - 1;
+  const prefix = reserved?.prefix ?? '';
+  const number = generateInvoiceNumber({
+    invoiceNumberPrefix: prefix,
+    invoiceNumberNext: reservedNumber,
+  });
+
+  const amounts = calculateAmounts(input.priceInEuros, client.ivaRate);
+  const nif = input.customerNif?.trim() || null;
+  const invoiceType = determineInvoiceType(nif);
+  const issueDate = input.issueDate || new Date().toISOString().slice(0, 10);
+
+  const [inserted] = await db
+    .insert(invoices)
+    .values({
+      clientId: client.id,
+      bookingId: null,
+      number,
+      issueDate,
+      customerName: input.customerName.trim(),
+      customerPhone: input.customerPhone?.trim() || null,
+      customerNif: nif,
+      customerAddress: input.customerAddress?.trim() || null,
+      serviceName: input.serviceName.trim(),
+      barberName: input.barberName?.trim() || null,
+      subtotalCents: amounts.subtotalCents,
+      ivaRate: client.ivaRate,
+      ivaAmountCents: amounts.ivaAmountCents,
+      totalCents: amounts.totalCents,
+      currency: 'EUR',
+      type: invoiceType,
+      status: 'issued',
+      notes: input.notes?.trim() || null,
+    })
+    .returning({ id: invoices.id, number: invoices.number });
+
+  return {
+    invoiceId: inserted.id,
+    number: inserted.number,
+    alreadyExisted: false,
+  };
+}
+
 /**
  * Fire-and-forget variant for use in API route handlers — never throws,
  * never blocks. Logs failures to the server console so they surface in

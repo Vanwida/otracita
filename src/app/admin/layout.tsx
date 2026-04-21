@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { Users, LayoutDashboard, LogOut, FileText, Shield, Activity } from "lucide-react"
+import { Users, LayoutDashboard, LogOut, FileText, Shield, Activity, CheckSquare } from "lucide-react"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -52,6 +52,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/0 via-indigo-500/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
             <LayoutDashboard className="h-4 w-4 text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" />
             Control Panel
+          </Link>
+          <Link href="/admin/onboarding" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-indigo-200/80 transition-all hover:bg-indigo-500/10 hover:text-indigo-100 hover:border-indigo-500/30 hover:shadow-[0_0_15px_rgba(99,102,241,0.12)]">
+            <CheckSquare className="h-4 w-4 text-indigo-300" />
+            Onboarding
           </Link>
           <Link href="/admin/clients" className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-gray-500 transition-all hover:bg-white/[0.04] hover:text-gray-300 hover:border-white/5 opacity-50 cursor-not-allowed">
             <Users className="h-4 w-4" />
