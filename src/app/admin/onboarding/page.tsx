@@ -62,23 +62,21 @@ function allReadyExceptActivate(items: ChecklistItem[]): boolean {
 
 function ChecklistIcon({ state }: { state: ChecklistItem['state'] }) {
   if (state === 'done') {
-    return (
-      <Check className="h-3.5 w-3.5 text-emerald-400 drop-shadow-[0_0_4px_rgba(52,211,153,0.6)]" />
-    );
+    return <Check className="h-3.5 w-3.5 text-success" />;
   }
   if (state === 'failed') {
-    return <X className="h-3.5 w-3.5 text-rose-400" />;
+    return <X className="h-3.5 w-3.5 text-danger" />;
   }
-  return <Clock className="h-3.5 w-3.5 text-amber-400/70" />;
+  return <Clock className="h-3.5 w-3.5 text-warning" />;
 }
 
 function StatusPill({ value, count: c }: { value: string; count: number }) {
   return (
-    <div className="rounded-2xl border border-indigo-500/20 bg-[#04040A] px-5 py-4 backdrop-blur-2xl">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/80">
+    <div className="rounded-2xl border border-line bg-surface px-5 py-4">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">
         {value}
       </p>
-      <p className="text-3xl font-black text-white drop-shadow-md">{c}</p>
+      <p className="font-display text-3xl font-semibold text-ink">{c}</p>
     </div>
   );
 }
@@ -148,14 +146,12 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
   return (
     <div className="p-8 md:p-12 max-w-7xl mx-auto relative z-10">
       <div className="mb-10">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-3 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-400 to-indigo-300 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+        <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight mb-3 text-ink">
           Onboarding de clientes
         </h1>
-        <p className="text-indigo-200/70 text-lg font-medium tracking-wide">
+        <p className="text-ink-2 text-lg tracking-wide">
           Checklist visual por cliente. Cada paso es una{' '}
-          <span className="text-cyan-400 font-semibold drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">
-            acción manual
-          </span>{' '}
+          <span className="text-brand font-semibold">acción manual</span>{' '}
           que se olvida fácil.
         </p>
       </div>
@@ -177,10 +173,10 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
             <Link
               key={s}
               href={`/admin/onboarding?status=${s}`}
-              className={`rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all ${
+              className={`rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors ${
                 active
-                  ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.25)]'
-                  : 'bg-indigo-500/5 border-indigo-500/20 text-indigo-300/80 hover:bg-indigo-500/10 hover:border-indigo-500/40'
+                  ? 'bg-brand text-brand-ink border-brand'
+                  : 'bg-surface border-line text-ink-2 hover:border-brand hover:text-brand'
               }`}
             >
               {s}
@@ -191,8 +187,8 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
 
       {/* Cards list */}
       {rows.length === 0 ? (
-        <div className="rounded-3xl border border-indigo-500/15 bg-[#05050A]/80 p-12 text-center text-indigo-200/50">
-          Sin clientes con status <span className="font-mono text-cyan-300">{filter}</span>.
+        <div className="rounded-2xl border border-line bg-surface p-12 text-center text-ink-2">
+          Sin clientes con status <span className="font-mono text-brand">{filter}</span>.
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -203,16 +199,16 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
             return (
               <div
                 key={client.id}
-                className="group relative rounded-3xl border border-indigo-500/20 bg-[#05050A]/85 backdrop-blur-2xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.6)] hover:border-indigo-400/40 hover:shadow-[0_0_25px_rgba(99,102,241,0.15)] transition-all"
+                className="group relative rounded-2xl border border-line bg-surface p-6 transition-colors hover:border-brand"
               >
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4 mb-5">
                   <div className="min-w-0">
-                    <h3 className="text-lg font-bold text-white truncate drop-shadow-md">
+                    <h3 className="font-display text-lg font-semibold text-ink truncate">
                       {client.businessName}
                     </h3>
-                    <p className="text-xs text-indigo-200/60 truncate">{client.email}</p>
-                    <p className="text-xs text-indigo-300/40 font-mono mt-1">
+                    <p className="text-xs text-ink-2 truncate">{client.email}</p>
+                    <p className="text-xs text-ink-3 font-mono mt-1">
                       {client.phone || 'sin teléfono'} ·{' '}
                       {client.createdAt
                         ? new Date(client.createdAt).toLocaleDateString('es-ES')
@@ -227,18 +223,12 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
                   {items.map((it, idx) => (
                     <li
                       key={idx}
-                      className="flex items-center gap-2.5 text-xs text-indigo-100/80"
+                      className="flex items-center gap-2.5 text-xs text-ink"
                     >
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/5 border border-indigo-500/20 shrink-0">
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-overlay border border-line shrink-0">
                         <ChecklistIcon state={it.state} />
                       </span>
-                      <span
-                        className={
-                          it.state === 'done'
-                            ? 'text-indigo-100'
-                            : 'text-indigo-200/60'
-                        }
-                      >
+                      <span className={it.state === 'done' ? 'text-ink' : 'text-ink-2'}>
                         {it.label}
                       </span>
                     </li>
@@ -246,13 +236,13 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
                 </ul>
 
                 {/* Actions */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-indigo-500/10">
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-line">
                   {canActivate && (
                     <form action={activateClient}>
                       <input type="hidden" name="clientId" value={client.id} />
                       <button
                         type="submit"
-                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/15 border border-emerald-500/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-400/60 hover:shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-all"
+                        className="inline-flex items-center gap-2 rounded-xl bg-success/10 border border-success/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-success transition-colors hover:bg-success/20"
                       >
                         <Sparkles className="h-3.5 w-3.5" />
                         Activar
@@ -261,7 +251,7 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
                   )}
                   <Link
                     href={`/admin/clients/${client.id}`}
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 px-4 py-2 text-xs font-bold uppercase tracking-wider text-indigo-200 hover:bg-indigo-500/20 hover:border-cyan-500/40 hover:text-cyan-200 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)] transition-all"
+                    className="inline-flex items-center gap-2 rounded-xl bg-surface border border-line px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink transition-colors hover:border-brand hover:text-brand"
                   >
                     Editar
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -278,16 +268,16 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
 
 function StatusChip({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    active: 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300',
-    pending: 'bg-amber-500/10 border-amber-500/40 text-amber-300',
-    onboarding: 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300',
-    paused: 'bg-orange-500/10 border-orange-500/40 text-orange-300',
-    cancelled: 'bg-rose-500/10 border-rose-500/40 text-rose-300',
+    active: 'bg-success/10 border-success/40 text-success',
+    pending: 'bg-warning/10 border-warning/40 text-warning',
+    onboarding: 'bg-brand-softer border-brand/40 text-brand-strong',
+    paused: 'bg-overlay border-line-strong text-ink-2',
+    cancelled: 'bg-danger/10 border-danger/40 text-danger',
   };
-  const cls = styles[status] ?? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300';
+  const cls = styles[status] ?? 'bg-overlay border-line text-ink-2';
   return (
     <span
-      className={`shrink-0 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${cls}`}
+      className={`shrink-0 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${cls}`}
     >
       {status}
     </span>

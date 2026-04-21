@@ -30,7 +30,7 @@ export function AutoGenerateBooksyEmail({ clientId, inputId }: Props): React.Rea
     <button
       type="button"
       onClick={handleClick}
-      className="rounded-xl bg-indigo-500/10 border border-indigo-500/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-200 hover:bg-cyan-500/15 hover:border-cyan-500/40 hover:text-cyan-200 transition-all"
+      className="rounded-xl bg-brand-softer border border-brand/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand hover:bg-brand/15 hover:border-brand transition-colors"
     >
       Auto-generar
     </button>

@@ -56,6 +56,14 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * Shared input styling — kept here so every field across the form looks
+ * identical without repeating the same long className blob. Used for text,
+ * date, email, and select inputs.
+ */
+const INPUT_CLASS =
+  'w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-3 outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors';
+
 export default async function ClientDetailPage({ params }: PageProps) {
   const { id } = await params;
 
@@ -130,17 +138,17 @@ export default async function ClientDetailPage({ params }: PageProps) {
       {/* Back link */}
       <Link
         href="/admin/onboarding"
-        className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-300/70 hover:text-cyan-300 mb-6 transition-colors"
+        className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-2 hover:text-brand mb-6 transition-colors"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         Onboarding
       </Link>
 
       <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-400 to-indigo-300 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+        <h1 className="font-display text-3xl md:text-4xl font-semibold tracking-tight mb-2 text-ink">
           {client.businessName}
         </h1>
-        <p className="text-sm text-indigo-200/60 font-mono">{client.id}</p>
+        <p className="text-sm text-ink-3 font-mono">{client.id}</p>
       </div>
 
       <form action={handleClientAction} className="space-y-8">
@@ -171,18 +179,16 @@ export default async function ClientDetailPage({ params }: PageProps) {
               <select
                 name="status"
                 defaultValue={client.status}
-                className="w-full rounded-xl border border-indigo-500/20 bg-[#0A0A12] px-4 py-2.5 text-sm font-semibold text-indigo-200 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all cursor-pointer"
+                className={`${INPUT_CLASS} cursor-pointer font-semibold`}
               >
                 {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s} className="bg-[#0A0A12]">
+                  <option key={s} value={s}>
                     {s.toUpperCase()}
                   </option>
                 ))}
                 {/* If the DB has an unknown status, render it as a disabled option so it survives a save. */}
                 {!(STATUS_OPTIONS as readonly string[]).includes(client.status as KnownStatus) && (
-                  <option value={client.status} className="bg-[#0A0A12]">
-                    {client.status.toUpperCase()} (actual)
-                  </option>
+                  <option value={client.status}>{client.status.toUpperCase()} (actual)</option>
                 )}
               </select>
             </Field>
@@ -206,7 +212,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
                 placeholder="123456789012345"
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full rounded-xl border border-indigo-500/20 bg-[#0A0A12] px-4 py-2.5 text-sm font-mono text-indigo-100 placeholder:text-indigo-500/40 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                className={`${INPUT_CLASS} font-mono`}
               />
             </Field>
             <Field
@@ -217,7 +223,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
                 type="date"
                 name="metaTokenExpiresAt"
                 defaultValue={toDateInputValue(client.metaTokenExpiresAt)}
-                className="w-full rounded-xl border border-indigo-500/20 bg-[#0A0A12] px-4 py-2.5 text-sm text-indigo-100 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                className={INPUT_CLASS}
               />
             </Field>
             <Field
@@ -238,27 +244,27 @@ export default async function ClientDetailPage({ params }: PageProps) {
               type="submit"
               name="intent"
               value="verify_webhook"
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 text-xs font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400/50 hover:shadow-[0_0_15px_rgba(52,211,153,0.25)] transition-all"
+              className="inline-flex items-center gap-2 rounded-xl bg-success/10 border border-success/30 px-4 py-2 text-xs font-bold uppercase tracking-wider text-success transition-colors hover:bg-success/20 hover:border-success/50"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
               Verificar webhook
             </button>
-            <span className="text-[11px] text-indigo-200/50">
+            <span className="text-[11px] text-ink-3">
               Verificado: {formatDateTime(client.metaWebhookVerifiedAt)}
             </span>
 
-            <span className="mx-2 text-indigo-500/20">·</span>
+            <span className="mx-2 text-ink-3">·</span>
 
             <button
               type="submit"
               name="intent"
               value="mark_test_sent"
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 px-4 py-2 text-xs font-bold uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400/50 hover:shadow-[0_0_15px_rgba(34,211,238,0.25)] transition-all"
+              className="inline-flex items-center gap-2 rounded-xl bg-surface border border-line px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink transition-colors hover:border-brand hover:text-brand"
             >
               <MessageSquare className="h-3.5 w-3.5" />
               Marcar test enviado
             </button>
-            <span className="text-[11px] text-indigo-200/50">
+            <span className="text-[11px] text-ink-3">
               Test enviado: {formatDateTime(client.onboardingTestMessageSentAt)}
             </span>
           </div>
@@ -281,7 +287,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
                   placeholder="sync-xxxxxxxx@inbound.otracita.es"
                   autoComplete="off"
                   spellCheck={false}
-                  className="flex-1 rounded-xl border border-indigo-500/20 bg-[#0A0A12] px-4 py-2.5 text-sm font-mono text-indigo-100 placeholder:text-indigo-500/40 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                  className={`flex-1 ${INPUT_CLASS} font-mono`}
                 />
                 <AutoGenerateBooksyEmail clientId={client.id} inputId="booksyInboundEmail" />
               </div>
@@ -296,7 +302,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
             defaultValue={client.onboardingNotes ?? ''}
             rows={6}
             placeholder="Qué pediste al cliente, problemas al configurar Meta, recordatorios, etc."
-            className="w-full rounded-xl border border-indigo-500/20 bg-[#0A0A12] px-4 py-3 text-sm text-indigo-100 placeholder:text-indigo-500/40 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all resize-y"
+            className={`${INPUT_CLASS} resize-y py-3`}
           />
         </Section>
 
@@ -306,7 +312,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
             type="submit"
             name="intent"
             value="save"
-            className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-500/30 to-cyan-500/30 border border-cyan-400/50 px-6 py-3 text-sm font-bold uppercase tracking-widest text-white hover:from-indigo-400/40 hover:to-cyan-400/40 hover:shadow-[0_0_25px_rgba(34,211,238,0.35)] transition-all backdrop-blur-xl"
+            className="inline-flex items-center gap-2 rounded-2xl bg-brand text-brand-ink px-6 py-3 text-sm font-bold uppercase tracking-widest transition-colors hover:bg-brand-strong shadow-md"
           >
             <Save className="h-4 w-4" />
             Guardar
@@ -321,8 +327,8 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-3xl border border-indigo-500/20 bg-[#05050A]/85 backdrop-blur-2xl p-6 md:p-7 shadow-[0_10px_40px_rgba(0,0,0,0.6)]">
-      <h2 className="text-sm font-bold uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-cyan-300 mb-5 drop-shadow-[0_0_5px_rgba(165,180,252,0.3)]">
+    <section className="rounded-2xl border border-line bg-surface p-6 md:p-7">
+      <h2 className="text-sm font-bold uppercase tracking-widest text-ink-3 mb-5">
         {title}
       </h2>
       {children}
@@ -347,11 +353,11 @@ function Field({
 }) {
   return (
     <div className={wide ? 'md:col-span-2 space-y-1.5' : 'space-y-1.5'}>
-      <label className="block text-[11px] font-bold uppercase tracking-widest text-indigo-300/80">
+      <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-3">
         {label}
       </label>
       {children}
-      {hint && <p className="text-[11px] text-indigo-200/40">{hint}</p>}
+      {hint && <p className="text-[11px] text-ink-3">{hint}</p>}
     </div>
   );
 }
@@ -359,7 +365,7 @@ function Field({
 function ReadOnly({ value, mono }: { value: string; mono?: boolean }) {
   return (
     <div
-      className={`w-full rounded-xl border border-indigo-500/10 bg-[#07070D] px-4 py-2.5 text-sm text-indigo-200/80 ${
+      className={`w-full rounded-xl border border-line bg-overlay px-4 py-2.5 text-sm text-ink-2 ${
         mono ? 'font-mono' : ''
       }`}
     >
