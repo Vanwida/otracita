@@ -91,17 +91,26 @@ export async function POST(req: NextRequest): Promise<Response> {
       ? 'El NIF/CIF no tiene un formato habitual (se ha emitido igualmente).'
       : undefined;
 
-  const result = await generateManualInvoice(access.client.id, {
-    issueDate: candidate.issueDate,
-    customerName: candidate.customerName!,
-    customerPhone: candidate.customerPhone ?? null,
-    customerNif: candidate.customerNif ?? null,
-    customerAddress: candidate.customerAddress ?? null,
-    serviceName: candidate.serviceName!,
-    barberName: candidate.barberName ?? null,
-    priceInEuros: Number(candidate.priceInEuros),
-    notes: candidate.notes ?? null,
-  });
+  let result;
+  try {
+    result = await generateManualInvoice(access.client.id, {
+      issueDate: candidate.issueDate,
+      customerName: candidate.customerName!,
+      customerPhone: candidate.customerPhone ?? null,
+      customerNif: candidate.customerNif ?? null,
+      customerAddress: candidate.customerAddress ?? null,
+      serviceName: candidate.serviceName!,
+      barberName: candidate.barberName ?? null,
+      priceInEuros: Number(candidate.priceInEuros),
+      notes: candidate.notes ?? null,
+    });
+  } catch (err) {
+    // generateManualInvoice throws on legal-validation failures (>400€ without
+    // NIF, NIF without address). Surface as 400 so the form can show the
+    // exact reason instead of a generic 500.
+    const message = err instanceof Error ? err.message : 'No se pudo emitir la factura.';
+    return Response.json({ error: message }, { status: 400 });
+  }
 
   if (!result) {
     return Response.json(

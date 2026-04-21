@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { clients, bookings, invoices } from '@/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
+import { notifyAlex } from '@/lib/notify-alex';
 
 // -----------------------------------------------------------------------------
 // Invoicing helper — tickets/facturas the barbershop emits to its own
@@ -14,6 +15,36 @@ import { eq, sql } from 'drizzle-orm';
 
 /** Width to zero-pad the sequential number to. 4 => "0001", "0042", "1337". */
 const INVOICE_NUMBER_PAD = 4;
+
+/**
+ * Maximum total (in cents) for a ticket simplificado (B2C) without NIF.
+ * Real Decreto 1619/2012 art. 4: operations above this threshold MUST be
+ * emitted as a factura completa with the buyer's NIF and address.
+ * 40 000 cents = 400,00 €.
+ */
+export const TICKET_MAX_CENTS = 40000;
+
+/**
+ * Parse `YYYY-MM` into a half-open date range `[start, endExclusive)` where
+ * both boundaries are `YYYY-MM-DD` strings. The end is the first day of the
+ * *next* month — use with a strict-less-than filter (`lt`) so day 1 of the
+ * following month is NOT included. Using `lte` with an inclusive end leaks
+ * the following month's first day into "this month"'s totals.
+ *
+ * Returns null for malformed input.
+ */
+export function monthRangeInclusive(
+  month: string,
+): { start: string; endExclusive: string } | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10) - 1;
+  if (m < 0 || m > 11) return null;
+  const start = new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10);
+  const endExclusive = new Date(Date.UTC(year, m + 1, 1)).toISOString().slice(0, 10);
+  return { start, endExclusive };
+}
 
 /** A ticket simplificado (B2C) when the customer has no NIF, else a factura (B2B). */
 export type InvoiceType = 'ticket' | 'invoice';
@@ -75,11 +106,38 @@ export function looksLikeValidNif(value: string): boolean {
 }
 
 type BookingRow = typeof bookings.$inferSelect;
+type ClientRow = typeof clients.$inferSelect;
 
 export interface GenerateInvoiceResult {
   invoiceId: string;
   number: string;
   alreadyExisted: boolean;
+}
+
+/**
+ * Does the tenant have a complete emisor fiscal block as required by
+ * Real Decreto 1619/2012 art. 6 (name + NIF + full postal address)?
+ * We NEVER emit a fiscal doc without these — the invoice would be legally
+ * invalid and expose the barber to sanctions.
+ */
+function hasCompleteFiscalEmisor(
+  client: Pick<
+    ClientRow,
+    'fiscalName' | 'fiscalNif' | 'fiscalAddress' | 'fiscalPostalCode' | 'fiscalCity'
+  >,
+): boolean {
+  return Boolean(
+    client.fiscalName &&
+      client.fiscalName.trim() &&
+      client.fiscalNif &&
+      client.fiscalNif.trim() &&
+      client.fiscalAddress &&
+      client.fiscalAddress.trim() &&
+      client.fiscalPostalCode &&
+      client.fiscalPostalCode.trim() &&
+      client.fiscalCity &&
+      client.fiscalCity.trim(),
+  );
 }
 
 /**
@@ -123,6 +181,34 @@ export async function generateInvoiceFromBooking(
   if (!client) return null;
   if (!client.invoicingEnabled) return null;
 
+  // Legal guard — never emit a fiscal doc for a tenant with an incomplete
+  // emisor block. The enabled toggle already checks this at save time, but
+  // this path protects against data that pre-dates the check or gets wiped.
+  if (!hasCompleteFiscalEmisor(client)) {
+    console.error(
+      '[invoicing] refusing to auto-invoice — tenant has incomplete fiscal emisor block',
+      { clientId: client.id, bookingId },
+    );
+    return null;
+  }
+
+  // Ticket max — Real Decreto 1619/2012 art. 4: amounts above 400€ require a
+  // full factura with the buyer's NIF. Bookings don't capture NIF yet, so
+  // any high-value booking must fall through to the manual path. Alert Alex
+  // so the barber can emit the correct doc manually from the dashboard.
+  const guardAmounts = calculateAmounts(booking.price, client.ivaRate);
+  if (guardAmounts.totalCents > TICKET_MAX_CENTS) {
+    console.error(
+      '[invoicing] refusing to auto-invoice — booking exceeds TICKET_MAX_CENTS without NIF',
+      { clientId: client.id, bookingId, totalCents: guardAmounts.totalCents },
+    );
+    // Fire-and-forget WhatsApp — never block the booking path on notify.
+    notifyAlex(
+      `⚠️ Booking ${bookingId} excede 400€ sin NIF del cliente. Emite factura manualmente con NIF desde Dashboard → Facturación → Nueva factura.`,
+    ).catch((err) => console.error('[invoicing] notifyAlex failed:', err));
+    return null;
+  }
+
   // Atomically reserve the next number. `UPDATE ... RETURNING` on the client
   // row guarantees we get a unique sequence value per call, even under
   // concurrent generation (two parallel webhooks cannot get the same next).
@@ -144,7 +230,7 @@ export async function generateInvoiceFromBooking(
     invoiceNumberNext: reservedNumber,
   });
 
-  const amounts = calculateAmounts(booking.price, client.ivaRate);
+  const amounts = guardAmounts;
   const invoiceType = determineInvoiceType(null); // customer NIF not captured on booking yet — always ticket for now
 
   const issueDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -238,6 +324,30 @@ export function validateManualInvoiceInput(
     errors.push({ field: 'issueDate', message: 'Fecha inválida (formato YYYY-MM-DD).' });
   }
 
+  const nif = input.customerNif?.trim() || '';
+  const address = input.customerAddress?.trim() || '';
+  const priceNum = Number(input.priceInEuros);
+  const priceOk = Number.isFinite(priceNum) && priceNum > 0;
+
+  // Real Decreto 1619/2012 art. 4 — sales over 400€ cannot be emitted as
+  // ticket simplificado; they require a factura completa with the buyer's NIF.
+  if (priceOk && Math.round(priceNum * 100) > TICKET_MAX_CENTS && !nif) {
+    errors.push({
+      field: 'customerNif',
+      message:
+        'Las ventas superiores a 400€ requieren NIF del cliente (factura completa, no ticket simplificado).',
+    });
+  }
+
+  // Factura completa (tenemos NIF) requires the customer's postal address
+  // per Real Decreto 1619/2012 art. 6.
+  if (nif && !address) {
+    errors.push({
+      field: 'customerAddress',
+      message: 'Dirección del cliente obligatoria en facturas con NIF.',
+    });
+  }
+
   return errors;
 }
 
@@ -261,6 +371,34 @@ export async function generateManualInvoice(
   if (!client) return null;
   if (!client.invoicingEnabled) return null;
 
+  // Legal guard — never emit a fiscal doc for a tenant with an incomplete
+  // emisor block (art. 6 RD 1619/2012). This protects the manual path too,
+  // not just the auto one.
+  if (!hasCompleteFiscalEmisor(client)) {
+    console.error(
+      '[invoicing] refusing to emit manual invoice — tenant has incomplete fiscal emisor block',
+      { clientId: client.id },
+    );
+    return null;
+  }
+
+  const amounts = calculateAmounts(input.priceInEuros, client.ivaRate);
+  const nif = input.customerNif?.trim() || null;
+  const address = input.customerAddress?.trim() || null;
+
+  // Ticket max — art. 4 RD 1619/2012: >400€ requires a factura completa
+  // with the buyer's NIF. Throws so the API layer returns 400 to the form.
+  if (amounts.totalCents > TICKET_MAX_CENTS && !nif) {
+    throw new Error(
+      'Las ventas superiores a 400€ requieren NIF del cliente (factura completa, no ticket simplificado).',
+    );
+  }
+
+  // Factura with NIF always requires the buyer's postal address (art. 6).
+  if (nif && !address) {
+    throw new Error('Dirección del cliente obligatoria en facturas con NIF.');
+  }
+
   // Atomically reserve the next number — same pattern as the booking path so
   // concurrent manual + auto invoicing cannot collide on a sequence value.
   const [reserved] = await db
@@ -279,8 +417,6 @@ export async function generateManualInvoice(
     invoiceNumberNext: reservedNumber,
   });
 
-  const amounts = calculateAmounts(input.priceInEuros, client.ivaRate);
-  const nif = input.customerNif?.trim() || null;
   const invoiceType = determineInvoiceType(nif);
   const issueDate = input.issueDate || new Date().toISOString().slice(0, 10);
 
@@ -294,7 +430,7 @@ export async function generateManualInvoice(
       customerName: input.customerName.trim(),
       customerPhone: input.customerPhone?.trim() || null,
       customerNif: nif,
-      customerAddress: input.customerAddress?.trim() || null,
+      customerAddress: address,
       serviceName: input.serviceName.trim(),
       barberName: input.barberName?.trim() || null,
       subtotalCents: amounts.subtotalCents,
@@ -323,5 +459,66 @@ export async function generateManualInvoice(
 export function tryAutoInvoiceInBackground(bookingId: string): void {
   generateInvoiceFromBooking(bookingId).catch((err) => {
     console.error('[invoicing] auto-invoice failed for booking', bookingId, err);
+  });
+}
+
+/**
+ * Mark any invoice attached to the given booking as `voided` when the
+ * underlying booking is cancelled. MVP-level handling: the invoice row is
+ * annulled in-place so it stops counting toward stats and exports, and Alex
+ * is notified so the barber knows to emit a factura rectificativa manually
+ * if the customer already paid.
+ *
+ * We intentionally do NOT implement the full rectificativa (new invoice
+ * row with negative amounts, cross-linked to the original) in this pass —
+ * that's post-launch work once real traffic has validated the flow.
+ *
+ * Only `status = 'issued'` rows are voided — this is idempotent (calling it
+ * on an already-voided invoice is a no-op) and cannot accidentally void a
+ * previously-rectified invoice.
+ *
+ * Returns the number of invoice rows voided (0 or 1 in practice).
+ */
+export async function voidInvoicesForCancelledBooking(
+  bookingId: string,
+): Promise<number> {
+  const voided = await db
+    .update(invoices)
+    .set({ status: 'voided' })
+    .where(
+      and(
+        eq(invoices.bookingId, bookingId),
+        eq(invoices.status, 'issued'),
+      ),
+    )
+    .returning({
+      id: invoices.id,
+      number: invoices.number,
+      clientId: invoices.clientId,
+      customerName: invoices.customerName,
+    });
+
+  if (voided.length === 0) return 0;
+
+  // Fire-and-forget WhatsApp alert — barber needs to know that if the
+  // customer already paid, they must emit a rectificativa manually.
+  for (const v of voided) {
+    const who = v.customerName ? `cliente ${v.customerName}` : 'cliente sin nombre';
+    const message = `⚠️ Factura anulada (void) — ${who}, booking ${bookingId}. Si el cliente ya pagó debes emitir factura rectificativa manual.`;
+    notifyAlex(message).catch((err) => {
+      console.error('[invoicing] notifyAlex (void) failed:', err);
+    });
+  }
+
+  return voided.length;
+}
+
+/**
+ * Fire-and-forget variant — safe to call from any booking-cancel path.
+ * Never throws, logs on error so Vercel logs catch silent failures.
+ */
+export function tryVoidInvoicesInBackground(bookingId: string): void {
+  voidInvoicesForCancelledBooking(bookingId).catch((err) => {
+    console.error('[invoicing] void-on-cancel failed for booking', bookingId, err);
   });
 }

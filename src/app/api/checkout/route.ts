@@ -43,6 +43,12 @@ export async function POST(request: Request) {
     const selectedPlan = PLANS[plan];
 
     const email = body.email as string | undefined;
+    // Optional signup metadata. The landing form currently doesn't capture
+    // these, but the endpoint accepts them so we can wire up a pre-checkout
+    // form without another webhook round-trip. The Stripe webhook reads them
+    // back from session.metadata to seed the client row on payment success.
+    const businessName = typeof body.businessName === 'string' ? body.businessName.trim() : '';
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -65,6 +71,8 @@ export async function POST(request: Request) {
       ],
       metadata: {
         plan,
+        businessName,
+        phone,
       },
       success_url: SITE_URL + '/gracias?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: SITE_URL + '/#precios',

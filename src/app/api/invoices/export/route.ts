@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { invoices } from '@/db/schema'
-import { eq, and, gte, lte, asc } from 'drizzle-orm'
+import { eq, and, gte, lt, asc } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { monthRangeInclusive } from '@/lib/invoicing'
 
 // -----------------------------------------------------------------------------
 // GET /api/invoices/export?month=YYYY-MM
@@ -43,17 +44,6 @@ function csvEscape(value: string | null | undefined): string {
   return s
 }
 
-function monthRange(month: string): { start: string; end: string } | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(month)
-  if (!match) return null
-  const year = parseInt(match[1], 10)
-  const m = parseInt(match[2], 10) - 1
-  if (m < 0 || m > 11) return null
-  const start = new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10)
-  const end = new Date(Date.UTC(year, m + 1, 1)).toISOString().slice(0, 10)
-  return { start, end }
-}
-
 const HEADERS = [
   'Nº Factura',
   'Fecha',
@@ -82,11 +72,14 @@ export async function GET(req: NextRequest): Promise<Response> {
     return Response.json({ error: 'Falta el parámetro `month` (YYYY-MM)' }, { status: 400 })
   }
 
-  const range = monthRange(month)
+  const range = monthRangeInclusive(month)
   if (!range) {
     return Response.json({ error: 'Formato de mes inválido. Usa YYYY-MM.' }, { status: 400 })
   }
 
+  // Half-open [start, endExclusive) so day 1 of next month never leaks in.
+  // Voided rows are excluded entirely: the gestor must never see annulled
+  // documents in the book they file with Hacienda.
   const rows = await db
     .select()
     .from(invoices)
@@ -94,7 +87,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       and(
         eq(invoices.clientId, access.client.id),
         gte(invoices.issueDate, range.start),
-        lte(invoices.issueDate, range.end),
+        lt(invoices.issueDate, range.endExclusive),
+        eq(invoices.status, 'issued'),
       ),
     )
     .orderBy(asc(invoices.issueDate), asc(invoices.number))

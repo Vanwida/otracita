@@ -5,8 +5,9 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { clients, invoices } from '@/db/schema'
-import { eq, and, gte, lte, desc, sql } from 'drizzle-orm'
+import { eq, and, gte, lt, desc, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import { monthRangeInclusive } from '@/lib/invoicing'
 import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
@@ -18,23 +19,12 @@ import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet
 interface SearchParams {
   month?: string
   type?: string
+  showVoided?: string
 }
 
 function currentMonth(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
-/** Parse `YYYY-MM` to [firstOfMonth, firstOfNextMonth) range as ISO dates. */
-function monthRange(month: string): { start: string; end: string } | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(month)
-  if (!match) return null
-  const year = parseInt(match[1], 10)
-  const m = parseInt(match[2], 10) - 1
-  if (m < 0 || m > 11) return null
-  const start = new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10)
-  const end = new Date(Date.UTC(year, m + 1, 1)).toISOString().slice(0, 10)
-  return { start, end }
 }
 
 function formatEuros(cents: number): string {
@@ -63,7 +53,10 @@ export default async function FacturasPage({
 
   const month = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : currentMonth()
   const typeFilter = params.type === 'ticket' || params.type === 'invoice' ? params.type : 'all'
-  const range = monthRange(month)
+  // By default hide voided invoices (they don't count toward stats or the
+  // gestor's book). User can opt into seeing them with ?showVoided=1.
+  const showVoided = params.showVoided === '1' || params.showVoided === 'true'
+  const range = monthRangeInclusive(month)
 
   // Empty state if invoicing disabled
   if (!client.invoicingEnabled) {
@@ -101,15 +94,27 @@ export default async function FacturasPage({
     )
   }
 
-  // Query invoices for the month (+ optional type filter)
-  const whereMonth = and(
+  // Query invoices for the month. Half-open range [start, endExclusive) so the
+  // first day of the following month is NOT pulled in (off-by-one if we used
+  // `lte` with an inclusive end). Voided invoices are excluded by default.
+  const whereIssuedMonth = and(
     eq(invoices.clientId, client.id),
     gte(invoices.issueDate, range.start),
-    lte(invoices.issueDate, range.end),
+    lt(invoices.issueDate, range.endExclusive),
+    eq(invoices.status, 'issued'),
   )
+  // When `showVoided` is on, relax the status filter to include both issued
+  // and voided rows in the listing (stats always stay on issued-only).
+  const whereMonthForList = showVoided
+    ? and(
+        eq(invoices.clientId, client.id),
+        gte(invoices.issueDate, range.start),
+        lt(invoices.issueDate, range.endExclusive),
+      )
+    : whereIssuedMonth
   const whereFiltered = typeFilter === 'all'
-    ? whereMonth
-    : and(whereMonth, eq(invoices.type, typeFilter))
+    ? whereMonthForList
+    : and(whereMonthForList, eq(invoices.type, typeFilter))
 
   const rows = await db
     .select()
@@ -117,7 +122,9 @@ export default async function FacturasPage({
     .where(whereFiltered)
     .orderBy(desc(invoices.issueDate), desc(invoices.number))
 
-  // Stats over unfiltered month (so the cards don't change when user toggles type)
+  // Stats over unfiltered month (so the cards don't change when user toggles
+  // type). Voided rows never count — they were issued but the underlying
+  // booking was cancelled, so they are legally annulled.
   const [statsRow] = await db
     .select({
       count: sql<number>`count(*)`,
@@ -126,7 +133,7 @@ export default async function FacturasPage({
       total: sql<number>`coalesce(sum(${invoices.totalCents}), 0)`,
     })
     .from(invoices)
-    .where(whereMonth)
+    .where(whereIssuedMonth)
 
   const stats = {
     count: Number(statsRow?.count ?? 0),
@@ -168,9 +175,10 @@ export default async function FacturasPage({
 
       {/* Controls */}
       <div className="mt-6 flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
-        <div className="flex flex-col md:flex-row gap-3">
+        <div className="flex flex-col md:flex-row gap-3 md:items-center">
           <MonthSelect currentMonth={month} />
-          <TypeSelect currentType={typeFilter} currentMonth={month} />
+          <TypeSelect currentType={typeFilter} currentMonth={month} showVoided={showVoided} />
+          <VoidedToggle month={month} typeFilter={typeFilter} showVoided={showVoided} />
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <Link
@@ -232,35 +240,48 @@ export default async function FacturasPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-overlay/50 transition-colors">
-                    <td className="px-4 md:px-6 py-3 font-mono text-ink">{row.number}</td>
-                    <td className="px-4 md:px-6 py-3 text-ink-2">{row.issueDate}</td>
-                    <td className="px-4 md:px-6 py-3 text-ink">{row.customerName || '—'}</td>
-                    <td className="px-4 md:px-6 py-3 text-ink-2">{row.serviceName}</td>
-                    <td className="px-4 md:px-6 py-3 text-ink-2 text-right font-mono">{formatEuros(row.subtotalCents)}</td>
-                    <td className="px-4 md:px-6 py-3 text-ink-2 text-right font-mono">{formatEuros(row.ivaAmountCents)}</td>
-                    <td className="px-4 md:px-6 py-3 text-ink font-semibold text-right font-mono">{formatEuros(row.totalCents)} €</td>
-                    <td className="px-4 md:px-6 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
-                        row.type === 'invoice'
-                          ? 'bg-brand-softer text-brand-strong'
-                          : 'bg-overlay text-ink-2'
-                      }`}>
-                        {row.type === 'invoice' ? 'Factura' : 'Ticket'}
-                      </span>
-                    </td>
-                    <td className="px-4 md:px-6 py-3">
-                      <Link
-                        href={`/dashboard/facturas/${row.id}`}
-                        className="text-brand hover:text-brand-strong font-medium inline-flex items-center gap-1"
-                      >
-                        Ver
-                        <ChevronRight className="h-4 w-4" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((row) => {
+                  const isVoided = row.status === 'voided'
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`hover:bg-overlay/50 transition-colors ${isVoided ? 'opacity-60' : ''}`}
+                    >
+                      <td className={`px-4 md:px-6 py-3 font-mono text-ink ${isVoided ? 'line-through' : ''}`}>{row.number}</td>
+                      <td className="px-4 md:px-6 py-3 text-ink-2">{row.issueDate}</td>
+                      <td className="px-4 md:px-6 py-3 text-ink">{row.customerName || '—'}</td>
+                      <td className="px-4 md:px-6 py-3 text-ink-2">{row.serviceName}</td>
+                      <td className="px-4 md:px-6 py-3 text-ink-2 text-right font-mono">{formatEuros(row.subtotalCents)}</td>
+                      <td className="px-4 md:px-6 py-3 text-ink-2 text-right font-mono">{formatEuros(row.ivaAmountCents)}</td>
+                      <td className="px-4 md:px-6 py-3 text-ink font-semibold text-right font-mono">{formatEuros(row.totalCents)} €</td>
+                      <td className="px-4 md:px-6 py-3">
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold w-fit ${
+                            row.type === 'invoice'
+                              ? 'bg-brand-softer text-brand-strong'
+                              : 'bg-overlay text-ink-2'
+                          }`}>
+                            {row.type === 'invoice' ? 'Factura' : 'Ticket'}
+                          </span>
+                          {isVoided && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-danger/15 text-danger w-fit">
+                              Anulada
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 md:px-6 py-3">
+                        <Link
+                          href={`/dashboard/facturas/${row.id}`}
+                          className="text-brand hover:text-brand-strong font-medium inline-flex items-center gap-1"
+                        >
+                          Ver
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -324,10 +345,19 @@ function MonthSelect({ currentMonth }: { currentMonth: string }) {
   )
 }
 
-function TypeSelect({ currentType, currentMonth }: { currentType: string; currentMonth: string }) {
+function TypeSelect({
+  currentType,
+  currentMonth,
+  showVoided,
+}: {
+  currentType: string
+  currentMonth: string
+  showVoided: boolean
+}) {
   return (
     <form method="get" className="flex items-center gap-2">
       <input type="hidden" name="month" value={currentMonth} />
+      {showVoided && <input type="hidden" name="showVoided" value="1" />}
       <select
         name="type"
         defaultValue={currentType}
@@ -339,5 +369,42 @@ function TypeSelect({ currentType, currentMonth }: { currentType: string; curren
         <option value="invoice">Facturas</option>
       </select>
     </form>
+  )
+}
+
+/**
+ * Show/hide the voided invoices in the listing. Voided rows are hidden by
+ * default to mirror legal stats (they never count). Toggling ON appends them
+ * to the end of the table so the barber can still inspect or reference them.
+ */
+function VoidedToggle({
+  month,
+  typeFilter,
+  showVoided,
+}: {
+  month: string
+  typeFilter: string
+  showVoided: boolean
+}) {
+  const base = new URLSearchParams()
+  base.set('month', month)
+  if (typeFilter !== 'all') base.set('type', typeFilter)
+  const off = `/dashboard/facturas?${base.toString()}`
+  const onParams = new URLSearchParams(base)
+  onParams.set('showVoided', '1')
+  const on = `/dashboard/facturas?${onParams.toString()}`
+
+  return (
+    <Link
+      href={showVoided ? off : on}
+      prefetch={false}
+      className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+        showVoided
+          ? 'bg-danger/10 border-danger/30 text-danger hover:bg-danger/15'
+          : 'bg-surface border-line text-ink-2 hover:border-line-strong hover:text-ink'
+      }`}
+    >
+      {showVoided ? 'Ocultar anuladas' : 'Mostrar anuladas'}
+    </Link>
   )
 }

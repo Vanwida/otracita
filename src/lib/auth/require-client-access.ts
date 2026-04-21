@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth/server';
 import { db } from '@/db';
 import { clients } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { isAdminUser, isAdminEmail } from '@/lib/auth/admin';
 
 // -----------------------------------------------------------------------------
 // Multi-tenancy access guard.
@@ -16,18 +17,9 @@ import { eq } from 'drizzle-orm';
 // addresses, signed events). Cron routes bypass via CRON_SECRET.
 // -----------------------------------------------------------------------------
 
-// Admin allow-list: these operators can act on any tenant. Matches the check
-// used in `src/app/admin/layout.tsx`.
-const ADMIN_EMAIL_DOMAINS = ['@aistudios.pro'] as const;
-const ADMIN_EMAIL_SUBSTRINGS = ['alex'] as const;
-
-export function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  const lower = email.toLowerCase();
-  if (ADMIN_EMAIL_DOMAINS.some((d) => lower.endsWith(d))) return true;
-  if (ADMIN_EMAIL_SUBSTRINGS.some((s) => lower.includes(s))) return true;
-  return false;
-}
+// Re-export for callers that still import `isAdminEmail` from here. Admin-rule
+// logic lives in `@/lib/auth/admin` (one source of truth).
+export { isAdminEmail };
 
 export type ClientRow = typeof clients.$inferSelect;
 
@@ -86,7 +78,7 @@ export async function requireClientAccess(
     return { ok: false, status: 401, error: 'Unauthorized' };
   }
 
-  const admin = isAdminEmail(email);
+  const admin = isAdminUser(session);
 
   // Admins: prefer the expectedClientId target if provided, else own client.
   if (admin) {

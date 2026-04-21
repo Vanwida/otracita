@@ -2,11 +2,12 @@ import type { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
 import { db } from '@/db';
 import { invoices } from '@/db/schema';
-import { eq, and, gte, lte, asc } from 'drizzle-orm';
+import { eq, and, gte, lt, asc } from 'drizzle-orm';
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
+import { monthRangeInclusive } from '@/lib/invoicing';
 
 // -----------------------------------------------------------------------------
 // GET /api/invoices/export-xlsx?month=YYYY-MM
@@ -38,17 +39,6 @@ const BORDER_ARGB = 'FFE8DDD0';
 // Column formats (Spanish accounting)
 const CURRENCY_FORMAT = '#,##0.00 "€"';
 const PERCENT_FORMAT = '0"%"';
-
-function monthRange(month: string): { start: string; end: string } | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(month);
-  if (!match) return null;
-  const year = parseInt(match[1], 10);
-  const m = parseInt(match[2], 10) - 1;
-  if (m < 0 || m > 11) return null;
-  const start = new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(year, m + 1, 1)).toISOString().slice(0, 10);
-  return { start, end };
-}
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -99,7 +89,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     );
   }
 
-  const range = monthRange(month);
+  const range = monthRangeInclusive(month);
   if (!range) {
     return Response.json(
       { error: 'Formato de mes inválido. Usa YYYY-MM.' },
@@ -107,6 +97,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     );
   }
 
+  // Half-open [start, endExclusive) to keep day 1 of next month out of the
+  // totals. Voided rows are excluded entirely — they were annulled, the
+  // gestor must never file them as part of Modelo 303.
   const rows = await db
     .select()
     .from(invoices)
@@ -114,7 +107,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       and(
         eq(invoices.clientId, access.client.id),
         gte(invoices.issueDate, range.start),
-        lte(invoices.issueDate, range.end),
+        lt(invoices.issueDate, range.endExclusive),
+        eq(invoices.status, 'issued'),
       ),
     )
     .orderBy(asc(invoices.issueDate), asc(invoices.number));

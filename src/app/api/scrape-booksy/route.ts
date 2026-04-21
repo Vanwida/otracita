@@ -1,10 +1,16 @@
 import OpenAI from 'openai';
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 const grok = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
 });
+
+// Scrape-booksy hits Grok twice per request and issues outbound fetches. We
+// cap it tight — 5 attempts per minute per tenant is more than enough for
+// manual onboarding flows and nowhere near abuse territory.
+const SCRAPE_BOOKSY_MAX_PER_MINUTE = 5;
 
 const FETCH_TIMEOUT_MS = 15_000;
 const SCRAPE_HEADERS = {
@@ -62,6 +68,15 @@ function emptyResult(partial: Partial<ScrapeResult> = {}): ScrapeResult {
 export async function POST(request: Request) {
   const access = await requireClientAccess(request);
   if (!access.ok) return accessErrorResponse(access);
+
+  // Rate-limit by tenant (not user) so a malicious admin impersonating a
+  // client can't burn a different tenant's budget. The key namespace is
+  // explicit (`:scrape`) so we can share the limiter map across endpoints.
+  const limit = checkRateLimit(
+    `${access.client.id}:scrape`,
+    SCRAPE_BOOKSY_MAX_PER_MINUTE,
+  );
+  if (!limit.ok) return rateLimitResponse(limit);
 
   const { url } = await request.json().catch(() => ({ url: '' }));
 

@@ -92,8 +92,17 @@ export default async function NegocioPage() {
     if (records.length === 0) return // setup wizard handles first creation
     const current = records[0]
 
-    // Validate invoicing enable: only flip to true if required fields are set.
-    const canEnableInvoicing = fiscalName.trim().length > 0 && fiscalNif.trim().length > 0
+    // Validate invoicing enable: Real Decreto 1619/2012 art. 6 requires the
+    // emisor block (name + NIF + full postal address) before we're allowed to
+    // issue any fiscal doc. Without all five fields we force the toggle to
+    // false — the UI will re-render with invoicing off and the user will see
+    // the warning asking them to complete their address.
+    const canEnableInvoicing =
+      fiscalName.trim().length > 0 &&
+      fiscalNif.trim().length > 0 &&
+      fiscalAddress.trim().length > 0 &&
+      fiscalPostalCode.trim().length > 0 &&
+      fiscalCity.trim().length > 0
     const invoicingToPersist = invoicingEnabled && canEnableInvoicing
 
     // Next-number lock: if already emitted invoices, never accept a rewound

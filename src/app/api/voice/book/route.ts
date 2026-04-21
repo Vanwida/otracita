@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { bookings } from '@/db/schema';
-import { assignBarber } from '@/lib/availability';
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
-
-interface ServiceConfig {
-  name: string;
-  duration: number;
-  price?: number;
-}
+import { createBooking } from '@/lib/bookings/create';
 
 export async function POST(req: NextRequest) {
   const access = await requireClientAccess(req);
@@ -37,50 +29,44 @@ export async function POST(req: NextRequest) {
   if (!customerName || !service || !date || !time) {
     return NextResponse.json(
       { error: 'Missing required fields: customerName, service, date, time' },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+  // Voice bookings MUST carry a real caller phone — we previously fell back to
+  // the literal string "voice" which polluted the customers table and broke
+  // WhatsApp reminders/invoicing. If the upstream voice pipeline can't supply
+  // a phone, the reservation has to be rejected.
+  if (!customerPhone || !customerPhone.trim()) {
+    return NextResponse.json(
+      { error: 'customerPhone is required for voice bookings' },
+      { status: 400 },
+    );
   }
 
-  if (!/^\d{2}:\d{2}$/.test(time)) {
-    return NextResponse.json({ error: 'Invalid time format' }, { status: 400 });
-  }
-
-  const services = (client.chatbotServices as ServiceConfig[]) || [];
-  const matched = services.find(
-    s => s.name.toLowerCase() === service.toLowerCase()
-  );
-  const duration = matched?.duration ?? 30;
-  const price = matched?.price ?? null;
-
-  // Auto-assign barber if none specified
-  const barberNames = ((client.booksyServices as Array<{ name: string }>) || []).map(b => b.name);
-  const resolvedBarber =
-    barber ||
-    (barberNames.length > 0
-      ? await assignBarber(client.id, barberNames, date, time, duration)
-      : null);
-
-  await db.insert(bookings).values({
-    clientId: client.id,
-    customerPhone: customerPhone || 'voice',
+  const result = await createBooking({
+    client,
     customerName,
+    customerPhone,
     service,
-    barber: resolvedBarber,
+    barber,
     date,
     time,
-    duration,
-    price,
-    status: 'confirmed',
     source: 'bot',
-    googleEventId: null,
   });
+
+  if (!result.success) {
+    const status = result.error === 'overlap' ? 409 : 400;
+    return NextResponse.json({ error: result.message }, { status });
+  }
 
   return NextResponse.json({
     success: true,
-    booking: { date, time, service, barber: barber || null },
+    booking: {
+      date: result.booking.date,
+      time: result.booking.time,
+      service: result.booking.service,
+      barber: result.booking.barber,
+    },
   });
 }

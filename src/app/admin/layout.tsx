@@ -5,6 +5,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Users, LayoutDashboard, LogOut, FileText, Shield, Activity, CheckSquare } from "lucide-react"
+import { isAdminUser } from "@/lib/auth/admin"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -13,17 +14,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login")
   }
 
-  // Admin check: specific email, contains "alex", or any @aistudios.pro email
-  const email = session.user.email || ""
-  const isAdmin =
-    email === "vanwida@aistudios.pro" ||
-    email.toLowerCase().includes("alex") ||
-    email.endsWith("@aistudios.pro") ||
-    email.includes("aistudios") ||
-    (session.user as any).role === "ADMIN"
-
-  console.log('[ADMIN CHECK]', { email, isAdmin })
-  if (!isAdmin) {
+  // Admin check — single source of truth in `@/lib/auth/admin`. Do NOT inline
+  // the rule here again; drift between copies is what produced the original
+  // `email.includes('aistudios')` bypass path.
+  if (!isAdminUser(session)) {
     redirect("/dashboard")
   }
 

@@ -51,9 +51,20 @@ export default function InvoicingSettings({ initial }: Props) {
   const [enabled, setEnabled] = useState(initial.invoicingEnabled)
   const [fiscalName, setFiscalName] = useState(initial.fiscalName)
   const [fiscalNif, setFiscalNif] = useState(initial.fiscalNif)
+  const [fiscalAddress, setFiscalAddress] = useState(initial.fiscalAddress)
+  const [fiscalCity, setFiscalCity] = useState(initial.fiscalCity)
+  const [fiscalPostalCode, setFiscalPostalCode] = useState(initial.fiscalPostalCode)
   const [prefix, setPrefix] = useState(initial.invoiceNumberPrefix)
 
-  const canEnable = fiscalName.trim().length > 0 && fiscalNif.trim().length > 0
+  // Real Decreto 1619/2012 art. 6 — a valid factura emisor block requires
+  // fiscal name, NIF, and full postal address. All five fields are mandatory
+  // before the barber can toggle invoicing on.
+  const canEnable =
+    fiscalName.trim().length > 0 &&
+    fiscalNif.trim().length > 0 &&
+    fiscalAddress.trim().length > 0 &&
+    fiscalPostalCode.trim().length > 0 &&
+    fiscalCity.trim().length > 0
   const nifLooksOff = fiscalNif.trim().length > 0 && !NIF_SHAPE.test(fiscalNif.trim())
 
   // Toggle guard: if user tries to enable while required fields empty, stop.
@@ -97,7 +108,7 @@ export default function InvoicingSettings({ initial }: Props) {
           {!canEnable && !enabled && (
             <p className="text-xs text-warning mt-2 inline-flex items-center gap-1.5">
               <Info className="h-3.5 w-3.5" />
-              Rellena el nombre fiscal y el NIF antes de activar.
+              Rellena nombre fiscal, NIF, dirección, código postal y ciudad antes de activar.
             </p>
           )}
         </div>
@@ -138,22 +149,28 @@ export default function InvoicingSettings({ initial }: Props) {
       <TextField
         name="fiscalAddress"
         label="Dirección fiscal"
-        defaultValue={initial.fiscalAddress}
+        defaultValue={fiscalAddress}
+        onChange={(v) => setFiscalAddress(v)}
         placeholder="Calle Gran Vía 123"
+        required
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <TextField
           name="fiscalCity"
           label="Ciudad"
-          defaultValue={initial.fiscalCity}
+          defaultValue={fiscalCity}
+          onChange={(v) => setFiscalCity(v)}
           placeholder="Barcelona"
+          required
         />
         <TextField
           name="fiscalPostalCode"
           label="Código postal"
-          defaultValue={initial.fiscalPostalCode}
+          defaultValue={fiscalPostalCode}
+          onChange={(v) => setFiscalPostalCode(v)}
           placeholder="08001"
+          required
         />
       </div>
 

@@ -29,6 +29,13 @@
       "when": 1776778304060,
       "tag": "0003_brief_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776779909714,
+      "tag": "0004_normal_invaders",
+      "breakpoints": true
     }
   ]
 }

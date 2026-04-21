@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { clients, invoices } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, AlertOctagon } from 'lucide-react'
 import PrintButton from './PrintButton'
 
 // -----------------------------------------------------------------------------
@@ -46,6 +46,7 @@ export default async function InvoiceDetailPage({
   if (!invoice) notFound()
 
   const isInvoice = invoice.type === 'invoice'
+  const isVoided = invoice.status === 'voided'
   const title = isInvoice ? 'Factura' : 'Ticket'
 
   return (
@@ -66,6 +67,25 @@ export default async function InvoiceDetailPage({
 
       {/* Document */}
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-8 md:py-12 print:p-0 print:max-w-none">
+        {/* Voided banner — legal warning shown on screen AND on print so there
+            is zero chance of a voided doc being handed to a customer as valid. */}
+        {isVoided && (
+          <div
+            role="alert"
+            className="mb-6 rounded-2xl border-2 border-danger bg-danger/10 p-5 md:p-6 flex items-start gap-4"
+          >
+            <AlertOctagon className="h-8 w-8 text-danger flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="flex-1">
+              <p className="font-display text-xl md:text-2xl font-bold text-danger uppercase tracking-wide">
+                Factura anulada
+              </p>
+              <p className="text-sm md:text-base text-ink mt-2">
+                Emitida pero la reserva fue cancelada. Si el cliente ya pagó,
+                debes emitir una <strong>factura rectificativa manualmente</strong>.
+              </p>
+            </div>
+          </div>
+        )}
         <article className="bg-surface border border-line rounded-2xl p-8 md:p-12 print:border-0 print:rounded-none print:shadow-none print:p-8">
           {/* Header: emisor + nº factura */}
           <div className="flex items-start justify-between gap-6 flex-wrap pb-6 border-b border-line">

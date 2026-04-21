@@ -13,6 +13,7 @@ import {
   formatDateSpanish,
 } from '@/lib/google-calendar';
 import { getAvailableSlotsFromDB } from '@/lib/availability';
+import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -603,6 +604,9 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
       await db.update(bookings)
         .set({ status: 'cancelled', cancelledAt: new Date() })
         .where(eq(bookings.id, bk.id));
+      // Void any attached invoice so stats/exports drop it and Alex is
+      // pinged to emit a factura rectificativa manually if needed.
+      tryVoidInvoicesInBackground(bk.id);
 
       // Track cancellation
       await trackAnalytics(config.id, 'bookingsCancelled');
@@ -726,6 +730,9 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
         await deleteCalendarEvent(config.googleCalendarId, bk.googleEventId);
       }
       await db.update(bookings).set({ status: 'cancelled', cancelledAt: new Date() }).where(eq(bookings.id, bk.id));
+      // Void any attached invoice (MVP) — a rectificativa must be emitted
+      // manually if the customer already paid.
+      tryVoidInvoicesInBackground(bk.id);
     }
 
     // Create the new booking for the offered slot
@@ -1940,6 +1947,8 @@ async function handleCancelConfirmation(
     .update(bookings)
     .set({ status: 'cancelled', cancelledAt: new Date() })
     .where(eq(bookings.id, bookingId));
+  // Void any attached invoice — MVP only (no rectificativa auto-emitted).
+  tryVoidInvoicesInBackground(bookingId);
 
   // Track cancellation
   await trackAnalytics(config.id, 'bookingsCancelled');

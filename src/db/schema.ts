@@ -179,6 +179,15 @@ export const emailParseLog = pgTable('email_parse_log', {
   errorMessage: text('error_message'),
 });
 
+// Stripe webhook idempotency ledger. Every incoming event is INSERT-ed on
+// arrival with `ON CONFLICT DO NOTHING`; if the insert returns no row, the
+// event was already processed and we ack without doing anything else. This
+// turns Stripe's at-least-once delivery into effectively exactly-once.
+export const processedStripeEvents = pgTable('processed_stripe_events', {
+  eventId: text('event_id').primaryKey(),
+  processedAt: timestamp('processed_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Invoices / tickets emitted by the client (barbershop) to their own customers.
 // Amounts stored in integer cents to avoid float drift. One row per fiscal doc.
 // `bookingId` is nullable to allow future manual invoices (not auto-generated).

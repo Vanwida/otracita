@@ -8,6 +8,7 @@ import {
   findMissingCriticalFields,
 } from '@/lib/booksy-email-llm';
 import type { BooksyBookingData } from '@/lib/booksy-email-parser';
+import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 
 /**
  * Replay a historical email_parse_log row through the LLM extractor and,
@@ -145,6 +146,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         .update(bookings)
         .set({ status: 'cancelled', cancelledAt: new Date() })
         .where(eq(bookings.id, existing.id));
+      // Void any attached invoice (MVP).
+      tryVoidInvoicesInBackground(existing.id);
       bookingId = existing.id;
     }
   }

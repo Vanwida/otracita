@@ -31,6 +31,13 @@ interface Props {
 // ends with digit or letter. Matches server-side `looksLikeValidNif`.
 const NIF_SHAPE = /^[0-9A-Z][0-9]{7}[0-9A-Z]$/i
 
+/**
+ * Ticket simplificado price ceiling (euros). Real Decreto 1619/2012 art. 4:
+ * ventas > 400€ must be emitted as a factura completa with the buyer's NIF.
+ * Keep in sync with `TICKET_MAX_CENTS` in src/lib/invoicing.ts.
+ */
+const TICKET_MAX_EUROS = 400
+
 const INPUT_CLASS =
   'w-full px-3 py-2.5 text-sm rounded-xl bg-surface border border-line text-ink placeholder-ink-3 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-colors'
 
@@ -65,6 +72,21 @@ export default function ManualInvoiceForm({
 
   const isInvoice = customerNif.trim().length > 0
   const nifShapeOk = !customerNif.trim() || NIF_SHAPE.test(customerNif.trim())
+
+  // Legal validation — mirrors `validateManualInvoiceInput` on the server so
+  // the barber can't even submit an invalid combo.
+  const priceNum = Number(price)
+  const priceIsPositive = price !== '' && Number.isFinite(priceNum) && priceNum > 0
+  const exceedsTicketMax = priceIsPositive && priceNum > TICKET_MAX_EUROS
+  const nifRequired = exceedsTicketMax && !customerNif.trim()
+  const addressRequiredForInvoice = isInvoice && !customerAddress.trim()
+  const submitDisabled =
+    loading ||
+    !priceIsPositive ||
+    nifRequired ||
+    addressRequiredForInvoice ||
+    !customerName.trim() ||
+    !serviceName.trim()
 
   // Breakdown preview — mirrors server logic so the barber sees what they're emitting.
   const preview = useMemo(() => {
@@ -193,7 +215,9 @@ export default function ManualInvoiceForm({
           />
         </div>
         <div>
-          <label className={LABEL_CLASS} htmlFor="customerNif">NIF/CIF (opcional)</label>
+          <label className={LABEL_CLASS} htmlFor="customerNif">
+            NIF/CIF {exceedsTicketMax ? <span className="text-danger">*</span> : '(opcional)'}
+          </label>
           <input
             id="customerNif"
             type="text"
@@ -201,8 +225,14 @@ export default function ManualInvoiceForm({
             onChange={(e) => setCustomerNif(e.target.value.toUpperCase())}
             placeholder="12345678A"
             autoComplete="off"
+            required={exceedsTicketMax}
             className={INPUT_CLASS}
           />
+          {nifRequired && (
+            <p className="mt-1 text-xs text-danger font-medium">
+              Las ventas &gt;400€ requieren NIF (factura completa, no ticket simplificado).
+            </p>
+          )}
           {customerNif && !nifShapeOk && (
             <p className="mt-1 text-xs text-warning">
               El formato del NIF/CIF no es habitual. Se emitirá igualmente.
@@ -210,7 +240,9 @@ export default function ManualInvoiceForm({
           )}
         </div>
         <div>
-          <label className={LABEL_CLASS} htmlFor="customerAddress">Dirección (opcional)</label>
+          <label className={LABEL_CLASS} htmlFor="customerAddress">
+            Dirección {isInvoice ? <span className="text-danger">*</span> : '(opcional)'}
+          </label>
           <input
             id="customerAddress"
             type="text"
@@ -219,7 +251,13 @@ export default function ManualInvoiceForm({
             placeholder="Calle Mayor 1, 08001 Barcelona"
             className={INPUT_CLASS}
             disabled={!isInvoice}
+            required={isInvoice}
           />
+          {addressRequiredForInvoice && (
+            <p className="mt-1 text-xs text-danger font-medium">
+              Dirección obligatoria en facturas con NIF.
+            </p>
+          )}
           {!isInvoice && (
             <p className="mt-1 text-xs text-ink-3">
               Solo relevante si emites factura con NIF.
@@ -348,7 +386,7 @@ export default function ManualInvoiceForm({
         </button>
         <button
           type="submit"
-          disabled={loading}
+          disabled={submitDisabled}
           className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

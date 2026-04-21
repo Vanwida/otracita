@@ -1,10 +1,16 @@
 import OpenAI from "openai";
 import { auth } from "@/lib/auth/server";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const client = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: "https://api.x.ai/v1",
 });
+
+// Dashboard-chat upper bound per user. Conservative because a single chatty
+// tab can burn through our LLM budget quickly. Raise only after adding
+// backend cost controls.
+const DASHBOARD_CHAT_MAX_PER_MINUTE = 10;
 
 const SYSTEM_PROMPT = `Eres el asistente de soporte de otracita, una plataforma que instala chatbots de WhatsApp para negocios locales que se conectan con Booksy y Google Calendar.
 
@@ -32,6 +38,16 @@ export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Rate-limit BEFORE the LLM call — an abusive session must not run up our
+  // Grok bill. Keyed on the stable user id so multiple tabs share the budget.
+  const limit = checkRateLimit(
+    `dashboard-chat:${session.user.id}`,
+    DASHBOARD_CHAT_MAX_PER_MINUTE,
+  );
+  if (!limit.ok) {
+    return rateLimitResponse(limit);
   }
 
   try {

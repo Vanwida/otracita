@@ -13,6 +13,7 @@ import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV, BOTTOM_NAV } from "@/app/dashboard/_components/nav-config"
+import { isAdminUser } from "@/lib/auth/admin"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -29,7 +30,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const needsSetup = !client || client.status === 'pending'
   const email = session.user.email || ''
-  const isAdmin = email === 'vanwida@aistudios.pro' || email.endsWith('@aistudios.pro') || email.toLowerCase().includes('alex')
+  const isAdmin = isAdminUser(session)
 
   const sections = [PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV]
 

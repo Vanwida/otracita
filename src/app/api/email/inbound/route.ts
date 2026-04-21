@@ -10,7 +10,10 @@ import {
   type CriticalField,
 } from '@/lib/booksy-email-llm';
 import { notifyAlex } from '@/lib/notify-alex';
-import { tryAutoInvoiceInBackground } from '@/lib/invoicing';
+import {
+  tryAutoInvoiceInBackground,
+  tryVoidInvoicesInBackground,
+} from '@/lib/invoicing';
 
 interface PostmarkInboundPayload {
   To?: string;
@@ -151,6 +154,9 @@ async function applyBookingFromData(
         .update(bookings)
         .set({ status: 'cancelled', cancelledAt: new Date() })
         .where(eq(bookings.id, existing.id));
+      // Void any issued invoice so it stops counting toward stats/exports
+      // and Alex is pinged to emit a rectificativa manually if needed.
+      tryVoidInvoicesInBackground(existing.id);
       return existing.id;
     }
   }
