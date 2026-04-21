@@ -7,25 +7,37 @@ import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-cli
 // -----------------------------------------------------------------------------
 // GET /api/invoices/export?month=YYYY-MM
 //
-// CSV export of all invoices for the authenticated tenant in the given month,
-// formatted for import into standard Spanish accounting tools (gestores) —
-// comma-separated, euros with dot decimal (to match Excel ES settings use of
-// period) — no wait, **comma decimal** is Excel-ES; tools like A3, Sage, Contasol
-// all accept either — we use dot decimal which is the international standard
-// and what CSV implies.
+// Exports the tenant's monthly invoices as an Excel-ES-friendly CSV so the
+// barber can double-click the file, open it in Excel, and forward it to their
+// gestor with zero manual column-splitting.
 //
-// Columns (in order): number,date,customer_name,customer_nif,service,barber,
-//                     base_eur,iva_pct,iva_eur,total_eur,type
+// Format decisions:
+//   - Separator: `;` (not `,`) — Excel ES opens semicolon CSVs natively without
+//     an import wizard. A comma-separated CSV loads into a single column.
+//   - Decimal: `,` (not `.`) — Spanish locale convention; matches Excel ES.
+//   - UTF-8 BOM: prefixed so accented characters ("Peluquería", "Corte básico")
+//     render correctly in Excel — without the BOM Excel treats it as Windows-1252.
+//   - Headers: Spanish accounting terminology ("Nº Factura", "Base imponible")
+//     rather than the API-style `base_eur` / `iva_pct` — gestores read these.
+//   - Trailing TOTALES row: sum of base, IVA and total so the gestor doesn't
+//     have to write a SUM formula just to reconcile.
 // -----------------------------------------------------------------------------
 
-function formatEuros(cents: number): string {
-  return (cents / 100).toFixed(2)
+/** Euros in Spanish format: "1234,56" (no thousands separator to avoid CSV ambiguity). */
+function formatEurosES(cents: number): string {
+  return (cents / 100).toFixed(2).replace('.', ',')
 }
 
+/**
+ * Escape a value for a semicolon-separated CSV. Excel-ES quirks:
+ *  - If the value contains `;`, `"`, or a newline, wrap in double quotes and
+ *    escape inner quotes by doubling them.
+ *  - Newlines inside a quoted field are allowed — Excel handles them.
+ */
 function csvEscape(value: string | null | undefined): string {
   if (value == null) return ''
   const s = String(value)
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+  if (s.includes(';') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return `"${s.replace(/"/g, '""')}"`
   }
   return s
@@ -41,6 +53,23 @@ function monthRange(month: string): { start: string; end: string } | null {
   const end = new Date(Date.UTC(year, m + 1, 1)).toISOString().slice(0, 10)
   return { start, end }
 }
+
+const HEADERS = [
+  'Nº Factura',
+  'Fecha',
+  'Cliente',
+  'NIF/CIF',
+  'Concepto',
+  'Profesional',
+  'Base imponible (€)',
+  '% IVA',
+  'Cuota IVA (€)',
+  'Total (€)',
+  'Tipo',
+] as const
+
+const SEPARATOR = ';'
+const LINE_SEPARATOR = '\r\n' // Windows CRLF — Excel ES prefers this on import
 
 export async function GET(req: NextRequest): Promise<Response> {
   const access = await requireClientAccess(req)
@@ -70,35 +99,56 @@ export async function GET(req: NextRequest): Promise<Response> {
     )
     .orderBy(asc(invoices.issueDate), asc(invoices.number))
 
-  const header = [
-    'numero',
-    'fecha',
-    'cliente_nombre',
-    'cliente_nif',
-    'servicio',
-    'barbero',
-    'base_eur',
-    'iva_pct',
-    'iva_eur',
-    'total_eur',
-    'tipo',
-  ].join(',')
+  const dataRows = rows.map((row) =>
+    [
+      csvEscape(row.number),
+      csvEscape(row.issueDate),
+      csvEscape(row.customerName),
+      csvEscape(row.customerNif),
+      csvEscape(row.serviceName),
+      csvEscape(row.barberName),
+      formatEurosES(row.subtotalCents),
+      row.ivaRate.toString(),
+      formatEurosES(row.ivaAmountCents),
+      formatEurosES(row.totalCents),
+      csvEscape(row.type === 'invoice' ? 'Factura' : 'Ticket'),
+    ].join(SEPARATOR),
+  )
 
-  const lines = rows.map((row) => [
-    csvEscape(row.number),
-    csvEscape(row.issueDate),
-    csvEscape(row.customerName),
-    csvEscape(row.customerNif),
-    csvEscape(row.serviceName),
-    csvEscape(row.barberName),
-    formatEuros(row.subtotalCents),
-    row.ivaRate.toString(),
-    formatEuros(row.ivaAmountCents),
-    formatEuros(row.totalCents),
-    csvEscape(row.type),
-  ].join(','))
+  // Totals row — leave first six columns empty so the SUM aligns under the
+  // numeric columns when you scroll right in Excel.
+  const totals = rows.reduce(
+    (acc, r) => ({
+      subtotal: acc.subtotal + r.subtotalCents,
+      iva: acc.iva + r.ivaAmountCents,
+      total: acc.total + r.totalCents,
+    }),
+    { subtotal: 0, iva: 0, total: 0 },
+  )
 
-  const body = [header, ...lines].join('\n') + '\n'
+  const totalsRow = [
+    'TOTALES',
+    '',
+    '',
+    '',
+    '',
+    '',
+    formatEurosES(totals.subtotal),
+    '',
+    formatEurosES(totals.iva),
+    formatEurosES(totals.total),
+    '',
+  ].join(SEPARATOR)
+
+  const headerRow = HEADERS.map(csvEscape).join(SEPARATOR)
+
+  // UTF-8 BOM — critical for accents in Excel ES
+  const BOM = '\uFEFF'
+
+  const body =
+    BOM +
+    [headerRow, ...dataRows, '', totalsRow].join(LINE_SEPARATOR) +
+    LINE_SEPARATOR
 
   return new Response(body, {
     status: 200,
