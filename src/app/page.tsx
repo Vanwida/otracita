@@ -366,6 +366,13 @@ export default function Home() {
           </div>
           <div className="mt-16 flex flex-col items-center justify-between gap-4 border-t border-[var(--color-line)] pt-8 sm:flex-row">
             <p className="text-sm text-[var(--color-ink-3)]">&copy; {new Date().getFullYear()} otracita. Todos los derechos reservados.</p>
+            <div className="flex items-center gap-4 text-sm">
+              <a href="/privacidad" className="text-[var(--color-ink-3)] hover:text-[var(--color-brand)] transition-colors">Privacidad</a>
+              <span className="text-[var(--color-line-strong)]">·</span>
+              <a href="/terminos" className="text-[var(--color-ink-3)] hover:text-[var(--color-brand)] transition-colors">Términos</a>
+              <span className="text-[var(--color-line-strong)]">·</span>
+              <a href="/aviso-legal" className="text-[var(--color-ink-3)] hover:text-[var(--color-brand)] transition-colors">Aviso legal</a>
+            </div>
           </div>
         </div>
       </footer>
