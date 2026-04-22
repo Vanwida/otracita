@@ -7,17 +7,17 @@ import { sendRatingMessage } from '@/lib/whatsapp/followup';
 // -----------------------------------------------------------------------------
 // GET /api/cron/post-booking-followup
 //
-// Scheduled every 10 minutes. For barbershops with `tips_enabled = true`,
-// finds bookings where:
+// Scheduled DAILY at 21:00 Europe/Madrid (Vercel Hobby plan limit — Pro
+// would allow hourly or every-10-min for near-real-time followups). For
+// barbershops with `tips_enabled = true`, finds bookings where:
 //   · `status` is confirmed/completed (never send on cancel/no-show)
 //   · `followup_sent_at` is null (idempotent — send once)
 //   · booking's end-of-service + client.followup_minutes_after ≤ now()
-//   · booking's end-of-service > now() - 24h (don't spam about ancient
-//     appointments; if we missed the window, we skip silently)
+//   · booking's end-of-service > now() - 24h (window covers one full day
+//     of services since the cron only runs once every 24h).
 //
-// Stage 1 ships in **dry-run** mode: returns the list of candidates without
-// sending any message. Stage 2 will flip a single env flag to enable real
-// delivery + the helper in src/lib/whatsapp/followup.ts.
+// Ships in **dry-run** by default (env FOLLOWUP_DRY_RUN). Flip to "false"
+// in Vercel env when ready to start sending real messages.
 //
 // End-of-service is computed from `(date || ' ' || time)::timestamp + duration`
 // in Europe/Madrid so we align with the barbershop's local clock.
