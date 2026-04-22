@@ -367,7 +367,7 @@
       </div>
       <div class="hub-children">
         <div class="hub-child">Usuarios dashboard<br><small>Better Auth · email == clients.email</small></div>
-        <div class="hub-child">Barberos (array)<br><small>Solo nombres, no cuentas (v1)</small></div>
+        <div class="hub-child">Barberos (tabla `barbers`)<br><small>Hours + blocked por persona, active flag, displayOrder</small></div>
         <div class="hub-child">Clientes finales<br><small>Phone-based identity</small></div>
         <div class="hub-child">Conversaciones WA<br><small>Por phone</small></div>
         <div class="hub-child">Servicios · Horarios · Blocked</div>
@@ -452,15 +452,19 @@
   <!-- ────────────────────────────────────────────────────────── -->
   <section id="entities">
     <h2><span class="num">03</span>Entidades núcleo (DB)</h2>
-    <p class="subtitle">13 tablas Postgres en Neon, orquestadas con Drizzle migrations. El grafo de dependencias clavado a <code>clients.id</code> garantiza tenancy limpia.</p>
+    <p class="subtitle">14 tablas Postgres en Neon, orquestadas con Drizzle migrations (hasta 0007). El grafo de dependencias clavado a <code>clients.id</code> garantiza tenancy limpia.</p>
     <div class="grid grid-4">
       <div class="card">
         <h4>clients</h4>
-        <p>La barbería. 46 columnas: config Meta, Booksy, Google Calendar, Stripe Connect, fiscal, propinas.</p>
+        <p>La barbería. 49 columnas: config Meta, Booksy, Google Calendar, Stripe Connect, fiscal, propinas, scheduling standards (minLeadTime, maxHorizon, buffer).</p>
+      </div>
+      <div class="card accent">
+        <h4>barbers</h4>
+        <p>Staff por cliente. Hours + blockedDates por persona (null = hereda del shop), displayOrder, active. Source of truth del equipo.</p>
       </div>
       <div class="card">
         <h4>bookings</h4>
-        <p>Reservas. Estados: <code>confirmed</code>, <code>completed</code>, <code>cancelled</code>, <code>no_show</code>. Source: <code>bot</code> | <code>booksy</code>.</p>
+        <p>Reservas. Estados: <code>confirmed</code>, <code>completed</code>, <code>cancelled</code>, <code>no_show</code>. Source: <code>bot</code> | <code>booksy</code>. `barberId` FK a barbers + `barber` snapshot string.</p>
       </div>
       <div class="card">
         <h4>customers</h4>
@@ -522,17 +526,21 @@
         <h4>Servicios</h4>
         <p>Lista de servicios (nombre, duración min, precio €). Define qué ofrece el bot.</p>
       </div>
-      <div class="card">
+      <div class="card accent">
         <h4>Equipo</h4>
-        <p>Array de barberos (solo nombres). El bot pregunta con quién. V2: cuenta propia Stripe por barbero.</p>
+        <p>Cada barbero es una fila en `barbers`. Tiene nombre, orden, active flag y PUEDE tener horario + blocked propios. Si no, hereda del shop. V2: cuenta Stripe propia por barbero (modelo "alquiler de silla").</p>
       </div>
       <div class="card">
-        <h4>Horarios</h4>
-        <p>Lun-Dom, hora apertura/cierre + breaks. El bot solo ofrece slots dentro.</p>
+        <h4>Horarios shop</h4>
+        <p>Lun-Dom, hora apertura/cierre. Default para los barberos sin horario personalizado. El bot solo ofrece slots dentro (intersección barbero + shop).</p>
       </div>
       <div class="card">
-        <h4>Días bloqueados</h4>
-        <p>Array de fechas ISO. Vacaciones/festivos. Bot no ofrece esos días.</p>
+        <h4>Días bloqueados shop</h4>
+        <p>Array de fechas ISO. Vacaciones/festivos del negocio. Los barberos pueden además añadir sus propios días blocked individuales.</p>
+      </div>
+      <div class="card accent">
+        <h4>Scheduling standards</h4>
+        <p>3 campos en clients: `minLeadTimeMinutes` (no reservar menos de X min en advance), `maxBookingHorizonDays` (hasta cuándo), `serviceBufferMinutes` (cleanup entre citas). Defaults 15/45/5.</p>
       </div>
       <div class="card">
         <h4>Datos fiscales</h4>
@@ -607,10 +615,11 @@
         <li>Engine resuelve el <code>clients</code> por <code>phoneNumberId</code></li>
         <li>Intent detection (GPT-4o-mini): "quiero cortarme" → <code>booking</code></li>
         <li>Bot pregunta servicio → lista interactiva desde <code>chatbotServices</code></li>
-        <li>Bot pregunta barbero → si hay más de uno</li>
-        <li>Bot pregunta fecha → próximos 7 días con huecos</li>
-        <li>Bot pregunta slot → lee <code>getAvailableSlotsFromDB()</code> respetando horarios + bookings existentes + blocked dates</li>
-        <li>Cliente confirma → <code>createBooking()</code> inserta en <code>bookings</code> (status confirmed)</li>
+        <li>Bot pregunta barbero → se cargan de <code>barbers</code> (active=true, ordered). Opción "sin preferencia" guarda `selectedBarberId = null`</li>
+        <li>Bot pregunta fecha → próximos 7 días con huecos (respeta maxBookingHorizonDays)</li>
+        <li>Bot pregunta slot → <code>getAvailableSlotsFromDB()</code> usa hours+blocked DEL BARBERO (o shop si null), aplica minLeadTime + serviceBuffer. Si "sin preferencia" → slot libre si al menos 1 barbero activo lo tiene libre</li>
+        <li>Cliente confirma → <code>createBooking()</code>: si no hay barberId, <code>pickBarberForCustomer()</code> asigna el último barbero que atendió a ese cliente (si libre) o el menos ocupado. NUNCA persiste "Sin preferencia"</li>
+        <li>Insert en <code>bookings</code> con `barberId` + `barber` (name snapshot), status=confirmed</li>
         <li>Si <code>invoicingEnabled + price != null</code> → <code>tryAutoInvoiceInBackground()</code> genera ticket/factura</li>
         <li>Bot confirma por WhatsApp + actualiza <code>conversations.step = 'idle'</code></li>
         <li>Contador <code>customers.totalBookings</code> ++</li>
@@ -620,11 +629,13 @@
         <span class="tag">Meta WhatsApp</span>
         <span class="tag">engine.ts</span>
         <span class="tag">GPT-4o-mini</span>
+        <span class="tag">barbers (resolución)</span>
         <span class="tag">bookings</span>
         <span class="tag">customers</span>
         <span class="tag">conversations</span>
         <span class="tag">invoices</span>
         <span class="tag">analytics</span>
+        <span class="tag">availability.ts (per-barber)</span>
       </div>
     </div>
 
@@ -760,7 +771,7 @@
     <!-- Flow 8: Rating + Propina -->
     <div class="flow">
       <h3><span class="dot dot-partial"></span>Flow 08 · Rating + propina post-servicio</h3>
-      <p class="flow-description">Recién shipeado (commits 2ceb1c7, e82ed2c, 8175f7f). Requiere migración 0006 aplicada + activar toggle por barbería.</p>
+      <p class="flow-description">Shipeado + migración aplicada (2026-04-22). Deploy live en otracita.es. Pendiente: flipear <code>FOLLOWUP_DRY_RUN=false</code> en Vercel env y validar con tu barbería de prueba. Por plan Hobby corre diario a 21:00 en vez de cada 10 min.</p>
       <ol class="flow-steps">
         <li>Cron <code>/api/cron/post-booking-followup</code> cada 10 min identifica bookings con endsAt+30min ≤ now, tipsEnabled=true, followupSentAt=null</li>
         <li><code>sendRatingMessage()</code>: WhatsApp lista con 5 ⭐ + marca <code>followupSentAt</code> + guarda <code>context.followup</code></li>
@@ -784,7 +795,7 @@
         <span class="tag">XLSX export (sheet Propinas)</span>
       </div>
       <div class="callout">
-        <strong>Estado:</strong> código mergeado. Bloqueantes: (1) migración 0006 pendiente de aplicar a Neon, (2) <code>FOLLOWUP_DRY_RUN=false</code> env a flipear cuando valides en tu barbería de prueba.
+        <strong>Estado:</strong> live en producción. Bloqueante único: <code>FOLLOWUP_DRY_RUN=false</code> env en Vercel cuando valides en tu barbería de prueba. También requiere Stripe Connect platform signup (otro bloqueante aparte, no solo del followup).
       </div>
     </div>
 
@@ -1031,18 +1042,18 @@
       <tbody>
         <tr><td>1</td><td class="key">0 clientes pagando</td><td>Validación del producto entero</td><td>Marketing / ventas</td><td class="yes">P0</td></tr>
         <tr><td>2</td><td class="key">Stripe Connect platform signup pendiente</td><td>Cobros online, propinas</td><td>15 min (tú, en dashboard Stripe)</td><td class="yes">P0</td></tr>
-        <tr><td>3</td><td class="key">Migración 0006 no aplicada</td><td>Feature propinas rompe en runtime</td><td>1 comando (sandbox bloquea — tú lo tiras)</td><td class="yes">P0</td></tr>
+        <tr><td>3</td><td class="key">UI per-barbero (horas + blocked individual)</td><td>Backend listo, falta editor en dashboard. Sin esto Reni/Juan con horarios distintos no se configuran</td><td>3-4h</td><td class="yes">P1</td></tr>
         <tr><td>4</td><td class="key">Postmark no contratado</td><td>Sync Booksy por email</td><td>$15/mes + 1h config</td><td class="partial">P1 (cuando primer cliente lo pida)</td></tr>
-        <tr><td>5</td><td class="key">Twilio bridge voz</td><td>Bot telefónico</td><td>$5/mes + 4h</td><td>P2 (post validación biz)</td></tr>
-        <tr><td>6</td><td class="key">Engine.ts 2200 líneas</td><td>Mantenibilidad futura</td><td>2-3 días refactor</td><td>P2</td></tr>
-        <tr><td>7</td><td class="key">Rating view por barbero en dashboard</td><td>Visibilidad de calidad del equipo</td><td>3h</td><td>P2 (cuando haya datos)</td></tr>
-        <tr><td>8</td><td class="key">Depósito condicional por no-shows</td><td>Protección reincidentes</td><td>1 día</td><td>P2 (cuando salga el problema real)</td></tr>
-        <tr><td>9</td><td class="key">Factura rectificativa estricta</td><td>Compliance AEAT escalar</td><td>2 días</td><td>P3 (pre-scaling)</td></tr>
-        <tr><td>10</td><td class="key">Verifactu 2027</td><td>Obligatorio julio 2027 autónomos</td><td>1 semana</td><td>P3 (2027)</td></tr>
-        <tr><td>11</td><td class="key">Per-barbero Stripe Connect</td><td>Modelo "alquiler de silla"</td><td>3-4 días</td><td>P3 (cuando salga demanda)</td></tr>
-        <tr><td>12</td><td class="key">Membership / bono (100€ = 4 cortes)</td><td>Nuevo modelo recurring</td><td>4-5 días</td><td>P3 (oportunidad futura)</td></tr>
-        <tr><td>13</td><td class="key">Test restore DR</td><td>Confianza en backups</td><td>1h drill</td><td>P3</td></tr>
-        <tr><td>14</td><td class="key">Landing: eliminar "cobros online" del pitch principal</td><td>Claridad</td><td>20 min</td><td>P1</td></tr>
+        <tr><td>5</td><td class="key">Landing: reposicionar "cobros online"</td><td>Hoy vende como sustituto del datáfono (falso). Cambiar a "complemento para propinas / remoto"</td><td>20 min</td><td>P1</td></tr>
+        <tr><td>6</td><td class="key">Twilio bridge voz</td><td>Bot telefónico</td><td>$5/mes + 4h</td><td>P2 (post validación biz)</td></tr>
+        <tr><td>7</td><td class="key">Engine.ts 2200 líneas</td><td>Mantenibilidad futura</td><td>2-3 días refactor</td><td>P2</td></tr>
+        <tr><td>8</td><td class="key">Rating view por barbero en dashboard</td><td>Visibilidad de calidad del equipo</td><td>3h</td><td>P2 (cuando haya datos)</td></tr>
+        <tr><td>9</td><td class="key">Depósito condicional por no-shows</td><td>Protección reincidentes</td><td>1 día</td><td>P2 (cuando salga el problema real)</td></tr>
+        <tr><td>10</td><td class="key">Factura rectificativa estricta</td><td>Compliance AEAT escalar</td><td>2 días</td><td>P3 (pre-scaling)</td></tr>
+        <tr><td>11</td><td class="key">Verifactu 2027</td><td>Obligatorio julio 2027 autónomos</td><td>1 semana</td><td>P3 (2027)</td></tr>
+        <tr><td>12</td><td class="key">Per-barbero Stripe Connect</td><td>Modelo "alquiler de silla" (cada barbero recibe en SU cuenta)</td><td>3-4 días</td><td>P3 (cuando salga demanda)</td></tr>
+        <tr><td>13</td><td class="key">Membership / bono (100€ = 4 cortes)</td><td>Nuevo modelo recurring</td><td>4-5 días</td><td>P3 (oportunidad futura)</td></tr>
+        <tr><td>14</td><td class="key">Test restore DR</td><td>Confianza en backups</td><td>1h drill</td><td>P3</td></tr>
       </tbody>
     </table>
   </section>
@@ -1067,7 +1078,7 @@
         <tr><td class="key">Pago al final (efectivo)</td><td class="yes check">✓</td><td>Default — nada que hacer</td></tr>
         <tr><td class="key">Pago tarjeta presencial</td><td class="yes check">✓</td><td>QR desde agenda → Stripe</td></tr>
         <tr><td class="key">Pago Bizum</td><td class="no check">✗</td><td>Stripe ES lanza 2026 — flip cuando GA</td></tr>
-        <tr><td class="key">Propina</td><td class="partial check">⚠</td><td>Shipeado, pendiente migración + validación</td></tr>
+        <tr><td class="key">Propina</td><td class="partial check">⚠</td><td>Shipeado + deployed. Pendiente flipear env flag y probar con tu barbería</td></tr>
         <tr><td class="key">Valoración cliente (rating)</td><td class="partial check">⚠</td><td>Shipeado (mismo flow). Dashboard view v2</td></tr>
         <tr><td class="key">Cliente reincidente en no-shows</td><td class="no check">✗</td><td>Contador existe (<code>customers.noShows</code>) pero no se usa. Depósito condicional P2</td></tr>
         <tr><td class="key">Cliente nuevo (nombre, teléfono)</td><td class="yes check">✓</td><td>Bot aprende en primera interacción</td></tr>
@@ -1085,8 +1096,10 @@
         <tr><td class="key">Lista de clientes</td><td class="yes check">✓</td><td>/dashboard/clientes con búsqueda</td></tr>
         <tr><td class="key">Conversaciones WhatsApp</td><td class="yes check">✓</td><td>/dashboard/mensajes muestra hilos</td></tr>
         <tr><td class="key">Equipo / barberos</td><td class="yes check">✓</td><td>Array en clients.booksyServices</td></tr>
-        <tr><td class="key">Vacaciones / días libres</td><td class="yes check">✓</td><td>blockedDates jsonb array</td></tr>
-        <tr><td class="key">Horarios semanales</td><td class="yes check">✓</td><td>chatbotHours por día</td></tr>
+        <tr><td class="key">Vacaciones / días libres del shop</td><td class="yes check">✓</td><td>clients.blockedDates (array)</td></tr>
+        <tr><td class="key">Vacaciones / días libres por barbero</td><td class="partial check">⚠</td><td>Backend completo (barbers.blockedDates). UI editor pendiente (P1)</td></tr>
+        <tr><td class="key">Horarios semanales del shop</td><td class="yes check">✓</td><td>clients.chatbotHours por día</td></tr>
+        <tr><td class="key">Horarios semanales por barbero</td><td class="partial check">⚠</td><td>Backend completo (barbers.hours inherit shop). UI editor pendiente (P1)</td></tr>
         <tr><td class="key">Lista de espera</td><td class="yes check">✓</td><td>Tabla waitlist + notificación auto</td></tr>
         <tr><td class="key">Multi-idioma cliente final</td><td class="yes check">✓</td><td>ES/EN auto-detect</td></tr>
         <tr><td class="key">Multi-idioma dashboard</td><td class="no check">✗</td><td>Solo ES (target ES)</td></tr>
@@ -1120,7 +1133,7 @@
 </div>
 
 <footer>
-  otracita · mapa de producto · generado 2026-04-22
+  otracita · mapa de producto · actualizado 2026-04-22 tras sprint barbers+standards
 </footer>
 
 </body>
