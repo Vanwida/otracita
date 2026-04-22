@@ -408,12 +408,12 @@
       <div class="card">
         <span class="badge">Ingesta</span>
         <h4><span class="dot dot-partial"></span>Booksy email sync</h4>
-        <p>Webhook Postmark-shaped en /api/email/inbound.</p>
+        <p>Inbound email via Gmail API + Pub/Sub push → /api/email/inbound (body shape heredado de la primera iteración, Postmark nunca se contrata).</p>
         <ul>
           <li>Parser regex + fallback LLM (xAI Grok)</li>
           <li>Tabla <code>email_parse_log</code> para observabilidad</li>
           <li>Alertas automáticas a Alex si falla parse</li>
-          <li><em>Pendiente: contratar Postmark y apuntar inbound</em></li>
+          <li><em>Pendiente: crear cuenta `agendalo.sync@gmail.com`, activar Gmail API push (gratis, Google Cloud existente)</em></li>
         </ul>
       </div>
       <div class="card">
@@ -645,8 +645,8 @@
       <p class="flow-description">Cuando el cliente reserva desde la app Booksy y queremos que el bot vea esa reserva.</p>
       <ol class="flow-steps">
         <li>Cliente reserva en Booksy → Booksy envía email de confirmación</li>
-        <li>Email reenviado a <code>sync-{clientId}@inbound.otracita.es</code> (forward rule en la cuenta del barbero)</li>
-        <li>Postmark recibe → POST a <code>/api/email/inbound</code> con firma</li>
+        <li>El barbero tiene un forward rule de Gmail: `booksy.com → agendalo.sync@gmail.com`</li>
+        <li>Gmail API + Pub/Sub notifican a <code>/api/email/inbound</code> (push) — coste 0€, no terceros</li>
         <li>Webhook valida firma → resuelve <code>clients</code> por email destino</li>
         <li>Parser regex intenta extraer: servicio, barbero, fecha, hora, duración, precio, cliente</li>
         <li>Si parse parcial → fallback a LLM (xAI Grok) para completar campos</li>
@@ -657,7 +657,7 @@
       </ol>
       <div class="flow-touches">
         <strong>Toca:</strong>
-        <span class="tag">Postmark (pendiente)</span>
+        <span class="tag">Gmail API + Pub/Sub (pendiente activar)</span>
         <span class="tag">email_parse_log</span>
         <span class="tag">booksy-email-parser.ts</span>
         <span class="tag">xAI Grok fallback</span>
@@ -666,7 +666,7 @@
         <span class="tag">notifyAlex</span>
       </div>
       <div class="callout">
-        <strong>Gap:</strong> código 100 % listo en repo. Falta solo contratar Postmark (~$15/mes) y apuntar el MX de <code>inbound.otracita.es</code>. Se activa en cuanto el primer cliente real lo pida.
+        <strong>Gap:</strong> código 100 % listo en repo (body shape Postmark heredado — se adapta el handler a Gmail Pub/Sub cuando se active). Falta crear cuenta Gmail central, activar Gmail API + Pub/Sub en Google Cloud, enseñar al barbero la forward rule. <strong>0€/mes, no hay servicios externos contratados.</strong>
       </div>
     </div>
 
@@ -870,7 +870,7 @@
         <tr><td class="key">OpenAI GPT-4o-mini</td><td>Intent detection + info Q&amp;A del bot</td><td><span class="yes">Live</span></td><td>~$3/1M tokens</td><td>Sí para bot</td></tr>
         <tr><td class="key">xAI Grok</td><td>Fallback parser Booksy + voz</td><td><span class="yes">Live (parser)</span></td><td>~$5/1M</td><td>No (fallback)</td></tr>
         <tr><td class="key">Google Calendar</td><td>Legacy availability (fade-out)</td><td><span class="yes">Live</span></td><td>Free</td><td>No — migrando a DB</td></tr>
-        <tr><td class="key">Postmark</td><td>Inbound email Booksy sync</td><td><span class="partial">Cuenta pendiente</span></td><td>$15/mes</td><td>Sí para flow 03</td></tr>
+        <tr><td class="key">Gmail API + Pub/Sub</td><td>Inbound email Booksy sync</td><td><span class="partial">Por activar (cuenta Gmail + Cloud push)</span></td><td>0 € (free tier)</td><td>Sí para flow 03</td></tr>
         <tr><td class="key">Twilio</td><td>Bridge voz (futuro)</td><td><span class="no">Pendiente</span></td><td>$5/mes + min</td><td>Solo voz</td></tr>
         <tr><td class="key">Better Auth</td><td>Sesiones dashboard</td><td><span class="yes">Live (self-hosted)</span></td><td>Free</td><td>Sí — login</td></tr>
         <tr><td class="key">HyperFrames</td><td>Render hero video</td><td><span class="yes">Live (local)</span></td><td>Free</td><td>No — producción</td></tr>
@@ -1043,7 +1043,7 @@
         <tr><td>1</td><td class="key">0 clientes pagando</td><td>Validación del producto entero</td><td>Marketing / ventas</td><td class="yes">P0</td></tr>
         <tr><td>2</td><td class="key">Stripe Connect platform signup pendiente</td><td>Cobros online, propinas</td><td>15 min (tú, en dashboard Stripe)</td><td class="yes">P0</td></tr>
         <tr><td>3</td><td class="key">UI per-barbero (horas + blocked individual)</td><td>Backend listo, falta editor en dashboard. Sin esto Reni/Juan con horarios distintos no se configuran</td><td>3-4h</td><td class="yes">P1</td></tr>
-        <tr><td>4</td><td class="key">Postmark no contratado</td><td>Sync Booksy por email</td><td>$15/mes + 1h config</td><td class="partial">P1 (cuando primer cliente lo pida)</td></tr>
+        <tr><td>4</td><td class="key">Gmail API + Pub/Sub por activar</td><td>Sync Booksy por email (0 €, Google Cloud existente). Postmark NUNCA se contrató ni se contratará</td><td>1 h config</td><td class="partial">P1 (cuando primer cliente lo pida)</td></tr>
         <tr><td>5</td><td class="key">Landing: reposicionar "cobros online"</td><td>Hoy vende como sustituto del datáfono (falso). Cambiar a "complemento para propinas / remoto"</td><td>20 min</td><td>P1</td></tr>
         <tr><td>6</td><td class="key">Twilio bridge voz</td><td>Bot telefónico</td><td>$5/mes + 4h</td><td>P2 (post validación biz)</td></tr>
         <tr><td>7</td><td class="key">Engine.ts 2200 líneas</td><td>Mantenibilidad futura</td><td>2-3 días refactor</td><td>P2</td></tr>

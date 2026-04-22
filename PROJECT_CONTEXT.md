@@ -75,7 +75,7 @@ Vibe: modern Spanish artisan. NOT Silicon Valley tech. Warm, confident, unashame
 | `src/app/globals.css` | Brand tokens + utilities |
 | `src/app/dashboard/*` | Authed dashboard |
 | `src/app/api/whatsapp/route.ts` | Meta webhook (HMAC verified) |
-| `src/app/api/email/inbound/route.ts` | Postmark-shaped inbound email webhook |
+| `src/app/api/email/inbound/route.ts` | Inbound email webhook (body shape from initial Postmark iteration; production will wire this behind Gmail API + Pub/Sub push — NO Postmark contract) |
 | `src/app/api/scrape-booksy/route.ts` | Booksy page extractor (auth-gated) |
 | `src/lib/whatsapp/engine.ts` | Bot conversation engine (~2200 lines — refactor TODO) |
 | `src/lib/auth/require-client-access.ts` | Multi-tenancy guard used by all tenant APIs |
@@ -149,7 +149,7 @@ Ads tier was removed from the main pricing — will live on a separate Vanwida l
 | # | Item | Why |
 |---|---|---|
 | 1 | **Get 3 paying pilot clients** | Nothing else matters until this is real |
-| 2 | Activate Booksy email sync (Postmark ~$15/mo) | Once first client onboards |
+| 2 | Activate Booksy email sync via Gmail API + Pub/Sub (free, Google Cloud already configured for Calendar) | Once first client onboards |
 | 3 | Twilio bridge for voice bot (Railway ~$5/mo) | Only after biz validation |
 | 4 | Separate landing for Ads service | When ready to offer as upsell |
 | 5 | Passive Booksy email parse-rate monitor | Once emails flow |
