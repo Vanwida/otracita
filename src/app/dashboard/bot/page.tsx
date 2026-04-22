@@ -143,11 +143,12 @@ export default async function BotPage() {
           </div>
         </section>
 
-        {/* ─── Idioma (placeholder) ─── */}
+        {/* ─── Idioma ─── */}
         <section className="space-y-3 border-t border-line pt-8">
           <h2 className="text-lg font-semibold text-ink">Idioma del bot</h2>
           <div className="bg-overlay border border-line rounded-lg p-4 text-sm text-ink-2">
-            Ahora mismo el bot responde en español (España). Pronto podrás elegir idioma por cliente y que detecte automáticamente.
+            El bot responde automáticamente en español o inglés según el idioma en el que le escriba el cliente.
+            Ideal para zonas con turismo. El cliente también puede pedirle cambiar de idioma en cualquier momento.
           </div>
         </section>
 
