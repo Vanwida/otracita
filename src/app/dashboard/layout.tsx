@@ -39,7 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       {/* Mobile Top Bar — hidden on lg+ */}
       <div className="fixed top-0 left-0 right-0 z-40 h-14 bg-surface border-b border-line flex items-center justify-between px-4 lg:hidden">
-        <Link href="/" className="flex items-center text-ink">
+        <Link href="/dashboard" className="flex items-center text-ink">
           <Wordmark height={28} />
         </Link>
         <MobileSidebar email={email} isAdmin={isAdmin} needsSetup={needsSetup} />
