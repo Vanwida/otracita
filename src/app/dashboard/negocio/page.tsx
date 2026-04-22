@@ -146,6 +146,64 @@ export default async function NegocioPage() {
       })
       .where(eq(clients.id, current.id))
 
+    // ── Sync `barbers` table with the names from the TeamEditor ─────────────
+    // The legacy UI still sends a flat array of names. Here we UPSERT the
+    // canonical rows: any name already in the table stays; missing names get
+    // inserted; barbers no longer in the list are soft-deleted (active=false)
+    // so that past bookings can still resolve them. We keep at least one
+    // active barber at all times (if the user empties the list we leave the
+    // current set untouched rather than orphaning future reservations).
+    if (Array.isArray(booksyServicesBarbers)) {
+      try {
+        const { barbers: barbersTable } = await import('@/db/schema')
+        const { and } = await import('drizzle-orm')
+        const names = (booksyServicesBarbers as Array<{ name: string }>)
+          .map((b) => (b?.name ?? '').trim())
+          .filter((n) => n.length > 0)
+
+        const existing = await db
+          .select()
+          .from(barbersTable)
+          .where(eq(barbersTable.clientId, current.id))
+
+        // Activate/insert for names present now
+        for (let i = 0; i < names.length; i++) {
+          const name = names[i]
+          const found = existing.find((r) => r.name === name)
+          if (found) {
+            if (!found.active || found.displayOrder !== i) {
+              await db
+                .update(barbersTable)
+                .set({ active: true, displayOrder: i, updatedAt: new Date() })
+                .where(eq(barbersTable.id, found.id))
+            }
+          } else {
+            await db.insert(barbersTable).values({
+              clientId: current.id,
+              name,
+              displayOrder: i,
+              active: true,
+            })
+          }
+        }
+
+        // Soft-deactivate anybody not in the list (skip if empty list — we
+        // don't want to delete every barber and strand future bookings).
+        if (names.length > 0) {
+          for (const row of existing) {
+            if (!names.includes(row.name) && row.active) {
+              await db
+                .update(barbersTable)
+                .set({ active: false, updatedAt: new Date() })
+                .where(and(eq(barbersTable.id, row.id), eq(barbersTable.clientId, current.id)))
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[saveBusiness] barbers sync failed:', err)
+      }
+    }
+
     const { revalidatePath } = await import('next/cache')
     revalidatePath('/dashboard/negocio')
   }

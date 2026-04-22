@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>otracita · Mapa de producto</title>
+<style>
+  :root {
+    --brand: #C9653C;
+    --brand-strong: #A84F2A;
+    --canvas: #F7F3EE;
+    --surface: #FFFFFF;
+    --overlay: #F0EBE3;
+    --ink: #2A1D14;
+    --ink-2: #6B574B;
+    --ink-3: #9A8A7C;
+    --line: #E8DDD0;
+    --success: #5E8B6B;
+    --warning: #C99A3C;
+    --danger: #B54A3C;
+    --gold: #D4A574;
+    --shadow: 0 2px 8px rgba(42, 29, 20, 0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    line-height: 1.5;
+  }
+  header.hero {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+    color: white;
+    padding: 48px 32px 40px;
+  }
+  header.hero h1 {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 44px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+  header.hero p {
+    margin: 0;
+    opacity: 0.92;
+    font-size: 16px;
+    max-width: 780px;
+  }
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+  section {
+    margin-bottom: 56px;
+  }
+  section > h2 {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 30px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  section > h2 .num {
+    display: inline-block;
+    color: var(--brand);
+    font-weight: 700;
+    margin-right: 10px;
+  }
+  section > .subtitle {
+    color: var(--ink-2);
+    margin: 0 0 24px;
+    max-width: 720px;
+  }
+  h3 {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot-shipped { background: var(--success); }
+  .dot-partial  { background: var(--warning); }
+  .dot-pending  { background: var(--ink-3); }
+  .dot-future   { background: var(--gold); }
+
+  /* Feature grid */
+  .grid {
+    display: grid;
+    gap: 16px;
+  }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 980px) {
+    .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .card h4 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card p {
+    margin: 0;
+    color: var(--ink-2);
+    font-size: 13px;
+  }
+  .card ul {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: var(--ink-2);
+    font-size: 13px;
+  }
+  .card .badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--overlay);
+    color: var(--ink-2);
+  }
+  .card.accent {
+    border-left: 3px solid var(--brand);
+  }
+  .card.gold {
+    border-left: 3px solid var(--gold);
+  }
+  .card.sage {
+    border-left: 3px solid var(--success);
+  }
+
+  /* Tenant diagram */
+  .tenant-hub {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .tenant-hub .hub-center {
+    background: var(--brand);
+    color: white;
+    padding: 16px;
+    border-radius: 12px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .tenant-hub .hub-center strong {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 22px;
+    display: block;
+  }
+  .tenant-hub .hub-children {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 980px) {
+    .tenant-hub .hub-children { grid-template-columns: repeat(2, 1fr); }
+  }
+  .hub-child {
+    background: var(--overlay);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: center;
+    border: 1px dashed var(--line);
+  }
+
+  /* Flow diagram */
+  .flow {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .flow h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .flow-description {
+    color: var(--ink-2);
+    font-size: 13px;
+    margin: 0 0 12px;
+  }
+  .flow-steps {
+    counter-reset: step;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .flow-steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 8px 8px 8px 42px;
+    margin-bottom: 8px;
+    background: var(--canvas);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .flow-steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    background: var(--brand);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .flow-steps li code {
+    background: var(--overlay);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--ink);
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  .flow-touches {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: var(--overlay);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+  .flow-touches strong {
+    color: var(--ink);
+  }
+  .tag {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--ink-2);
+    margin: 2px 2px 2px 0;
+  }
+
+  /* Matrix table */
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    font-size: 13px;
+  }
+  table.matrix th, table.matrix td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+  }
+  table.matrix th {
+    background: var(--overlay);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  table.matrix td.check { text-align: center; }
+  table.matrix td.key { font-weight: 600; color: var(--ink); }
+  .yes { color: var(--success); font-weight: 700; }
+  .no { color: var(--ink-3); }
+  .partial { color: var(--warning); font-weight: 700; }
+
+  /* Callout */
+  .callout {
+    background: #FFF8F0;
+    border: 1px solid #F4E0C4;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 13px;
+    color: var(--ink);
+    margin-top: 16px;
+  }
+  .callout strong {
+    color: var(--brand-strong);
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>otracita · Mapa de producto</h1>
+  <p>Auditoría completa de features, entidades, flujos e integraciones. Todo lo que el producto es, hace y conecta — para revisar que no se nos escape nada.</p>
+</header>
+
+<div class="container">
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="legend-section">
+    <div class="legend">
+      <div class="legend-item"><span class="dot dot-shipped"></span>Live en producción</div>
+      <div class="legend-item"><span class="dot dot-partial"></span>Código listo, pendiente integración externa</div>
+      <div class="legend-item"><span class="dot dot-pending"></span>Planificado, no empezado</div>
+      <div class="legend-item"><span class="dot dot-future"></span>Futuro / v2</div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="tenant">
+    <h2><span class="num">01</span>Scope de tenant</h2>
+    <p class="subtitle">Todo el producto gira en torno a un único tenant: la <strong>barbería</strong> (fila en <code>clients</code>). Guard <code>requireClientAccess</code> impide leaks entre tenants en cualquier API y dashboard.</p>
+    <div class="tenant-hub">
+      <div class="hub-center">
+        <strong>Barbería (1 fila en `clients`)</strong>
+        <span>Datos fiscales · Stripe Connect · WhatsApp · Booksy · Horarios</span>
+      </div>
+      <div class="hub-children">
+        <div class="hub-child">Usuarios dashboard<br><small>Better Auth · email == clients.email</small></div>
+        <div class="hub-child">Barberos (array)<br><small>Solo nombres, no cuentas (v1)</small></div>
+        <div class="hub-child">Clientes finales<br><small>Phone-based identity</small></div>
+        <div class="hub-child">Conversaciones WA<br><small>Por phone</small></div>
+        <div class="hub-child">Servicios · Horarios · Blocked</div>
+        <div class="hub-child">Facturas · Secuencia única</div>
+        <div class="hub-child">Cobros online · Propinas</div>
+        <div class="hub-child">Analytics · Waitlist</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="channels">
+    <h2><span class="num">02</span>Canales de interacción</h2>
+    <p class="subtitle">Cuatro puntos de entrada / salida — cada uno con su propio guard y handler.</p>
+    <div class="grid grid-3">
+      <div class="card accent">
+        <span class="badge">Core</span>
+        <h4><span class="dot dot-shipped"></span>WhatsApp Bot</h4>
+        <p>Meta WhatsApp Cloud API, webhook firmado con HMAC-SHA256.</p>
+        <ul>
+          <li>Intent detection (booking, cancel, change, info, greeting)</li>
+          <li>Bilingüe ES/EN con auto-detect + switch explícito</li>
+          <li>Waitlist si no hay huecos</li>
+          <li>Escape con palabras clave ("cancelar", "menu", "inicio")</li>
+          <li>Handler de rating + propina (post-servicio)</li>
+        </ul>
+      </div>
+      <div class="card accent">
+        <span class="badge">Barber</span>
+        <h4><span class="dot dot-shipped"></span>Dashboard web</h4>
+        <p>/dashboard — Better Auth session en Postgres.</p>
+        <ul>
+          <li>Inicio, Agenda, Clientes, Mensajes</li>
+          <li>Mi negocio (7 tabs: info/servicios/equipo/horario/facturación/cobros/blocked)</li>
+          <li>El bot, Facturación, Ayuda</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="badge">Ingesta</span>
+        <h4><span class="dot dot-partial"></span>Booksy email sync</h4>
+        <p>Webhook Postmark-shaped en /api/email/inbound.</p>
+        <ul>
+          <li>Parser regex + fallback LLM (xAI Grok)</li>
+          <li>Tabla <code>email_parse_log</code> para observabilidad</li>
+          <li>Alertas automáticas a Alex si falla parse</li>
+          <li><em>Pendiente: contratar Postmark y apuntar inbound</em></li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="badge">Internal</span>
+        <h4><span class="dot dot-shipped"></span>Admin panel</h4>
+        <p>/admin — solo usuarios con <code>isAdminUser</code>.</p>
+        <ul>
+          <li>Lista de clientes con filtros</li>
+          <li>Onboarding console (checklist por cliente)</li>
+          <li>Editor de credenciales Meta</li>
+          <li>KPIs globales</li>
+        </ul>
+      </div>
+      <div class="card gold">
+        <span class="badge">Future</span>
+        <h4><span class="dot dot-future"></span>Voice bot (teléfono)</h4>
+        <p>Prototipo browser-only con xAI Grok Realtime.</p>
+        <ul>
+          <li>Bridge Twilio pendiente (~$5/mes Railway)</li>
+          <li>Post-validación biz: migrar a Go microservice</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="badge">Website</span>
+        <h4><span class="dot dot-shipped"></span>Landing (otracita.es)</h4>
+        <p>Next.js SSR + hero video HyperFrames.</p>
+        <ul>
+          <li>Pricing (29€/mes, un solo plan)</li>
+          <li>FAQ · Features · Trust points</li>
+          <li>Páginas legales (privacidad, términos, aviso)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="entities">
+    <h2><span class="num">03</span>Entidades núcleo (DB)</h2>
+    <p class="subtitle">13 tablas Postgres en Neon, orquestadas con Drizzle migrations. El grafo de dependencias clavado a <code>clients.id</code> garantiza tenancy limpia.</p>
+    <div class="grid grid-4">
+      <div class="card">
+        <h4>clients</h4>
+        <p>La barbería. 46 columnas: config Meta, Booksy, Google Calendar, Stripe Connect, fiscal, propinas.</p>
+      </div>
+      <div class="card">
+        <h4>bookings</h4>
+        <p>Reservas. Estados: <code>confirmed</code>, <code>completed</code>, <code>cancelled</code>, <code>no_show</code>. Source: <code>bot</code> | <code>booksy</code>.</p>
+      </div>
+      <div class="card">
+        <h4>customers</h4>
+        <p>Clientes finales por phone. Contadores noShows, cancellations, reputación (good/warning/blocked).</p>
+      </div>
+      <div class="card">
+        <h4>conversations</h4>
+        <p>Estado del bot por phone. <code>step</code> para state machine + <code>context</code> jsonb (lang, followup, customerName).</p>
+      </div>
+      <div class="card">
+        <h4>invoices</h4>
+        <p>Tickets (B2C) y facturas (B2B). Secuencia correlativa única por cliente. Estados: <code>issued</code>, <code>voided</code>, <code>rectified</code>.</p>
+      </div>
+      <div class="card">
+        <h4>payments</h4>
+        <p>Cobros online (Stripe Connect destination charges). FK a invoice, idempotencia por session ID.</p>
+      </div>
+      <div class="card">
+        <h4>tips</h4>
+        <p>Propinas + rating. Separada de payments. NEVER facturable (liberalidad). Incluye <code>rating_only</code> entries.</p>
+      </div>
+      <div class="card">
+        <h4>subscriptions</h4>
+        <p>Lo que la barbería paga a otracita (29€/mes). Webhook Stripe actualiza estado.</p>
+      </div>
+      <div class="card">
+        <h4>waitlist</h4>
+        <p>Clientes esperando hueco. Bot les avisa cuando se libera.</p>
+      </div>
+      <div class="card">
+        <h4>analytics</h4>
+        <p>Contadores por día: mensajes recibidos, respondidos, bookings hechos, bookings cancelados.</p>
+      </div>
+      <div class="card">
+        <h4>email_parse_log</h4>
+        <p>Audit de cada email Booksy entrante (status, fields missing, LLM fallback usado).</p>
+      </div>
+      <div class="card">
+        <h4>processed_stripe_events</h4>
+        <p>Ledger de idempotencia para webhooks Stripe (at-least-once → effectively-once).</p>
+      </div>
+      <div class="card">
+        <h4>leads</h4>
+        <p>Contactos de la landing que aún no han pagado.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="config">
+    <h2><span class="num">04</span>Configuración por barbería</h2>
+    <p class="subtitle">Feature flags y ajustes que decide el dueño en el dashboard. <strong>Todos opt-in por defecto</strong> — el producto arranca con lo mínimo y se enciende a voluntad.</p>
+    <div class="grid grid-3">
+      <div class="card">
+        <h4>Info básica</h4>
+        <p>Nombre, WhatsApp, dirección, email. Es lo que el bot enseña al presentarse.</p>
+      </div>
+      <div class="card">
+        <h4>Servicios</h4>
+        <p>Lista de servicios (nombre, duración min, precio €). Define qué ofrece el bot.</p>
+      </div>
+      <div class="card">
+        <h4>Equipo</h4>
+        <p>Array de barberos (solo nombres). El bot pregunta con quién. V2: cuenta propia Stripe por barbero.</p>
+      </div>
+      <div class="card">
+        <h4>Horarios</h4>
+        <p>Lun-Dom, hora apertura/cierre + breaks. El bot solo ofrece slots dentro.</p>
+      </div>
+      <div class="card">
+        <h4>Días bloqueados</h4>
+        <p>Array de fechas ISO. Vacaciones/festivos. Bot no ofrece esos días.</p>
+      </div>
+      <div class="card">
+        <h4>Datos fiscales</h4>
+        <p>Nombre fiscal, NIF, dirección completa, %IVA, prefijo factura + nº siguiente. Obligatorio para activar facturación.</p>
+      </div>
+      <div class="card">
+        <h4>Facturación auto</h4>
+        <p>Toggle <code>invoicingEnabled</code>. Valida fiscal completo antes de activarse. Emite ticket/factura por cada booking con precio.</p>
+      </div>
+      <div class="card">
+        <h4>Cobros online (Stripe)</h4>
+        <p>Estado del Connect account: <code>none | pending | active | restricted</code>. Activable en 10 min (KYC hosted).</p>
+      </div>
+      <div class="card">
+        <h4>Propinas + rating</h4>
+        <p>Toggle <code>tipsEnabled</code> + 3 importes sugeridos + delay minutos. Requiere Connect activo primero.</p>
+      </div>
+      <div class="card">
+        <h4>Booksy sync</h4>
+        <p>URL de perfil Booksy + email sync (<code>sync-{clientId}@inbound.otracita.es</code>). Flag <code>useDbAvailability</code>.</p>
+      </div>
+      <div class="card">
+        <h4>Chatbot greeting</h4>
+        <p>Mensaje de bienvenida custom del bot. Fallback a texto genérico si vacío.</p>
+      </div>
+      <div class="card">
+        <h4>Google Calendar (legacy)</h4>
+        <p>Per-cliente flag <code>useDbAvailability</code>. Clientes antiguos siguen con GCal hasta migrar.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="flows">
+    <h2><span class="num">05</span>Flujos completos</h2>
+    <p class="subtitle">Cada flujo = un camino end-to-end que toca varios componentes. Verifica que ninguna pieza queda descolgada.</p>
+
+    <!-- Flow 1: Onboarding -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 01 · Onboarding barbería</h3>
+      <p class="flow-description">Desde primer click en landing hasta bot activo en producción.</p>
+      <ol class="flow-steps">
+        <li>Barbero entra en <code>otracita.es</code>, clickea "Empieza ahora" → Stripe Checkout subscription</li>
+        <li>Paga 29€/mes → Stripe webhook <code>checkout.session.completed</code> con <code>mode=subscription</code></li>
+        <li>Webhook: inserta row en <code>clients</code> (upsert por email) + row en <code>subscriptions</code></li>
+        <li>Notificación WhatsApp a Alex: "Nuevo cliente: X (email Y, plan Z)"</li>
+        <li>Alex entra en <code>/admin/clients</code>, abre onboarding console del cliente</li>
+        <li>Alex configura credenciales Meta (phone_number_id + token) en el editor admin</li>
+        <li>Alex marca cada paso del checklist: webhook verificado, primer test, Booksy conectado</li>
+        <li>Barbero recibe acceso al dashboard (Better Auth email match), configura su negocio</li>
+        <li>Bot activo → primer cliente real reserva por WhatsApp</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">Stripe (platform)</span>
+        <span class="tag">clients</span>
+        <span class="tag">subscriptions</span>
+        <span class="tag">notifyAlex</span>
+        <span class="tag">/admin</span>
+        <span class="tag">Meta WhatsApp API</span>
+        <span class="tag">Better Auth</span>
+      </div>
+    </div>
+
+    <!-- Flow 2: Reserva WhatsApp -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 02 · Cliente reserva por WhatsApp</h3>
+      <p class="flow-description">El happy path del producto.</p>
+      <ol class="flow-steps">
+        <li>Cliente escribe al WhatsApp de la barbería → Meta dispara webhook</li>
+        <li>Webhook verifica HMAC → <code>engine.handleIncomingMessage()</code></li>
+        <li>Engine resuelve el <code>clients</code> por <code>phoneNumberId</code></li>
+        <li>Intent detection (GPT-4o-mini): "quiero cortarme" → <code>booking</code></li>
+        <li>Bot pregunta servicio → lista interactiva desde <code>chatbotServices</code></li>
+        <li>Bot pregunta barbero → si hay más de uno</li>
+        <li>Bot pregunta fecha → próximos 7 días con huecos</li>
+        <li>Bot pregunta slot → lee <code>getAvailableSlotsFromDB()</code> respetando horarios + bookings existentes + blocked dates</li>
+        <li>Cliente confirma → <code>createBooking()</code> inserta en <code>bookings</code> (status confirmed)</li>
+        <li>Si <code>invoicingEnabled + price != null</code> → <code>tryAutoInvoiceInBackground()</code> genera ticket/factura</li>
+        <li>Bot confirma por WhatsApp + actualiza <code>conversations.step = 'idle'</code></li>
+        <li>Contador <code>customers.totalBookings</code> ++</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">Meta WhatsApp</span>
+        <span class="tag">engine.ts</span>
+        <span class="tag">GPT-4o-mini</span>
+        <span class="tag">bookings</span>
+        <span class="tag">customers</span>
+        <span class="tag">conversations</span>
+        <span class="tag">invoices</span>
+        <span class="tag">analytics</span>
+      </div>
+    </div>
+
+    <!-- Flow 3: Reserva vía Booksy -->
+    <div class="flow">
+      <h3><span class="dot dot-partial"></span>Flow 03 · Reserva desde Booksy (sync email)</h3>
+      <p class="flow-description">Cuando el cliente reserva desde la app Booksy y queremos que el bot vea esa reserva.</p>
+      <ol class="flow-steps">
+        <li>Cliente reserva en Booksy → Booksy envía email de confirmación</li>
+        <li>Email reenviado a <code>sync-{clientId}@inbound.otracita.es</code> (forward rule en la cuenta del barbero)</li>
+        <li>Postmark recibe → POST a <code>/api/email/inbound</code> con firma</li>
+        <li>Webhook valida firma → resuelve <code>clients</code> por email destino</li>
+        <li>Parser regex intenta extraer: servicio, barbero, fecha, hora, duración, precio, cliente</li>
+        <li>Si parse parcial → fallback a LLM (xAI Grok) para completar campos</li>
+        <li>Row en <code>email_parse_log</code> (full/partial/failed/llm_assisted)</li>
+        <li>Insert en <code>bookings</code> con <code>source='booksy'</code> + <code>booksyBookingId</code> (dedup)</li>
+        <li>Si parse <code>failed</code> 3+ veces → <code>notifyAlex()</code> con snippet del email</li>
+        <li>Auto-factura si aplica (mismo camino que flow 02)</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">Postmark (pendiente)</span>
+        <span class="tag">email_parse_log</span>
+        <span class="tag">booksy-email-parser.ts</span>
+        <span class="tag">xAI Grok fallback</span>
+        <span class="tag">bookings</span>
+        <span class="tag">invoices</span>
+        <span class="tag">notifyAlex</span>
+      </div>
+      <div class="callout">
+        <strong>Gap:</strong> código 100 % listo en repo. Falta solo contratar Postmark (~$15/mes) y apuntar el MX de <code>inbound.otracita.es</code>. Se activa en cuanto el primer cliente real lo pida.
+      </div>
+    </div>
+
+    <!-- Flow 4: Cancelación -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 04 · Cliente cancela por WhatsApp</h3>
+      <p class="flow-description">Limpio porque las transiciones de estado están testeadas.</p>
+      <ol class="flow-steps">
+        <li>Cliente escribe "quiero cancelar" → intent = cancel</li>
+        <li>Bot lista reservas futuras del cliente (por phone)</li>
+        <li>Cliente selecciona → bot pide confirmación</li>
+        <li>Confirma → <code>bookings.status = 'cancelled'</code> + <code>cancelledAt</code></li>
+        <li><code>tryVoidInvoicesInBackground()</code>: si hay invoice, <code>status = 'voided'</code></li>
+        <li>Contador <code>customers.cancellations</code> ++</li>
+        <li>Bot confirma cancelación</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">bookings</span>
+        <span class="tag">invoices</span>
+        <span class="tag">customers</span>
+        <span class="tag">analytics</span>
+      </div>
+    </div>
+
+    <!-- Flow 5: No-show -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 05 · No-show (barbero marca desde dashboard)</h3>
+      <p class="flow-description">El barbero se entera en su agenda, click y listo.</p>
+      <ol class="flow-steps">
+        <li>Barbero ve booking pasado en <code>/dashboard/agenda</code></li>
+        <li>Click en "Marcar no-show" → POST <code>/api/bookings/no-show</code></li>
+        <li><code>requireClientAccess</code> valida tenant</li>
+        <li><code>bookings.status = 'no_show'</code></li>
+        <li><code>customers.noShows</code> ++</li>
+        <li><code>tryVoidInvoicesInBackground()</code>: anula invoice asociada</li>
+        <li>UI feedback: "Marcado no-show, factura anulada"</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">bookings</span>
+        <span class="tag">customers</span>
+        <span class="tag">invoices</span>
+        <span class="tag">BookingDetailPanel.tsx</span>
+      </div>
+      <div class="callout">
+        <strong>Futuro (v2):</strong> cuando un <code>customer.noShows ≥ N</code> configurable por barbero, al reservar siguiente vez el bot pide depósito por anticipado (solo para ese cliente). Integración con flow de propinas/cobros.
+      </div>
+    </div>
+
+    <!-- Flow 6: Recordatorio -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 06 · Recordatorio día anterior (cron 10am)</h3>
+      <p class="flow-description">Cron diario que envía recordatorio + botón confirmar/cancelar.</p>
+      <ol class="flow-steps">
+        <li>Vercel Cron dispara <code>GET /api/cron/reminders</code> a las 10:00 Europe/Madrid</li>
+        <li><code>requireCron()</code> valida <code>Authorization: Bearer $CRON_SECRET</code> (timingSafeEqual)</li>
+        <li>Query: bookings con date=tomorrow, status=confirmed, reminderSent=false</li>
+        <li>Para cada → WhatsApp con 2 botones: "Confirmo" / "Cancelar"</li>
+        <li>Marca <code>reminderSent = true</code> (idempotente si cron corre 2x)</li>
+        <li>Si cliente tap Cancelar → engine dispara flow de cancelación</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">Vercel Cron</span>
+        <span class="tag">bookings</span>
+        <span class="tag">conversations (lang)</span>
+        <span class="tag">Meta WhatsApp</span>
+      </div>
+    </div>
+
+    <!-- Flow 7: Cobro online -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 07 · Cobro online (QR en agenda)</h3>
+      <p class="flow-description">Barbero genera QR desde el detalle de la reserva, cliente escanea y paga.</p>
+      <ol class="flow-steps">
+        <li>Barbero abre booking en <code>/dashboard/agenda/[bookingId]</code></li>
+        <li>Panel "Cobrar online" → ajusta importe → click "Generar QR"</li>
+        <li>POST <code>/api/payments/create-link</code> → crea <code>checkout.session</code> destination charge → row en <code>payments</code> (pending)</li>
+        <li>UI muestra QR (librería <code>qrcode</code>) + URL copiable</li>
+        <li>Cliente escanea con móvil → hosted Stripe Checkout</li>
+        <li>Paga con tarjeta/Apple Pay → Stripe webhook <code>checkout.session.completed</code></li>
+        <li>Webhook: <code>payments.status = 'succeeded'</code> + <code>paidAt</code> + IDs</li>
+        <li>Si invoice asociada: <code>invoices.paidOnlineAt = now</code> (sin tocar fiscal status)</li>
+        <li>Notificación WhatsApp a Alex con importe + cliente</li>
+        <li>UI del panel detecta con poll cada 4s → muestra "Pagado ✅"</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">BookingDetailPanel.tsx</span>
+        <span class="tag">Stripe Connect (destination charge)</span>
+        <span class="tag">payments</span>
+        <span class="tag">invoices (paidOnlineAt stamp)</span>
+        <span class="tag">processed_stripe_events (idempotencia)</span>
+        <span class="tag">notifyAlex</span>
+      </div>
+      <div class="callout">
+        <strong>Bloqueante actual:</strong> el platform profile de Stripe Connect aún no ha sido signed up en live. Al hacer click en "Activar cobros online" devuelve error. Fix: Alex completa el formulario en <code>dashboard.stripe.com/connect</code> (modelo: Platform/SaaS).
+      </div>
+    </div>
+
+    <!-- Flow 8: Rating + Propina -->
+    <div class="flow">
+      <h3><span class="dot dot-partial"></span>Flow 08 · Rating + propina post-servicio</h3>
+      <p class="flow-description">Recién shipeado (commits 2ceb1c7, e82ed2c, 8175f7f). Requiere migración 0006 aplicada + activar toggle por barbería.</p>
+      <ol class="flow-steps">
+        <li>Cron <code>/api/cron/post-booking-followup</code> cada 10 min identifica bookings con endsAt+30min ≤ now, tipsEnabled=true, followupSentAt=null</li>
+        <li><code>sendRatingMessage()</code>: WhatsApp lista con 5 ⭐ + marca <code>followupSentAt</code> + guarda <code>context.followup</code></li>
+        <li>Cliente tap ⭐⭐⭐⭐⭐ → engine intercepta <code>fu_rate_5</code> → <code>handleFollowupReply()</code></li>
+        <li>Insert <code>tips</code> row (status='rating_only', amount=0, rating=5)</li>
+        <li>Rating ≤ 3 → "Gracias, se lo pasamos al equipo" + clear state. Fin.</li>
+        <li>Rating ≥ 4 → WhatsApp 3 botones: "2€" / "3€" / "No, gracias"</li>
+        <li>Cliente tap "3€" → <code>createTipSession()</code> → Stripe Checkout URL + row tips pending + rating carried over</li>
+        <li>Cliente paga → webhook rama <code>otracita_tip=true</code> → <code>tips.status = 'paid'</code> + paidAt</li>
+        <li>Rating visible en dashboard (v2). Propina en export XLSX sheet "Propinas".</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">Cron (Vercel)</span>
+        <span class="tag">tips</span>
+        <span class="tag">bookings (followupSentAt)</span>
+        <span class="tag">conversations.context.followup</span>
+        <span class="tag">engine.ts (hook early)</span>
+        <span class="tag">followup.ts</span>
+        <span class="tag">Stripe Connect (destination)</span>
+        <span class="tag">XLSX export (sheet Propinas)</span>
+      </div>
+      <div class="callout">
+        <strong>Estado:</strong> código mergeado. Bloqueantes: (1) migración 0006 pendiente de aplicar a Neon, (2) <code>FOLLOWUP_DRY_RUN=false</code> env a flipear cuando valides en tu barbería de prueba.
+      </div>
+    </div>
+
+    <!-- Flow 9: Facturación -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 09 · Facturación automática (RD 1619/2012)</h3>
+      <p class="flow-description">El anti-Booksy: el barbero recibe el libro mensual listo para el gestor sin mover un dedo.</p>
+      <ol class="flow-steps">
+        <li>Booking se crea (flow 02 o 03) con <code>price != null</code> y cliente con <code>invoicingEnabled=true</code></li>
+        <li><code>tryAutoInvoiceInBackground()</code>: decide ticket (sin NIF) o factura (con NIF)</li>
+        <li>Genera número siguiente con <code>invoiceNumberPrefix + invoiceNumberNext</code></li>
+        <li>Insert atómico en <code>invoices</code> + incrementa secuencia (locking)</li>
+        <li>Snapshot de datos cliente + servicio al issue time (inmutable)</li>
+        <li>Calcula base imponible + cuota IVA + total en cents</li>
+        <li>Fin de mes, barbero va a <code>/dashboard/facturas</code></li>
+        <li>Descarga: Libro PDF (A4, legal) + CSV Excel-ES + XLSX (Resumen + Facturas + Propinas)</li>
+        <li>Adjunta al email de su gestor → Modelo 303</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">invoices</span>
+        <span class="tag">bookings</span>
+        <span class="tag">clients.fiscal*</span>
+        <span class="tag">React-PDF (Libro)</span>
+        <span class="tag">ExcelJS (XLSX)</span>
+        <span class="tag">Excel-ES CSV helper</span>
+      </div>
+    </div>
+
+    <!-- Flow 10: Cancel subscription -->
+    <div class="flow">
+      <h3><span class="dot dot-shipped"></span>Flow 10 · Barbería cancela su suscripción a otracita</h3>
+      <p class="flow-description">"Cancelas en 1 click, sin permanencia" — tiene que ser real.</p>
+      <ol class="flow-steps">
+        <li>Barbero entra <code>/dashboard/negocio</code> → busca "Gestionar suscripción"</li>
+        <li>POST <code>/api/stripe/portal</code> → crea Billing Portal session</li>
+        <li>Redirect a hosted Stripe Portal → cancela suscripción</li>
+        <li>Stripe webhook <code>customer.subscription.deleted</code></li>
+        <li>Webhook: <code>subscriptions.status = 'cancelled'</code> + <code>cancelledAt</code></li>
+        <li>También <code>clients.status = 'cancelled'</code> → el bot deja de responder para ese tenant</li>
+      </ol>
+      <div class="flow-touches">
+        <strong>Toca:</strong>
+        <span class="tag">Stripe Billing Portal</span>
+        <span class="tag">subscriptions</span>
+        <span class="tag">clients.status</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="integrations">
+    <h2><span class="num">06</span>Integraciones externas</h2>
+    <p class="subtitle">Lo que otracita depende de afuera, con el estado real de cada dependencia.</p>
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Servicio</th>
+          <th>Para qué</th>
+          <th>Estado</th>
+          <th>Coste</th>
+          <th>Bloqueante?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="key">Neon Postgres</td><td>DB única del producto</td><td><span class="yes">Live</span></td><td>Free tier</td><td>Sí — core</td></tr>
+        <tr><td class="key">Vercel</td><td>Deploy + crons + env vars</td><td><span class="yes">Live</span></td><td>Pro (Alex)</td><td>Sí — core</td></tr>
+        <tr><td class="key">Meta WhatsApp Cloud</td><td>Canal principal bot</td><td><span class="yes">Live</span></td><td>Variable por mensaje</td><td>Sí — core</td></tr>
+        <tr><td class="key">Stripe (platform)</td><td>Cobro subscripción 29€/mes</td><td><span class="yes">Live</span></td><td>% por transacción</td><td>Sí — revenue</td></tr>
+        <tr><td class="key">Stripe Connect</td><td>Destination charges a barberos</td><td><span class="partial">Signup pendiente</span></td><td>Mismo %</td><td>Sí para cobros/propinas</td></tr>
+        <tr><td class="key">OpenAI GPT-4o-mini</td><td>Intent detection + info Q&amp;A del bot</td><td><span class="yes">Live</span></td><td>~$3/1M tokens</td><td>Sí para bot</td></tr>
+        <tr><td class="key">xAI Grok</td><td>Fallback parser Booksy + voz</td><td><span class="yes">Live (parser)</span></td><td>~$5/1M</td><td>No (fallback)</td></tr>
+        <tr><td class="key">Google Calendar</td><td>Legacy availability (fade-out)</td><td><span class="yes">Live</span></td><td>Free</td><td>No — migrando a DB</td></tr>
+        <tr><td class="key">Postmark</td><td>Inbound email Booksy sync</td><td><span class="partial">Cuenta pendiente</span></td><td>$15/mes</td><td>Sí para flow 03</td></tr>
+        <tr><td class="key">Twilio</td><td>Bridge voz (futuro)</td><td><span class="no">Pendiente</span></td><td>$5/mes + min</td><td>Solo voz</td></tr>
+        <tr><td class="key">Better Auth</td><td>Sesiones dashboard</td><td><span class="yes">Live (self-hosted)</span></td><td>Free</td><td>Sí — login</td></tr>
+        <tr><td class="key">HyperFrames</td><td>Render hero video</td><td><span class="yes">Live (local)</span></td><td>Free</td><td>No — producción</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="state-matrix">
+    <h2><span class="num">07</span>Matriz de estado: Booking × Everything</h2>
+    <p class="subtitle">Para cada transición de estado de una reserva, qué hace cada subsistema. Esto se actualiza <strong>siempre</strong> que se añada un estado nuevo.</p>
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>bookings.status</th>
+          <th>Factura</th>
+          <th>Cobro online</th>
+          <th>Rating + propina</th>
+          <th>Recordatorio</th>
+          <th>Contador cliente</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="key">confirmed (futuro)</td>
+          <td>Auto-emitir ticket/factura si invoicingEnabled + price</td>
+          <td>Disponible (QR desde agenda)</td>
+          <td>Aún no (endsAt no pasó)</td>
+          <td>Si date=mañana → cron envía</td>
+          <td>totalBookings ++</td>
+        </tr>
+        <tr>
+          <td class="key">confirmed (pasado, endsAt+30min)</td>
+          <td>Sigue issued</td>
+          <td>Disponible</td>
+          <td>Cron envía si tipsEnabled + followupSentAt null</td>
+          <td>—</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td class="key">completed</td>
+          <td>Sigue issued</td>
+          <td>Disponible</td>
+          <td>Sí (mismo criterio)</td>
+          <td>—</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td class="key">cancelled</td>
+          <td>Void asociada</td>
+          <td>Session expira → cancelled</td>
+          <td><strong>Nunca</strong> enviar</td>
+          <td>No enviar</td>
+          <td>cancellations ++</td>
+        </tr>
+        <tr>
+          <td class="key">no_show</td>
+          <td>Void asociada</td>
+          <td>Session expira → cancelled</td>
+          <td><strong>Nunca</strong> enviar</td>
+          <td>No enviar</td>
+          <td>noShows ++</td>
+        </tr>
+        <tr>
+          <td class="key">undo no_show → confirmed</td>
+          <td>Restaura issued (MVP — estrictamente rectificativa)</td>
+          <td>Disponible de nuevo</td>
+          <td>Reanclar a nuevo endsAt</td>
+          <td>—</td>
+          <td>noShows —</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>Regla durabilidad:</strong> cada vez que se añada un nuevo estado o transición, actualizar <em>esta tabla</em> + la API que ejecuta la transición + los tests de invariantes. El anti-patrón "dos features en paralelo, interacción no testeada" fue cómo se escapó el <code>no_show → void invoice</code> en la primera iteración.
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="cross-cutting">
+    <h2><span class="num">08</span>Capas transversales</h2>
+    <p class="subtitle">Temas que atraviesan todo el producto — seguridad, compliance, observabilidad.</p>
+    <div class="grid grid-3">
+      <div class="card sage">
+        <h4>🔐 Multi-tenancy</h4>
+        <p><code>requireClientAccess()</code> en TODA API de tenant. Resuelve cliente por session de Better Auth, bloquea cross-tenant.</p>
+        <ul>
+          <li>Webhooks (WhatsApp, Stripe, email) bypass con su propia firma</li>
+          <li>Admin tiene su propio <code>requireAdmin</code></li>
+        </ul>
+      </div>
+      <div class="card sage">
+        <h4>🔏 Verificación HMAC</h4>
+        <p>Meta webhook firma X-Hub-Signature-256, Stripe firma Stripe-Signature.</p>
+        <ul>
+          <li>Comparación <code>timingSafeEqual</code> (no <code>===</code>)</li>
+          <li>Cron secret por header <code>Authorization: Bearer</code></li>
+        </ul>
+      </div>
+      <div class="card sage">
+        <h4>🔁 Idempotencia</h4>
+        <p>Stripe retry at-least-once → tabla <code>processed_stripe_events</code> con PRIMARY KEY event_id. ON CONFLICT DO NOTHING.</p>
+        <ul>
+          <li>Belt-and-braces: UPSERT en las filas tenant también</li>
+          <li>Cron followup: <code>followupSentAt</code> marca como enviado</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>📊 Observabilidad</h4>
+        <p>Logs estructurados con prefijos <code>[stripe-webhook]</code>, <code>[cron/...]</code>, <code>[notifyAlex]</code>.</p>
+        <ul>
+          <li>Tabla <code>email_parse_log</code> para Booksy</li>
+          <li><code>analytics</code> por día (mensajes, bookings)</li>
+          <li>Alertas a WhatsApp de Alex en eventos críticos</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>⚖️ Compliance fiscal ES</h4>
+        <p>Real Decreto 1619/2012.</p>
+        <ul>
+          <li>Ticket &lt; 400€ sin NIF, factura completa con NIF</li>
+          <li>Secuencia correlativa única por cliente (locking)</li>
+          <li>Snapshot inmutable de datos al emitir</li>
+          <li>Propinas fuera del libro de facturas (liberalidad, no contraprestación)</li>
+          <li>TICKET_MAX_CENTS = 40000 guard</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>🛡️ GDPR / LOPD-GDD / LSSI-CE</h4>
+        <p>Páginas <code>/privacidad</code>, <code>/terminos</code>, <code>/aviso-legal</code>.</p>
+        <ul>
+          <li>Customer data: phone + name + bookings. Derecho de supresión en v2</li>
+          <li>No sell data, no tracking third-party</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>💾 Backups / DR</h4>
+        <p>Neon branches = snapshot automático. Pero no hay test formal de restore.</p>
+        <ul>
+          <li>Migraciones versionadas en <code>drizzle/</code></li>
+          <li>Purely additive migrations by default (no drops)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>🌍 i18n</h4>
+        <p>Bot bilingüe ES/EN con auto-detect. Dashboard solo ES (target ES-only por ahora).</p>
+      </div>
+      <div class="card">
+        <h4>🎨 Brand</h4>
+        <p>Light theme único. Terracotta #C9653C, cream #F7F3EE, espresso #2A1D14, Fraunces+Inter.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="gaps">
+    <h2><span class="num">09</span>Gaps reconocidos</h2>
+    <p class="subtitle">Lo que sé que no cierra, ordenado por prioridad de cierre.</p>
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Gap</th>
+          <th>Bloquea qué</th>
+          <th>Esfuerzo</th>
+          <th>Prioridad</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td class="key">0 clientes pagando</td><td>Validación del producto entero</td><td>Marketing / ventas</td><td class="yes">P0</td></tr>
+        <tr><td>2</td><td class="key">Stripe Connect platform signup pendiente</td><td>Cobros online, propinas</td><td>15 min (tú, en dashboard Stripe)</td><td class="yes">P0</td></tr>
+        <tr><td>3</td><td class="key">Migración 0006 no aplicada</td><td>Feature propinas rompe en runtime</td><td>1 comando (sandbox bloquea — tú lo tiras)</td><td class="yes">P0</td></tr>
+        <tr><td>4</td><td class="key">Postmark no contratado</td><td>Sync Booksy por email</td><td>$15/mes + 1h config</td><td class="partial">P1 (cuando primer cliente lo pida)</td></tr>
+        <tr><td>5</td><td class="key">Twilio bridge voz</td><td>Bot telefónico</td><td>$5/mes + 4h</td><td>P2 (post validación biz)</td></tr>
+        <tr><td>6</td><td class="key">Engine.ts 2200 líneas</td><td>Mantenibilidad futura</td><td>2-3 días refactor</td><td>P2</td></tr>
+        <tr><td>7</td><td class="key">Rating view por barbero en dashboard</td><td>Visibilidad de calidad del equipo</td><td>3h</td><td>P2 (cuando haya datos)</td></tr>
+        <tr><td>8</td><td class="key">Depósito condicional por no-shows</td><td>Protección reincidentes</td><td>1 día</td><td>P2 (cuando salga el problema real)</td></tr>
+        <tr><td>9</td><td class="key">Factura rectificativa estricta</td><td>Compliance AEAT escalar</td><td>2 días</td><td>P3 (pre-scaling)</td></tr>
+        <tr><td>10</td><td class="key">Verifactu 2027</td><td>Obligatorio julio 2027 autónomos</td><td>1 semana</td><td>P3 (2027)</td></tr>
+        <tr><td>11</td><td class="key">Per-barbero Stripe Connect</td><td>Modelo "alquiler de silla"</td><td>3-4 días</td><td>P3 (cuando salga demanda)</td></tr>
+        <tr><td>12</td><td class="key">Membership / bono (100€ = 4 cortes)</td><td>Nuevo modelo recurring</td><td>4-5 días</td><td>P3 (oportunidad futura)</td></tr>
+        <tr><td>13</td><td class="key">Test restore DR</td><td>Confianza en backups</td><td>1h drill</td><td>P3</td></tr>
+        <tr><td>14</td><td class="key">Landing: eliminar "cobros online" del pitch principal</td><td>Claridad</td><td>20 min</td><td>P1</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="missing-from-hub">
+    <h2><span class="num">10</span>Revisión por "¿nos dejamos algo?"</h2>
+    <p class="subtitle">Lista check contra el universo de una barbería. Cada concepto real del negocio, visto desde fuera, ¿tiene respuesta en otracita?</p>
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Cubierto?</th>
+          <th>Cómo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="key">Nueva reserva</td><td class="yes check">✓</td><td>WhatsApp bot + Booksy sync</td></tr>
+        <tr><td class="key">Modificar reserva</td><td class="yes check">✓</td><td>Flow change en bot</td></tr>
+        <tr><td class="key">Cancelar reserva</td><td class="yes check">✓</td><td>Flow cancel en bot + /api/bookings/cancel</td></tr>
+        <tr><td class="key">Recordatorio día anterior</td><td class="yes check">✓</td><td>Cron diario 10am</td></tr>
+        <tr><td class="key">Pago al final (efectivo)</td><td class="yes check">✓</td><td>Default — nada que hacer</td></tr>
+        <tr><td class="key">Pago tarjeta presencial</td><td class="yes check">✓</td><td>QR desde agenda → Stripe</td></tr>
+        <tr><td class="key">Pago Bizum</td><td class="no check">✗</td><td>Stripe ES lanza 2026 — flip cuando GA</td></tr>
+        <tr><td class="key">Propina</td><td class="partial check">⚠</td><td>Shipeado, pendiente migración + validación</td></tr>
+        <tr><td class="key">Valoración cliente (rating)</td><td class="partial check">⚠</td><td>Shipeado (mismo flow). Dashboard view v2</td></tr>
+        <tr><td class="key">Cliente reincidente en no-shows</td><td class="no check">✗</td><td>Contador existe (<code>customers.noShows</code>) pero no se usa. Depósito condicional P2</td></tr>
+        <tr><td class="key">Cliente nuevo (nombre, teléfono)</td><td class="yes check">✓</td><td>Bot aprende en primera interacción</td></tr>
+        <tr><td class="key">Walk-in (sin reserva)</td><td class="yes check">✓</td><td>Factura manual desde /dashboard/facturas</td></tr>
+        <tr><td class="key">Servicio a domicilio</td><td class="no check">✗</td><td>No contemplado. Duración + precio fijos por servicio</td></tr>
+        <tr><td class="key">Paquete de bonos / membership</td><td class="no check">✗</td><td>P3 — modelo distinto, no ship ahora</td></tr>
+        <tr><td class="key">Tarjeta regalo</td><td class="no check">✗</td><td>No contemplado</td></tr>
+        <tr><td class="key">Cobro parcial / depósito</td><td class="partial check">⚠</td><td>payments.type ya prevé 'deposit'. Flow no implementado</td></tr>
+        <tr><td class="key">Devolución (refund)</td><td class="yes check">✓</td><td>Via Stripe dashboard → webhook charge.refunded captura</td></tr>
+        <tr><td class="key">Ticket al cliente final</td><td class="yes check">✓</td><td>Auto-emisión. PDF descargable</td></tr>
+        <tr><td class="key">Factura con NIF</td><td class="yes check">✓</td><td>Si cliente da NIF → tipo 'invoice'</td></tr>
+        <tr><td class="key">Libro facturas al gestor</td><td class="yes check">✓</td><td>PDF + CSV + XLSX mensual</td></tr>
+        <tr><td class="key">Modelo 303 IVA</td><td class="yes check">✓</td><td>CSV/XLSX incluyen base + cuota IVA separadas</td></tr>
+        <tr><td class="key">IRPF (propinas, renta)</td><td class="partial check">⚠</td><td>Propinas aparecen en XLSX sheet. Gestor declara aparte</td></tr>
+        <tr><td class="key">Lista de clientes</td><td class="yes check">✓</td><td>/dashboard/clientes con búsqueda</td></tr>
+        <tr><td class="key">Conversaciones WhatsApp</td><td class="yes check">✓</td><td>/dashboard/mensajes muestra hilos</td></tr>
+        <tr><td class="key">Equipo / barberos</td><td class="yes check">✓</td><td>Array en clients.booksyServices</td></tr>
+        <tr><td class="key">Vacaciones / días libres</td><td class="yes check">✓</td><td>blockedDates jsonb array</td></tr>
+        <tr><td class="key">Horarios semanales</td><td class="yes check">✓</td><td>chatbotHours por día</td></tr>
+        <tr><td class="key">Lista de espera</td><td class="yes check">✓</td><td>Tabla waitlist + notificación auto</td></tr>
+        <tr><td class="key">Multi-idioma cliente final</td><td class="yes check">✓</td><td>ES/EN auto-detect</td></tr>
+        <tr><td class="key">Multi-idioma dashboard</td><td class="no check">✗</td><td>Solo ES (target ES)</td></tr>
+        <tr><td class="key">Integración con Instagram / Google Business</td><td class="no check">✗</td><td>No contemplado ahora</td></tr>
+        <tr><td class="key">Fotos antes/después por cita</td><td class="no check">✗</td><td>No contemplado</td></tr>
+        <tr><td class="key">Productos (venta shampoo, etc.)</td><td class="no check">✗</td><td>No contemplado (producto servicio-only)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ────────────────────────────────────────────────────────── -->
+  <section id="decision-log">
+    <h2><span class="num">11</span>Decisiones clave (para no re-debatir)</h2>
+    <p class="subtitle">Lo que ya está decidido y no volvemos a discutir salvo razón fuerte.</p>
+    <div class="grid grid-3">
+      <div class="card"><h4>Spanish-first</h4><p>Todo copy ES. Expansión LATAM sí, UK/US no.</p></div>
+      <div class="card"><h4>Light theme único</h4><p>Sin modo oscuro. Brand vibe "modern Spanish artisan".</p></div>
+      <div class="card"><h4>Un solo Stripe account</h4><p><code>acct_1T41xuBnAKM0wJqO</code> vanwida@aistudios.pro. No organización separada.</p></div>
+      <div class="card"><h4>1 Stripe Connect por barbería</h4><p>No por barbero (v1). Revisión si aparece demanda "alquiler silla".</p></div>
+      <div class="card"><h4>Propinas 0% otracita fee</h4><p>100% para el barbero. Buen copy + no complica fiscal.</p></div>
+      <div class="card"><h4>Rating ≤ 3 no pide propina</h4><p>Evita awkward + protege cliente que tuvo mala experiencia.</p></div>
+      <div class="card"><h4>No fake numbers en landing</h4><p>Nunca inventar users/reviews que no existen.</p></div>
+      <div class="card"><h4>Cobros online NO es sustituto del datáfono</h4><p>Complementario. Landing no los vende como reemplazo.</p></div>
+      <div class="card"><h4>No pre-pago del servicio</h4><p>Cultural ES. Cliente paga siempre al final.</p></div>
+      <div class="card"><h4>Toda feature de cobro opt-in</h4><p>Toggle en dashboard. Producto no fuerza workflow.</p></div>
+      <div class="card"><h4>Commits: vanwida@aistudios.pro</h4><p>Autor fijo en todos los commits del repo.</p></div>
+      <div class="card"><h4>No deploy sin typecheck limpio</h4><p>Gate técnico antes de cada deploy.</p></div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  otracita · mapa de producto · generado 2026-04-22
+</footer>
+
+</body>
+</html>

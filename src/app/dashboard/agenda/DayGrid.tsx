@@ -86,24 +86,33 @@ export default function DayGrid({
       ? (currentTimeMin - GRID_START) * PX_PER_MIN
       : null;
 
-  // Columns: if barbers configured, one per barber + one for unassigned; otherwise one "Todos"
+  // Columns: one per configured barber, plus a fallback "Sin asignar" for
+  // any booking whose `barber` name doesn't match a configured barber (null,
+  // empty, legacy "Sin preferencia" strings, or a barber who has been renamed
+  // or removed). Without this the daily agenda silently swallowed phantom
+  // bookings — the barber never saw them and the client lost the cut.
+  const barberNameSet = new Set(barbers.map((b) => b.name.trim().toLowerCase()));
+  const isAssigned = (e: { barber: string | null }): boolean =>
+    !!e.barber && barberNameSet.has(e.barber.trim().toLowerCase());
   const hasUnassigned =
     barbers.length > 0 &&
-    events.some(e => e.date === dateStr && !e.barber && e.status !== 'cancelled');
+    events.some((e) => e.date === dateStr && !isAssigned(e) && e.status !== 'cancelled');
 
   const columns =
     barbers.length > 0
       ? [
+          ...barbers.map((b) => ({ key: b.name, label: b.name })),
           ...(hasUnassigned ? [{ key: '__unassigned__', label: 'Sin asignar' }] : []),
-          ...barbers.map(b => ({ key: b.name, label: b.name })),
         ]
       : [{ key: 'all', label: 'Todos' }];
 
   const getEventsForColumn = (colKey: string) => {
-    if (colKey === 'all') return events.filter(e => e.date === dateStr);
+    if (colKey === 'all') return events.filter((e) => e.date === dateStr);
     if (colKey === '__unassigned__')
-      return events.filter(e => e.date === dateStr && !e.barber);
-    return events.filter(e => e.date === dateStr && e.barber === colKey);
+      return events.filter((e) => e.date === dateStr && !isAssigned(e));
+    return events.filter(
+      (e) => e.date === dateStr && isAssigned(e) && e.barber!.trim().toLowerCase() === colKey.trim().toLowerCase(),
+    );
   };
 
   const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, colKey: string) => {
