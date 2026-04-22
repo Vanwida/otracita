@@ -93,7 +93,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
   return (
     <div className="space-y-6">
       {/* Tabs — scroll horizontally on mobile */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-line -mx-4 px-4 md:mx-0 md:px-0">
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-line -mx-4 px-4 md:mx-0 md:px-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map(({ key, label, icon: Icon }) => {
           const active = tab === key
           return (
