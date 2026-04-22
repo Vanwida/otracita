@@ -193,6 +193,14 @@ export const HELP_SECTIONS: HelpSection[] = [
         q: '¿Qué pasa si un cliente pide que le anule una factura emitida?',
         a: 'Anulas la reserva asociada y la factura queda marcada como "anulada". No le puedes "borrar" una factura sin dejar rastro — sería ilegal. Si ya pagó, emite una rectificativa manualmente.',
       },
+      {
+        q: 'Un amigo viene a cortarse pero no quiero facturarle. ¿Cómo lo hago?',
+        a: 'Dos opciones: (1) No registres la cita en el sistema — le cortas y ya, sin rastro en agenda ni factura. Ideal para favores puntuales. (2) Si quieres que aparezca en la agenda por control interno, créala manualmente en [Agenda](/dashboard/agenda) dejando el campo PRECIO vacío (no "0€", simplemente sin rellenar). Sin precio no se emite factura ni ticket.',
+      },
+      {
+        q: 'Ya se emitió la factura y quiero quitársela. ¿Se puede?',
+        a: 'No borrar, solo anular. Cancela la reserva en [Agenda](/dashboard/agenda) — la factura queda marcada "anulada" automáticamente, no cuenta en totales ni libro mensual, pero queda registrada por ley (no se puede borrar sin rastro). Si el cliente ya pagó, emite factura rectificativa manualmente fuera del sistema y dile a tu gestor.',
+      },
     ],
   },
 
