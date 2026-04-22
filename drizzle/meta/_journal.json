@@ -57,6 +57,13 @@
       "when": 1776857239678,
       "tag": "0007_aberrant_talkback",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776878538787,
+      "tag": "0008_illegal_ultragirl",
+      "breakpoints": true
     }
   ]
 }

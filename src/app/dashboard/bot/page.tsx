@@ -6,7 +6,7 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { Bot, MessageCircle, Link2, Calendar } from 'lucide-react'
+import { Bot, MessageCircle, Link2, Calendar, User } from 'lucide-react'
 
 export default async function BotPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -24,6 +24,8 @@ export default async function BotPage() {
     if (!session?.user?.email) return
 
     const email = session.user.email
+    const botNameRaw = (formData.get('botName') as string | null) ?? ''
+    const botName = botNameRaw.trim().slice(0, 40)
     const chatbotGreeting = (formData.get('chatbotGreeting') as string | null) ?? ''
     const booksyProfileUrl = (formData.get('booksyProfileUrl') as string | null) ?? ''
     const googleCalendarId = (formData.get('googleCalendarId') as string | null) ?? ''
@@ -38,6 +40,7 @@ export default async function BotPage() {
     await db
       .update(clients)
       .set({
+        botName: botName || null,
         chatbotGreeting: chatbotGreeting || null,
         booksyProfileUrl: booksyProfileUrl || null,
         googleCalendarId: googleCalendarId || null,
@@ -57,8 +60,31 @@ export default async function BotPage() {
       </div>
 
       <form action={saveBotSettings} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-8">
-        {/* ─── Presentación ─── */}
+        {/* ─── Nombre del bot ─── */}
         <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-brand" />
+            <h2 className="text-lg font-semibold text-ink">Nombre del bot</h2>
+          </div>
+          <p className="text-sm text-ink-2">
+            Dale un nombre a tu asistente para que se presente así: &ldquo;Hola, soy <em>[nombre]</em>, el asistente
+            de <em>{client.businessName}</em>&rdquo;. Lo hace más cercano que un bot anónimo.
+          </p>
+          <input
+            type="text"
+            name="botName"
+            maxLength={40}
+            defaultValue={client.botName || ''}
+            placeholder="Ej. Mateo, Raúl, Clara…"
+            className="w-full max-w-sm bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
+          />
+          <p className="text-xs text-ink-3">
+            Déjalo vacío para usar &ldquo;el asistente&rdquo; genérico. Máximo 40 caracteres.
+          </p>
+        </section>
+
+        {/* ─── Presentación ─── */}
+        <section className="space-y-4 border-t border-line pt-8">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4 text-brand" />
             <h2 className="text-lg font-semibold text-ink">Mensaje de bienvenida</h2>

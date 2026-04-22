@@ -25,6 +25,9 @@ export interface BarberConfig {
 export interface BarbershopConfig {
   id: string;
   businessName: string;
+  /** Name the bot uses when introducing itself ("Soy Raúl, el asistente de
+   *  Barbería X"). Null / empty ⇒ generic "Soy el asistente". */
+  botName: string | null;
   greeting: string;
   services: ServiceConfig[];
   barbers: BarberConfig[];
@@ -58,12 +61,18 @@ export async function getClientByPhoneNumberId(
     .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
     .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
 
+  const botName = (client.botName ?? '').trim() || null;
+  const selfIntro = botName
+    ? `Soy ${botName}, el asistente de ${client.businessName}`
+    : `Soy el asistente de ${client.businessName}`;
+
   return {
     id: client.id,
     businessName: client.businessName,
+    botName,
     greeting:
       client.chatbotGreeting ||
-      `Hola! Soy el asistente de ${client.businessName}. En que puedo ayudarte?`,
+      `Hola! ${selfIntro}. En que puedo ayudarte?`,
     services: ((client.chatbotServices as Array<Record<string, unknown>>) || []).map(s => ({
       name: String(s.name || ''),
       duration: Number(s.duration) || 30,

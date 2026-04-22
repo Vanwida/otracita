@@ -42,6 +42,9 @@ export const clients = pgTable('clients', {
   stripeConnectStatus: text('stripe_connect_status').default('none').notNull(),
   stripeConnectActivatedAt: timestamp('stripe_connect_activated_at', { withTimezone: true }),
   // Chatbot config
+  // botName: the human name the bot introduces itself with ("Soy Raúl, el
+  // asistente de Barbería X..."). Null ⇒ generic "Soy el asistente".
+  botName: text('bot_name'),
   chatbotGreeting: text('chatbot_greeting'),
   chatbotServices: jsonb('chatbot_services'), // array of services they offer
   chatbotHours: jsonb('chatbot_hours'), // business hours
