@@ -62,7 +62,8 @@ export default function DayGrid({
     return () => clearInterval(interval);
   }, []);
 
-  // Scroll to current time on mount
+  // Scroll to current time on mount — puts "ahora" ~100px from the top so
+  // the barber lands on the live portion of the day.
   useEffect(() => {
     if (scrollRef.current) {
       const offset = Math.max(0, (currentTimeMin - GRID_START) * PX_PER_MIN - 100);
@@ -70,6 +71,28 @@ export default function DayGrid({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Follow the clock. Every minute (when currentTimeMin ticks), if "ahora"
+  // is still inside the visible area we slide the view so it stays around
+  // 1/3 from the top — that way the day advances with the clock without
+  // any manual scrolling. If the barber has scrolled away to look at a
+  // different hour, we leave their position alone until they come back.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const isTodayLive = dateStr === format(new Date(), 'yyyy-MM-dd');
+    if (!el || !isTodayLive) return;
+    if (currentTimeMin < GRID_START || currentTimeMin > GRID_END) return;
+
+    const nowPx = (currentTimeMin - GRID_START) * PX_PER_MIN;
+    const viewportTop = el.scrollTop;
+    const viewportBottom = viewportTop + el.clientHeight;
+    const nowIsVisible = nowPx >= viewportTop && nowPx <= viewportBottom;
+    if (!nowIsVisible) return;
+
+    const target = Math.max(0, nowPx - el.clientHeight / 3);
+    el.scrollTo({ top: target, behavior: 'smooth' });
+  }, [currentTimeMin, date]);
 
   const dateStr = format(date, 'yyyy-MM-dd');
   const isBlocked = blockedDates.includes(dateStr);
