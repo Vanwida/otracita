@@ -15,10 +15,6 @@ interface ServiceItem {
   price: string | number
 }
 
-interface BarberItem {
-  name: string
-}
-
 export default async function NegocioPage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
@@ -27,7 +23,6 @@ export default async function NegocioPage() {
   if (!client) redirect('/dashboard/setup')
 
   const services = (client.chatbotServices as ServiceItem[] | null) || []
-  const barbers = ((client.booksyServices as BarberItem[] | null) || []).map((b) => b.name).filter(Boolean)
   const hours = (client.chatbotHours as HoursMap | null) || null
   const blockedDates = (client.blockedDates as string[]) || []
 
@@ -58,7 +53,6 @@ export default async function NegocioPage() {
     const whatsappNumber = (formData.get('whatsappNumber') as string | null) ?? ''
     const address = (formData.get('address') as string | null) ?? ''
     const servicesRaw = (formData.get('services') as string | null) ?? ''
-    const barbersRaw = (formData.get('barbers') as string | null) ?? ''
     const hoursRaw = (formData.get('hours') as string | null) ?? ''
 
     // Invoicing fields — only present if the "Facturación" tab was touched.
@@ -73,15 +67,8 @@ export default async function NegocioPage() {
     const invoiceNumberNextRaw = (formData.get('invoiceNumberNext') as string | null) ?? ''
 
     let chatbotServices: unknown = null
-    let booksyServicesBarbers: unknown = null
     let chatbotHours: unknown = null
     try { if (servicesRaw) chatbotServices = JSON.parse(servicesRaw) } catch { /* ignore */ }
-    try {
-      if (barbersRaw) {
-        const names = JSON.parse(barbersRaw) as string[]
-        booksyServicesBarbers = names.filter((n) => n && n.trim()).map((name) => ({ name }))
-      }
-    } catch { /* ignore */ }
     try { if (hoursRaw) chatbotHours = JSON.parse(hoursRaw) } catch { /* ignore */ }
 
     const { db } = await import('@/db')
@@ -130,7 +117,9 @@ export default async function NegocioPage() {
         phone: whatsappNumber || current.phone,
         address: address || null,
         chatbotServices: chatbotServices ?? current.chatbotServices,
-        booksyServices: booksyServicesBarbers ?? current.booksyServices,
+        // booksyServices kept as it was — its content was replaced by the
+        // `barbers` table. This field is a legacy holdover and new writes
+        // never touch it (the team tab lives in BarbersManager).
         chatbotHours: chatbotHours ?? current.chatbotHours,
         // Invoicing
         invoicingEnabled: invoicingToPersist,
@@ -146,63 +135,8 @@ export default async function NegocioPage() {
       })
       .where(eq(clients.id, current.id))
 
-    // ── Sync `barbers` table with the names from the TeamEditor ─────────────
-    // The legacy UI still sends a flat array of names. Here we UPSERT the
-    // canonical rows: any name already in the table stays; missing names get
-    // inserted; barbers no longer in the list are soft-deleted (active=false)
-    // so that past bookings can still resolve them. We keep at least one
-    // active barber at all times (if the user empties the list we leave the
-    // current set untouched rather than orphaning future reservations).
-    if (Array.isArray(booksyServicesBarbers)) {
-      try {
-        const { barbers: barbersTable } = await import('@/db/schema')
-        const { and } = await import('drizzle-orm')
-        const names = (booksyServicesBarbers as Array<{ name: string }>)
-          .map((b) => (b?.name ?? '').trim())
-          .filter((n) => n.length > 0)
-
-        const existing = await db
-          .select()
-          .from(barbersTable)
-          .where(eq(barbersTable.clientId, current.id))
-
-        // Activate/insert for names present now
-        for (let i = 0; i < names.length; i++) {
-          const name = names[i]
-          const found = existing.find((r) => r.name === name)
-          if (found) {
-            if (!found.active || found.displayOrder !== i) {
-              await db
-                .update(barbersTable)
-                .set({ active: true, displayOrder: i, updatedAt: new Date() })
-                .where(eq(barbersTable.id, found.id))
-            }
-          } else {
-            await db.insert(barbersTable).values({
-              clientId: current.id,
-              name,
-              displayOrder: i,
-              active: true,
-            })
-          }
-        }
-
-        // Soft-deactivate anybody not in the list (skip if empty list — we
-        // don't want to delete every barber and strand future bookings).
-        if (names.length > 0) {
-          for (const row of existing) {
-            if (!names.includes(row.name) && row.active) {
-              await db
-                .update(barbersTable)
-                .set({ active: false, updatedAt: new Date() })
-                .where(and(eq(barbersTable.id, row.id), eq(barbersTable.clientId, current.id)))
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[saveBusiness] barbers sync failed:', err)
-      }
-    }
+    // Team is now managed by BarbersManager via /api/barbers — no legacy
+    // sync needed here.
 
     const { revalidatePath } = await import('next/cache')
     revalidatePath('/dashboard/negocio')
@@ -223,7 +157,6 @@ export default async function NegocioPage() {
           phone: client.phone || '',
           address: client.address || '',
           services,
-          barbers,
           hours,
           blockedDates,
           invoicing: {

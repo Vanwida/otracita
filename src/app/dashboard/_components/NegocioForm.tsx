@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt, CreditCard } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
-import TeamEditor from './TeamEditor'
+import BarbersManager from './BarbersManager'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
 import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
@@ -25,7 +25,9 @@ interface Props {
     phone: string
     address: string
     services: ServiceItem[]
-    barbers: string[]
+    // Team is managed by BarbersManager (own API-driven CRUD). No initial
+    // barbers array plumbed through here — the component fetches from
+    // /api/barbers on mount.
     hours: HoursMap | null
     blockedDates: string[]
     invoicing: InvoicingInitial
@@ -174,7 +176,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
               <h2 className="text-lg font-semibold text-ink">Equipo</h2>
               <p className="text-sm text-ink-2 mt-1">Profesionales del negocio. El bot preguntará con quién quiere reservar el cliente.</p>
             </div>
-            <TeamEditor initial={initial.barbers} />
+            <BarbersManager />
           </div>
 
           {/* ─── Horario ─── */}

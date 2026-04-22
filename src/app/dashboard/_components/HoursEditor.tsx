@@ -10,6 +10,9 @@ interface Props {
   initial: HoursMap | null
   /** Hidden input name so the value reaches the parent form on submit. */
   name?: string
+  /** Optional controlled-mode callback: fires on every change with the full
+   *  map so callers that save per-field (not per-form) can PATCH directly. */
+  onChange?: (next: HoursMap) => void
 }
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
@@ -38,10 +41,15 @@ const DEFAULT_HOURS: HoursMap = {
  * `HH:MM-HH:MM` range. Serialised as JSON into a hidden input so it rides
  * along the surrounding <form>.
  */
-export default function HoursEditor({ initial, name = 'hours' }: Props) {
+export default function HoursEditor({ initial, name = 'hours', onChange }: Props) {
   const [hours, setHours] = useState<HoursMap>({ ...DEFAULT_HOURS, ...(initial || {}) })
 
   const json = JSON.stringify(hours)
+
+  const update = (next: HoursMap) => {
+    setHours(next)
+    onChange?.(next)
+  }
 
   return (
     <div className="space-y-2">
@@ -55,10 +63,10 @@ export default function HoursEditor({ initial, name = 'hours' }: Props) {
             <select
               value={closed ? 'closed' : 'open'}
               onChange={(e) => {
-                setHours((h) => ({
-                  ...h,
+                update({
+                  ...hours,
                   [day]: e.target.value === 'closed' ? 'Cerrado' : '10:00-20:00',
-                }))
+                })
               }}
               className="bg-surface border border-line rounded-lg p-2 text-sm text-ink outline-none w-28 focus:border-brand transition-colors"
             >
@@ -69,7 +77,7 @@ export default function HoursEditor({ initial, name = 'hours' }: Props) {
               <input
                 type="text"
                 value={value}
-                onChange={(e) => setHours((h) => ({ ...h, [day]: e.target.value }))}
+                onChange={(e) => update({ ...hours, [day]: e.target.value })}
                 placeholder="10:00-20:00"
                 className="flex-1 bg-surface border border-line rounded-lg p-2 text-sm text-ink focus:border-brand outline-none transition-colors text-center"
               />
