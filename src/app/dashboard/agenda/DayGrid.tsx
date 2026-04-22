@@ -154,34 +154,40 @@ export default function DayGrid({
 
   return (
     <div className="flex flex-1 overflow-hidden bg-surface">
-      {/* Time gutter */}
-      <div className="w-12 shrink-0 bg-surface border-r border-line relative" style={{ height: TOTAL_HEIGHT + 40 }}>
-        <div className="h-10" /> {/* header spacer */}
-        <div className="relative" style={{ height: TOTAL_HEIGHT }}>
-          {/* Current time dot in gutter */}
-          {currentTimePx !== null && (
-            <div
-              className="absolute right-0 z-20"
-              style={{ top: currentTimePx - 5 }}
-            >
-              <div className="h-2.5 w-2.5 rounded-full bg-time-now translate-x-1/2" />
+      {/* Single scroll container so the time gutter and the column bodies
+          scroll TOGETHER vertically (otherwise events drift visually from
+          their hour labels). The gutter is position:sticky on the left so
+          it stays visible when the user scrolls horizontally across many
+          barbers. */}
+      <div className="flex-1 overflow-auto" ref={scrollRef}>
+        <div className="flex" style={{ minWidth: `${48 + columns.length * 160}px` }}>
+          {/* Time gutter (sticky left) */}
+          <div
+            className="w-12 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
+            style={{ height: TOTAL_HEIGHT + 40 }}
+          >
+            <div className="h-10 bg-overlay border-b border-line sticky top-0 z-40" /> {/* header spacer */}
+            <div className="relative" style={{ height: TOTAL_HEIGHT }}>
+              {currentTimePx !== null && (
+                <div
+                  className="absolute right-0 z-20"
+                  style={{ top: currentTimePx - 5 }}
+                >
+                  <div className="h-2.5 w-2.5 rounded-full bg-time-now translate-x-1/2" />
+                </div>
+              )}
+              {HOUR_LABELS.map(({ label, top }) => (
+                <div
+                  key={label}
+                  className="absolute right-2 text-[10px] text-ink-2 select-none"
+                  style={{ top: top - 6 }}
+                >
+                  {label}
+                </div>
+              ))}
             </div>
-          )}
-          {HOUR_LABELS.map(({ label, top }) => (
-            <div
-              key={label}
-              className="absolute right-2 text-[10px] text-ink-2 select-none"
-              style={{ top: top - 6 }}
-            >
-              {label}
-            </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      {/* Columns scroll wrapper */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollRef}>
-        <div className="flex min-w-0" style={{ minWidth: `${columns.length * 160}px` }}>
           {columns.map(col => {
             const colEvents = getEventsForColumn(col.key);
 
@@ -190,8 +196,9 @@ export default function DayGrid({
                 key={col.key}
                 className="flex-1 flex flex-col border-r border-line last:border-r-0 min-w-0"
               >
-                {/* Column header */}
-                <div className="h-10 flex items-center justify-center px-2 border-b border-line bg-overlay shrink-0">
+                {/* Column header — sticky top so it stays visible while
+                    scrolling through the day. */}
+                <div className="h-10 flex items-center justify-center px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-20">
                   <span className="text-xs font-bold text-ink-2 truncate">{col.label}</span>
                 </div>
 
