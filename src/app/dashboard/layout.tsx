@@ -47,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       {/* Sidebar — hidden on mobile, shown on lg+ */}
       <aside className="hidden lg:flex lg:flex-col w-60 border-r border-sidebar-line bg-sidebar p-5 shrink-0">
-        <Link href="/" className="flex items-center mb-8 text-ink">
+        <Link href="/dashboard" className="flex items-center mb-8 text-ink">
           <Wordmark height={30} />
         </Link>
 

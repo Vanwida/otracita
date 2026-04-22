@@ -62,7 +62,7 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
         }`}
       >
         <div className="flex items-center justify-between mb-8">
-          <Link href="/" className="flex items-center text-ink">
+          <Link href="/dashboard" className="flex items-center text-ink">
             <Wordmark height={28} />
           </Link>
           <button
