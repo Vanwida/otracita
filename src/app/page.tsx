@@ -180,7 +180,7 @@ export default function Home() {
             <ProblemCard
               icon={<ClockIcon />}
               title="Dinero por la ventana"
-              description="Cada chat sin respuesta es un cliente perdido. Hasta 280 € al mes tirados por no poder contestar a tiempo."
+              description="Cada chat sin respuesta es un cliente que se va a la competencia. 3 ó 4 al mes son cientos de euros tirados."
               delay={0.2}
             />
             <ProblemCard
@@ -299,8 +299,8 @@ export default function Home() {
             <SuiteCard
               eyebrow="Sin datáfono"
               title="Cobros online opcionales"
-              description="QR desde la agenda, el cliente paga con tarjeta o Apple Pay desde su móvil. Opcional: si tienes TPV, sigues con él."
-              points={["Stripe Connect (tu dinero, tu banco)", "QR o link por WhatsApp", "Seña al reservar (próximamente)"]}
+              description="QR desde la agenda, el cliente paga con tarjeta o Apple Pay desde su móvil. Si ya tienes datáfono, lo ignoras."
+              points={["Tu dinero va directo a tu banco", "QR o link por WhatsApp", "Seña al reservar (próximamente)"]}
             />
           </div>
 
@@ -321,12 +321,12 @@ export default function Home() {
           <p className="mt-4 text-[var(--color-ink-2)] text-lg">Tecnología que funciona. Trato humano cuando lo necesitas.</p>
 
           <div className="mt-12 grid gap-4 text-left sm:grid-cols-2">
-            <TrustPoint text="Bilingüe: ES y EN automático" />
-            <TrustPoint text="Cancelación en 1 click, sin permanencia" />
-            <TrustPoint text="Libro de facturas PDF para tu gestor" />
-            <TrustPoint text="Cobros con QR sin datáfono" />
-            <TrustPoint text="Datos 100 % en España (Neon + Vercel EU)" />
-            <TrustPoint text="Activo en menos de 48h" />
+            <TrustPoint text="Cancelas cuando quieras, sin permanencia" />
+            <TrustPoint text="Te activamos nosotros en menos de 48h" />
+            <TrustPoint text="Bot bilingüe ES/EN para el turismo" />
+            <TrustPoint text="Libro PDF para tu gestor cada mes" />
+            <TrustPoint text="Cobra con QR sin tener que comprar datáfono" />
+            <TrustPoint text="Soporte real por WhatsApp, no un formulario" />
           </div>
         </div>
       </section>
