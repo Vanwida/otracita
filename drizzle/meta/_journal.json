@@ -50,6 +50,13 @@
       "when": 1776846056193,
       "tag": "0006_crazy_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776857239678,
+      "tag": "0007_aberrant_talkback",
+      "breakpoints": true
     }
   ]
 }

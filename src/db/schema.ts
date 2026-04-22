@@ -63,11 +63,45 @@ export const clients = pgTable('clients', {
   tipsEnabled: boolean('tips_enabled').default(false).notNull(),
   tipsSuggestedCents: integer('tips_suggested_cents').array().default([200, 300, 500]).notNull(),
   followupMinutesAfter: integer('followup_minutes_after').default(30).notNull(),
+  // Scheduling standards (Booksy/Treatwell conventions)
+  // minLeadTimeMinutes: how far in advance a customer can book. Prevents
+  //   "book in 2 minutes" scenarios where the barber wouldn't even see it.
+  // maxBookingHorizonDays: how far into the future bookings can land.
+  //   Caps "book 2 years from now" and keeps the slot picker useful.
+  // serviceBufferMinutes: padding after each service for cleanup/prep. The
+  //   slot picker adds this to `duration` when checking overlap.
+  minLeadTimeMinutes: integer('min_lead_time_minutes').default(15).notNull(),
+  maxBookingHorizonDays: integer('max_booking_horizon_days').default(45).notNull(),
+  serviceBufferMinutes: integer('service_buffer_minutes').default(5).notNull(),
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   onboardedAt: timestamp('onboarded_at'),
 });
+
+// Barbers (staff per client) — before this table existed the team lived as a
+// loose jsonb array of {name} on clients.booksyServices. That couldn't hold
+// per-person schedule or blocked dates, which is the Booksy/Treatwell norm:
+// each staff member works their own hours, takes their own days off, and the
+// availability picker intersects them.
+//
+// `hours` and `blockedDates` are nullable so a barber can *inherit* the
+// shop-wide clients.chatbotHours / clients.blockedDates — new barbershops
+// start simple (everyone on shop hours) and add per-person exceptions when
+// they need them, matching how barbers onboard in Booksy.
+export const barbers = pgTable('barbers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  name: text('name').notNull(),
+  hours: jsonb('hours'),                                             // same shape as clients.chatbotHours; null = inherit
+  blockedDates: jsonb('blocked_dates').$type<string[]>().default([]).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  clientNameUnique: unique('barbers_client_name_unique').on(table.clientId, table.name),
+}));
 
 // Subscriptions tracking
 export const subscriptions = pgTable('subscriptions', {
@@ -129,6 +163,12 @@ export const bookings = pgTable('bookings', {
   customerPhone: text('customer_phone').notNull(),
   customerName: text('customer_name'),
   service: text('service').notNull(),
+  // Canonical barber reference — every new booking must resolve this to a
+  // real row in `barbers` at confirmation time. The free-text `barber`
+  // column is kept for backward compat and historic rows; new writes set
+  // both (barberId → barbers.id, barber → barbers.name snapshot) so legacy
+  // reads keep working.
+  barberId: uuid('barber_id'),
   barber: text('barber'),
   date: text('date').notNull(), // YYYY-MM-DD
   time: text('time').notNull(), // HH:MM
