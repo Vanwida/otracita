@@ -9,6 +9,7 @@ import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
 import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
 import ConnectSettings, { type ConnectInitial } from './ConnectSettings'
+import TipsSettings, { type TipsInitial } from './TipsSettings'
 
 interface ServiceItem {
   name: string
@@ -29,6 +30,7 @@ interface Props {
     blockedDates: string[]
     invoicing: InvoicingInitial
     connect: ConnectInitial
+    tips: TipsInitial
   }
   /** Server action that saves the core business fields (everything except blocked dates). */
   save: (formData: FormData) => Promise<void>
@@ -119,8 +121,9 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
           <BlockedDatesManager initialDates={initial.blockedDates} clientId={clientId} />
         </div>
       ) : tab === 'cobros' ? (
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-4">
+        <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
           <ConnectSettings initial={initial.connect} />
+          <TipsSettings initial={initial.tips} />
         </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">

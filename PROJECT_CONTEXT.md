@@ -164,8 +164,13 @@ Ads tier was removed from the main pricing — will live on a separate Vanwida l
 otracita shares **one Stripe account** with Alex's other projects:
 - Account: `acct_1T41xuBnAKM0wJqO` (aistudios.pro · `vanwida@aistudios.pro`)
 - Standard account, ES, EUR
-- Connect Platform enabled with `transfers: active` capability
-- Platform Agreement already accepted
+- Own account capabilities `card_payments: active`, `transfers: active` (for
+  direct charges on the platform's own products like subscriptions)
+- **Connect PLATFORM signup pending** in live mode — `accounts.create` for
+  Express barbers currently returns "You can only create new accounts if
+  you've signed up for Connect" (see `dashboard.stripe.com/connect` to
+  complete the marketplace platform profile). Cobros online won't work
+  for barbers until this is done.
 
 **Decision log (2026-04-21)**: considered splitting into a dedicated otracita
 account under a Vanwida organization. Declined — keeping everything in
@@ -207,3 +212,28 @@ invoice must be replaced with a `factura rectificativa` (new correlative
 number, amounts negated, references the original). MVP restores `voided`
 → `issued` on undo for simplicity; this is acceptable if corrected fast
 but should be hardened before scaling.
+
+## Booking ↔ followup (rating + propina) state matrix
+
+Independent from the invoice lifecycle. The cron
+`/api/cron/post-booking-followup` runs every 10 min and fires the WhatsApp
+rating/tip message 30 min (configurable per client) after the service ends.
+
+| `bookings.status` | Followup action |
+|---|---|
+| `confirmed` (future) | Nothing — endsAt hasn't passed |
+| `confirmed` (past, endsAt + `client.followupMinutesAfter` ≤ now) | Send rating message if `tipsEnabled` AND `followupSentAt is null`; mark `followupSentAt` on delivery |
+| `completed` | Same criteria as `confirmed` past |
+| `cancelled` | Never send. Idempotent because cancelled bookings fail the state filter |
+| `no_show` | Never send — would be rubbing salt in the wound |
+| rescheduled (cancel + new booking) | New booking anchors to its own endsAt; old one is cancelled so no send |
+
+**Tips never generate invoices.** They are liberalidad (not contraprestación)
+under Spanish tax law. Exports for the gestor include tips as a separate
+section, never folded into `libro de facturas`.
+
+**Rating flow**:
+- Customer taps a ⭐ button → row inserted in `tips` with `status='rating_only'` and `amount_cents=0`
+- If rating ≥ 4 → offer tip buttons (2€ / 3€ / "No, gracias")
+- If rating ≤ 3 → thank and exit, no tip ask (sensitive)
+- If tip accepted → delete the rating_only placeholder, insert new row with `status='pending'` + rating carried over → Stripe Checkout → webhook flips to `paid`

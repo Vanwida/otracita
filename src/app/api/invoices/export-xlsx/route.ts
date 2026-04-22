@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
 import { db } from '@/db';
-import { invoices } from '@/db/schema';
+import { invoices, tips } from '@/db/schema';
 import { eq, and, gte, lt, asc } from 'drizzle-orm';
 import {
   requireClientAccess,
@@ -266,6 +266,85 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   // Freeze header row for long lists.
   facturas.views = [{ state: 'frozen', ySplit: 1 }];
+
+  // ── Sheet 3: Propinas ────────────────────────────────────────────────────
+  // Tips are fiscally INCOME (renta) but NOT invoiced — they're kept in a
+  // separate sheet so the gestor sees them for IRPF without mixing them
+  // into Modelo 303 (IVA) records. Only status='paid' counts; rating_only
+  // entries are social data, not accounting.
+  const tipsRangeStart = new Date(`${range.start}T00:00:00Z`);
+  const tipsRangeEnd = new Date(`${range.endExclusive}T00:00:00Z`);
+  const tipRows = await db
+    .select()
+    .from(tips)
+    .where(
+      and(
+        eq(tips.clientId, access.client.id),
+        eq(tips.status, 'paid'),
+        gte(tips.paidAt, tipsRangeStart),
+        lt(tips.paidAt, tipsRangeEnd),
+      ),
+    )
+    .orderBy(asc(tips.paidAt));
+
+  const propinas = workbook.addWorksheet('Propinas');
+  propinas.addRow(['Propinas recibidas — no facturables (liberalidad)']);
+  propinas.getCell('A1').font = { italic: true, color: { argb: '00888888' } };
+  propinas.addRow([]);
+  propinas.columns = [
+    { header: 'Fecha', key: 'paidAt' },
+    { header: 'Barbero', key: 'barberName' },
+    { header: 'Importe (€)', key: 'amount' },
+    { header: 'Valoración (1-5)', key: 'rating' },
+    { header: 'Ref. Stripe', key: 'ref' },
+  ];
+  // Re-apply after .columns overwrites the first header row
+  const tipsHeader = propinas.getRow(3);
+  tipsHeader.values = ['Fecha', 'Barbero', 'Importe (€)', 'Valoración (1-5)', 'Ref. Stripe'];
+  tipsHeader.font = { bold: true, color: { argb: HEADER_FONT_ARGB } };
+  tipsHeader.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL_ARGB } };
+    cell.border = { bottom: { style: 'thin', color: { argb: BORDER_ARGB } } };
+  });
+
+  tipRows.forEach((t) => {
+    const r = propinas.addRow({
+      paidAt: t.paidAt ? t.paidAt.toISOString().slice(0, 10) : '',
+      barberName: t.barberName || '',
+      amount: t.amountCents / 100,
+      rating: t.rating ?? '',
+      ref: t.stripeChargeId || t.stripePaymentIntentId || '',
+    });
+    r.getCell('amount').numFmt = CURRENCY_FORMAT;
+  });
+
+  // Totals
+  const propinasTotal = tipRows.reduce((acc, t) => acc + t.amountCents, 0);
+  const tipsTotalRow = propinas.addRow({
+    paidAt: 'TOTAL',
+    amount: propinasTotal / 100,
+  });
+  tipsTotalRow.font = { bold: true };
+  tipsTotalRow.eachCell((cell, colNum) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTALS_FILL_ARGB } };
+    cell.border = { top: { style: 'thin', color: { argb: BORDER_ARGB } } };
+    const key = propinas.columns[colNum - 1]?.key;
+    if (key === 'amount') cell.numFmt = CURRENCY_FORMAT;
+  });
+  autoFitColumns(propinas);
+  propinas.views = [{ state: 'frozen', ySplit: 3 }];
+
+  // Also reflect tips total in Resumen, separated from facturas so the
+  // gestor can see at a glance.
+  if (tipRows.length > 0) {
+    resumen.addRow([]);
+    resumen.addRow(['Propinas (no facturables)']);
+    resumen.getCell(`A${resumen.rowCount}`).font = { bold: true };
+    const rcRow = resumen.addRow(['Propinas recibidas', tipRows.length]);
+    void rcRow;
+    const pRow = resumen.addRow(['Total propinas (€)', propinasTotal / 100]);
+    pRow.getCell(2).numFmt = CURRENCY_FORMAT;
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
 
