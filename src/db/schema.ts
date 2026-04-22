@@ -56,6 +56,13 @@ export const clients = pgTable('clients', {
   invoicingEnabled: boolean('invoicing_enabled').default(false).notNull(),
   invoiceNumberPrefix: text('invoice_number_prefix').default('').notNull(),    // e.g. "FAC-2026-" (empty = numbers only)
   invoiceNumberNext: integer('invoice_number_next').default(1).notNull(),
+  // Tips / rating follow-up (post-servicio WhatsApp message asking for rating + optional tip).
+  // Opt-in per barbershop — nothing fires if `tipsEnabled = false`. Amounts
+  // in cents; 200/300/500 = 2€/3€/5€ defaults. `followupMinutesAfter` is the
+  // delay (in minutes) between booking.endsAt and the follow-up message.
+  tipsEnabled: boolean('tips_enabled').default(false).notNull(),
+  tipsSuggestedCents: integer('tips_suggested_cents').array().default([200, 300, 500]).notNull(),
+  followupMinutesAfter: integer('followup_minutes_after').default(30).notNull(),
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -133,6 +140,10 @@ export const bookings = pgTable('bookings', {
   booksyBookingId: text('booksy_booking_id'), // Booksy reference ID for dedup + update matching
   rawEmailSnippet: text('raw_email_snippet'), // first 500 chars of parsed email, for debugging
   reminderSent: boolean('reminder_sent').default(false),
+  // Set when the post-service follow-up WhatsApp (rating + optional tip) has
+  // been sent for this booking. Prevents duplicate sends when the cron runs
+  // every 10 minutes. Null = not sent yet (or barbershop has tipsEnabled=false).
+  followupSentAt: timestamp('followup_sent_at', { withTimezone: true }),
   cancelledAt: timestamp('cancelled_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -258,6 +269,47 @@ export const payments = pgTable('payments', {
   description: text('description'),   // shown on Stripe Checkout and receipt
   paymentLinkUrl: text('payment_link_url'),  // hosted Stripe Checkout URL
   // Audit
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Tips — customer-chosen amounts paid AFTER a service, plus the rating
+// (1-5 ⭐) the customer gave. Completely separate from `payments` because:
+//   · tips are NEVER invoiceable in ES (liberalidad, no contraprestación)
+//   · rating is a concept that only exists for tips / post-service flows
+//   · exports for the gestor treat tips as a separate section (renta but
+//     not factura)
+//
+// Lifecycle:
+//   pending  -> checkout session created, waiting for customer
+//   paid     -> webhook confirmed, funds in barber's Stripe balance
+//   expired  -> checkout session expired before customer paid
+//   refunded -> barber refunded the tip (rare)
+//   failed   -> payment attempt failed
+//
+// A row may exist with `status = 'pending'` and no payment at all when the
+// customer gave a rating but skipped the tip. In that case `amountCents = 0`
+// and `stripeCheckoutSessionId = null` — the row is kept for the rating.
+export const tips = pgTable('tips', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  bookingId: uuid('booking_id').references(() => bookings.id),     // may be null for spontaneous tips
+  // Stripe identifiers — populated when an actual payment is initiated
+  stripeCheckoutSessionId: text('stripe_checkout_session_id').unique(),
+  stripePaymentIntentId: text('stripe_payment_intent_id'),
+  stripeChargeId: text('stripe_charge_id'),
+  // Amount in cents (0 = rating without tip)
+  amountCents: integer('amount_cents').default(0).notNull(),
+  currency: text('currency').default('eur').notNull(),
+  status: text('status').notNull(),  // 'pending' | 'paid' | 'expired' | 'refunded' | 'failed' | 'rating_only'
+  // Snapshots (so history stays correct even if barber renames)
+  customerPhone: text('customer_phone').notNull(),
+  barberName: text('barber_name'),
+  // Rating (1-5). Null = customer didn't rate (e.g. only paid a tip).
+  rating: integer('rating'),
+  ratingComment: text('rating_comment'),
+  paymentLinkUrl: text('payment_link_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

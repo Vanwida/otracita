@@ -43,6 +43,13 @@
       "when": 1776803382384,
       "tag": "0005_crazy_bloodstorm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776846056193,
+      "tag": "0006_crazy_roughhouse",
+      "breakpoints": true
     }
   ]
 }
