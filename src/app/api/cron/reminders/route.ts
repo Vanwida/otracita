@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { bookings, clients, conversations } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { bookings, clients, conversations, customers } from '@/db/schema';
+import { eq, and, lt, sql } from 'drizzle-orm';
 import { sendWhatsAppButtons } from '@/lib/whatsapp/sender';
 import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
@@ -89,5 +89,57 @@ export async function GET(request: Request) {
     }
   }
 
-  return Response.json({ success: true, remindersSent: sent, date: tomorrowStr });
+  // ────────────────────────────────────────────────────────────────────────
+  // Daily lifecycle sweep — mark yesterday's confirmed bookings as
+  // `completed` and decrement the customer's no-show counter by 1 (floor 0).
+  // This is how we reward reliable clients: after each successful visit
+  // their no-show history decays naturally without the barber doing
+  // anything manual. "Perdonar" (noShows -> 0) is still available in the UI
+  // for one-shot forgiveness.
+  //
+  // Rule: any booking with date < today AND status = 'confirmed' is
+  // assumed completed. If the customer actually didn't show, the barber
+  // should have marked it no-show beforehand — the BookingDetailPanel has
+  // that button. We don't try to guess past the 24h mark.
+  // ────────────────────────────────────────────────────────────────────────
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  let completedCount = 0;
+  let decrementedCount = 0;
+  try {
+    const toClose = await db
+      .select({ id: bookings.id, clientId: bookings.clientId, customerPhone: bookings.customerPhone })
+      .from(bookings)
+      .where(and(lt(bookings.date, today), eq(bookings.status, 'confirmed')));
+
+    for (const row of toClose) {
+      await db
+        .update(bookings)
+        .set({ status: 'completed' })
+        .where(eq(bookings.id, row.id));
+      completedCount++;
+
+      // Decrement that customer's noShows counter (min 0).
+      const upd = await db
+        .update(customers)
+        .set({ noShows: sql`GREATEST(${customers.noShows} - 1, 0)` })
+        .where(
+          and(
+            eq(customers.clientId, row.clientId),
+            eq(customers.phone, row.customerPhone),
+          ),
+        )
+        .returning({ id: customers.id });
+      if (upd.length > 0) decrementedCount++;
+    }
+  } catch (err) {
+    console.error('[cron/reminders] lifecycle sweep failed:', err);
+  }
+
+  return Response.json({
+    success: true,
+    remindersSent: sent,
+    date: tomorrowStr,
+    bookingsCompleted: completedCount,
+    noShowsDecremented: decrementedCount,
+  });
 }

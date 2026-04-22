@@ -9,6 +9,7 @@ import { eq, and, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { Users, Repeat, Shield, Phone } from 'lucide-react'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
+import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
 
 type Reputation = 'good' | 'warning' | 'blocked'
 type ReputationFilter = Reputation | 'all'
@@ -110,7 +111,11 @@ export default async function ClientesPage({ searchParams }: Props) {
                       <ReputationBadge reputation={(c.reputation as Reputation | null) ?? 'good'} />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {c.reputation === 'blocked' && <UnblockCustomerButton customerId={c.id} />}
+                      {c.reputation === 'blocked' ? (
+                        <UnblockCustomerButton customerId={c.id} />
+                      ) : (c.noShows ?? 0) > 0 ? (
+                        <ForgiveNoShowsButton customerId={c.id} customerName={c.name} />
+                      ) : null}
                     </td>
                   </tr>
                 ))}

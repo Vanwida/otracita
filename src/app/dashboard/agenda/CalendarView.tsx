@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
+import useSWR from 'swr';
 import {
   startOfWeek,
   endOfWeek,
@@ -45,42 +46,39 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     date: format(new Date(), 'yyyy-MM-dd'),
     time: '10:00',
   });
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchEvents = useCallback(() => {
+  // Build the calendar fetch URL from the current view. SWR keys by URL so
+  // changing view/date/barber automatically triggers a new request — and
+  // a background poll every 10s keeps the grid in sync when the bot creates
+  // a booking or another device updates one.
+  const fetchUrl = useMemo(() => {
     let start: string;
     let end: string;
-
     if (viewMode === 'day') {
       start = format(currentDay, 'yyyy-MM-dd');
-      end = format(currentDay, 'yyyy-MM-dd');
+      end = start;
     } else if (viewMode === 'week') {
-      const ws = startOfWeek(currentDay, { weekStartsOn: 1 });
-      start = format(ws, 'yyyy-MM-dd');
+      start = format(startOfWeek(currentDay, { weekStartsOn: 1 }), 'yyyy-MM-dd');
       end = format(endOfWeek(currentDay, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     } else {
       start = format(startOfMonth(currentDay), 'yyyy-MM-dd');
       end = format(endOfMonth(currentDay), 'yyyy-MM-dd');
     }
-
-    setLoading(true);
-    fetch(`/api/dashboard/calendar?start=${start}&end=${end}&barber=${selectedBarber}`)
-      .then(r => r.json())
-      .then(data => {
-        setEvents(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        setEvents([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    return `/api/dashboard/calendar?start=${start}&end=${end}&barber=${selectedBarber}`;
   }, [currentDay, viewMode, selectedBarber]);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  const {
+    data: events = [],
+    isLoading: loading,
+    mutate: refetch,
+  } = useSWR<CalendarEvent[]>(fetchUrl, async (url: string) => {
+    const r = await fetch(url);
+    const d = await r.json();
+    return Array.isArray(d) ? d : [];
+  }, {
+    refreshInterval: 10_000,
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+  });
 
   const rangeLabel = () => {
     if (viewMode === 'day') {
@@ -260,7 +258,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         barbers={barbers}
         onClose={() => setIsNewBookingOpen(false)}
         onCreated={() => {
-          fetchEvents();
+          refetch();
         }}
       />
     </div>
