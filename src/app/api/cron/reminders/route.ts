@@ -3,16 +3,13 @@ import { bookings, clients, conversations } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { sendWhatsAppButtons } from '@/lib/whatsapp/sender';
 import { formatDateSpanish } from '@/lib/google-calendar';
+import { requireCron } from '@/lib/auth/require-cron';
 
 type Lang = 'es' | 'en';
 
 export async function GET(request: Request) {
-  // Simple auth check
-  const { searchParams } = new URL(request.url);
-  const secret = searchParams.get('secret');
-  if (secret !== process.env.CRON_SECRET && secret !== 'agendalo-cron-2024') {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const unauth = requireCron(request);
+  if (unauth) return unauth;
 
   // Get tomorrow's date in Spain timezone
   const tomorrow = new Date();
