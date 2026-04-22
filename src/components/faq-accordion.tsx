@@ -9,9 +9,9 @@ interface FaqItem {
 
 const faqs: FaqItem[] = [
   {
-    question: "¿Necesito cambiar de Booksy?",
+    question: "¿Necesito cambiar mi app de reservas actual?",
     answer:
-      "No. Seguirás usando Booksy como siempre — nosotros conectamos tu WhatsApp con tu agenda para que el bot sepa cuándo tienes hueco y reserve en piloto automático. Si quieres, con el tiempo puedes dejar Booksy: nuestra agenda + facturación + cobros lo cubren entero.",
+      "No. Seguirás usándola como siempre — nosotros conectamos tu WhatsApp con tu agenda para que el bot sepa cuándo tienes hueco y reserve en piloto automático. Si quieres, con el tiempo puedes dejar la otra: nuestra agenda + facturación + cobros lo cubren entero.",
   },
   {
     question: "¿Cómo funciona la facturación para mi gestor?",
@@ -29,14 +29,14 @@ const faqs: FaqItem[] = [
       "Marcas la reserva como no-show con un click y automáticamente se anula la factura. El dato no cuenta en tus exports al gestor. Todo limpio.",
   },
   {
-    question: "¿Qué pasa si un cliente reserva por Booksy y otro por WhatsApp a la misma hora?",
+    question: "¿Qué pasa si un cliente reserva por tu otra app y otro por WhatsApp a la misma hora?",
     answer:
-      "El calendario está sincronizado. Si un hueco se ocupa por Booksy, el bot deja de ofrecerlo por WhatsApp al instante — cero dobles reservas.",
+      "El calendario está sincronizado. Si un hueco se ocupa por el otro lado, el bot deja de ofrecerlo por WhatsApp al instante — cero dobles reservas.",
   },
   {
-    question: "¿Y si no sé conectar Booksy?",
+    question: "¿Y si no sé conectar mi agenda actual?",
     answer:
-      "No te preocupes. Nuestro equipo te hace la configuración inicial totalmente gratis — Meta WhatsApp + sync con tu Booksy + primer test. En menos de 48h estás activo.",
+      "No te preocupes. Nuestro equipo te hace la configuración inicial totalmente gratis — Meta WhatsApp + sync con tu agenda + primer test. En menos de 48h estás activo.",
   },
   {
     question: "¿Puedo probarlo antes?",

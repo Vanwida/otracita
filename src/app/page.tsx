@@ -15,7 +15,7 @@ const FEATURES = [
     emoji: "🗓️",
     title: "Reservas automáticas",
     description:
-      "El bot gestiona el flujo entero: servicio → barbero → día → hora → confirmación. Sincronizado con tu Booksy.",
+      "El bot gestiona el flujo entero: servicio → barbero → día → hora → confirmación. Sincronizado con tu agenda actual.",
   },
   {
     emoji: "🧾",
@@ -57,7 +57,7 @@ const FEATURES = [
     emoji: "📊",
     title: "Panel para el barbero",
     description:
-      "Agenda unificada Booksy + WhatsApp, clientes, facturas, cobros. Todo en un solo sitio.",
+      "Agenda unificada, WhatsApp, clientes, facturas, cobros. Todo en un solo sitio.",
   },
 ];
 
@@ -118,7 +118,7 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mx-auto mt-8 max-w-2xl text-lg text-[var(--color-ink-2)] sm:text-xl leading-relaxed"
           >
-            La recepcionista de IA que contesta por WhatsApp, cierra reservas solo, <span className="text-[var(--color-ink)] font-medium">emite la factura automáticamente</span> y cobra por QR si te hace falta. Todo sin tocar el móvil ni cambiar de Booksy.
+            La recepcionista de IA que contesta por WhatsApp, cierra reservas solo, <span className="text-[var(--color-ink)] font-medium">emite la factura automáticamente</span> y cobra por QR si te hace falta. Todo sin tocar el móvil ni cambiar tu app de reservas actual.
           </motion.p>
 
           <motion.div
@@ -210,8 +210,8 @@ export default function Home() {
 
             <StepCard
               step={1}
-              title="Conectamos tu Booksy"
-              description="Te configuramos la sincronización por email para que Booksy y otracita hablen entre ellos. Nosotros lo montamos, tú no tocas nada."
+              title="Conectamos tu agenda actual"
+              description="Te configuramos la sincronización por email para que tu app de reservas y otracita hablen entre ellas. Nosotros lo montamos, tú no tocas nada."
               delay={0.1}
             />
             <StepCard
@@ -223,7 +223,7 @@ export default function Home() {
             <StepCard
               step={3}
               title="Tú solo cortas"
-              description="Las reservas entran solas en tu Booksy. Todo automatizado, cero sorpresas, cero dobles citas."
+              description="Las reservas entran solas en tu agenda. Todo automatizado, cero sorpresas, cero dobles citas."
               delay={0.5}
             />
           </div>
@@ -268,7 +268,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── Anti-Booksy / Suite completa ─── */}
+      {/* ─── Suite completa ─── */}
       <section className="relative z-20 px-6 py-32 bg-[var(--color-canvas)]">
         <div className="mx-auto max-w-6xl">
           <div className="text-center mb-16">
@@ -276,7 +276,7 @@ export default function Home() {
               Más que un bot
             </span>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-5xl">
-              La suite que Booksy no te da
+              La suite completa para tu barbería
             </h2>
             <p className="mt-4 text-lg text-[var(--color-ink-2)] max-w-2xl mx-auto">
               Reservas, facturación y cobros en una sola herramienta. Lo que antes resolvías con 3 apps, aquí en una.
@@ -287,7 +287,7 @@ export default function Home() {
             <SuiteCard
               eyebrow="24/7"
               title="Reservas por WhatsApp"
-              description="Tus clientes reservan chateando, sin app ni descargas. El bot sincroniza con Booksy si ya lo usas."
+              description="Tus clientes reservan chateando, sin app ni descargas. Sincroniza con tu agenda actual si ya tienes una."
               points={["Bot bilingüe ES/EN", "Lista de espera automática", "Recordatorios 24h"]}
             />
             <SuiteCard
@@ -306,7 +306,7 @@ export default function Home() {
 
           <div className="mt-12 text-center">
             <p className="text-sm text-[var(--color-ink-2)]">
-              <span className="font-semibold text-[var(--color-ink)]">Deja Booksy o úsalo junto con nosotros.</span> Tú decides.
+              <span className="font-semibold text-[var(--color-ink)]">Úsalo solo o junto a tu agenda actual.</span> Tú decides.
             </p>
           </div>
         </div>
