@@ -795,7 +795,7 @@
         <span class="tag">XLSX export (sheet Propinas)</span>
       </div>
       <div class="callout">
-        <strong>Estado:</strong> live en producción. Bloqueante único: <code>FOLLOWUP_DRY_RUN=false</code> env en Vercel cuando valides en tu barbería de prueba. También requiere Stripe Connect platform signup (otro bloqueante aparte, no solo del followup).
+        <strong>Estado:</strong> live en producción. Stripe Connect platform signup ✅. Bloqueante único: <code>FOLLOWUP_DRY_RUN=false</code> env en Vercel cuando valides en tu barbería de prueba.
       </div>
     </div>
 
@@ -866,7 +866,7 @@
         <tr><td class="key">Vercel</td><td>Deploy + crons + env vars</td><td><span class="yes">Live</span></td><td>Pro (Alex)</td><td>Sí — core</td></tr>
         <tr><td class="key">Meta WhatsApp Cloud</td><td>Canal principal bot</td><td><span class="yes">Live</span></td><td>Variable por mensaje</td><td>Sí — core</td></tr>
         <tr><td class="key">Stripe (platform)</td><td>Cobro subscripción 29€/mes</td><td><span class="yes">Live</span></td><td>% por transacción</td><td>Sí — revenue</td></tr>
-        <tr><td class="key">Stripe Connect</td><td>Destination charges a barberos</td><td><span class="partial">Signup pendiente</span></td><td>Mismo %</td><td>Sí para cobros/propinas</td></tr>
+        <tr><td class="key">Stripe Connect</td><td>Destination charges a barberos</td><td><span class="yes">Live</span></td><td>Mismo %</td><td>Sí para cobros/propinas</td></tr>
         <tr><td class="key">OpenAI GPT-4o-mini</td><td>Intent detection + info Q&amp;A del bot</td><td><span class="yes">Live</span></td><td>~$3/1M tokens</td><td>Sí para bot</td></tr>
         <tr><td class="key">xAI Grok</td><td>Fallback parser Booksy + voz</td><td><span class="yes">Live (parser)</span></td><td>~$5/1M</td><td>No (fallback)</td></tr>
         <tr><td class="key">Google Calendar</td><td>Legacy availability (fade-out)</td><td><span class="yes">Live</span></td><td>Free</td><td>No — migrando a DB</td></tr>
@@ -1041,8 +1041,7 @@
       </thead>
       <tbody>
         <tr><td>1</td><td class="key">0 clientes pagando</td><td>Validación del producto entero</td><td>Marketing / ventas</td><td class="yes">P0</td></tr>
-        <tr><td>2</td><td class="key">Stripe Connect platform signup pendiente</td><td>Cobros online, propinas</td><td>15 min (tú, en dashboard Stripe)</td><td class="yes">P0</td></tr>
-        <tr><td>3</td><td class="key">UI per-barbero (horas + blocked individual)</td><td>Backend listo, falta editor en dashboard. Sin esto Reni/Juan con horarios distintos no se configuran</td><td>3-4h</td><td class="yes">P1</td></tr>
+        <tr><td>2</td><td class="key">UI per-barbero (horas + blocked individual)</td><td>Backend listo, falta editor en dashboard. Sin esto Reni/Juan con horarios distintos no se configuran</td><td>3-4h</td><td class="yes">P1</td></tr>
         <tr><td>4</td><td class="key">Gmail API + Pub/Sub por activar</td><td>Sync Booksy por email (0 €, Google Cloud existente). Postmark NUNCA se contrató ni se contratará</td><td>1 h config</td><td class="partial">P1 (cuando primer cliente lo pida)</td></tr>
         <tr><td>5</td><td class="key">Landing: reposicionar "cobros online"</td><td>Hoy vende como sustituto del datáfono (falso). Cambiar a "complemento para propinas / remoto"</td><td>20 min</td><td>P1</td></tr>
         <tr><td>6</td><td class="key">Twilio bridge voz</td><td>Bot telefónico</td><td>$5/mes + 4h</td><td>P2 (post validación biz)</td></tr>

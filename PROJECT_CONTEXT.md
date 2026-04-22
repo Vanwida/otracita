@@ -166,11 +166,9 @@ otracita shares **one Stripe account** with Alex's other projects:
 - Standard account, ES, EUR
 - Own account capabilities `card_payments: active`, `transfers: active` (for
   direct charges on the platform's own products like subscriptions)
-- **Connect PLATFORM signup pending** in live mode — `accounts.create` for
-  Express barbers currently returns "You can only create new accounts if
-  you've signed up for Connect" (see `dashboard.stripe.com/connect` to
-  complete the marketplace platform profile). Cobros online won't work
-  for barbers until this is done.
+- **Connect platform signup complete** (2026-04-22) — `accounts.create`
+  for Express barbers now succeeds. Cobros online y propinas operativos
+  a nivel infra.
 
 **Decision log (2026-04-21)**: considered splitting into a dedicated otracita
 account under a Vanwida organization. Declined — keeping everything in
