@@ -312,6 +312,45 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ─── Roadmap / próximamente ─── */}
+      <section className="relative z-20 px-6 py-24 bg-[var(--color-canvas)]">
+        <div className="mx-auto max-w-5xl">
+          <div className="text-center mb-12">
+            <span className="inline-block rounded-full border border-[var(--color-brand)]/30 bg-[var(--color-brand-softer)] px-3 py-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-brand-strong)]">
+              Próximamente
+            </span>
+            <h2 className="mt-4 font-display text-4xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-5xl">
+              Crecemos con tu barbería
+            </h2>
+            <p className="mt-4 text-[var(--color-ink-2)] max-w-2xl mx-auto text-lg">
+              Los clientes que entran hoy suben al barco antes del crecimiento. Lo que viene los próximos meses — sin subir el precio.
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            <RoadmapCard
+              eyebrow="Q3 2026"
+              title="App móvil para tus clientes"
+              description="Tus clientes reservan, pagan y te puntúan desde la app. Cada barbería con su propio look y fidelidad."
+            />
+            <RoadmapCard
+              eyebrow="Q4 2026"
+              title="Descuentos geolocalizados"
+              description="Cuando tu agenda esté floja y un cliente habitual pase cerca, le ofrecemos un 10 % para llenar el hueco. Tú decides cuándo."
+            />
+            <RoadmapCard
+              eyebrow="2027"
+              title="Fidelidad por puntos"
+              description="Cada corte suma. Tus clientes vuelven más porque quieren cobrar su premio. Sin tarjetas de cartón."
+            />
+          </div>
+
+          <p className="mt-10 text-center text-sm text-[var(--color-ink-2)]">
+            Todo incluido en tu suscripción actual cuando lance. Los que entran ahora no pagan extra cuando llegue.
+          </p>
+        </div>
+      </section>
+
       {/* ─── Trust Section ─── */}
       <section className="relative overflow-hidden border-y border-[var(--color-line)] bg-[var(--color-overlay)] px-6 py-24">
         <div className="relative z-10 mx-auto max-w-4xl text-center">
@@ -515,6 +554,36 @@ function SuiteCard({
           </li>
         ))}
       </ul>
+    </motion.div>
+  );
+}
+
+function RoadmapCard({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.5 }}
+      className="relative rounded-2xl border border-dashed border-[var(--color-brand)]/40 bg-[var(--color-surface)] p-6"
+    >
+      <span className="text-xs font-semibold uppercase tracking-widest text-[var(--color-brand)]">
+        {eyebrow}
+      </span>
+      <h3 className="mt-3 font-display text-xl font-semibold tracking-tight text-[var(--color-ink)]">
+        {title}
+      </h3>
+      <p className="mt-2 text-sm leading-relaxed text-[var(--color-ink-2)]">
+        {description}
+      </p>
     </motion.div>
   );
 }
