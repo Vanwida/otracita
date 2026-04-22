@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { auth } from "@/lib/auth/server";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { helpAsPlainText } from "@/lib/help-faqs";
 
 const client = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -68,7 +69,16 @@ Reglas:
 - Tono amigable, como un colega de soporte — nunca corporativo ni con jerga técnica
 - Si no sabes algo con 100% certeza, no lo inventes: "No estoy seguro, mejor escribe a soporte por WhatsApp."
 - No menciones tecnologías internas (Neon, Vercel, xAI) — son irrelevantes para el barbero
-- Si el usuario pregunta algo fuera de scope (cómo cortar pelo, política, etc.), redirígele amablemente al tema`;
+- Si el usuario pregunta algo fuera de scope (cómo cortar pelo, política, etc.), redirígele amablemente al tema
+
+────────────────────────────────────────────────────────────────────────
+Base de conocimiento completa (preguntas frecuentes del panel otracita).
+Responde usando SIEMPRE esta base como fuente. Si la pregunta del usuario
+no se ajusta a nada de esto, deriva a soporte por WhatsApp en lugar de
+improvisar.
+────────────────────────────────────────────────────────────────────────
+
+${helpAsPlainText()}`;
 
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
