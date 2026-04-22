@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/db';
+import { barbers as barbersTable } from '@/db/schema';
+import { and, asc, eq } from 'drizzle-orm';
 import { getAvailableSlotsFromDB } from '@/lib/availability';
+import type { BarberConfig } from '@/lib/whatsapp/config';
 import {
   requireClientAccess,
   accessErrorResponse,
@@ -9,26 +13,6 @@ interface ServiceConfig {
   name: string;
   duration: number;
   price?: number;
-}
-
-// chatbotHours is stored as { "lunes": "09:00-20:00", "sabado": "Cerrado", ... }
-const DAY_NAMES: Record<number, string> = {
-  0: 'domingo', 1: 'lunes', 2: 'martes', 3: 'miercoles',
-  4: 'jueves', 5: 'viernes', 6: 'sabado',
-};
-
-function getHoursForDate(
-  date: string,
-  chatbotHours: Record<string, string> | null
-): { start: string; end: string } | null {
-  if (!chatbotHours) return null;
-  const d = new Date(`${date}T12:00:00+02:00`);
-  const dayName = DAY_NAMES[d.getDay()];
-  const val = chatbotHours[dayName];
-  if (!val || val.toLowerCase() === 'cerrado') return null;
-  const parts = val.split('-');
-  if (parts.length !== 2) return null;
-  return { start: parts[0].trim(), end: parts[1].trim() };
 }
 
 export async function POST(req: NextRequest) {
@@ -55,27 +39,46 @@ export async function POST(req: NextRequest) {
 
   const services = (client.chatbotServices as ServiceConfig[]) || [];
   const matched = services.find(
-    s => s.name.toLowerCase() === service.toLowerCase()
+    (s) => s.name.toLowerCase() === service.toLowerCase(),
   );
   const duration = matched?.duration ?? 30;
 
-  const hours = getHoursForDate(date, client.chatbotHours as Record<string, string> | null);
-  if (!hours) {
-    // Day is closed or hours not configured
-    return NextResponse.json({ slots: [] });
+  const activeBarbers = await db
+    .select()
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
+    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
+  const barberConfigs: BarberConfig[] = activeBarbers.map((b) => ({
+    id: b.id,
+    name: b.name,
+    hours: (b.hours as Record<string, string> | null) ?? null,
+    blockedDates: (b.blockedDates as string[]) ?? [],
+    displayOrder: b.displayOrder,
+  }));
+
+  // Resolve barber name to id for per-barber filtering; falls back to "any"
+  // when the voice pipeline didn't capture a valid name.
+  let barberId: string | null = null;
+  if (barber && barber.trim()) {
+    const match = barberConfigs.find(
+      (b) => b.name.trim().toLowerCase() === barber.trim().toLowerCase(),
+    );
+    if (match) barberId = match.id;
   }
 
-  const blockedDates = (client.blockedDates as string[]) || [];
-
   try {
-    const slots = await getAvailableSlotsFromDB(
-      client.id,
+    const slots = await getAvailableSlotsFromDB({
+      clientId: client.id,
       date,
-      duration,
-      hours,
-      barber,
-      blockedDates
-    );
+      serviceDuration: duration,
+      shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
+      shopBlockedDates: (client.blockedDates as string[]) ?? [],
+      barbers: barberConfigs,
+      barberId,
+      minLeadTimeMinutes: client.minLeadTimeMinutes,
+      serviceBufferMinutes: client.serviceBufferMinutes,
+      maxBookingHorizonDays: client.maxBookingHorizonDays,
+    });
     return NextResponse.json({ slots: slots.slice(0, 8) });
   } catch (err) {
     console.error('Availability check error:', err);

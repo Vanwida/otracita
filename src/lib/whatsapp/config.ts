@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { clients } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { barbers as barbersTable, clients } from '@/db/schema';
+import { and, asc, eq } from 'drizzle-orm';
 
 export interface ServiceConfig {
   name: string;
@@ -8,12 +8,26 @@ export interface ServiceConfig {
   price: number; // euros
 }
 
+/**
+ * A staff member as seen by the WhatsApp bot and the availability engine.
+ * `hours` / `blockedDates` can be null ⇒ inherit from the shop-wide config
+ * (config.hours / config.blockedDates). `displayOrder` drives deterministic
+ * "any available" tie-breaking and the agenda column order.
+ */
+export interface BarberConfig {
+  id: string;
+  name: string;
+  hours: Record<string, string> | null;
+  blockedDates: string[];
+  displayOrder: number;
+}
+
 export interface BarbershopConfig {
   id: string;
   businessName: string;
   greeting: string;
   services: ServiceConfig[];
-  barbers: Array<{ name: string }>;
+  barbers: BarberConfig[];
   hours: Record<string, string> | null;
   address: string;
   googleCalendarId?: string;
@@ -21,6 +35,11 @@ export interface BarbershopConfig {
   whatsappPhoneNumberId: string;
   whatsappAccessToken: string;
   blockedDates: string[];
+  // Scheduling standards — these are enforced by the availability engine and
+  // the booking pipeline so the bot cannot accept out-of-policy reservations.
+  minLeadTimeMinutes: number;
+  maxBookingHorizonDays: number;
+  serviceBufferMinutes: number;
 }
 
 export async function getClientByPhoneNumberId(
@@ -33,6 +52,12 @@ export async function getClientByPhoneNumberId(
 
   if (!client) return null;
 
+  const barberRows = await db
+    .select()
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
+    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
+
   return {
     id: client.id,
     businessName: client.businessName,
@@ -44,7 +69,13 @@ export async function getClientByPhoneNumberId(
       duration: Number(s.duration) || 30,
       price: Number(s.price) || 0,
     })),
-    barbers: (client.booksyServices as Array<{ name: string }>) || [],
+    barbers: barberRows.map((b) => ({
+      id: b.id,
+      name: b.name,
+      hours: (b.hours as Record<string, string> | null) ?? null,
+      blockedDates: (b.blockedDates as string[]) ?? [],
+      displayOrder: b.displayOrder,
+    })),
     hours: (client.chatbotHours as Record<string, string>) || null,
     address: client.address || '',
     googleCalendarId: client.googleCalendarId || undefined,
@@ -53,5 +84,8 @@ export async function getClientByPhoneNumberId(
     whatsappAccessToken:
       client.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '',
     blockedDates: (client.blockedDates as string[]) || [],
+    minLeadTimeMinutes: client.minLeadTimeMinutes,
+    maxBookingHorizonDays: client.maxBookingHorizonDays,
+    serviceBufferMinutes: client.serviceBufferMinutes,
   };
 }

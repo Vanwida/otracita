@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/db';
+import { barbers as barbersTable } from '@/db/schema';
+import { and, eq } from 'drizzle-orm';
 import {
   requireClientAccess,
   accessErrorResponse,
@@ -14,6 +17,8 @@ export async function POST(req: NextRequest) {
     customerName: string;
     customerPhone?: string;
     service: string;
+    /** Barber name as heard by the voice pipeline. Resolved to a real id
+     *  below; falls back to auto-assignment if no match. */
     barber?: string;
     date: string;
     time: string;
@@ -44,19 +49,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  let barberId: string | undefined;
+  if (barber && barber.trim()) {
+    const [row] = await db
+      .select({ id: barbersTable.id })
+      .from(barbersTable)
+      .where(
+        and(
+          eq(barbersTable.clientId, client.id),
+          eq(barbersTable.name, barber.trim()),
+          eq(barbersTable.active, true),
+        ),
+      );
+    if (row) barberId = row.id;
+  }
+
   const result = await createBooking({
     client,
     customerName,
     customerPhone,
     service,
-    barber,
+    barberId,
     date,
     time,
     source: 'bot',
   });
 
   if (!result.success) {
-    const status = result.error === 'overlap' ? 409 : 400;
+    const status =
+      result.error === 'overlap' ? 409
+      : result.error === 'lead_time' || result.error === 'horizon' || result.error === 'no_barber_available' ? 422
+      : 400;
     return NextResponse.json({ error: result.message }, { status });
   }
 

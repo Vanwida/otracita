@@ -15,6 +15,7 @@ import {
 import { getAvailableSlotsFromDB } from '@/lib/availability';
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup';
+import { createBooking as createBookingDb } from '@/lib/bookings/create';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -63,7 +64,14 @@ interface ConversationContext {
   selectedDate?: string;
   serviceDuration?: number;
   servicePrice?: number;
+  // `selectedBarber` is the DISPLAY label the bot echoes back to the
+  // customer ("Carlos" or "Sin preferencia"). `selectedBarberId` is the
+  // canonical reference — null means "any available barber", and at
+  // confirmation time `createBooking` resolves that to a specific staff
+  // member. The literal string "Sin preferencia" must NEVER reach the
+  // bookings table.
   selectedBarber?: string;
+  selectedBarberId?: string | null;
   customerName?: string;
   cancelBookingId?: string;
   isChanging?: boolean;
@@ -760,12 +768,32 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     );
 
     if (result.success) {
+      // Waitlist → booking: resolve the stored `w.barber` name to a real
+      // barber row so the agenda renders this under a real column. If the
+      // name doesn't match (barber was removed / renamed), fall back to the
+      // first active barber.
+      let wlBarberId: string | null = null;
+      let wlBarberName: string | null = null;
+      if (w.barber && w.barber.trim()) {
+        const match = config.barbers.find(
+          (b) => b.name.trim().toLowerCase() === (w.barber as string).trim().toLowerCase(),
+        );
+        if (match) {
+          wlBarberId = match.id;
+          wlBarberName = match.name;
+        }
+      }
+      if (!wlBarberId && config.barbers.length > 0) {
+        wlBarberId = config.barbers[0].id;
+        wlBarberName = config.barbers[0].name;
+      }
       await db.insert(bookings).values({
         clientId: config.id,
         customerPhone: msg.from,
         customerName: w.customerName || null,
         service: w.service || 'Servicio',
-        barber: w.barber || null,
+        barberId: wlBarberId,
+        barber: wlBarberName,
         date: offeredDate,
         time: offeredTime,
         duration: 30,
@@ -1336,32 +1364,38 @@ async function handleBarberSelection(
   lang: Lang = 'es'
 ): Promise<void> {
   const ctx = getContext(conversation);
+  // Default: user picked a specific barber → we know their id.
+  // "sin preferencia" / "any" → id stays null and the label is localized.
   let barberName: string | null = null;
+  let barberId: string | null = null;
+  let anyPreference = false;
 
   if (selection === 'barber_any') {
-    barberName = T[lang].noPreference;
+    anyPreference = true;
   } else {
     const barberMatch = selection.match(/^barber_(\d+)$/);
     if (barberMatch) {
       const idx = parseInt(barberMatch[1], 10);
       if (idx >= 0 && idx < config.barbers.length) {
-        barberName = config.barbers[idx].name;
+        const b = config.barbers[idx];
+        barberName = b.name;
+        barberId = b.id;
       }
     } else {
-      // Fuzzy match by name
       const lower = selection.toLowerCase();
       if (lower.includes('sin preferencia') || lower.includes('cualquier') || lower.includes('no preference') || lower.includes('any')) {
-        barberName = T[lang].noPreference;
+        anyPreference = true;
       } else {
-        const found = config.barbers.find((b) =>
-          b.name.toLowerCase().includes(lower)
-        );
-        if (found) barberName = found.name;
+        const found = config.barbers.find((b) => b.name.toLowerCase().includes(lower));
+        if (found) {
+          barberName = found.name;
+          barberId = found.id;
+        }
       }
     }
   }
 
-  if (!barberName) {
+  if (!anyPreference && !barberName) {
     const noBarberMsg = lang === 'en'
       ? "I didn't understand. Please select a barber from the list."
       : 'No he entendido. Por favor, selecciona un barbero de la lista.';
@@ -1370,9 +1404,15 @@ async function handleBarberSelection(
     return;
   }
 
+  const displayLabel = anyPreference ? T[lang].noPreference : (barberName as string);
+
   await updateConversation(conversation.id, {
     step: 'choosing_date',
-    context: { ...ctx, selectedBarber: barberName } satisfies ConversationContext,
+    context: {
+      ...ctx,
+      selectedBarber: displayLabel,
+      selectedBarberId: anyPreference ? null : barberId,
+    } satisfies ConversationContext,
   });
 
   await sendDatePicker(msg, config, token, lang);
@@ -1478,8 +1518,23 @@ async function handleDateSelection(
   const businessHours = bh || { start: '10:00', end: '20:00' };
 
   try {
+    // `ctx.selectedBarberId` is the canonical reference. For the GCal legacy
+    // path we still pass the human-readable name for backward compat, but the
+    // DB availability engine uses per-barber hours + the standards fields
+    // from the client record (lead time, horizon, buffer).
     const slots = config.useDbAvailability
-      ? await getAvailableSlotsFromDB(config.id, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates)
+      ? await getAvailableSlotsFromDB({
+          clientId: config.id,
+          date: selectedDate,
+          serviceDuration: duration,
+          shopHours: config.hours,
+          shopBlockedDates: config.blockedDates,
+          barbers: config.barbers,
+          barberId: ctx.selectedBarberId ?? null,
+          minLeadTimeMinutes: config.minLeadTimeMinutes,
+          serviceBufferMinutes: config.serviceBufferMinutes,
+          maxBookingHorizonDays: config.maxBookingHorizonDays,
+        })
       : await getAvailableSlots(config.googleCalendarId!, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
 
     if (slots.length === 0) {
@@ -1651,23 +1706,31 @@ async function handleConfirmation(
         let bookingSuccess = false;
 
         if (config.useDbAvailability) {
-          // DB path: insert directly, no GCal event
+          // DB path — funnel through the shared createBooking helper so that
+          // "sin preferencia" (ctx.selectedBarberId == null) resolves to a
+          // real barber_id via pickBarberForCustomer, lead-time / horizon /
+          // buffer standards are enforced, and auto-invoicing fires. We
+          // fetch the client row once here; the alternative (threading it
+          // through every handler) would bloat the engine more.
           try {
-            await db.insert(bookings).values({
-              clientId: config.id,
+            const [clientRow] = await db.select().from(clients).where(eq(clients.id, config.id));
+            if (!clientRow) throw new Error('client row vanished');
+            const result = await createBookingDb({
+              client: clientRow,
+              customerName: custName,
               customerPhone: msg.from,
-              customerName: ctx.customerName || null,
               service: serviceName,
-              barber: barber || null,
+              barberId: ctx.selectedBarberId ?? null,
               date,
               time,
               duration: ctx.serviceDuration || 30,
-              price: ctx.servicePrice || null,
-              status: 'confirmed',
-              googleEventId: null,
+              price: ctx.servicePrice ?? null,
               source: 'bot',
             });
-            bookingSuccess = true;
+            bookingSuccess = result.success;
+            if (!result.success) {
+              console.warn(`[engine] createBooking failed (${result.error}): ${result.message}`);
+            }
           } catch (err) {
             console.error('Error saving booking to DB:', err);
           }
@@ -1685,13 +1748,36 @@ async function handleConfirmation(
           );
 
           if (result.success) {
+            // GCal legacy path still writes the DB row directly (it also
+            // owns the GCal event id). Make sure the barber name we persist
+            // matches a real row in `barbers` — otherwise the agenda view
+            // groups by unmatched names and renders them invisible. We only
+            // accept the name if it's in the active staff; otherwise fall
+            // back to the first barber in display order so the row is at
+            // least visible somewhere.
+            let persistedBarberId: string | null = null;
+            let persistedBarberName: string | null = null;
+            if (ctx.selectedBarberId) {
+              const match = config.barbers.find((b) => b.id === ctx.selectedBarberId);
+              if (match) {
+                persistedBarberId = match.id;
+                persistedBarberName = match.name;
+              }
+            }
+            if (!persistedBarberId && config.barbers.length > 0) {
+              const fallback = config.barbers[0];
+              persistedBarberId = fallback.id;
+              persistedBarberName = fallback.name;
+            }
+
             try {
               await db.insert(bookings).values({
                 clientId: config.id,
                 customerPhone: msg.from,
                 customerName: ctx.customerName || null,
                 service: serviceName,
-                barber: barber || null,
+                barberId: persistedBarberId,
+                barber: persistedBarberName,
                 date,
                 time,
                 duration: ctx.serviceDuration || 30,

@@ -1,7 +1,8 @@
 import { db } from '@/db';
-import { bookings, clients } from '@/db/schema';
-import { and, eq, ne } from 'drizzle-orm';
-import { assignBarber } from '@/lib/availability';
+import { barbers as barbersTable, bookings, clients } from '@/db/schema';
+import { and, asc, eq, ne } from 'drizzle-orm';
+import { pickBarberForCustomer } from '@/lib/availability';
+import type { BarberConfig } from '@/lib/whatsapp/config';
 import { shouldAutoInvoiceBooking, tryAutoInvoiceInBackground } from '@/lib/invoicing';
 
 // -----------------------------------------------------------------------------
@@ -11,13 +12,17 @@ import { shouldAutoInvoiceBooking, tryAutoInvoiceInBackground } from '@/lib/invo
 // the voice-agent endpoint (`/api/voice/book`) MUST funnel through this single
 // function so they stay in sync on:
 //   - input validation
-//   - conflict (overlap) detection
-//   - barber auto-assignment
+//   - lead time / horizon / buffer enforcement (shop-level standards)
+//   - conflict detection (respecting per-barber hours AND buffer)
+//   - "any available" resolution into a real barber_id
 //   - auto-invoicing for tenants with invoicing enabled
 //
-// A previous bug in `/api/voice/book` skipped all three — voice reservations
-// silently double-booked slots and never emitted fiscal docs even when the
-// tenant had invoicing enabled. This module is the fix.
+// A previous bug here persisted the literal string "Sin preferencia" as a
+// barber name whenever the customer had no preference — the daily agenda
+// view groups by barber name and rendered those rows invisible. The fix is
+// architectural: `bookings.barber_id` now refers to a real row in `barbers`,
+// and the resolver `pickBarberForCustomer` turns "any" into a specific
+// person at write time.
 // -----------------------------------------------------------------------------
 
 export type ClientRow = typeof clients.$inferSelect;
@@ -30,8 +35,9 @@ export interface CreateBookingOptions {
   customerPhone: string;
   customerName?: string | null;
   service: string;
-  /** Optional barber preference. If omitted, auto-assigned. */
-  barber?: string | null;
+  /** Specific barber id, if the customer chose one. When null/undefined, we
+   *  auto-assign using pickBarberForCustomer. */
+  barberId?: string | null;
   /** YYYY-MM-DD (Europe/Madrid). */
   date: string;
   /** HH:MM 24h. */
@@ -46,7 +52,10 @@ export interface CreateBookingOptions {
 
 export type CreateBookingError =
   | 'validation'
-  | 'overlap';
+  | 'overlap'
+  | 'lead_time'
+  | 'horizon'
+  | 'no_barber_available';
 
 export type CreateBookingResult =
   | { success: true; booking: BookingRow }
@@ -58,29 +67,12 @@ interface ConfiguredService {
   price?: number;
 }
 
-interface ConfiguredBarber {
-  name: string;
-}
-
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
-}
-
-function hasTimeOverlap(
-  existTime: string,
-  existDuration: number,
-  newTime: string,
-  newDuration: number,
-): boolean {
-  const existStart = toMinutes(existTime);
-  const existEnd = existStart + existDuration;
-  const newStart = toMinutes(newTime);
-  const newEnd = newStart + newDuration;
-  return existStart < newEnd && existEnd > newStart;
 }
 
 function resolveServiceConfig(
@@ -93,6 +85,28 @@ function resolveServiceConfig(
     duration: match?.duration ?? 30,
     price: typeof match?.price === 'number' ? match.price : null,
   };
+}
+
+/** Days between two YYYY-MM-DD dates (positive if `to` > `from`). */
+function daysBetween(fromISO: string, toISO: string): number {
+  const from = new Date(`${fromISO}T00:00:00Z`).getTime();
+  const to = new Date(`${toISO}T00:00:00Z`).getTime();
+  return Math.round((to - from) / 86_400_000);
+}
+
+async function loadActiveBarbers(clientId: string): Promise<BarberConfig[]> {
+  const rows = await db
+    .select()
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, clientId), eq(barbersTable.active, true)))
+    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    hours: (b.hours as Record<string, string> | null) ?? null,
+    blockedDates: (b.blockedDates as string[]) ?? [],
+    displayOrder: b.displayOrder,
+  }));
 }
 
 /**
@@ -108,7 +122,7 @@ export async function createBooking(
     customerPhone,
     customerName,
     service,
-    barber,
+    barberId,
     date,
     time,
     source = 'bot',
@@ -137,7 +151,46 @@ export async function createBooking(
     return { success: false, error: 'validation', message: 'duration must be greater than 0' };
   }
 
-  // --- Conflict check -------------------------------------------------------
+  // --- Standards: lead time + horizon ---------------------------------------
+  const now = new Date();
+  const todayMadrid = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  if (date === todayMadrid) {
+    const nowMadrid = now.toLocaleTimeString('en-GB', {
+      timeZone: 'Europe/Madrid',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const nowMin = toMinutes(nowMadrid);
+    const slotStart = toMinutes(time);
+    if (slotStart < nowMin + client.minLeadTimeMinutes) {
+      return {
+        success: false,
+        error: 'lead_time',
+        message: `La reserva debe hacerse al menos ${client.minLeadTimeMinutes} min antes del servicio.`,
+      };
+    }
+  }
+  const horizonDays = daysBetween(todayMadrid, date);
+  if (horizonDays > client.maxBookingHorizonDays) {
+    return {
+      success: false,
+      error: 'horizon',
+      message: `Solo aceptamos reservas hasta ${client.maxBookingHorizonDays} días por adelantado.`,
+    };
+  }
+
+  // --- Load active barbers --------------------------------------------------
+  const activeBarbers = await loadActiveBarbers(client.id);
+  if (activeBarbers.length === 0) {
+    return {
+      success: false,
+      error: 'validation',
+      message: 'La barbería no tiene profesionales configurados.',
+    };
+  }
+
+  // --- Conflict check (considers buffer) ------------------------------------
   const existingOnDay = await db
     .select()
     .from(bookings)
@@ -149,33 +202,61 @@ export async function createBooking(
       ),
     );
 
-  const conflicts = existingOnDay.filter((b) => {
-    // If a barber was specified, only the same barber (or unassigned rows
-    // with no barber) can conflict. Otherwise all day rows conflict on overlap.
-    if (barber) {
-      if (b.barber && b.barber.toLowerCase() !== barber.toLowerCase()) return false;
+  const bufferMin = client.serviceBufferMinutes;
+  const newStart = toMinutes(time);
+  const newEnd = newStart + duration;
+  const overlapsForBarber = (barber: BarberConfig): boolean => {
+    return existingOnDay.some((b) => {
+      const isSame =
+        (b.barberId && b.barberId === barber.id) ||
+        (b.barber && b.barber.trim().toLowerCase() === barber.name.trim().toLowerCase());
+      if (!isSame) return false;
+      const bStart = toMinutes(b.time);
+      const bEnd = bStart + b.duration + bufferMin;
+      return newStart < bEnd && newEnd > bStart;
+    });
+  };
+
+  // --- Barber resolution ----------------------------------------------------
+  let resolved: BarberConfig | null = null;
+  if (barberId) {
+    const requested = activeBarbers.find((b) => b.id === barberId);
+    if (!requested) {
+      return {
+        success: false,
+        error: 'validation',
+        message: 'El profesional indicado no existe o está inactivo.',
+      };
     }
-    return hasTimeOverlap(b.time, b.duration, time, duration);
-  });
-
-  if (conflicts.length > 0) {
-    return {
-      success: false,
-      error: 'overlap',
-      message: 'Ya hay una reserva en ese horario.',
-    };
+    if (overlapsForBarber(requested)) {
+      return {
+        success: false,
+        error: 'overlap',
+        message: 'Ya hay una reserva en ese horario.',
+      };
+    }
+    resolved = requested;
+  } else {
+    // "Any available" — last-barber-first heuristic.
+    resolved = await pickBarberForCustomer({
+      clientId: client.id,
+      customerPhone: customerPhone.trim(),
+      barbers: activeBarbers,
+      date,
+      time,
+      duration,
+      shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
+      shopBlockedDates: (client.blockedDates as string[]) ?? [],
+      serviceBufferMinutes: bufferMin,
+    });
+    if (!resolved) {
+      return {
+        success: false,
+        error: 'no_barber_available',
+        message: 'No hay profesionales libres en ese horario.',
+      };
+    }
   }
-
-  // --- Barber auto-assignment ----------------------------------------------
-  const barberNames = ((client.booksyServices as ConfiguredBarber[] | null) || [])
-    .map((b) => b?.name)
-    .filter((n): n is string => typeof n === 'string' && n.length > 0);
-
-  const resolvedBarber =
-    barber ||
-    (barberNames.length > 0
-      ? await assignBarber(client.id, barberNames, date, time, duration)
-      : null);
 
   // --- Insert ---------------------------------------------------------------
   const [created] = await db
@@ -185,7 +266,9 @@ export async function createBooking(
       customerPhone: customerPhone.trim(),
       customerName: customerName ? customerName.trim() : null,
       service,
-      barber: resolvedBarber,
+      // Persist BOTH the id (canonical) and the name (snapshot, survives renames).
+      barberId: resolved.id,
+      barber: resolved.name,
       date,
       time,
       duration,
