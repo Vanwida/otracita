@@ -75,8 +75,27 @@ export async function POST(request: Request) {
 
     return Response.json({ url: link.url });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Stripe error';
-    console.error('[stripe/connect/onboard] failed:', message);
-    return Response.json({ error: message }, { status: 500 });
+    // Surface the real Stripe error to the client so the admin panel / dev
+    // console can see what's actually wrong — the generic Stripe SDK message
+    // ("An error occurred with our connection to Stripe") hides the root cause.
+    const err = error as {
+      message?: string;
+      type?: string;
+      code?: string;
+      statusCode?: number;
+      raw?: { message?: string };
+    };
+    const detail = err?.raw?.message || err?.message || 'Stripe error';
+    const kind = err?.type || err?.code || 'unknown';
+    console.error('[stripe/connect/onboard] failed:', {
+      type: err?.type,
+      code: err?.code,
+      statusCode: err?.statusCode,
+      message: detail,
+    });
+    return Response.json(
+      { error: detail, kind, statusCode: err?.statusCode ?? null },
+      { status: 500 },
+    );
   }
 }

@@ -7,6 +7,7 @@ import {
   payments,
   invoices,
   bookings,
+  tips,
 } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { notifyAlex } from '@/lib/notify-alex';
@@ -164,6 +165,12 @@ async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
 ): Promise<void> {
   if (session.mode === 'payment') {
+    // Tips are also mode=payment destination charges, but tracked in a
+    // separate table and never touch invoices. Distinguish by metadata.
+    if (session.metadata?.otracita_tip === 'true') {
+      await handleTipPaymentCompleted(session);
+      return;
+    }
     await handleConnectPaymentCompleted(session);
     return;
   }
@@ -370,6 +377,61 @@ async function handleConnectPaymentCompleted(
 }
 
 // -----------------------------------------------------------------------------
+// Tips — customer paid a post-service tip. Mirrors the payment handler but
+// against the `tips` table, and NEVER stamps an invoice (tips are liberalidad,
+// not contraprestación, so no factura applies).
+// -----------------------------------------------------------------------------
+async function handleTipPaymentCompleted(
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const [tip] = await db
+    .select()
+    .from(tips)
+    .where(eq(tips.stripeCheckoutSessionId, session.id));
+
+  if (!tip) {
+    console.warn(
+      `[stripe-webhook] tip session ${session.id} — no matching tips row`,
+    );
+    return;
+  }
+  if (tip.status === 'paid') {
+    console.log(`[stripe-webhook] tip ${tip.id} already paid — skip`);
+    return;
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+
+  let chargeId: string | null = null;
+  if (paymentIntentId) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      chargeId =
+        typeof pi.latest_charge === 'string'
+          ? pi.latest_charge
+          : pi.latest_charge?.id ?? null;
+    } catch (err) {
+      console.error('[stripe-webhook] tip: could not fetch paymentIntent:', err);
+    }
+  }
+
+  const now = new Date();
+  await db
+    .update(tips)
+    .set({
+      status: 'paid',
+      stripePaymentIntentId: paymentIntentId,
+      stripeChargeId: chargeId,
+      paidAt: now,
+      updatedAt: now,
+    })
+    .where(eq(tips.id, tip.id));
+}
+
+// -----------------------------------------------------------------------------
 // checkout.session.expired — customer never completed the Checkout page.
 // We only flip 'pending' => 'cancelled'; a 'succeeded' row is untouched (can
 // happen on a delayed event or concurrent completion).
@@ -377,6 +439,21 @@ async function handleConnectPaymentCompleted(
 async function handleCheckoutSessionExpired(
   session: Stripe.Checkout.Session,
 ): Promise<void> {
+  // Tip path — expire if this session was a tip
+  if (session.metadata?.otracita_tip === 'true') {
+    const [tip] = await db
+      .select()
+      .from(tips)
+      .where(eq(tips.stripeCheckoutSessionId, session.id));
+    if (tip && tip.status === 'pending') {
+      await db
+        .update(tips)
+        .set({ status: 'expired', updatedAt: new Date() })
+        .where(eq(tips.id, tip.id));
+    }
+    return;
+  }
+
   const [payment] = await db
     .select()
     .from(payments)
@@ -397,6 +474,20 @@ async function handleCheckoutSessionExpired(
 // state. Match by charge id, which we recorded on completion.
 // -----------------------------------------------------------------------------
 async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
+  // The charge could belong to either a regular payment or a tip — try tips
+  // first (smaller table, usually cheaper) then fall through.
+  const [tip] = await db
+    .select()
+    .from(tips)
+    .where(eq(tips.stripeChargeId, charge.id));
+  if (tip) {
+    await db
+      .update(tips)
+      .set({ status: 'refunded', updatedAt: new Date() })
+      .where(eq(tips.id, tip.id));
+    return;
+  }
+
   const [payment] = await db
     .select()
     .from(payments)

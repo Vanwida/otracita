@@ -14,6 +14,7 @@ import {
 } from '@/lib/google-calendar';
 import { getAvailableSlotsFromDB } from '@/lib/availability';
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
+import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -472,6 +473,17 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   const token = config.whatsappAccessToken;
   const text = msg.messageText.trim();
   const interactiveId = msg.interactiveReplyId;
+
+  // Post-service follow-up (rating + optional tip). Intercept BEFORE any
+  // other routing so stale booking flows can't collide with the rating list.
+  // If the reply id belongs to this flow, `handleFollowupReply` owns the
+  // turn and we exit — no analytics bump on this path since the message
+  // wasn't a booking interaction.
+  if (interactiveId && isFollowupReplyId(interactiveId)) {
+    await handleFollowupReply(config, msg.from, interactiveId);
+    await trackAnalytics(config.id, 'messagesReplied');
+    return;
+  }
 
   // Detect or retrieve language; allow explicit switch at any time
   const ctx0 = getContext(conversation);
