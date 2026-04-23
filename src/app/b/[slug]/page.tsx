@@ -4,30 +4,33 @@ import { db } from '@/db'
 import { barbers as barbersTable, clients } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { hoursForDate } from '@/lib/availability'
-import { MapPin, Scissors, Clock, Sparkles, ShieldCheck, Zap } from 'lucide-react'
+import { MapPin, Clock } from 'lucide-react'
 import PublicBookingFlow from './PublicBookingFlow'
 import SocialLinks from './SocialLinks'
 import PwaBootstrap from './PwaBootstrap'
 import AppAccount from './AppAccount'
-import BrandStamp from './BrandStamp'
+import TopBar from './TopBar'
+import BottomTabBar from './BottomTabBar'
 import { buildPalette, hexToRgba } from './brand-utils'
 
 // -----------------------------------------------------------------------------
 // /b/[slug] — página pública de una barbería.
 //
-// Diseño editorial con personalidad de barbería: poste de barbero como
-// separador, sello rotativo vintage en el hero, paleta adaptativa al
-// contraste (un amarillo no termina con texto blanco ilegible). La
-// barbería configura 1 o 2 colores en /dashboard/app; todo lo demás se
-// deriva en brand-utils.ts.
+// Layout tipo app: TopBar + main + BottomTabBar. Tema (claro/oscuro) se
+// deriva automáticamente de la luminancia del color principal del barbero.
+// En tema oscuro, si hay logo alternativo configurado, se usa en cabecera
+// y bottom bar.
 //
-// `publicEnabled = false` → 404.
+// El flujo completo de reserva vive en PublicBookingFlow (client) para no
+// forzar islas SSR/CSR en cada sección.
 // -----------------------------------------------------------------------------
 
 interface ServiceItem {
   name: string
   duration: number
   price: number
+  description: string
+  featured: boolean
 }
 
 interface Props {
@@ -103,6 +106,8 @@ export default async function PublicBookingPage({ params }: Props) {
       name: String(s.name || ''),
       duration: Number(s.duration) || 30,
       price: Number(s.price) || 0,
+      description: String(s.description || ''),
+      featured: Boolean(s.featured),
     }))
     .filter((s) => s.name.length > 0)
 
@@ -112,148 +117,168 @@ export default async function PublicBookingPage({ params }: Props) {
     ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}`
     : null
 
+  // En tema oscuro, el logo principal negro no se verá — usar el alt si
+  // existe. Si no, tiramos con el principal y asumimos la consecuencia.
+  const headerLogoUrl =
+    palette.isDark && client.brandLogoAltUrl
+      ? client.brandLogoAltUrl
+      : client.brandLogoUrl
+  const heroLogoUrl = client.brandLogoUrl
+
   return (
     <main
-      className="min-h-screen text-[var(--color-ink)] antialiased"
+      className="min-h-screen antialiased"
       style={{
-        // Paleta de marca — inyectamos como CSS vars para que TODOS los hijos
-        // (BookingFlow incluido) estilicen sin recomputar colores.
+        // ── Paleta de marca ──────────────────────────────────────────────
         ['--brand' as string]: palette.brand,
         ['--brand-2' as string]: palette.brand2,
         ['--brand-soft' as string]: palette.brandSoft,
         ['--brand-2-soft' as string]: palette.brand2Soft,
         ['--brand-strong' as string]: palette.brandStrong,
         ['--brand-ink' as string]: palette.brandInk,
-        // Neutrales para la página pública — anulamos el espresso/crema de
-        // otracita para que la identidad del barbero mande sola.
-        ['--color-canvas' as string]: '#FAFAF7',
-        ['--color-surface' as string]: '#FFFFFF',
-        ['--color-overlay' as string]: '#F3F4F6',
-        ['--color-line' as string]: '#E5E7EB',
-        ['--color-ink' as string]: '#0F0F0F',
-        ['--color-ink-2' as string]: '#4B5563',
-        ['--color-ink-3' as string]: '#9CA3AF',
-        backgroundColor: 'var(--color-canvas)',
+        // ── Tokens de superficie (tema adaptativo claro/oscuro) ──────────
+        ['--theme-canvas' as string]: palette.theme.canvas,
+        ['--theme-surface' as string]: palette.theme.surface,
+        ['--theme-surface-elevated' as string]: palette.theme.surfaceElevated,
+        ['--theme-overlay' as string]: palette.theme.overlay,
+        ['--theme-line' as string]: palette.theme.line,
+        ['--theme-ink' as string]: palette.theme.ink,
+        ['--theme-ink-2' as string]: palette.theme.ink2,
+        ['--theme-ink-3' as string]: palette.theme.ink3,
+        // ── Anular variables "canvas/ink" globales de otracita ──────────
+        ['--color-canvas' as string]: palette.theme.canvas,
+        ['--color-surface' as string]: palette.theme.surface,
+        ['--color-line' as string]: palette.theme.line,
+        ['--color-ink' as string]: palette.theme.ink,
+        ['--color-ink-2' as string]: palette.theme.ink2,
+        ['--color-ink-3' as string]: palette.theme.ink3,
+        backgroundColor: 'var(--theme-canvas)',
+        color: 'var(--theme-ink)',
+        // Bajo la bottom tab bar (64px) + safe area.
+        paddingBottom: 'calc(64px + env(safe-area-inset-bottom))',
       }}
     >
-      {/* ─── Franja poste-de-barbero arriba del todo ─── */}
-      <BarberPole />
+      <TopBar businessName={client.businessName} logoUrl={headerLogoUrl} slug={slug} />
 
-      {/* ─── Hero editorial ─────────────────────────────────────────────── */}
-      <section className="relative">
-        <div className="relative h-80 sm:h-[26rem] w-full overflow-hidden">
+      {/* ─── Hero card (NO full-bleed — se siente como app) ───────────── */}
+      <section id="hero" className="mx-auto max-w-3xl px-4 pt-4">
+        <div
+          className="relative rounded-3xl overflow-hidden shadow-lg"
+          style={{
+            border: `1px solid ${palette.isDark ? 'transparent' : 'var(--theme-line)'}`,
+            minHeight: '22rem',
+          }}
+        >
+          {/* Fondo: cover si hay, si no degradado brand→brand2. */}
           {client.brandCoverUrl ? (
             <>
               <div
-                className="absolute inset-0 bg-cover bg-center scale-105"
+                className="absolute inset-0 bg-cover bg-center"
                 style={{ backgroundImage: `url(${client.brandCoverUrl})` }}
               />
-              {/* Degradado oscuro inferior para legibilidad del nombre. */}
               <div
                 className="absolute inset-0"
                 style={{
-                  background: `linear-gradient(180deg, ${hexToRgba(palette.brand, 0.12)} 0%, rgba(0,0,0,0.08) 28%, rgba(0,0,0,0.85) 100%)`,
+                  background: `linear-gradient(180deg, ${hexToRgba(palette.brand, 0.15)} 0%, rgba(0,0,0,0.1) 30%, rgba(0,0,0,0.88) 100%)`,
                 }}
               />
-              {/* Pincelada sutil en brand-2 desde la esquina inferior izq. */}
+              {/* Halo de color secundario en esquina inferior izquierda. */}
               <div
-                className="absolute bottom-0 left-0 w-2/3 h-1/2 pointer-events-none"
-                style={{
-                  background: `radial-gradient(ellipse at bottom left, ${hexToRgba(palette.brand2, 0.45)}, transparent 70%)`,
-                }}
+                className="absolute -bottom-8 -left-8 w-52 h-52 rounded-full opacity-50 blur-3xl pointer-events-none"
+                style={{ background: palette.brand2 }}
               />
             </>
           ) : (
-            // Sin portada → degradado 2 colores a pantalla completa. La
-            // identidad es pura color.
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brand2} 100%)`,
-              }}
-            >
-              {/* Trama sutil de puntos para que no sea un bloque plano. */}
+            <>
               <div
-                className="absolute inset-0 opacity-[0.08]"
+                className="absolute inset-0"
                 style={{
-                  backgroundImage:
-                    'radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)',
-                  backgroundSize: '18px 18px',
+                  background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brand2} 100%)`,
                 }}
               />
-            </div>
+              <div
+                className="absolute inset-0 opacity-10"
+                style={{
+                  backgroundImage: 'radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)',
+                  backgroundSize: '22px 22px',
+                }}
+              />
+            </>
           )}
 
-          {/* Sello rotativo arriba-derecha */}
-          <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
-            <BrandStamp
-              text={`Reserva online · ${client.businessName}`}
-              color="#FFFFFF"
-              centerBg={palette.brand}
-              iconColor={palette.brandInk}
-              size={96}
-            />
-          </div>
-
-          {/* Contenido del hero — anclado abajo */}
-          <div className="absolute inset-x-0 bottom-0 px-4 pb-6 sm:pb-8">
-            <div className="mx-auto max-w-3xl">
-              <div className="flex items-end gap-4 sm:gap-5">
+          {/* Contenido */}
+          <div className="relative h-full flex flex-col justify-between p-5 sm:p-7 min-h-[22rem]">
+            {/* Arriba: eyebrow + logo */}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div
+                    className="h-[2px] w-6 rounded-full"
+                    style={{ backgroundColor: palette.brand2 }}
+                  />
+                  <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-white/80">
+                    Premium Experience
+                  </span>
+                </div>
+              </div>
+              {heroLogoUrl && (
                 <div
-                  className="h-24 w-24 sm:h-32 sm:w-32 rounded-2xl bg-white shadow-2xl overflow-hidden flex items-center justify-center shrink-0"
-                  style={{
-                    boxShadow: `0 20px 40px -10px rgba(0,0,0,0.4), 0 0 0 3px ${palette.brand2}`,
-                  }}
+                  className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl overflow-hidden bg-white shadow-lg shrink-0"
+                  style={{ boxShadow: `0 8px 24px -8px ${palette.brand2}` }}
                 >
-                  {client.brandLogoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={client.brandLogoUrl}
-                      alt={client.businessName}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="font-display text-4xl sm:text-5xl text-[var(--color-ink-2)]">
-                      {client.businessName.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={heroLogoUrl} alt={client.businessName} className="h-full w-full object-cover" />
                 </div>
-                <div className="min-w-0 flex-1 pb-1">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div
-                      className="h-[3px] w-8 rounded-full"
-                      style={{ backgroundColor: palette.brand2 }}
-                    />
-                    <span className="text-[10px] uppercase tracking-[0.25em] font-bold text-white/85">
-                      Barbería
-                    </span>
-                  </div>
-                  <h1 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white leading-[1.05]">
-                    {client.businessName}
-                  </h1>
-                  {client.address && (
-                    <p className="text-sm sm:text-base text-white/85 mt-2 flex items-center gap-1.5">
-                      <MapPin className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{client.address}</span>
-                    </p>
-                  )}
-                </div>
+              )}
+            </div>
+
+            {/* Abajo: nombre + tagline + CTA + meta */}
+            <div>
+              <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-white leading-[1.05]">
+                {client.businessName}
+              </h1>
+              {client.publicDescription ? (
+                <p className="mt-2 text-sm text-white/85 leading-relaxed line-clamp-2 max-w-md">
+                  {client.publicDescription}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-white/85 max-w-md">
+                  Reserva tu cita online en segundos. Confirmación al instante por WhatsApp.
+                </p>
+              )}
+
+              <a
+                href="#reservar"
+                className="mt-4 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
+                style={{
+                  background: palette.brand,
+                  color: palette.brandInk,
+                  boxShadow: `0 10px 24px -8px ${palette.brand}`,
+                }}
+              >
+                Reservar cita
+                <span aria-hidden>→</span>
+              </a>
+
+              {/* Meta row — horario + dirección */}
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-white/80">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: todayHours ? '#10B981' : '#9CA3AF' }}
+                  />
+                  <Clock className="h-3 w-3" />
+                  {todayHours ? `Abierto · ${todayHours.start}–${todayHours.end}` : 'Cerrado hoy'}
+                </span>
+                {client.address && (
+                  <span className="inline-flex items-center gap-1.5 max-w-full">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{client.address}</span>
+                  </span>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* ─── Meta pills (horario + trust row) ─── */}
-      <section className="mx-auto max-w-3xl px-4 mt-5">
-        <div className="flex flex-wrap gap-2">
-          <StatusPill
-            dotColor={todayHours ? '#10B981' : '#9CA3AF'}
-            icon={Clock}
-            label={todayHours ? `Abierto · ${todayHours.start}–${todayHours.end}` : 'Cerrado hoy'}
-          />
-          <TrustPill icon={Zap} label="Confirmación al instante" />
-          <TrustPill icon={ShieldCheck} label="Sin compromiso" />
         </div>
       </section>
 
@@ -269,83 +294,17 @@ export default async function PublicBookingPage({ params }: Props) {
         />
       </section>
 
-      {/* ─── About (si tiene) ─── */}
-      {client.publicDescription && (
-        <section className="mx-auto max-w-3xl px-4 mt-6">
-          <div className="relative rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] p-5 overflow-hidden">
-            {/* Barrita vertical brand→brand-2 a la izquierda */}
-            <div
-              className="absolute top-4 bottom-4 left-0 w-[3px] rounded-r-full"
-              style={{
-                background: `linear-gradient(180deg, ${palette.brand}, ${palette.brand2})`,
-              }}
-            />
-            <p className="text-[15px] leading-relaxed text-[var(--color-ink)]/90 pl-3">
-              {client.publicDescription}
-            </p>
-          </div>
-        </section>
-      )}
+      {/* ─── Flujo de reserva (contiene servicios, barberos, día, hora, CTA)
+           — todo dentro de un Client Component para sincronizar estado sin
+           dramas. Las secciones internas llevan anchors para el bottom tab
+           bar (#servicios, #reservar). */}
+      <PublicBookingFlow
+        slug={slug}
+        services={services}
+        barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
+      />
 
-      {/* ─── Separador poste-de-barbero horizontal ─── */}
-      <div className="mx-auto max-w-3xl px-4 mt-10 mb-5">
-        <BarberPoleDivider />
-      </div>
-
-      {/* ─── Booking flow — el motivo por el que entró el cliente ─── */}
-      <section id="reservar" className="mx-auto max-w-3xl px-4 pb-20">
-        <div className="bg-[var(--color-surface)] border border-[var(--color-line)] rounded-2xl shadow-[0_4px_24px_-8px_rgba(0,0,0,0.08)] overflow-hidden">
-          <div
-            className="px-5 py-4 border-b border-[var(--color-line)] relative overflow-hidden"
-            style={{ background: palette.brandSoft }}
-          >
-            {/* Decorativa: línea brand2 diagonal en esquina */}
-            <div
-              className="absolute -top-4 -right-4 h-16 w-16 rounded-full opacity-30"
-              style={{ background: palette.brand2 }}
-            />
-            <div className="flex items-center gap-2.5 relative">
-              <div
-                className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-                style={{ backgroundColor: palette.brand, color: palette.brandInk }}
-              >
-                <Scissors className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="font-display text-lg sm:text-xl font-bold text-[var(--color-ink)] leading-tight">
-                  Reserva tu cita
-                </h2>
-                <p className="text-xs text-[var(--color-ink-2)] mt-0.5">
-                  Servicio · Barbero · Día · Hora
-                </p>
-              </div>
-              <span
-                className="hidden sm:inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.2em] font-bold"
-                style={{ color: palette.brandStrong }}
-              >
-                <Sparkles className="h-3 w-3" />
-                Online 24/7
-              </span>
-            </div>
-          </div>
-          <div className="p-4 sm:p-5">
-            <PublicBookingFlow
-              slug={slug}
-              services={services}
-              barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Footer ─── */}
-      <BarberPole />
-      <footer className="mx-auto max-w-3xl px-4 py-6 text-center text-xs text-[var(--color-ink-3)]">
-        Tecnología por{' '}
-        <a href="https://otracita.es" className="underline hover:text-[var(--color-ink-2)]">
-          otracita.es
-        </a>
-      </footer>
+      <BottomTabBar />
 
       <PwaBootstrap businessName={client.businessName} brand={palette.brand} />
       <AppAccount slug={slug} brand={palette.brand} />
@@ -353,91 +312,3 @@ export default async function PublicBookingPage({ params }: Props) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Ornamentos reutilizables
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Poste de barbero — tres franjas diagonales repetidas. El clásico. */
-function BarberPole() {
-  return (
-    <div
-      className="h-[6px] w-full"
-      style={{
-        background: `repeating-linear-gradient(135deg,
-          var(--brand) 0 14px,
-          #FFFFFF 14px 28px,
-          var(--brand-2) 28px 42px)`,
-      }}
-    />
-  )
-}
-
-/** Divisor horizontal con tijeras al centro. */
-function BarberPoleDivider() {
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className="flex-1 h-[3px] rounded-full"
-        style={{
-          background: `repeating-linear-gradient(90deg,
-            var(--brand) 0 8px,
-            var(--color-canvas) 8px 14px,
-            var(--brand-2) 14px 22px)`,
-        }}
-      />
-      <div
-        className="flex items-center justify-center h-8 w-8 rounded-full"
-        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
-      >
-        <Scissors className="h-3.5 w-3.5" style={{ color: 'var(--brand-strong)' }} />
-      </div>
-      <div
-        className="flex-1 h-[3px] rounded-full"
-        style={{
-          background: `repeating-linear-gradient(90deg,
-            var(--brand-2) 0 8px,
-            var(--color-canvas) 8px 14px,
-            var(--brand) 14px 22px)`,
-        }}
-      />
-    </div>
-  )
-}
-
-function StatusPill({
-  dotColor,
-  icon: Icon,
-  label,
-}: {
-  dotColor: string
-  icon: typeof Clock
-  label: string
-}) {
-  return (
-    <div className="inline-flex items-center gap-2 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] px-3.5 py-1.5 text-sm font-medium text-[var(--color-ink-2)] shadow-sm">
-      <span
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ backgroundColor: dotColor }}
-      />
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </div>
-  )
-}
-
-function TrustPill({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof Zap
-  label: string
-}) {
-  return (
-    <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)]"
-      style={{ background: 'var(--brand-soft)' }}
-    >
-      <Icon className="h-3.5 w-3.5" style={{ color: 'var(--brand-strong)' }} />
-      {label}
-    </div>
-  )
-}

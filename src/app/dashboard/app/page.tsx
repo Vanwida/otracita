@@ -138,6 +138,7 @@ export default async function AppPage() {
             slug: client.publicSlug,
             publicEnabled: client.publicEnabled,
             brandLogoUrl: client.brandLogoUrl,
+            brandLogoAltUrl: client.brandLogoAltUrl,
             brandCoverUrl: client.brandCoverUrl,
             brandColor: client.brandColor,
             brandColorSecondary: client.brandColorSecondary,

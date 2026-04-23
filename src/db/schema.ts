@@ -83,6 +83,7 @@ export const clients = pgTable('clients', {
   publicSlug: text('public_slug').unique(),
   publicEnabled: boolean('public_enabled').default(true).notNull(),
   brandLogoUrl: text('brand_logo_url'),
+  brandLogoAltUrl: text('brand_logo_alt_url'),               // logo para fondo oscuro (solo si principal tira a oscuro)
   brandCoverUrl: text('brand_cover_url'),
   brandColor: text('brand_color'),                           // hex primary; null = neutral black
   brandColorSecondary: text('brand_color_secondary'),        // hex optional accent; null = derived from primary

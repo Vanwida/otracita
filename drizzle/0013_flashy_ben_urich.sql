@@ -1,0 +1,1 @@
+ALTER TABLE "clients" ADD COLUMN "brand_logo_alt_url" text;

@@ -14,6 +14,7 @@ export interface PublicPageInitial {
   slug: string | null
   publicEnabled: boolean
   brandLogoUrl: string | null
+  brandLogoAltUrl: string | null
   brandCoverUrl: string | null
   brandColor: string | null
   brandColorSecondary: string | null
@@ -34,6 +35,7 @@ export default function PublicPageSettings({ initial }: Props) {
   const [slug, setSlug] = useState(initial.slug || '')
   const [publicEnabled, setPublicEnabled] = useState(initial.publicEnabled)
   const [brandLogoUrl, setBrandLogoUrl] = useState(initial.brandLogoUrl || '')
+  const [brandLogoAltUrl, setBrandLogoAltUrl] = useState(initial.brandLogoAltUrl || '')
   const [brandCoverUrl, setBrandCoverUrl] = useState(initial.brandCoverUrl || '')
   const [brandColor, setBrandColor] = useState(initial.brandColor || '#111111')
   const [brandColorSecondary, setBrandColorSecondary] = useState(initial.brandColorSecondary || '')
@@ -72,6 +74,7 @@ export default function PublicPageSettings({ initial }: Props) {
             slug: slug.trim() || undefined,
             publicEnabled,
             brandLogoUrl: brandLogoUrl.trim() || null,
+            brandLogoAltUrl: brandLogoAltUrl.trim() || null,
             brandCoverUrl: brandCoverUrl.trim() || null,
             brandColor,
             brandColorSecondary: brandColorSecondary.trim() || null,
@@ -186,6 +189,19 @@ export default function PublicPageSettings({ initial }: Props) {
           aspect="wide"
         />
       </div>
+
+      {/* Logo alternativo para fondo oscuro — solo se usa si tu color
+          principal es oscuro (negro, navy, burdeos). Si no lo subes,
+          pintamos el logo principal y punto (puede verse regular). */}
+      <ImageUpload
+        label="Logo para fondo oscuro (opcional)"
+        kind="logo-alt"
+        url={brandLogoAltUrl}
+        onChange={setBrandLogoAltUrl}
+        hint="Si tu color principal tira a oscuro, tu logo negro desaparece. Sube una versión clara (blanco o colores claros sobre transparente) y la usamos automáticamente en esos casos."
+        aspect="square"
+        darkPreview
+      />
 
       {/* Colores — principal dirige los CTAs y el degradado del hero; el
           acento (opcional) se usa para detalles decorativos. Si se deja
@@ -314,13 +330,18 @@ function ImageUpload({
   onChange,
   hint,
   aspect,
+  darkPreview,
 }: {
   label: string
-  kind: 'logo' | 'cover'
+  kind: 'logo' | 'logo-alt' | 'cover'
   url: string
   onChange: (next: string) => void
   hint?: string
   aspect: 'square' | 'wide'
+  /** Pinta el preview con fondo oscuro — para logos alternativos que sólo
+   *  se usan sobre fondo oscuro. Así el barbero ve si su versión clara
+   *  funciona antes de publicar. */
+  darkPreview?: boolean
 }) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -351,15 +372,18 @@ function ImageUpload({
     <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-ink-2">{label}</label>
       <div
-        className={`relative bg-overlay border border-line rounded-lg overflow-hidden ${
+        className={`relative border border-line rounded-lg overflow-hidden ${
           aspect === 'square' ? 'aspect-square max-w-[180px]' : 'aspect-[16/6]'
-        } flex items-center justify-center`}
+        } flex items-center justify-center ${darkPreview ? '' : 'bg-overlay'}`}
+        style={darkPreview ? { background: '#0A0A0B' } : undefined}
       >
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={label} className="h-full w-full object-cover" />
         ) : (
-          <span className="text-xs text-ink-3">Sin imagen</span>
+          <span className={`text-xs ${darkPreview ? 'text-white/40' : 'text-ink-3'}`}>
+            Sin imagen
+          </span>
         )}
         {uploading && (
           <div className="absolute inset-0 bg-black/30 flex items-center justify-center">

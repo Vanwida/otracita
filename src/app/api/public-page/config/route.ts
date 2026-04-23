@@ -20,6 +20,7 @@ interface Body {
   slug?: unknown
   publicEnabled?: unknown
   brandLogoUrl?: unknown
+  brandLogoAltUrl?: unknown
   brandCoverUrl?: unknown
   brandColor?: unknown
   brandColorSecondary?: unknown
@@ -99,6 +100,7 @@ export async function PATCH(req: Request) {
     patch.publicEnabled = body.publicEnabled === true
   }
   if ('brandLogoUrl' in body) patch.brandLogoUrl = cleanUrl(body.brandLogoUrl)
+  if ('brandLogoAltUrl' in body) patch.brandLogoAltUrl = cleanUrl(body.brandLogoAltUrl)
   if ('brandCoverUrl' in body) patch.brandCoverUrl = cleanUrl(body.brandCoverUrl)
   if ('brandColor' in body) patch.brandColor = cleanHexColor(body.brandColor)
   if ('brandColorSecondary' in body) patch.brandColorSecondary = cleanHexColor(body.brandColorSecondary)
@@ -115,6 +117,7 @@ export async function PATCH(req: Request) {
     slug: updated.publicSlug,
     publicEnabled: updated.publicEnabled,
     brandLogoUrl: updated.brandLogoUrl,
+    brandLogoAltUrl: updated.brandLogoAltUrl,
     brandCoverUrl: updated.brandCoverUrl,
     brandColor: updated.brandColor,
     brandColorSecondary: updated.brandColorSecondary,
