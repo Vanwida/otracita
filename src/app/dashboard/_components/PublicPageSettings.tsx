@@ -16,6 +16,7 @@ export interface PublicPageInitial {
   brandLogoUrl: string | null
   brandCoverUrl: string | null
   brandColor: string | null
+  brandColorSecondary: string | null
   publicDescription: string | null
   instagramHandle: string | null
   tiktokHandle: string | null
@@ -34,7 +35,8 @@ export default function PublicPageSettings({ initial }: Props) {
   const [publicEnabled, setPublicEnabled] = useState(initial.publicEnabled)
   const [brandLogoUrl, setBrandLogoUrl] = useState(initial.brandLogoUrl || '')
   const [brandCoverUrl, setBrandCoverUrl] = useState(initial.brandCoverUrl || '')
-  const [brandColor, setBrandColor] = useState(initial.brandColor || '#C9653C')
+  const [brandColor, setBrandColor] = useState(initial.brandColor || '#111111')
+  const [brandColorSecondary, setBrandColorSecondary] = useState(initial.brandColorSecondary || '')
   const [publicDescription, setPublicDescription] = useState(initial.publicDescription || '')
   const [instagramHandle, setInstagramHandle] = useState(initial.instagramHandle || '')
   const [tiktokHandle, setTiktokHandle] = useState(initial.tiktokHandle || '')
@@ -72,6 +74,7 @@ export default function PublicPageSettings({ initial }: Props) {
             brandLogoUrl: brandLogoUrl.trim() || null,
             brandCoverUrl: brandCoverUrl.trim() || null,
             brandColor,
+            brandColorSecondary: brandColorSecondary.trim() || null,
             publicDescription: publicDescription.trim() || null,
             instagramHandle: instagramHandle.trim() || null,
             tiktokHandle: tiktokHandle.trim() || null,
@@ -184,15 +187,46 @@ export default function PublicPageSettings({ initial }: Props) {
         />
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-ink-2">Color principal</label>
-        <input
-          type="color"
-          value={brandColor}
-          onChange={(e) => setBrandColor(e.target.value)}
-          className="h-10 w-14 rounded border border-line cursor-pointer"
-        />
-        <span className="font-mono text-xs text-ink-3">{brandColor}</span>
+      {/* Colores — principal dirige los CTAs y el degradado del hero; el
+          acento (opcional) se usa para detalles decorativos. Si se deja
+          vacío, derivamos el acento del principal (−18% brillo). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <label className="text-sm font-medium text-ink-2">Color principal</label>
+            <p className="text-xs text-ink-3 mt-0.5">Botones, slot seleccionado, degradado del hero.</p>
+          </div>
+          <input
+            type="color"
+            value={brandColor}
+            onChange={(e) => setBrandColor(e.target.value)}
+            className="h-10 w-14 rounded border border-line cursor-pointer shrink-0"
+          />
+          <span className="font-mono text-[10px] text-ink-3 w-14 text-right">{brandColor}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <label className="text-sm font-medium text-ink-2">Color de acento <span className="text-ink-3 font-normal">(opcional)</span></label>
+            <p className="text-xs text-ink-3 mt-0.5">Detalles decorativos. Vacío = lo derivamos del principal.</p>
+          </div>
+          <input
+            type="color"
+            value={brandColorSecondary || '#000000'}
+            onChange={(e) => setBrandColorSecondary(e.target.value)}
+            className="h-10 w-14 rounded border border-line cursor-pointer shrink-0"
+          />
+          {brandColorSecondary ? (
+            <button
+              type="button"
+              onClick={() => setBrandColorSecondary('')}
+              className="font-mono text-[10px] text-ink-3 hover:text-danger w-14 text-right underline decoration-dotted"
+            >
+              quitar
+            </button>
+          ) : (
+            <span className="font-mono text-[10px] text-ink-3 w-14 text-right">auto</span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">

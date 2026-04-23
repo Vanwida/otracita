@@ -84,7 +84,8 @@ export const clients = pgTable('clients', {
   publicEnabled: boolean('public_enabled').default(true).notNull(),
   brandLogoUrl: text('brand_logo_url'),
   brandCoverUrl: text('brand_cover_url'),
-  brandColor: text('brand_color'),                           // hex e.g. "#C9653C"; null = use otracita default
+  brandColor: text('brand_color'),                           // hex primary; null = neutral black
+  brandColorSecondary: text('brand_color_secondary'),        // hex optional accent; null = derived from primary
   publicDescription: text('public_description'),             // short "about" paragraph
   instagramHandle: text('instagram_handle'),                 // without @
   tiktokHandle: text('tiktok_handle'),                       // without @

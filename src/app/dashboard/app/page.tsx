@@ -140,6 +140,7 @@ export default async function AppPage() {
             brandLogoUrl: client.brandLogoUrl,
             brandCoverUrl: client.brandCoverUrl,
             brandColor: client.brandColor,
+            brandColorSecondary: client.brandColorSecondary,
             publicDescription: client.publicDescription,
             instagramHandle: client.instagramHandle,
             tiktokHandle: client.tiktokHandle,

@@ -100,6 +100,29 @@ function todayIso(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (!m) return `rgba(0,0,0,${alpha})`
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`
+}
+
+/** Mix hex with black (negative) or white (positive) to get a related shade. */
+function shadeHex(hex: string, amount: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  const mix = amount < 0 ? 0 : 255
+  const t = Math.abs(amount)
+  const mr = Math.round(r + (mix - r) * t)
+  const mg = Math.round(g + (mix - g) * t)
+  const mb = Math.round(b + (mix - b) * t)
+  return '#' + [mr, mg, mb].map((v) => v.toString(16).padStart(2, '0')).join('')
+}
+
 export default async function PublicBookingPage({ params }: Props) {
   const { slug } = await params
   const data = await loadBarbershop(slug)
@@ -125,6 +148,15 @@ export default async function PublicBookingPage({ params }: Props) {
     client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor)
       ? client.brandColor
       : '#111111'
+  // Optional secondary/accent. When null we derive it from the primary
+  // by darkening ~18% — always a usable related shade for subtle accents.
+  const brandSecondary =
+    client.brandColorSecondary && /^#[0-9a-f]{6}$/i.test(client.brandColorSecondary)
+      ? client.brandColorSecondary
+      : shadeHex(brand, -0.18)
+  // rgba at 10% alpha — used for section tints, CTA backgrounds, selected
+  // hover states. Same identity color, low intensity.
+  const brandSoft = hexToRgba(brand, 0.09)
   const whatsappNumber = client.whatsappNumber || client.phone
   const waLink = whatsappNumber
     ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}`
@@ -140,6 +172,8 @@ export default async function PublicBookingPage({ params }: Props) {
       // is black/white/grey.
       style={{
         ['--brand' as string]: brand,
+        ['--brand-2' as string]: brandSecondary,
+        ['--brand-soft' as string]: brandSoft,
         ['--color-canvas' as string]: '#FFFFFF',
         ['--color-surface' as string]: '#FFFFFF',
         ['--color-overlay' as string]: '#F3F4F6',
@@ -149,62 +183,89 @@ export default async function PublicBookingPage({ params }: Props) {
         ['--color-ink-3' as string]: '#9CA3AF',
       }}
     >
-      {/* ─── Cover ─── */}
+      {/* ─── Hero ─────────────────────────────────────────────────────────
+           Foto + degradado de marca al fondo para que, al aterrizar, la
+           identidad de la barbería se lea al instante. El nombre se
+           superpone sobre la foto con un degradado oscuro que garantiza
+           contraste; una pequeña barra de acento (brand-2) subraya el
+           título y aporta el segundo color sin ruido. Si no hay portada,
+           usamos un degradado brand → brand-2 a pantalla completa. */}
       <section className="relative">
-        {client.brandCoverUrl ? (
-          <div
-            className="h-44 sm:h-56 w-full bg-cover bg-center"
-            style={{ backgroundImage: `url(${client.brandCoverUrl})` }}
-          />
-        ) : (
-          <div
-            className="h-24 sm:h-32 w-full"
-            style={{
-              background: `linear-gradient(135deg, ${brand} 0%, rgba(0,0,0,0.15) 100%)`,
-            }}
-          />
-        )}
-        {/* Logo overlaps the cover bottom. Business name + address sit
-             BELOW the cover on a guaranteed white background so they're
-             always readable regardless of the photo's colors. */}
-        <div className="mx-auto max-w-3xl px-4 -mt-14 sm:-mt-16 relative z-10">
-          <div
-            className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] shadow-sm overflow-hidden flex items-center justify-center"
-          >
-            {client.brandLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={client.brandLogoUrl}
-                alt={client.businessName}
-                className="h-full w-full object-cover"
+        <div className="relative h-64 sm:h-80 w-full overflow-hidden">
+          {client.brandCoverUrl ? (
+            <>
+              <div
+                className="absolute inset-0 bg-cover bg-center"
+                style={{ backgroundImage: `url(${client.brandCoverUrl})` }}
               />
-            ) : (
-              <span className="font-display text-3xl text-[var(--color-ink-2)]">
-                {client.businessName.slice(0, 1).toUpperCase()}
-              </span>
-            )}
+              {/* Degradado: color de marca arriba (tinte sutil) + negro abajo
+                  para asegurar lectura del nombre. */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(180deg, ${hexToRgba(brand, 0.18)} 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.78) 100%)`,
+                }}
+              />
+            </>
+          ) : (
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(135deg, ${brand} 0%, ${brandSecondary} 100%)`,
+              }}
+            />
+          )}
+
+          {/* Identidad sobre el hero */}
+          <div className="absolute inset-x-0 bottom-0 px-4 pb-5 sm:pb-6">
+            <div className="mx-auto max-w-3xl flex items-end gap-4">
+              <div
+                className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl bg-white shadow-lg overflow-hidden flex items-center justify-center shrink-0"
+                style={{ outline: `2px solid ${hexToRgba('#FFFFFF', 0.85)}`, outlineOffset: '-2px' }}
+              >
+                {client.brandLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={client.brandLogoUrl}
+                    alt={client.businessName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="font-display text-3xl text-[var(--color-ink-2)]">
+                    {client.businessName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 pb-1">
+                {/* Barra de acento — aporta el segundo color sin gritar. */}
+                <div
+                  className="h-1 w-10 rounded-full mb-2"
+                  style={{ backgroundColor: brandSecondary }}
+                />
+                <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white drop-shadow-sm leading-tight">
+                  {client.businessName}
+                </h1>
+                {client.address && (
+                  <p className="text-sm text-white/85 mt-1 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{client.address}</span>
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ─── Identity (nombre + dirección, bajo el cover, sobre blanco) ─── */}
-      <section className="mx-auto max-w-3xl px-4 mt-4">
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-ink)]">
-          {client.businessName}
-        </h1>
-        {client.address && (
-          <p className="text-sm text-[var(--color-ink-2)] mt-1 flex items-center gap-1.5">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span>{client.address}</span>
-          </p>
-        )}
-      </section>
-
-      {/* ─── Status + social icons ─── */}
-      <section className="mx-auto max-w-3xl px-4 mt-4 space-y-3">
-        <p className="inline-flex items-center gap-1.5 text-sm text-[var(--color-ink-2)]">
+      {/* ─── Meta row: horario + redes, sobre blanco ─── */}
+      <section className="mx-auto max-w-3xl px-4 mt-5 space-y-3">
+        <p className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-ink-2)]">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: todayHours ? '#10B981' : '#9CA3AF' }}
+          />
           <Clock className="h-3.5 w-3.5" />
-          {todayHours ? `Abierto ${todayHours.start}–${todayHours.end}` : 'Cerrado hoy'}
+          {todayHours ? `Abierto · ${todayHours.start}–${todayHours.end}` : 'Cerrado hoy'}
         </p>
         <SocialLinks
           whatsapp={waLink}
@@ -225,14 +286,34 @@ export default async function PublicBookingPage({ params }: Props) {
         </section>
       )}
 
-      {/* ─── Booking flow (es lo primero, porque por eso entró el cliente) ─── */}
+      {/* ─── Booking flow — por eso entró el cliente ───────────────────────
+           Contenedor tintado con brand-soft para señalar visualmente la
+           acción principal. El borde sutil toma el color de marca a baja
+           opacidad para "firmar" la sección con la identidad. */}
       <section id="reservar" className="mx-auto max-w-3xl px-4 mt-8 pb-20">
-        <PublicBookingFlow
-          slug={slug}
-          brand={brand}
-          services={services}
-          barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
-        />
+        <div
+          className="rounded-2xl p-4 sm:p-6"
+          style={{
+            background: brandSoft,
+            border: `1px solid ${hexToRgba(brand, 0.15)}`,
+          }}
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <div
+              className="h-1 w-8 rounded-full"
+              style={{ backgroundColor: brand }}
+            />
+            <h2 className="font-display text-lg font-semibold text-[var(--color-ink)]">
+              Reserva tu cita
+            </h2>
+          </div>
+          <PublicBookingFlow
+            slug={slug}
+            brand={brand}
+            services={services}
+            barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
+          />
+        </div>
       </section>
 
       <footer className="mx-auto max-w-3xl px-4 py-6 text-center text-xs text-[var(--color-ink-3)] border-t border-[var(--color-line)]">

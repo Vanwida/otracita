@@ -85,6 +85,13 @@
       "when": 1776950496050,
       "tag": "0011_orange_wraith",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776951452284,
+      "tag": "0012_slippery_logan",
+      "breakpoints": true
     }
   ]
 }
