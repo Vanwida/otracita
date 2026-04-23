@@ -77,6 +77,7 @@ export default function PublicBookingFlow({ slug, brand, services, barbers }: Pr
   const [gridLoading, setGridLoading] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [prefilled, setPrefilled] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<null | {
@@ -92,6 +93,22 @@ export default function PublicBookingFlow({ slug, brand, services, barbers }: Pr
     for (let i = 0; i < 14; i++) out.push(addDaysISO(todayMadrid(), i))
     return out
   }, [])
+
+  // Prefill name + phone from the PWA session if the customer is logged in.
+  // Only runs once per mount; manual edits after prefill aren't overwritten.
+  useEffect(() => {
+    if (prefilled) return
+    fetch('/api/app/me', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d: { loggedIn: boolean; user?: { name: string | null; phone: string } }) => {
+        if (d.loggedIn && d.user) {
+          if (d.user.name) setName((prev) => prev || d.user!.name || '')
+          if (d.user.phone) setPhone((prev) => prev || d.user!.phone || '')
+        }
+        setPrefilled(true)
+      })
+      .catch(() => setPrefilled(true))
+  }, [prefilled])
 
   // Fetch availability grid whenever (service, date) changes.
   useEffect(() => {

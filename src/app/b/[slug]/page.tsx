@@ -8,6 +8,7 @@ import { MapPin, Clock } from 'lucide-react'
 import PublicBookingFlow from './PublicBookingFlow'
 import SocialLinks from './SocialLinks'
 import PwaBootstrap from './PwaBootstrap'
+import AppAccount from './AppAccount'
 
 // -----------------------------------------------------------------------------
 // /b/[slug] — public booking page for a single barbería.
@@ -239,6 +240,7 @@ export default async function PublicBookingPage({ params }: Props) {
       </footer>
 
       <PwaBootstrap businessName={client.businessName} brand={brand} />
+      <AppAccount slug={slug} brand={brand} />
     </main>
   )
 }
