@@ -96,6 +96,48 @@ export const clients = pgTable('clients', {
   onboardedAt: timestamp('onboarded_at'),
 });
 
+// App users — end-customer accounts for the per-barbería PWA.
+// Identity is phone-based and GLOBAL across barberías (one Alex logs in
+// once, can use any barbería's app). Linkage to per-barbería `customers`
+// rows is done on-the-fly by phone when needed for reservations, loyalty,
+// reputation. Kept separate so a customer deletion at tenant level doesn't
+// nuke their cross-tenant account.
+export const appUsers = pgTable('app_users', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  phone: text('phone').notNull().unique(),        // E.164 (+34...)
+  name: text('name'),
+  email: text('email'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Short-lived OTP codes sent via WhatsApp for PWA login. Code is stored
+// hashed (SHA-256) — even a DB leak doesn't let an attacker login within
+// the 10-minute window. Attempts counter rate-limits brute force.
+export const appOtpCodes = pgTable('app_otp_codes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  phone: text('phone').notNull(),
+  codeHash: text('code_hash').notNull(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  attempts: integer('attempts').default(0).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Active PWA sessions. Token cookie stores the raw value; DB stores
+// SHA-256 hash of it. Refreshed lastUsedAt on every request.
+export const appSessions = pgTable('app_sessions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => appUsers.id),
+  tokenHash: text('token_hash').notNull().unique(),
+  clientId: uuid('client_id').references(() => clients.id),   // where they first logged in
+  userAgent: text('user_agent'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Barbers (staff per client) — before this table existed the team lived as a
 // loose jsonb array of {name} on clients.booksyServices. That couldn't hold
 // per-person schedule or blocked dates, which is the Booksy/Treatwell norm:
