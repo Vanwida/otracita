@@ -95,7 +95,15 @@ export default async function PublicBookingPage({ params }: Props) {
     }))
     .filter((s) => s.name.length > 0)
 
-  const brand = client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor) ? client.brandColor : '#C9653C'
+  // Brand accent color — drives buttons, selected states, hero gradient.
+  // If the barber hasn't configured one, we fall back to black (neutral,
+  // professional, works on any logo). NOT to otracita's terracotta —
+  // the public page should never leak otracita's identity into a
+  // barbería that hasn't asked for it.
+  const brand =
+    client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor)
+      ? client.brandColor
+      : '#111111'
   const whatsappNumber = client.whatsappNumber || client.phone
   const waLink = whatsappNumber
     ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}`
@@ -104,17 +112,20 @@ export default async function PublicBookingPage({ params }: Props) {
   return (
     <main
       className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]"
-      // Override otracita's cream palette with neutrals for the public page:
-      // the page background is always branded-agnostic (pale neutral grey),
-      // and accents on top stay visible regardless of the barber's hue.
-      // Keeps white cards and badges crisp and lets the `brand` color carry
-      // the identity in buttons, selected states and the hero gradient.
+      // Override otracita's cream + espresso palette with neutrals for the
+      // public page — the barbería's identity should never clash with
+      // otracita's. The only "identity" here is `brand`, which carries
+      // accents (buttons, selected states, hero gradient). Everything else
+      // is black/white/grey.
       style={{
         ['--brand' as string]: brand,
         ['--color-canvas' as string]: '#FAFAFA',
         ['--color-surface' as string]: '#FFFFFF',
         ['--color-overlay' as string]: '#F5F5F5',
         ['--color-line' as string]: '#E5E5E5',
+        ['--color-ink' as string]: '#111111',
+        ['--color-ink-2' as string]: '#4A4A4A',
+        ['--color-ink-3' as string]: '#8A8A8A',
       }}
     >
       {/* ─── Cover ─── */}
@@ -132,37 +143,40 @@ export default async function PublicBookingPage({ params }: Props) {
             }}
           />
         )}
+        {/* Logo overlaps the cover bottom. Business name + address sit
+             BELOW the cover on a guaranteed white background so they're
+             always readable regardless of the photo's colors. */}
         <div className="mx-auto max-w-3xl px-4 -mt-14 sm:-mt-16 relative z-10">
-          <div className="flex items-end gap-4">
-            <div
-              className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] shadow-sm overflow-hidden flex items-center justify-center shrink-0"
-            >
-              {client.brandLogoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={client.brandLogoUrl}
-                  alt={client.businessName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="font-display text-3xl text-[var(--color-ink-2)]">
-                  {client.businessName.slice(0, 1).toUpperCase()}
-                </span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0 pb-2">
-              <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight truncate">
-                {client.businessName}
-              </h1>
-              {client.address && (
-                <p className="text-sm text-[var(--color-ink-2)] mt-0.5 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{client.address}</span>
-                </p>
-              )}
-            </div>
+          <div
+            className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] shadow-sm overflow-hidden flex items-center justify-center"
+          >
+            {client.brandLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={client.brandLogoUrl}
+                alt={client.businessName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="font-display text-3xl text-[var(--color-ink-2)]">
+                {client.businessName.slice(0, 1).toUpperCase()}
+              </span>
+            )}
           </div>
         </div>
+      </section>
+
+      {/* ─── Identity (nombre + dirección, bajo el cover, sobre blanco) ─── */}
+      <section className="mx-auto max-w-3xl px-4 mt-4">
+        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-ink)]">
+          {client.businessName}
+        </h1>
+        {client.address && (
+          <p className="text-sm text-[var(--color-ink-2)] mt-1 flex items-center gap-1.5">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span>{client.address}</span>
+          </p>
+        )}
       </section>
 
       {/* ─── Meta row ─── */}
