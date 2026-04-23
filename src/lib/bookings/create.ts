@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { barbers as barbersTable, bookings, clients } from '@/db/schema';
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { barbers as barbersTable, bookings, clients, customers } from '@/db/schema';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import { shouldAutoInvoiceBooking, tryAutoInvoiceInBackground } from '@/lib/invoicing';
@@ -277,6 +277,47 @@ export async function createBooking(
       source,
     })
     .returning();
+
+  // --- Upsert customer + increment counters -------------------------------
+  // Every successful booking, regardless of source (web, bot, voice,
+  // dashboard), must leave a customer row so downstream systems —
+  // WhatsApp bot recognition, /dashboard/clientes, reputation tracking,
+  // no-show decay — identify this person consistently.
+  try {
+    const normalisedPhone = customerPhone.trim();
+    const cleanName = customerName ? customerName.trim() : null;
+    const [existingCustomer] = await db
+      .select()
+      .from(customers)
+      .where(
+        and(
+          eq(customers.clientId, client.id),
+          eq(customers.phone, normalisedPhone),
+        ),
+      );
+    if (existingCustomer) {
+      await db
+        .update(customers)
+        .set({
+          name: cleanName ?? existingCustomer.name,
+          totalBookings: sql`${customers.totalBookings} + 1`,
+          lastBookingAt: new Date(),
+        })
+        .where(eq(customers.id, existingCustomer.id));
+    } else {
+      await db.insert(customers).values({
+        clientId: client.id,
+        phone: normalisedPhone,
+        name: cleanName,
+        totalBookings: 1,
+        lastBookingAt: new Date(),
+      });
+    }
+  } catch (err) {
+    // Don't fail the booking if the customer-upsert has a transient error —
+    // the booking itself is already saved. Log and move on.
+    console.error('[createBooking] customer upsert failed:', err);
+  }
 
   // --- Auto-invoice (fire-and-forget) --------------------------------------
   if (created && shouldAutoInvoiceBooking(created) && client.invoicingEnabled) {

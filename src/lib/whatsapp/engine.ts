@@ -1800,7 +1800,11 @@ async function handleConfirmation(
         }
 
         if (bookingSuccess) {
-          await incrementCustomerBookings(config.id, msg.from);
+          // DB path (createBookingDb) already upserted the customer + bumped
+          // totalBookings. Only the legacy GCal path needs the explicit bump.
+          if (!config.useDbAvailability) {
+            await incrementCustomerBookings(config.id, msg.from);
+          }
           await trackAnalytics(config.id, 'bookingsMade');
 
           const noPreferenceLabel = T[lang].noPreference;
