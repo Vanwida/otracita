@@ -103,7 +103,7 @@ export default async function PublicBookingPage({ params }: Props) {
 
   return (
     <main
-      className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]"
+      className="min-h-screen bg-white text-[var(--color-ink)]"
       style={{ ['--brand' as string]: brand }}
     >
       {/* ─── Cover ─── */}

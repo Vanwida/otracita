@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Check, Copy, ExternalLink, Loader2, Globe } from 'lucide-react'
+import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2 } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // PublicPageSettings — "Página pública" tab in Mi negocio.
@@ -161,21 +161,25 @@ export default function PublicPageSettings({ initial }: Props) {
         placeholder="mi-barberia"
       />
 
-      {/* Branding URLs (MVP — URL input; upload será v2) */}
+      {/* Branding: upload de logo + portada. Guardamos en Vercel Blob y el
+          URL devuelta se pega en el input. El barbero también puede pegar
+          una URL directa (p.ej. la de su web) si prefiere no subir. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field
-          label="Logo (URL)"
-          hint="Pega una URL pública de tu logo (cuadrado ideal). Si no, mostramos la inicial."
-          value={brandLogoUrl}
+        <ImageUpload
+          label="Logo"
+          kind="logo"
+          url={brandLogoUrl}
           onChange={setBrandLogoUrl}
-          placeholder="https://..."
+          hint="Cuadrado ideal. PNG, JPG o WEBP, máx. 3 MB."
+          aspect="square"
         />
-        <Field
-          label="Portada (URL)"
-          hint="Imagen ancha para la cabecera (ej. interior del local)."
-          value={brandCoverUrl}
+        <ImageUpload
+          label="Portada"
+          kind="cover"
+          url={brandCoverUrl}
           onChange={setBrandCoverUrl}
-          placeholder="https://..."
+          hint="Imagen ancha para la cabecera (ej. interior del local)."
+          aspect="wide"
         />
       </div>
 
@@ -255,6 +259,117 @@ function Field({
         placeholder={placeholder}
         className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
       />
+      {hint && <p className="text-xs text-ink-3">{hint}</p>}
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// ImageUpload — file picker + preview + remove for logo/cover fields.
+// Uploads to /api/public-page/upload?kind=... (backed by Vercel Blob) and
+// surfaces the resulting URL through `onChange`. The caller still has to
+// press "Guardar cambios" to persist the URL into the DB — decoupling upload
+// from save means if the user uploads and navigates away, the file exists
+// in Blob but the DB is unchanged (orphaned blob). Acceptable at MVP volume.
+// -----------------------------------------------------------------------------
+function ImageUpload({
+  label,
+  kind,
+  url,
+  onChange,
+  hint,
+  aspect,
+}: {
+  label: string
+  kind: 'logo' | 'cover'
+  url: string
+  onChange: (next: string) => void
+  hint?: string
+  aspect: 'square' | 'wide'
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onPick = async (file: File) => {
+    setError(null)
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/public-page/upload?kind=${kind}`, {
+        method: 'POST',
+        body: form,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data?.error || 'No se pudo subir.')
+        return
+      }
+      onChange(data.url)
+    } catch {
+      setError('Error de red')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium text-ink-2">{label}</label>
+      <div
+        className={`relative bg-overlay border border-line rounded-lg overflow-hidden ${
+          aspect === 'square' ? 'aspect-square max-w-[180px]' : 'aspect-[16/6]'
+        } flex items-center justify-center`}
+      >
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={label} className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-xs text-ink-3">Sin imagen</span>
+        )}
+        {uploading && (
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+            <Loader2 className="h-5 w-5 text-white animate-spin" />
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-canvas px-3 py-2 text-xs font-medium text-ink-2 hover:text-ink cursor-pointer transition-colors">
+          <Upload className="h-3.5 w-3.5" />
+          {url ? 'Reemplazar' : 'Subir imagen'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onPick(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+        {url && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-canvas px-3 py-2 text-xs font-medium text-ink-3 hover:text-danger transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Quitar
+          </button>
+        )}
+      </div>
+
+      <input
+        type="text"
+        value={url}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="o pega una URL pública"
+        className="bg-surface border border-line rounded-lg p-2 text-xs text-ink focus:border-brand outline-none transition-colors"
+      />
+
+      {error && <p className="text-xs text-danger">{error}</p>}
       {hint && <p className="text-xs text-ink-3">{hint}</p>}
     </div>
   )
