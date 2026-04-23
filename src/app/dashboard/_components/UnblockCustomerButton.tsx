@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Unlock } from 'lucide-react'
+import { useConfirm } from './ConfirmDialog'
 
 interface Props {
   customerId: string
@@ -16,9 +17,15 @@ export default function UnblockCustomerButton({ customerId }: Props) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const confirm = useConfirm()
 
-  const onClick = () => {
-    if (!confirm('¿Desbloquear este cliente? Podrá volver a reservar a través del bot.')) return
+  const onClick = async () => {
+    const ok = await confirm({
+      title: '¿Desbloquear cliente?',
+      message: 'Podrá volver a reservar a través del bot.',
+      confirmLabel: 'Desbloquear',
+    })
+    if (!ok) return
 
     setError(null)
     startTransition(async () => {

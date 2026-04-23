@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { upload } from '@vercel/blob/client'
 import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X, Camera, User, AlertTriangle } from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
+import { useConfirm } from './ConfirmDialog'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — CRUD UI for per-staff scheduling.
@@ -67,6 +68,7 @@ export default function BarbersManager() {
     barberName: string
     blockingBookings: BlockingBooking[]
   }>(null)
+  const confirm = useConfirm()
 
   const barbers = data?.barbers ?? []
 
@@ -113,7 +115,13 @@ export default function BarbersManager() {
   }
 
   const deleteBarber = async (id: string, name: string) => {
-    if (!confirm(`¿Eliminar a ${name}?`)) return
+    const ok = await confirm({
+      title: `¿Eliminar a ${name}?`,
+      message: 'Se quitará del equipo. Si tiene citas futuras te pediremos reasignarlas o cancelarlas antes.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
     setBusyId(id)
     setErrorMsg(null)
     try {
@@ -570,6 +578,7 @@ function BlockingBookingRow({
   const [targetBarberId, setTargetBarberId] = useState<string>(otherBarbers[0]?.id || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const confirm = useConfirm()
 
   const reassign = async () => {
     setBusy(true)
@@ -595,7 +604,13 @@ function BlockingBookingRow({
   }
 
   const cancel = async () => {
-    if (!confirm('¿Cancelar esta reserva? El cliente no recibe aviso automático.')) return
+    const ok = await confirm({
+      title: '¿Cancelar esta reserva?',
+      message: 'El cliente no recibe aviso automático. Avísale tú si hace falta.',
+      confirmLabel: 'Sí, cancelar',
+      variant: 'danger',
+    })
+    if (!ok) return
     setBusy(true)
     setErr(null)
     try {

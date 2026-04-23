@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { LogOut, Shield } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
+import { ConfirmDialogHost } from "./_components/ConfirmDialog"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
 import MobileMoreTrigger from "@/app/dashboard/_components/MobileMoreTrigger"
 import { Wordmark } from "@/components/brand"
@@ -132,6 +133,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </main>
 
       <DashboardChatWidget />
+      <ConfirmDialogHost />
 
       {/* Mobile Bottom Nav — 4 primary shortcuts + "Más" opens the drawer */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-surface border-t border-line flex items-center justify-around px-2 lg:hidden">

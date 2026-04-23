@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Heart } from 'lucide-react'
+import { useConfirm } from './ConfirmDialog'
 
 interface Props {
   customerId: string
@@ -19,10 +20,16 @@ export default function ForgiveNoShowsButton({ customerId, customerName }: Props
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const confirm = useConfirm()
 
-  const onClick = () => {
+  const onClick = async () => {
     const who = customerName?.trim() || 'este cliente'
-    if (!confirm(`Reiniciar no-shows de ${who} a 0?`)) return
+    const ok = await confirm({
+      title: `¿Perdonar a ${who}?`,
+      message: 'Reinicia su contador de no-shows a 0 y quita la etiqueta de aviso.',
+      confirmLabel: 'Perdonar',
+    })
+    if (!ok) return
 
     setError(null)
     startTransition(async () => {
