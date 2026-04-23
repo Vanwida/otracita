@@ -11,17 +11,18 @@ import PublicBookingFlow from './PublicBookingFlow'
 // /b/[slug] — public booking page for a single barbería.
 //
 // Rendered server-side so Google / social scrapers get the full HTML + OG
-// tags. The interactive booking flow is a Client Component mounted below.
+// tags. The interactive single-screen booking flow (PublicBookingFlow) is
+// a Client Component mounted below and represents ~90% of the viewport —
+// the visitor came here to book, so we don't hide that behind a catalogue.
 //
-// Design goals (Booksy/Treatwell parity, barber-first):
-//   · Hero with logo, name, address, hours today, short about.
-//   · Services list with price + duration (the bot has the same).
-//   · Team with optional photo + bio.
-//   · CTA "Reservar" at the top AND at the bottom.
-//   · Mobile-first — >95% of visits come from Instagram link taps.
-//   · Honours the per-client brand color if set, otherwise otracita brand.
-//   · If `publicEnabled = false`, returns 404 — the barber can temporarily
-//     disable the page from the dashboard without breaking shared links.
+// Page layout (Booksy-style, barber-first, mobile-first):
+//   · Hero: logo + name + address (shop context only).
+//   · Meta row: hours today, WhatsApp, phone, Instagram, website.
+//   · About: optional short description.
+//   · Booking flow: service + barber + day + hour + datos, all on one screen.
+//
+// `publicEnabled = false` returns 404 — the barber can toggle the page
+// off from the dashboard without breaking already-shared links.
 // -----------------------------------------------------------------------------
 
 interface ServiceItem {
@@ -76,10 +77,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 function todayIso(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
-}
-
-function formatEuros(n: number): string {
-  return n.toFixed(2).replace('.', ',')
 }
 
 export default async function PublicBookingPage({ params }: Props) {
@@ -215,78 +212,14 @@ export default async function PublicBookingPage({ params }: Props) {
         </section>
       )}
 
-      {/* ─── CTA top ─── */}
-      <section className="mx-auto max-w-3xl px-4 mt-8">
-        <a
-          href="#reservar"
-          className="block w-full rounded-2xl text-center px-6 py-4 text-base font-semibold shadow-sm transition-transform active:scale-[0.99]"
-          style={{ backgroundColor: brand, color: 'white' }}
-        >
-          Reservar cita
-        </a>
-      </section>
-
-      {/* ─── Services ─── */}
-      {services.length > 0 && (
-        <section className="mx-auto max-w-3xl px-4 mt-10">
-          <h2 className="font-display text-xl font-semibold mb-3">Servicios</h2>
-          <div className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] overflow-hidden divide-y divide-[var(--color-line)]">
-            {services.map((s, i) => (
-              <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-[var(--color-ink)] truncate">{s.name}</p>
-                  <p className="text-xs text-[var(--color-ink-3)] mt-0.5">{s.duration} min</p>
-                </div>
-                <span className="font-mono text-sm text-[var(--color-ink)] shrink-0">
-                  {formatEuros(s.price)} €
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ─── Team ─── */}
-      {barbers.length > 0 && (
-        <section className="mx-auto max-w-3xl px-4 mt-10">
-          <h2 className="font-display text-xl font-semibold mb-3">Equipo</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {barbers.map((b) => (
-              <div
-                key={b.id}
-                className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] p-3 text-center"
-              >
-                <div className="mx-auto h-16 w-16 rounded-full bg-[var(--color-overlay)] overflow-hidden mb-2 flex items-center justify-center">
-                  {b.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={b.photoUrl} alt={b.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="font-display text-lg text-[var(--color-ink-2)]">
-                      {b.name.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm font-medium text-[var(--color-ink)] truncate">{b.name}</p>
-                {b.bio && (
-                  <p className="text-xs text-[var(--color-ink-3)] mt-1 line-clamp-2">{b.bio}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ─── Booking flow ─── */}
-      <section id="reservar" className="mx-auto max-w-3xl px-4 mt-10 pb-20">
-        <h2 className="font-display text-xl font-semibold mb-3">Reservar</h2>
-        <div className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] p-4 sm:p-6">
-          <PublicBookingFlow
-            slug={slug}
-            brand={brand}
-            services={services}
-            barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
-          />
-        </div>
+      {/* ─── Booking flow (es lo primero, porque por eso entró el cliente) ─── */}
+      <section id="reservar" className="mx-auto max-w-3xl px-4 mt-8 pb-20">
+        <PublicBookingFlow
+          slug={slug}
+          brand={brand}
+          services={services}
+          barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
+        />
       </section>
 
       <footer className="mx-auto max-w-3xl px-4 py-6 text-center text-xs text-[var(--color-ink-3)] border-t border-[var(--color-line)]">

@@ -6,13 +6,16 @@ import type { BarberConfig } from '@/lib/whatsapp/config'
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 // -----------------------------------------------------------------------------
-// GET /api/public/availability?slug=...&service=...&date=YYYY-MM-DD&barberId=?
+// GET /api/public/availability/grid?slug=...&service=...&date=YYYY-MM-DD
 //
-// Public endpoint (no auth) used by the /b/[slug] booking page. Resolves the
-// barbería by slug, loads active barbers + shop defaults, and returns the
-// available slots using the SAME availability engine as the bot. All
-// scheduling standards (lead time, horizon, buffer, per-barber hours) apply.
-// Rate-limited by IP to prevent scraping.
+// Returns a Booksy-style availability grid for a single date: for each
+// active barber we list their free slots, plus the UNION ("cualquiera
+// disponible"). The /b/[slug] UI uses this to:
+//   · Grey out barber circles that have zero slots that day.
+//   · Show the hour chips depending on who's selected.
+//
+// One call per (service, date) replaces N calls per barber → faster feel
+// and cheaper on Neon.
 // -----------------------------------------------------------------------------
 
 interface Service {
@@ -29,34 +32,26 @@ function clientIp(req: Request): string {
 }
 
 export async function GET(req: Request) {
-  // Aggressive per-IP rate limit: someone scraping availability across all
-  // barberías could DoS us otherwise. 60/min per IP is plenty for a real user.
-  const limit = checkRateLimit(`public-availability:${clientIp(req)}`, 60)
+  const limit = checkRateLimit(`public-grid:${clientIp(req)}`, 90)
   if (!limit.ok) return rateLimitResponse(limit)
 
   const url = new URL(req.url)
   const slug = url.searchParams.get('slug')
   const service = url.searchParams.get('service')
   const date = url.searchParams.get('date')
-  const barberId = url.searchParams.get('barberId')
 
-  if (!slug || !service || !date) {
+  if (!slug || !service || !date)
     return Response.json({ error: 'slug, service y date son obligatorios' }, { status: 400 })
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
     return Response.json({ error: 'date inválido' }, { status: 400 })
-  }
 
   const [client] = await db.select().from(clients).where(eq(clients.publicSlug, slug))
-  if (!client || !client.publicEnabled) {
+  if (!client || !client.publicEnabled)
     return Response.json({ error: 'Barbería no encontrada' }, { status: 404 })
-  }
 
   const services = (client.chatbotServices as Service[] | null) || []
   const matched = services.find((s) => s?.name?.toLowerCase() === service.toLowerCase())
-  if (!matched) {
-    return Response.json({ error: 'Servicio no encontrado' }, { status: 404 })
-  }
+  if (!matched) return Response.json({ error: 'Servicio no encontrado' }, { status: 404 })
 
   const barberRows = await db
     .select()
@@ -71,29 +66,31 @@ export async function GET(req: Request) {
     displayOrder: b.displayOrder,
   }))
 
-  // Validate the optional barberId belongs to this client before using it —
-  // prevents cross-tenant leakage via forged params.
-  let resolvedBarberId: string | null = null
-  if (barberId) {
-    const match = barbers.find((b) => b.id === barberId)
-    if (!match) {
-      return Response.json({ error: 'Barbero no válido' }, { status: 400 })
-    }
-    resolvedBarberId = match.id
-  }
-
-  const slots = await getAvailableSlotsFromDB({
+  const commonOpts = {
     clientId: client.id,
     date,
     serviceDuration: matched.duration || 30,
     shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
     shopBlockedDates: (client.blockedDates as string[]) ?? [],
     barbers,
-    barberId: resolvedBarberId,
     minLeadTimeMinutes: client.minLeadTimeMinutes,
     serviceBufferMinutes: client.serviceBufferMinutes,
     maxBookingHorizonDays: client.maxBookingHorizonDays,
-  })
+  }
 
-  return Response.json({ slots })
+  // One-shot: for each barber, their own slots; plus the union.
+  const [union, ...perBarber] = await Promise.all([
+    getAvailableSlotsFromDB({ ...commonOpts, barberId: null }),
+    ...barbers.map((b) =>
+      getAvailableSlotsFromDB({ ...commonOpts, barberId: b.id }).then((slots) => ({
+        id: b.id,
+        slots,
+      })),
+    ),
+  ])
+
+  const byBarber: Record<string, Array<{ start: string; end: string }>> = {}
+  for (const row of perBarber) byBarber[row.id] = row.slots
+
+  return Response.json({ union, byBarber })
 }
