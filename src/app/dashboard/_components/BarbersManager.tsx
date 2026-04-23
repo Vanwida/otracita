@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X } from 'lucide-react'
+import { upload } from '@vercel/blob/client'
+import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X, Camera, User } from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 
 // -----------------------------------------------------------------------------
@@ -27,6 +28,7 @@ interface BarberRow {
   id: string
   clientId: string
   name: string
+  photoUrl: string | null
   hours: HoursMap | null
   blockedDates: string[]
   displayOrder: number
@@ -264,6 +266,22 @@ function BarberCard({
           </button>
         </div>
 
+        <button
+          type="button"
+          onClick={onToggle}
+          className="h-9 w-9 rounded-full overflow-hidden bg-overlay border border-line shrink-0 flex items-center justify-center transition-transform hover:scale-105"
+          aria-label="Ver foto"
+        >
+          {barber.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={barber.photoUrl} alt={barber.name} className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-xs font-display font-bold text-ink-2">
+              {barber.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </button>
+
         <input
           type="text"
           value={nameDraft}
@@ -306,6 +324,18 @@ function BarberCard({
 
       {expanded && (
         <div className="border-t border-line bg-overlay/50 p-4 space-y-5">
+          {/* ── Foto ────────────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center gap-2 mb-2 text-sm font-medium text-ink">
+              <Camera className="h-4 w-4 text-ink-2" />
+              Foto
+            </div>
+            <BarberPhotoUpload
+              url={barber.photoUrl}
+              onChange={(next) => onPatch({ photoUrl: next })}
+            />
+          </div>
+
           {/* ── Hours ───────────────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -397,6 +427,92 @@ function BarberCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// BarberPhotoUpload — preview + upload/quitar de la foto del barbero.
+// Usa el mismo handler /api/public-page/upload que logos/cover (client upload
+// vía Vercel Blob). El URL resultante se guarda en barbers.photo_url.
+// -----------------------------------------------------------------------------
+function BarberPhotoUpload({
+  url,
+  onChange,
+}: {
+  url: string | null
+  onChange: (next: string | null) => void | Promise<void>
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onPick = async (file: File) => {
+    setError(null)
+    setUploading(true)
+    try {
+      const ext = (file.type.split('/')[1] || 'bin').toLowerCase()
+      const filename = `barber.${ext}`
+      const blob = await upload(filename, file, {
+        access: 'public',
+        handleUploadUrl: '/api/public-page/upload',
+        contentType: file.type,
+      })
+      await onChange(blob.url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al subir')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="relative h-20 w-20 rounded-lg overflow-hidden bg-overlay border border-line shrink-0 flex items-center justify-center">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt="Foto del barbero" className="h-full w-full object-cover" />
+        ) : (
+          <User className="h-8 w-8 text-ink-3" />
+        )}
+        {uploading && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+            <Loader2 className="h-5 w-5 text-white animate-spin" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-canvas px-3 py-2 text-xs font-medium text-ink-2 hover:text-ink cursor-pointer transition-colors">
+            <Camera className="h-3.5 w-3.5" />
+            {url ? 'Reemplazar' : 'Subir foto'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) onPick(f)
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {url && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-canvas px-3 py-2 text-xs font-medium text-ink-3 hover:text-danger transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Quitar
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-ink-3 mt-1.5">
+          Retrato del barbero. Cuadrada ideal, PNG/JPG/WEBP, máx. 3 MB. Aparece en
+          la app al elegir &ldquo;con quién&rdquo;.
+        </p>
+        {error && <p className="text-xs text-danger mt-1">{error}</p>}
+      </div>
     </div>
   )
 }

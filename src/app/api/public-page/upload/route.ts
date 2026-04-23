@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         // `pathname` is the filename the client suggested. We force it
         // under `public-pages/{clientId}/{kind}-{timestamp}.{ext}` so the
         // tenant scope is in the path and other tenants can't overwrite.
-        const m = /(logo-alt|logo|cover)\.([a-z0-9]{2,5})$/i.exec(pathname)
+        const m = /(logo-alt|logo|cover|barber)\.([a-z0-9]{2,5})$/i.exec(pathname)
         const kind = m?.[1]?.toLowerCase() ?? 'misc'
         const ext = m?.[2]?.toLowerCase() ?? 'bin'
         const scopedPath = `public-pages/${access.client.id}/${kind}-${Date.now()}.${ext}`

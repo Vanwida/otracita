@@ -41,6 +41,7 @@ export async function PATCH(
 
   let body: {
     name?: unknown;
+    photoUrl?: unknown;
     hours?: unknown;
     blockedDates?: unknown;
     displayOrder?: unknown;
@@ -74,6 +75,25 @@ export async function PATCH(
       return Response.json({ error: 'Ya existe un barbero con ese nombre.' }, { status: 409 });
     }
     patch.name = name;
+  }
+
+  if ('photoUrl' in body) {
+    // Aceptar null (quitar foto) o URL http(s) válida.
+    if (body.photoUrl === null || body.photoUrl === '') {
+      patch.photoUrl = null;
+    } else if (typeof body.photoUrl === 'string') {
+      try {
+        const u = new URL(body.photoUrl);
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+          return Response.json({ error: 'URL inválida.' }, { status: 400 });
+        }
+        patch.photoUrl = u.toString();
+      } catch {
+        return Response.json({ error: 'URL inválida.' }, { status: 400 });
+      }
+    } else {
+      return Response.json({ error: 'photoUrl debe ser string o null.' }, { status: 400 });
+    }
   }
 
   if ('hours' in body) {
