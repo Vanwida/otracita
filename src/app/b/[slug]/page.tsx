@@ -4,8 +4,9 @@ import { db } from '@/db'
 import { barbers as barbersTable, clients } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { hoursForDate } from '@/lib/availability'
-import { MapPin, Clock, AtSign, Globe, Phone, MessageCircle } from 'lucide-react'
+import { MapPin, Clock } from 'lucide-react'
 import PublicBookingFlow from './PublicBookingFlow'
+import SocialLinks from './SocialLinks'
 
 // -----------------------------------------------------------------------------
 // /b/[slug] — public booking page for a single barbería.
@@ -119,13 +120,13 @@ export default async function PublicBookingPage({ params }: Props) {
       // is black/white/grey.
       style={{
         ['--brand' as string]: brand,
-        ['--color-canvas' as string]: '#FAFAFA',
+        ['--color-canvas' as string]: '#FFFFFF',
         ['--color-surface' as string]: '#FFFFFF',
-        ['--color-overlay' as string]: '#F5F5F5',
-        ['--color-line' as string]: '#E5E5E5',
+        ['--color-overlay' as string]: '#F3F4F6',
+        ['--color-line' as string]: '#E5E7EB',
         ['--color-ink' as string]: '#111111',
-        ['--color-ink-2' as string]: '#4A4A4A',
-        ['--color-ink-3' as string]: '#8A8A8A',
+        ['--color-ink-2' as string]: '#4B5563',
+        ['--color-ink-3' as string]: '#9CA3AF',
       }}
     >
       {/* ─── Cover ─── */}
@@ -179,53 +180,20 @@ export default async function PublicBookingPage({ params }: Props) {
         )}
       </section>
 
-      {/* ─── Meta row ─── */}
-      <section className="mx-auto max-w-3xl px-4 mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[var(--color-ink-2)]">
-        <span className="inline-flex items-center gap-1.5">
+      {/* ─── Status + social icons ─── */}
+      <section className="mx-auto max-w-3xl px-4 mt-4 space-y-3">
+        <p className="inline-flex items-center gap-1.5 text-sm text-[var(--color-ink-2)]">
           <Clock className="h-3.5 w-3.5" />
           {todayHours ? `Abierto ${todayHours.start}–${todayHours.end}` : 'Cerrado hoy'}
-        </span>
-        {whatsappNumber && waLink && (
-          <a
-            href={waLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 hover:text-[var(--color-ink)] transition-colors"
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-            WhatsApp
-          </a>
-        )}
-        {client.phone && client.phone !== whatsappNumber && (
-          <a
-            href={`tel:${client.phone}`}
-            className="inline-flex items-center gap-1.5 hover:text-[var(--color-ink)] transition-colors"
-          >
-            <Phone className="h-3.5 w-3.5" />
-            {client.phone}
-          </a>
-        )}
-        {client.instagramHandle && (
-          <a
-            href={`https://instagram.com/${client.instagramHandle.replace(/^@/, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 hover:text-[var(--color-ink)] transition-colors"
-          >
-            <AtSign className="h-3.5 w-3.5" />{client.instagramHandle.replace(/^@/, '')}
-          </a>
-        )}
-        {client.websiteUrl && (
-          <a
-            href={client.websiteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 hover:text-[var(--color-ink)] transition-colors"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Web
-          </a>
-        )}
+        </p>
+        <SocialLinks
+          whatsapp={waLink}
+          phone={client.phone && client.phone !== whatsappNumber ? client.phone : null}
+          instagramHandle={client.instagramHandle}
+          tiktokHandle={client.tiktokHandle}
+          facebookUrl={client.facebookUrl}
+          websiteUrl={client.websiteUrl}
+        />
       </section>
 
       {/* ─── About ─── */}
