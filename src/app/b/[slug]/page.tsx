@@ -103,8 +103,19 @@ export default async function PublicBookingPage({ params }: Props) {
 
   return (
     <main
-      className="min-h-screen bg-white text-[var(--color-ink)]"
-      style={{ ['--brand' as string]: brand }}
+      className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]"
+      // Override otracita's cream palette with neutrals for the public page:
+      // the page background is always branded-agnostic (pale neutral grey),
+      // and accents on top stay visible regardless of the barber's hue.
+      // Keeps white cards and badges crisp and lets the `brand` color carry
+      // the identity in buttons, selected states and the hero gradient.
+      style={{
+        ['--brand' as string]: brand,
+        ['--color-canvas' as string]: '#FAFAFA',
+        ['--color-surface' as string]: '#FFFFFF',
+        ['--color-overlay' as string]: '#F5F5F5',
+        ['--color-line' as string]: '#E5E5E5',
+      }}
     >
       {/* ─── Cover ─── */}
       <section className="relative">
