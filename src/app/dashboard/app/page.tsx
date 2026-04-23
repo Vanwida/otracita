@@ -2,7 +2,6 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
-import Link from 'next/link'
 import QRCode from 'qrcode'
 import { db } from '@/db'
 import { clients, pushSubscriptions } from '@/db/schema'
@@ -14,10 +13,10 @@ import {
   Heart,
   Bell,
   Link as LinkIcon,
-  Palette,
   ExternalLink,
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
+import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
 
 const SITE_ORIGIN = 'https://otracita.es'
 
@@ -71,11 +70,7 @@ export default async function AppPage() {
 
       {!readyForApp && (
         <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm text-ink-2">
-          Tu página pública está desactivada o sin slug. Actívala en{' '}
-          <Link className="text-brand underline" href="/dashboard/negocio?tab=publica">
-            Mi negocio → Página pública
-          </Link>
-          {' '}para que tus clientes puedan instalar la app.
+          Tu app no es accesible todavía — activa el toggle &ldquo;Página pública activa&rdquo; abajo y guarda.
         </div>
       )}
 
@@ -133,63 +128,25 @@ export default async function AppPage() {
         </div>
       </section>
 
-      {/* Identity row */}
+      {/* Identity editor — full form (slug, logo upload, cover, color,
+          descripción, redes). Lives here now that "Mi app" is the single
+          home for the PWA; no more duplicate "Página pública" tab in
+          Mi negocio. */}
       <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-brand" />
-            <h2 className="text-lg font-semibold text-ink">Identidad visual</h2>
-          </div>
-          <Link
-            href="/dashboard/negocio?tab=publica"
-            className="text-sm text-brand hover:text-brand-strong"
-          >
-            Editar
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <IdentityCard
-            label="Logo"
-            preview={
-              client.brandLogoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={client.brandLogoUrl}
-                  alt="Logo"
-                  className="h-16 w-16 rounded-lg object-cover border border-line"
-                />
-              ) : (
-                <div
-                  className="h-16 w-16 rounded-lg flex items-center justify-center text-white font-display text-2xl"
-                  style={{ background: brand }}
-                >
-                  {client.businessName.slice(0, 1).toUpperCase()}
-                </div>
-              )
-            }
-            hint={client.brandLogoUrl ? 'Subido' : 'Usando inicial'}
-          />
-          <IdentityCard
-            label="Color"
-            preview={<div className="h-16 w-16 rounded-lg border border-line" style={{ background: brand }} />}
-            hint={<span className="font-mono text-xs">{brand}</span>}
-          />
-          <IdentityCard
-            label="Nombre"
-            preview={<span className="font-display text-xl text-ink truncate">{client.businessName}</span>}
-            hint={`${client.businessName.length} chars`}
-          />
-          <IdentityCard
-            label="Descripción"
-            preview={
-              <p className="text-xs text-ink-2 line-clamp-3">
-                {client.publicDescription || '—'}
-              </p>
-            }
-            hint={client.publicDescription ? `${client.publicDescription.length} chars` : 'Sin descripción'}
-          />
-        </div>
+        <PublicPageSettings
+          initial={{
+            slug: client.publicSlug,
+            publicEnabled: client.publicEnabled,
+            brandLogoUrl: client.brandLogoUrl,
+            brandCoverUrl: client.brandCoverUrl,
+            brandColor: client.brandColor,
+            publicDescription: client.publicDescription,
+            instagramHandle: client.instagramHandle,
+            tiktokHandle: client.tiktokHandle,
+            facebookUrl: client.facebookUrl,
+            websiteUrl: client.websiteUrl,
+          }}
+        />
       </section>
 
       {/* Notifications */}
@@ -236,24 +193,6 @@ export default async function AppPage() {
           />
         </div>
       </section>
-    </div>
-  )
-}
-
-function IdentityCard({
-  label,
-  preview,
-  hint,
-}: {
-  label: string
-  preview: React.ReactNode
-  hint: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line bg-overlay/40 p-3">
-      <span className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">{label}</span>
-      <div className="flex-1 flex items-center justify-center min-h-[72px]">{preview}</div>
-      <span className="text-xs text-ink-3 truncate">{hint}</span>
     </div>
   )
 }

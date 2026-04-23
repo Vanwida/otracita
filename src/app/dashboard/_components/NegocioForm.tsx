@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt, CreditCard, Globe } from 'lucide-react'
+import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt, CreditCard } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
 import BarbersManager from './BarbersManager'
@@ -10,7 +10,6 @@ import BlockedDatesManager from './BlockedDatesManager'
 import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
 import ConnectSettings, { type ConnectInitial } from './ConnectSettings'
 import TipsSettings, { type TipsInitial } from './TipsSettings'
-import PublicPageSettings, { type PublicPageInitial } from './PublicPageSettings'
 
 interface ServiceItem {
   name: string
@@ -34,13 +33,12 @@ interface Props {
     invoicing: InvoicingInitial
     connect: ConnectInitial
     tips: TipsInitial
-    publicPage: PublicPageInitial
   }
   /** Server action that saves the core business fields (everything except blocked dates). */
   save: (formData: FormData) => Promise<void>
 }
 
-type TabKey = 'info' | 'services' | 'team' | 'hours' | 'facturacion' | 'cobros' | 'publica' | 'blocked'
+type TabKey = 'info' | 'services' | 'team' | 'hours' | 'facturacion' | 'cobros' | 'blocked'
 
 interface Tab {
   key: TabKey
@@ -55,7 +53,6 @@ const TABS: Tab[] = [
   { key: 'hours', label: 'Horario', icon: Clock },
   { key: 'facturacion', label: 'Facturación', icon: Receipt },
   { key: 'cobros', label: 'Cobros online', icon: CreditCard },
-  { key: 'publica', label: 'Página pública', icon: Globe },
   { key: 'blocked', label: 'Días bloqueados', icon: CalendarX },
 ]
 
@@ -79,7 +76,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
     const params = new URLSearchParams(window.location.search)
     const raw = params.get('tab')
     if (!raw) return
-    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'facturacion', 'cobros', 'publica', 'blocked']
+    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'facturacion', 'cobros', 'blocked']
     if ((valid as string[]).includes(raw)) {
       setTab(raw as TabKey)
     }
@@ -129,10 +126,6 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
         <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
           <ConnectSettings initial={initial.connect} />
           <TipsSettings initial={initial.tips} />
-        </div>
-      ) : tab === 'publica' ? (
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-8">
-          <PublicPageSettings initial={initial.publicPage} />
         </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
