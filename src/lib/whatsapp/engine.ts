@@ -1534,6 +1534,7 @@ async function handleDateSelection(
           minLeadTimeMinutes: config.minLeadTimeMinutes,
           serviceBufferMinutes: config.serviceBufferMinutes,
           maxBookingHorizonDays: config.maxBookingHorizonDays,
+          slotStepMinutes: config.slotStepMinutes,
         })
       : await getAvailableSlots(config.googleCalendarId!, selectedDate, duration, businessHours, ctx.selectedBarber, config.blockedDates);
 

@@ -75,6 +75,10 @@ export const clients = pgTable('clients', {
   //   slot picker adds this to `duration` when checking overlap.
   minLeadTimeMinutes: integer('min_lead_time_minutes').default(15).notNull(),
   maxBookingHorizonDays: integer('max_booking_horizon_days').default(45).notNull(),
+  // slotStepMinutes: granularidad del paso al generar huecos (Booksy-style).
+  // 15 = ofrecer slot cada 15 min si el servicio cabe entero (rellena micro-gaps).
+  // 30 o 45 = más conservador, menos huecos pero más "limpios".
+  slotStepMinutes: integer('slot_step_minutes').default(15).notNull(),
   serviceBufferMinutes: integer('service_buffer_minutes').default(5).notNull(),
   // Public booking page (/b/[slug]) — the shareable link a barber can drop
   // on Instagram, Google Business Profile, flyers, email signatures, etc.

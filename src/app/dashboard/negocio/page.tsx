@@ -63,6 +63,7 @@ export default async function NegocioPage() {
     const fiscalCity = (formData.get('fiscalCity') as string | null) ?? ''
     const fiscalPostalCode = (formData.get('fiscalPostalCode') as string | null) ?? ''
     const ivaRateRaw = (formData.get('ivaRate') as string | null) ?? ''
+    const slotStepRaw = (formData.get('slotStepMinutes') as string | null) ?? ''
     const invoiceNumberPrefix = (formData.get('invoiceNumberPrefix') as string | null) ?? ''
     const invoiceNumberNextRaw = (formData.get('invoiceNumberNext') as string | null) ?? ''
 
@@ -109,6 +110,9 @@ export default async function NegocioPage() {
     const ivaRate = parseInt(ivaRateRaw, 10)
     const ivaRateSafe = [0, 4, 10, 21].includes(ivaRate) ? ivaRate : current.ivaRate
 
+    const slotStep = parseInt(slotStepRaw, 10)
+    const slotStepSafe = [15, 30, 45].includes(slotStep) ? slotStep : current.slotStepMinutes
+
     await db
       .update(clients)
       .set({
@@ -129,6 +133,7 @@ export default async function NegocioPage() {
         fiscalCity: fiscalCity || null,
         fiscalPostalCode: fiscalPostalCode || null,
         ivaRate: ivaRateSafe,
+        slotStepMinutes: slotStepSafe,
         invoiceNumberPrefix: invoiceNumberPrefix,
         invoiceNumberNext,
         updatedAt: new Date(),
@@ -158,6 +163,7 @@ export default async function NegocioPage() {
           address: client.address || '',
           services,
           hours,
+          slotStepMinutes: client.slotStepMinutes,
           blockedDates,
           invoicing: {
             invoicingEnabled: client.invoicingEnabled,

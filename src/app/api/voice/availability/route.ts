@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       minLeadTimeMinutes: client.minLeadTimeMinutes,
       serviceBufferMinutes: client.serviceBufferMinutes,
       maxBookingHorizonDays: client.maxBookingHorizonDays,
+      slotStepMinutes: client.slotStepMinutes,
     });
     return NextResponse.json({ slots: slots.slice(0, 8) });
   } catch (err) {

@@ -76,6 +76,7 @@ export async function GET(req: Request) {
     minLeadTimeMinutes: client.minLeadTimeMinutes,
     serviceBufferMinutes: client.serviceBufferMinutes,
     maxBookingHorizonDays: client.maxBookingHorizonDays,
+    slotStepMinutes: client.slotStepMinutes,
   }
 
   // One-shot: for each barber, their own slots; plus the union.

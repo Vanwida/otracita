@@ -29,6 +29,7 @@ interface Props {
     // barbers array plumbed through here — the component fetches from
     // /api/barbers on mount.
     hours: HoursMap | null
+    slotStepMinutes: number
     blockedDates: string[]
     invoicing: InvoicingInitial
     connect: ConnectInitial
@@ -180,12 +181,38 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
           </div>
 
           {/* ─── Horario ─── */}
-          <div className={tab === 'hours' ? 'space-y-4' : 'hidden'}>
+          <div className={tab === 'hours' ? 'space-y-6' : 'hidden'}>
             <div>
               <h2 className="text-lg font-semibold text-ink">Horario</h2>
               <p className="text-sm text-ink-2 mt-1">Horas de apertura por día. El bot solo ofrecerá huecos dentro de este rango.</p>
             </div>
             <HoursEditor initial={initial.hours} />
+
+            <div className="pt-4 border-t border-line">
+              <h3 className="text-sm font-semibold text-ink">Granularidad de los huecos</h3>
+              <p className="text-xs text-ink-2 mt-1 mb-3">
+                Cada cuántos minutos ofrecemos un posible inicio de cita. 15 min
+                (recomendado) rellena micro-huecos y maximiza conversión —
+                nunca ofreceremos un slot que no quepa entero.
+              </p>
+              <div className="grid grid-cols-3 gap-2 max-w-md">
+                {([15, 30, 45] as const).map((m) => (
+                  <label
+                    key={m}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 py-2.5 text-sm cursor-pointer hover:border-line-strong has-[:checked]:border-brand has-[:checked]:bg-brand-softer has-[:checked]:text-ink"
+                  >
+                    <input
+                      type="radio"
+                      name="slotStepMinutes"
+                      value={m}
+                      defaultChecked={(initial.slotStepMinutes ?? 15) === m}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="font-medium">{m} min</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* ─── Facturación ─── */}

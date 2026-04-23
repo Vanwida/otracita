@@ -153,6 +153,12 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     return barberId ? grid.byBarber[barberId] ?? [] : grid.union
   }, [grid, barberId])
 
+  // Split por franjas — Booksy-style. Umbral 14:00 (a partir de ahí, tarde).
+  // Así cuando ofrecemos muchos slots (paso 15 min = ~40 slots posibles en
+  // jornada de 10h) el usuario escanea más rápido.
+  const slotsMorning: Slot[] = useMemo(() => visibleSlots.filter((s) => s.start < '14:00'), [visibleSlots])
+  const slotsAfternoon: Slot[] = useMemo(() => visibleSlots.filter((s) => s.start >= '14:00'), [visibleSlots])
+
   const barberAvailable = (id: string): boolean => {
     if (!grid) return true
     return (grid.byBarber[id] ?? []).length > 0
@@ -368,27 +374,13 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-6">
-            {visibleSlots.map((s) => {
-              const selected = s.start === slot
-              return (
-                <button
-                  key={s.start}
-                  type="button"
-                  onClick={() => setSlot(s.start)}
-                  className="px-3 py-3 rounded-xl border-2 text-base font-semibold transition-all active:scale-[0.97] tabular-nums"
-                  style={{
-                    borderColor: selected ? 'var(--brand-strong)' : 'var(--theme-line)',
-                    background: selected ? 'var(--brand)' : 'var(--theme-surface)',
-                    color: selected ? 'var(--brand-ink)' : 'var(--theme-ink)',
-                    boxShadow: selected ? `0 8px 20px -8px var(--brand-strong)` : undefined,
-                  }}
-                  aria-pressed={selected}
-                >
-                  {s.start}
-                </button>
-              )
-            })}
+          <div className="mb-6 space-y-5">
+            {slotsMorning.length > 0 && (
+              <SlotBand title="Mañana" slots={slotsMorning} current={slot} onPick={setSlot} />
+            )}
+            {slotsAfternoon.length > 0 && (
+              <SlotBand title="Tarde" slots={slotsAfternoon} current={slot} onPick={setSlot} />
+            )}
           </div>
         )}
 
@@ -508,6 +500,54 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-componentes
 // ─────────────────────────────────────────────────────────────────────────────
+
+function SlotBand({
+  title,
+  slots,
+  current,
+  onPick,
+}: {
+  title: string
+  slots: Slot[]
+  current: string | null
+  onPick: (start: string) => void
+}) {
+  return (
+    <div>
+      <p
+        className="text-[11px] font-bold uppercase tracking-[0.18em] mb-2"
+        style={{ color: 'var(--theme-ink-3)' }}
+      >
+        {title}
+        <span className="ml-2 font-normal normal-case tracking-normal opacity-60">
+          · {slots.length} {slots.length === 1 ? 'hueco' : 'huecos'}
+        </span>
+      </p>
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {slots.map((s) => {
+          const selected = s.start === current
+          return (
+            <button
+              key={s.start}
+              type="button"
+              onClick={() => onPick(s.start)}
+              className="px-3 py-3 rounded-xl border-2 text-base font-semibold transition-all active:scale-[0.97] tabular-nums"
+              style={{
+                borderColor: selected ? 'var(--brand-strong)' : 'var(--theme-line)',
+                background: selected ? 'var(--brand)' : 'var(--theme-surface)',
+                color: selected ? 'var(--brand-ink)' : 'var(--theme-ink)',
+                boxShadow: selected ? `0 8px 20px -8px var(--brand-strong)` : undefined,
+              }}
+              aria-pressed={selected}
+            >
+              {s.start}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (

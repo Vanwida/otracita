@@ -101,6 +101,13 @@ export interface AvailabilityOptions {
   serviceBufferMinutes: number;
   /** If set, reject dates beyond now + this many days. */
   maxBookingHorizonDays: number;
+  /**
+   * Minutos entre posibles inicios de slot (Booksy-style). Default 15.
+   * Con 15 ofrecemos 10:00, 10:15, 10:30… si cada uno cabe entero; así
+   * rellenamos micro-gaps y maximizamos conversión. Si es 0 o no se
+   * pasa, el paso = duración del servicio (comportamiento legacy).
+   */
+  slotStepMinutes?: number;
 }
 
 /**
@@ -122,7 +129,13 @@ export async function getAvailableSlotsFromDB(
     minLeadTimeMinutes,
     serviceBufferMinutes,
     maxBookingHorizonDays,
+    slotStepMinutes,
   } = opts;
+
+  // Si no viene paso, usamos la duración del servicio (comportamiento legacy
+  // para llamadores que aún no lo pasan — back-compat). Validamos un mínimo
+  // de 5 min para evitar bucles infinitos con configuraciones erróneas.
+  const step = Math.max(5, slotStepMinutes && slotStepMinutes > 0 ? slotStepMinutes : serviceDuration);
 
   // Guard: date must be inside the horizon window. Older callers pre-filter
   // the date picker so this rarely fires, but belt-and-braces.
@@ -206,7 +219,7 @@ export async function getAvailableSlotsFromDB(
     const bhStart = parseMinutes(hours.start);
     const bhEnd = parseMinutes(hours.end);
     const busy = busyForBarber(barber);
-    for (let slotStart = bhStart; slotStart + serviceDuration <= bhEnd; slotStart += serviceDuration) {
+    for (let slotStart = bhStart; slotStart + serviceDuration <= bhEnd; slotStart += step) {
       if (slotStart < leadCutoff) continue;
       const slotEnd = slotStart + serviceDuration;
       const blocked = busy.some((p) => slotStart < p.end && slotEnd > p.start);
