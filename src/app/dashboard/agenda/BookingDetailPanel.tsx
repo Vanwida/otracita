@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode } from 'lucide-react';
+import { X, Copy, Check, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle } from 'lucide-react';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -56,6 +56,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
   const isNoShow = booking?.status === 'no_show';
   const canMarkNoShow = booking?.status === 'confirmed' || booking?.status === 'no_show';
+  const canCancel = booking?.status === 'confirmed' || booking?.status === 'no_show';
+  const [cancelOpen, setCancelOpen] = useState(false);
   const canCharge =
     !!booking &&
     booking.price !== null &&
@@ -433,6 +435,21 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
+              {/* Cancelar reserva — disponible mientras no esté ya cancelada.
+                  Abre modal con mensaje editable y toggle WhatsApp. */}
+              {canCancel && (
+                <div className="pt-2 border-t border-line">
+                  <button
+                    type="button"
+                    onClick={() => setCancelOpen(true)}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-surface border border-line hover:border-danger hover:text-danger px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors"
+                  >
+                    <CalendarX2 className="h-4 w-4" />
+                    Cancelar reserva
+                  </button>
+                </div>
+              )}
+
               {/* Cobrar online — only for chargeable bookings (confirmed or
                   no_show, with a price). Two states:
                     A) Connect not active -> CTA to activate.
@@ -571,6 +588,182 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           </motion.div>
         </>
       )}
+
+      {booking && cancelOpen && (
+        <CancelBookingModal
+          booking={booking}
+          onClose={() => setCancelOpen(false)}
+          onCancelled={() => {
+            setCancelOpen(false)
+            router.refresh()
+            onClose()
+          }}
+        />
+      )}
     </AnimatePresence>
   );
+}
+
+// -----------------------------------------------------------------------------
+// CancelBookingModal — modal de cancelación con mensaje editable + toggle
+// para avisar al cliente por WhatsApp. Delega en PATCH /api/bookings/[id]
+// que acepta `status: 'cancelled'` + `notify: boolean` + `notifyMessage`.
+// -----------------------------------------------------------------------------
+function CancelBookingModal({
+  booking,
+  onClose,
+  onCancelled,
+}: {
+  booking: CalendarEvent
+  onClose: () => void
+  onCancelled: () => void
+}) {
+  const firstName = booking.customerName?.split(' ')[0] || 'hola'
+  const defaultMessage =
+    `Hola ${firstName}, lo siento pero tenemos que cancelar tu cita del ` +
+    `${booking.date} a las ${booking.time}. ` +
+    `Si quieres reservar otra hora, ¡no dudes en hacerlo! Disculpa las molestias.`
+
+  const [message, setMessage] = useState(defaultMessage)
+  const [notify, setNotify] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
+
+  const submit = async () => {
+    setSubmitting(true)
+    setError(null)
+    setWarning(null)
+    try {
+      const r = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'cancelled',
+          notify,
+          notifyMessage: notify ? message.trim() : undefined,
+        }),
+      })
+      const data = await r.json()
+      if (!r.ok) {
+        setError(data?.error || 'No se pudo cancelar.')
+        setSubmitting(false)
+        return
+      }
+      if (notify && data?.notifyStatus === 'failed') {
+        setWarning(
+          'Reserva cancelada pero el WhatsApp no se pudo enviar (el cliente puede estar fuera de la ventana de Meta). Avísale tú.',
+        )
+        // Esperamos un par de segundos para que el warning se lea
+        setTimeout(onCancelled, 2400)
+        return
+      }
+      onCancelled()
+    } catch {
+      setError('Error de red.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={() => !submitting && onClose()}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-5 border-b border-line flex items-start gap-3">
+          <div className="h-10 w-10 rounded-full bg-danger/10 flex items-center justify-center shrink-0">
+            <CalendarX2 className="h-5 w-5 text-danger" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-ink">Cancelar la cita</h3>
+            <p className="text-xs text-ink-2 mt-0.5">
+              {booking.customerName} · {booking.service} · {booking.date} {booking.time}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            aria-label="Cerrar"
+            className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-40"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+              disabled={submitting}
+              className="h-4 w-4 mt-0.5"
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-ink">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Avisar al cliente por WhatsApp
+              </div>
+              <p className="text-xs text-ink-2 mt-0.5">
+                Enviamos el mensaje de abajo desde tu número.
+                {booking.customerPhone && <> Destinatario: {booking.customerPhone}.</>}
+              </p>
+            </div>
+          </label>
+
+          {notify && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-ink-2">Mensaje</label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value.slice(0, 400))}
+                rows={4}
+                disabled={submitting}
+                className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none resize-none"
+              />
+              <p className="text-[11px] text-ink-3 text-right">{message.length}/400</p>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm rounded-lg bg-danger/10 border border-danger/30 text-danger px-3 py-2">
+              {error}
+            </p>
+          )}
+          {warning && (
+            <p className="text-sm rounded-lg bg-warning/10 border border-warning/30 text-warning px-3 py-2">
+              {warning}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-overlay/40 border-t border-line">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting || (notify && !message.trim())}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-danger hover:bg-danger/90 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Cancelar cita
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }

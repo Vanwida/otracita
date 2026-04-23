@@ -1,10 +1,11 @@
 import { db } from '@/db'
-import { bookings, barbers } from '@/db/schema'
+import { bookings, barbers, clients } from '@/db/schema'
 import { and, eq, ne } from 'drizzle-orm'
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
+import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 
 // -----------------------------------------------------------------------------
 // /api/bookings/[id] — PATCH para acciones del dashboard sobre una reserva.
@@ -38,7 +39,12 @@ export async function PATCH(
     .where(and(eq(bookings.id, id), eq(bookings.clientId, access.client.id)))
   if (!booking) return Response.json({ error: 'Reserva no encontrada.' }, { status: 404 })
 
-  let body: { barberId?: unknown; status?: unknown }
+  let body: {
+    barberId?: unknown
+    status?: unknown
+    notify?: unknown
+    notifyMessage?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -123,5 +129,39 @@ export async function PATCH(
 
   await db.update(bookings).set(patch).where(eq(bookings.id, id))
   const [updated] = await db.select().from(bookings).where(eq(bookings.id, id))
-  return Response.json({ booking: updated })
+
+  // ── Aviso opcional por WhatsApp (solo al cancelar) ──────────────────
+  // Best-effort: si Meta rechaza (ventana 24h cerrada, etc), devolvemos
+  // notifyStatus='failed' sin tumbar la cancelación.
+  let notifyStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
+  if (patch.status === 'cancelled' && body.notify === true) {
+    const rawMsg = typeof body.notifyMessage === 'string' ? body.notifyMessage.trim() : ''
+    if (rawMsg && updated.customerPhone) {
+      const [clientRow] = await db
+        .select()
+        .from(clients)
+        .where(eq(clients.id, access.client.id))
+      const token = clientRow?.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || ''
+      const phoneNumberId = clientRow?.whatsappPhoneNumberId
+      if (token && phoneNumberId) {
+        try {
+          const r = (await sendWhatsAppMessage(
+            phoneNumberId,
+            updated.customerPhone,
+            rawMsg.slice(0, 400),
+            token,
+          )) as { error?: unknown }
+          notifyStatus = r?.error ? 'failed' : 'sent'
+        } catch {
+          notifyStatus = 'failed'
+        }
+      } else {
+        notifyStatus = 'failed'
+      }
+    } else {
+      notifyStatus = 'failed'
+    }
+  }
+
+  return Response.json({ booking: updated, notifyStatus })
 }
