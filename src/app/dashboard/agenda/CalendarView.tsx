@@ -194,14 +194,21 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           </select>
         )}
 
-        {/* New booking button */}
+        {/* Import + new booking */}
+        <a
+          href="/dashboard/agenda/importar"
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors"
+          title="Importar reservas desde Booksy / agenda externa"
+        >
+          Importar
+        </a>
         <button
           onClick={() => {
             setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00' });
             setSelectedBooking(null);
             setIsNewBookingOpen(true);
           }}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           Nueva Reserva
