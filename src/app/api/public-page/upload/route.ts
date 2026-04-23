@@ -1,87 +1,77 @@
-import { put } from '@vercel/blob'
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 
 // -----------------------------------------------------------------------------
-// POST /api/public-page/upload?kind=logo|cover
+// POST /api/public-page/upload
 //
-// Accepts a multipart/form-data file (or a raw body), stores it in Vercel
-// Blob under a tenant-scoped path, and returns the public URL. The caller
-// (PublicPageSettings) then PATCHes the URL into clients.brand_logo_url or
-// brand_cover_url with the regular /api/public-page/config endpoint.
+// Client-upload pattern: the browser POSTs here to get a short-lived
+// signed upload token, then PUTs the file directly to Vercel Blob. This
+// bypasses the 4.5 MB Vercel Function body limit entirely — a 5 MB cover
+// photo goes straight to Blob without ever flowing through our serverless
+// function, which also makes uploads faster and cheaper in function-seconds.
 //
-// Constraints (keep costs + abuse under control):
-//   · Max 3 MB per file — enough for a logo/cover at reasonable resolution.
-//   · Only image mime types.
-//   · Tenant-scoped key: `public-pages/<clientId>/<kind>-<timestamp>.<ext>`.
-//     Older uploads for the same kind are orphaned — Vercel Blob has no
-//     cleanup built-in; acceptable at our volume (cents/month).
+// Security:
+//   · The "before token" callback verifies the tenant session and stamps
+//     the pathname with {clientId}/{kind} so a tenant can't write under
+//     another tenant's folder.
+//   · Max size enforced via `maximumSizeInBytes`.
+//   · Allowed content types restricted to images.
 // -----------------------------------------------------------------------------
 
-const MAX_BYTES = 3 * 1024 * 1024 // 3 MB
-const ALLOWED_MIME = new Set([
+const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
+const ALLOWED_MIME = [
   'image/png',
   'image/jpeg',
   'image/webp',
   'image/gif',
   'image/svg+xml',
-])
-const MIME_EXT: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/svg+xml': 'svg',
-}
+]
 
-export async function POST(req: Request) {
-  const access = await requireClientAccess(req)
+export async function POST(request: Request) {
+  // Auth happens inside handleUpload's onBeforeGenerateToken so we can
+  // stamp the token with tenant scope. But we still enforce auth here
+  // too — if the user isn't in a valid session, short-circuit.
+  const access = await requireClientAccess(request)
   if (!access.ok) return accessErrorResponse(access)
 
-  const url = new URL(req.url)
-  const kind = url.searchParams.get('kind')
-  if (kind !== 'logo' && kind !== 'cover') {
-    return Response.json({ error: 'kind debe ser "logo" o "cover"' }, { status: 400 })
+  const body = (await request.json()) as HandleUploadBody
+
+  try {
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname) => {
+        // `pathname` is the filename the client suggested. We force it
+        // under `public-pages/{clientId}/{kind}-{timestamp}.{ext}` so the
+        // tenant scope is in the path and other tenants can't overwrite.
+        const m = /(logo|cover)\.([a-z0-9]{2,5})$/i.exec(pathname)
+        const kind = m?.[1]?.toLowerCase() ?? 'misc'
+        const ext = m?.[2]?.toLowerCase() ?? 'bin'
+        const scopedPath = `public-pages/${access.client.id}/${kind}-${Date.now()}.${ext}`
+        return {
+          allowedContentTypes: ALLOWED_MIME,
+          maximumSizeInBytes: MAX_BYTES,
+          addRandomSuffix: true,
+          tokenPayload: JSON.stringify({ clientId: access.client.id, scopedPath }),
+          // Ask the Blob service to store under the scoped path, not the
+          // original name the browser sent.
+          pathname: scopedPath,
+        }
+      },
+      onUploadCompleted: async () => {
+        // No-op: the client PATCHes the resulting URL into clients table
+        // via /api/public-page/config after the upload resolves. Keeping
+        // the callback defined so the handshake protocol is honoured.
+      },
+    })
+
+    return Response.json(jsonResponse)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Upload failed'
+    console.error('[public-page/upload] handleUpload error:', message)
+    return Response.json({ error: message }, { status: 400 })
   }
-
-  // Accept both multipart (<input type=file>) and raw body (fetch PUT).
-  const contentType = req.headers.get('content-type') || ''
-  let file: File | null = null
-
-  if (contentType.startsWith('multipart/form-data')) {
-    const form = await req.formData()
-    const entry = form.get('file')
-    if (entry instanceof File) file = entry
-  } else if (contentType.startsWith('image/')) {
-    const buf = await req.arrayBuffer()
-    file = new File([buf], `upload.${MIME_EXT[contentType] ?? 'bin'}`, { type: contentType })
-  }
-
-  if (!file) {
-    return Response.json({ error: 'No se ha enviado ningún archivo.' }, { status: 400 })
-  }
-  if (!ALLOWED_MIME.has(file.type)) {
-    return Response.json({ error: 'Formato no admitido. Usa PNG, JPG, WEBP, GIF o SVG.' }, { status: 415 })
-  }
-  if (file.size > MAX_BYTES) {
-    return Response.json(
-      { error: `Máximo ${Math.floor(MAX_BYTES / 1024 / 1024)} MB.` },
-      { status: 413 },
-    )
-  }
-
-  const ext = MIME_EXT[file.type] ?? 'bin'
-  const key = `public-pages/${access.client.id}/${kind}-${Date.now()}.${ext}`
-
-  const blob = await put(key, file, {
-    access: 'public',
-    contentType: file.type,
-    // Let Vercel Blob add a random suffix — prevents cache collisions when a
-    // barber re-uploads with the same filename.
-    addRandomSuffix: true,
-  })
-
-  return Response.json({ url: blob.url })
 }

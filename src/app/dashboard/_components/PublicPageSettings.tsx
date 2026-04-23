@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { upload } from '@vercel/blob/client'
 import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2 } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
@@ -294,20 +295,19 @@ function ImageUpload({
     setError(null)
     setUploading(true)
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch(`/api/public-page/upload?kind=${kind}`, {
-        method: 'POST',
-        body: form,
+      // Client upload: browser gets a short-lived token from our endpoint
+      // then PUTs directly to Blob. Bypasses the 4.5 MB Vercel Function
+      // body limit (a smartphone cover photo is often 3-5 MB).
+      const ext = (file.type.split('/')[1] || 'bin').toLowerCase()
+      const filename = `${kind}.${ext}`
+      const blob = await upload(filename, file, {
+        access: 'public',
+        handleUploadUrl: '/api/public-page/upload',
+        contentType: file.type,
       })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data?.error || 'No se pudo subir.')
-        return
-      }
-      onChange(data.url)
-    } catch {
-      setError('Error de red')
+      onChange(blob.url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al subir')
     } finally {
       setUploading(false)
     }
