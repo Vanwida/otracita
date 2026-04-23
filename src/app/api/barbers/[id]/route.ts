@@ -20,6 +20,15 @@ function today(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
 }
 
+function nowHHMM(): string {
+  return new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 async function loadOwned(clientId: string, id: string) {
   const [row] = await db
     .select()
@@ -151,18 +160,27 @@ export async function DELETE(
   if (!row) return Response.json({ error: 'No existe.' }, { status: 404 });
 
   // Protect against removing a barber with future bookings — el caller las
-  // reasigna (o cancela) antes. Devolvemos la lista completa para que el
-  // dashboard pueda pintar el modal de reasignación sin otra query.
-  const future = await db
+  // reasigna (o cancela) antes. Una "reserva futura" es una cuyo inicio
+  // aún no ha ocurrido: un booking de HOY a las 11:00 con ahora 18:30 ya
+  // es pasada y NO bloquea. Comparamos fecha+hora completa.
+  const todayStr = today();
+  const nowStr = nowHHMM();
+  const sameDayOrLater = await db
     .select()
     .from(bookings)
     .where(
       and(
         eq(bookings.barberId, id),
-        gte(bookings.date, today()),
+        gte(bookings.date, todayStr),
         eq(bookings.status, 'confirmed'),
       ),
     );
+  const future = sameDayOrLater.filter((b) => {
+    if (b.date > todayStr) return true;
+    if (b.date < todayStr) return false;
+    // mismo día → solo cuenta si la hora aún no ha llegado
+    return b.time > nowStr;
+  });
   if (future.length > 0) {
     return Response.json(
       {
