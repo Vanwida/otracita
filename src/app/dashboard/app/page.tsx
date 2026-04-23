@@ -70,7 +70,7 @@ export default async function AppPage() {
 
       {!readyForApp && (
         <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm text-ink-2">
-          Tu app no es accesible todavía — activa el toggle &ldquo;Página pública activa&rdquo; abajo y guarda.
+          Tu app no está publicada todavía — activa el toggle &ldquo;App publicada&rdquo; abajo y guarda.
         </div>
       )}
 
@@ -83,7 +83,7 @@ export default async function AppPage() {
               <img src={qrDataUrl} alt="QR de tu app" className="h-40 w-40 rounded-lg border border-line" />
             ) : (
               <div className="h-40 w-40 rounded-lg border border-dashed border-line flex items-center justify-center text-ink-3 text-xs text-center p-3">
-                Activa tu página pública para ver el QR.
+                Publica tu app para ver el QR.
               </div>
             )}
           </div>

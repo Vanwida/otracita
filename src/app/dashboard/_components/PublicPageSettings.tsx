@@ -5,8 +5,9 @@ import { upload } from '@vercel/blob/client'
 import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2, Sun, Moon } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
-// PublicPageSettings — "Página pública" tab in Mi negocio.
-// Wraps the branding + slug editor for /b/[slug] and persists via
+// PublicPageSettings — editor de la app/página pública del barbero.
+// Es la fuente UNICA para configurar la app (branding, slug, link público,
+// colores, logo, etc). Se renderiza dentro de /dashboard/app. Persiste via
 // PATCH /api/public-page/config.
 // -----------------------------------------------------------------------------
 
@@ -107,11 +108,11 @@ export default function PublicPageSettings({ initial }: Props) {
       <div>
         <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
           <Globe className="h-4 w-4 text-brand" />
-          Página pública
+          Identidad de tu app
         </h2>
         <p className="text-sm text-ink-2 mt-1">
-          Tu URL para pegar en Instagram, Google Maps, flyers. El cliente la abre y reserva cita en 4 toques.
-          Usa el motor de tu barbería (mismo horario, mismos barberos, misma agenda).
+          Logo, colores, descripción y redes — todo lo que ve el cliente al abrir
+          tu app o escanear el QR. Mismo motor que tu agenda y tu WhatsApp.
         </p>
       </div>
 
@@ -152,11 +153,11 @@ export default function PublicPageSettings({ initial }: Props) {
             onChange={(e) => setPublicEnabled(e.target.checked)}
             className="h-4 w-4"
           />
-          Página pública activa
+          App publicada
         </label>
         {!publicEnabled && (
           <p className="text-xs text-warning">
-            Desactivada: cualquiera que abra tu enlace verá 404. Útil si estás de vacaciones o cerrado.
+            No publicada: cualquiera que abra tu enlace verá 404. Útil si estás de vacaciones o cerrado.
           </p>
         )}
       </div>
