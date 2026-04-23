@@ -215,19 +215,8 @@ export default async function PublicBookingPage({ params }: Props) {
 
           {/* Contenido */}
           <div className="relative h-full flex flex-col justify-between p-5 sm:p-7 min-h-[22rem]">
-            {/* Arriba: eyebrow + logo */}
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <div
-                    className="h-[2px] w-6 rounded-full"
-                    style={{ backgroundColor: palette.accent }}
-                  />
-                  <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-white/80">
-                    Premium Experience
-                  </span>
-                </div>
-              </div>
+            {/* Arriba: solo logo alineado a la derecha (sin eyebrow hardcoded) */}
+            <div className="flex items-start justify-end gap-3">
               {heroLogoUrl && (
                 <div
                   className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl overflow-hidden bg-white shadow-lg shrink-0"
@@ -239,18 +228,14 @@ export default async function PublicBookingPage({ params }: Props) {
               )}
             </div>
 
-            {/* Abajo: nombre + tagline + CTA + meta */}
+            {/* Abajo: nombre + descripcion (solo si el barbero la puso) + CTA + meta */}
             <div>
               <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-white leading-[1.05]">
                 {client.businessName}
               </h1>
-              {client.publicDescription ? (
+              {client.publicDescription && (
                 <p className="mt-2 text-sm text-white/85 leading-relaxed line-clamp-2 max-w-md">
                   {client.publicDescription}
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-white/85 max-w-md">
-                  Reserva tu cita online en segundos. Confirmación al instante por WhatsApp.
                 </p>
               )}
 
