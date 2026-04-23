@@ -529,58 +529,75 @@ function ServiceRow({
   selected: boolean
   onClick: () => void
 }) {
+  const hasDescription = service.description && service.description.trim().length > 0
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-2xl p-3 sm:p-4 flex items-center gap-3 sm:gap-4 transition-all active:scale-[0.99] text-left"
+      className="w-full rounded-2xl p-3 sm:p-4 flex flex-col gap-3 transition-all active:scale-[0.99] text-left overflow-hidden"
       style={{
         background: selected ? 'var(--brand-soft)' : 'var(--theme-surface)',
         border: `2px solid ${selected ? 'var(--brand-strong)' : 'var(--theme-line)'}`,
         boxShadow: selected ? `0 6px 16px -8px var(--brand-strong)` : undefined,
       }}
       aria-pressed={selected}
+      aria-expanded={selected && hasDescription ? true : undefined}
     >
-      <div
-        className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl flex items-center justify-center shrink-0"
-        style={{
-          background: selected ? 'var(--brand)' : 'var(--theme-overlay)',
-          color: selected ? 'var(--brand-ink)' : 'var(--brand-strong)',
-        }}
-      >
-        <Scissors className="h-5 w-5" />
+      <div className="flex items-center gap-3 sm:gap-4 w-full">
+        <div
+          className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: selected ? 'var(--brand)' : 'var(--theme-overlay)',
+            color: selected ? 'var(--brand-ink)' : 'var(--brand-strong)',
+          }}
+        >
+          <Scissors className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm sm:text-base leading-snug" style={{ color: 'var(--theme-ink)' }}>
+            {service.name}
+            {service.featured && (
+              <Star
+                className="inline-block h-3 w-3 -mt-1 ml-1.5"
+                fill="currentColor"
+                style={{ color: 'var(--brand-2)' }}
+              />
+            )}
+          </p>
+          <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: 'var(--theme-ink-3)' }}>
+            <Clock className="h-3 w-3" />
+            {service.duration} min
+            {hasDescription && !selected && (
+              <span className="ml-1 opacity-70">· Toca para ver detalles</span>
+            )}
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="font-display text-lg sm:text-xl font-bold" style={{ color: 'var(--brand-strong)' }}>
+            {formatEuros(service.price)}€
+          </p>
+        </div>
+        <div
+          className="h-5 w-5 rounded-full flex items-center justify-center shrink-0"
+          style={{
+            border: `2px solid ${selected ? 'var(--brand-strong)' : 'var(--theme-line)'}`,
+            background: selected ? 'var(--brand)' : 'transparent',
+            color: selected ? 'var(--brand-ink)' : 'transparent',
+          }}
+        >
+          {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm sm:text-base leading-snug" style={{ color: 'var(--theme-ink)' }}>
-          {service.name}
-          {service.featured && (
-            <Star
-              className="inline-block h-3 w-3 -mt-1 ml-1.5"
-              fill="currentColor"
-              style={{ color: 'var(--brand-2)' }}
-            />
-          )}
-        </p>
-        <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: 'var(--theme-ink-3)' }}>
-          <Clock className="h-3 w-3" />
-          {service.duration} min
-        </p>
-      </div>
-      <div className="text-right shrink-0">
-        <p className="font-display text-lg sm:text-xl font-bold" style={{ color: 'var(--brand-strong)' }}>
-          {formatEuros(service.price)}€
-        </p>
-      </div>
-      <div
-        className="h-5 w-5 rounded-full flex items-center justify-center shrink-0"
-        style={{
-          border: `2px solid ${selected ? 'var(--brand-strong)' : 'var(--theme-line)'}`,
-          background: selected ? 'var(--brand)' : 'transparent',
-          color: selected ? 'var(--brand-ink)' : 'transparent',
-        }}
-      >
-        {selected && <Check className="h-3 w-3" strokeWidth={3} />}
-      </div>
+
+      {/* Descripción expandible — solo cuando esta seleccionado Y tiene */}
+      {selected && hasDescription && (
+        <div
+          className="pl-[60px] sm:pl-[72px] pr-2 pb-1 text-xs sm:text-sm leading-relaxed"
+          style={{ color: 'var(--theme-ink-2)' }}
+        >
+          {service.description}
+        </div>
+      )}
     </button>
   )
 }
