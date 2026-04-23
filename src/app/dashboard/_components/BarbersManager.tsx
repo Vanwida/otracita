@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { upload } from '@vercel/blob/client'
-import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X, Camera, User } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X, Camera, User, AlertTriangle } from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 
 // -----------------------------------------------------------------------------
@@ -37,6 +37,15 @@ interface BarberRow {
   updatedAt: string
 }
 
+interface BlockingBooking {
+  id: string
+  date: string
+  time: string
+  service: string
+  duration: number
+  customerName: string
+}
+
 const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<{ barbers: BarberRow[] }>)
 
 export default function BarbersManager() {
@@ -50,6 +59,14 @@ export default function BarbersManager() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Estado del modal de reasignación — se abre cuando un borrado falla por
+  // tener reservas futuras. Contiene la lista de reservas y el barbero a
+  // borrar. El usuario reasigna/cancela y luego reintenta el borrado.
+  const [reassignModal, setReassignModal] = useState<null | {
+    barberId: string
+    barberName: string
+    blockingBookings: BlockingBooking[]
+  }>(null)
 
   const barbers = data?.barbers ?? []
 
@@ -103,12 +120,41 @@ export default function BarbersManager() {
       const res = await fetch(`/api/barbers/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setErrorMsg(body?.error || 'No se pudo eliminar.')
+        // Si el API devuelve la lista de reservas bloqueantes, abrimos modal
+        // para reasignar/cancelar una a una. Si no, fallback a error inline.
+        if (res.status === 409 && Array.isArray(body?.blockingBookings) && body.blockingBookings.length > 0) {
+          setReassignModal({
+            barberId: id,
+            barberName: name,
+            blockingBookings: body.blockingBookings,
+          })
+        } else {
+          setErrorMsg(body?.error || 'No se pudo eliminar.')
+        }
       }
       await mutate()
     } finally {
       setBusyId(null)
     }
+  }
+
+  /** Invocado por el modal tras reasignar o cancelar una reserva: actualiza
+   *  la lista bloqueante. Si queda vacía, cierra el modal y reintenta
+   *  borrar al barbero. */
+  const removeBlocking = (bookingId: string) => {
+    setReassignModal((prev) => {
+      if (!prev) return prev
+      const next = prev.blockingBookings.filter((b) => b.id !== bookingId)
+      if (next.length === 0) {
+        // Todas reasignadas/canceladas — reintenta borrado en background.
+        void (async () => {
+          await fetch(`/api/barbers/${prev.barberId}`, { method: 'DELETE' })
+          await mutate()
+        })()
+        return null
+      }
+      return { ...prev, blockingBookings: next }
+    })
   }
 
   const move = async (id: string, direction: -1 | 1) => {
@@ -179,6 +225,16 @@ export default function BarbersManager() {
           Añadir
         </button>
       </div>
+
+      {reassignModal && (
+        <ReassignModal
+          barberName={reassignModal.barberName}
+          blockingBookings={reassignModal.blockingBookings}
+          otherBarbers={barbers.filter((b) => b.id !== reassignModal.barberId)}
+          onResolved={removeBlocking}
+          onClose={() => setReassignModal(null)}
+        />
+      )}
     </div>
   )
 }
@@ -427,6 +483,185 @@ function BarberCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// ReassignModal — modal para resolver reservas bloqueantes al intentar
+// eliminar un barbero. Cada reserva muestra: servicio, fecha/hora, cliente,
+// + dropdown de otros barberos para reasignar + botón de cancelar. Al
+// resolver todas, el modal se cierra y el borrado del barbero se reintenta.
+// -----------------------------------------------------------------------------
+function ReassignModal({
+  barberName,
+  blockingBookings,
+  otherBarbers,
+  onResolved,
+  onClose,
+}: {
+  barberName: string
+  blockingBookings: BlockingBooking[]
+  otherBarbers: BarberRow[]
+  onResolved: (bookingId: string) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-xl bg-surface rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+        <div className="flex items-start gap-3 p-5 border-b border-line">
+          <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-ink">
+              Resuelve las reservas de {barberName}
+            </h3>
+            <p className="text-sm text-ink-2 mt-0.5">
+              Tiene {blockingBookings.length} reserva{blockingBookings.length === 1 ? '' : 's'}{' '}
+              futura{blockingBookings.length === 1 ? '' : 's'}. Reasigna o cancela cada una
+              para poder eliminarlo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="text-ink-3 hover:text-ink p-1 -m-1"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-2">
+          {blockingBookings.map((b) => (
+            <BlockingBookingRow
+              key={b.id}
+              booking={b}
+              otherBarbers={otherBarbers}
+              onResolved={() => onResolved(b.id)}
+            />
+          ))}
+        </div>
+
+        <div className="p-4 border-t border-line text-right">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-ink-2 hover:text-ink underline"
+          >
+            Cerrar sin eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BlockingBookingRow({
+  booking,
+  otherBarbers,
+  onResolved,
+}: {
+  booking: BlockingBooking
+  otherBarbers: BarberRow[]
+  onResolved: () => void
+}) {
+  const [targetBarberId, setTargetBarberId] = useState<string>(otherBarbers[0]?.id || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const reassign = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const body: { barberId: string | null } = {
+        barberId: targetBarberId === 'any' ? null : targetBarberId,
+      }
+      const r = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        setErr(d?.error || 'No se pudo reasignar.')
+        return
+      }
+      onResolved()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancel = async () => {
+    if (!confirm('¿Cancelar esta reserva? El cliente no recibe aviso automático.')) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        setErr(d?.error || 'No se pudo cancelar.')
+        return
+      }
+      onResolved()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-overlay/50 p-3 space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium text-sm text-ink truncate">
+            {booking.service} · {booking.duration} min
+          </p>
+          <p className="text-xs text-ink-2 mt-0.5">
+            {booking.date} a las {booking.time} · {booking.customerName}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={targetBarberId}
+          onChange={(e) => setTargetBarberId(e.target.value)}
+          disabled={busy}
+          className="flex-1 min-w-[140px] bg-surface border border-line rounded-lg px-2.5 py-1.5 text-xs text-ink focus:border-brand outline-none"
+        >
+          {otherBarbers.length > 0 && (
+            <>
+              {otherBarbers.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </>
+          )}
+          <option value="any">Cualquiera (asigna automática)</option>
+        </select>
+        <button
+          type="button"
+          onClick={reassign}
+          disabled={busy || !targetBarberId}
+          className="inline-flex items-center gap-1 rounded-lg bg-brand hover:bg-brand-strong px-3 py-1.5 text-xs font-semibold text-brand-ink disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+          Reasignar
+        </button>
+        <button
+          type="button"
+          onClick={cancel}
+          disabled={busy}
+          className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface hover:bg-danger/10 hover:border-danger hover:text-danger px-3 py-1.5 text-xs font-medium text-ink-2 disabled:opacity-60"
+        >
+          Cancelar cita
+        </button>
+      </div>
+      {err && <p className="text-xs text-danger">{err}</p>}
     </div>
   )
 }

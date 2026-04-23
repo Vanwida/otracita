@@ -150,8 +150,9 @@ export async function DELETE(
   const row = await loadOwned(access.client.id, id);
   if (!row) return Response.json({ error: 'No existe.' }, { status: 404 });
 
-  // Protect against removing a barber with future bookings — the caller has
-  // to reassign those first (standard Booksy/Fresha behaviour).
+  // Protect against removing a barber with future bookings — el caller las
+  // reasigna (o cancela) antes. Devolvemos la lista completa para que el
+  // dashboard pueda pintar el modal de reasignación sin otra query.
   const future = await db
     .select()
     .from(bookings)
@@ -165,7 +166,15 @@ export async function DELETE(
   if (future.length > 0) {
     return Response.json(
       {
-        error: `No puedes eliminar a ${row.name}: tiene ${future.length} reserva(s) futura(s). Reasígnalas antes.`,
+        error: `No puedes eliminar a ${row.name}: tiene ${future.length} reserva(s) futura(s). Reasígnalas o cancélalas antes.`,
+        blockingBookings: future.map((b) => ({
+          id: b.id,
+          date: b.date,
+          time: b.time,
+          service: b.service,
+          duration: b.duration,
+          customerName: b.customerName,
+        })),
       },
       { status: 409 },
     );
