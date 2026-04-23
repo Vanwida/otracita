@@ -7,6 +7,7 @@ import { hoursForDate } from '@/lib/availability'
 import { MapPin, Clock } from 'lucide-react'
 import PublicBookingFlow from './PublicBookingFlow'
 import SocialLinks from './SocialLinks'
+import PwaBootstrap from './PwaBootstrap'
 
 // -----------------------------------------------------------------------------
 // /b/[slug] — public booking page for a single barbería.
@@ -58,9 +59,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description =
     client.publicDescription ||
     `Reserva tu cita en ${client.businessName} online. Sin llamadas, sin esperas.`
+  const brand =
+    client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor) ? client.brandColor : '#111111'
+  const iconUrl = client.brandLogoUrl ?? `/manifest/${slug}/icon.svg`
+
   return {
     title,
     description,
+    // Per-barbería PWA manifest — "Add to Home Screen" uses this to build
+    // the installed app with THIS barbería's name + logo, not otracita's.
+    manifest: `/manifest/${slug}/manifest.webmanifest`,
+    themeColor: brand,
+    appleWebApp: {
+      capable: true,
+      title: client.businessName,
+      statusBarStyle: 'default',
+    },
+    icons: {
+      icon: iconUrl,
+      apple: iconUrl,
+      shortcut: iconUrl,
+    },
     openGraph: {
       title,
       description,
@@ -218,6 +237,8 @@ export default async function PublicBookingPage({ params }: Props) {
       <footer className="mx-auto max-w-3xl px-4 py-6 text-center text-xs text-[var(--color-ink-3)] border-t border-[var(--color-line)]">
         Tecnología por <a href="https://otracita.es" className="underline hover:text-[var(--color-ink-2)]">otracita.es</a>
       </footer>
+
+      <PwaBootstrap businessName={client.businessName} brand={brand} />
     </main>
   )
 }
