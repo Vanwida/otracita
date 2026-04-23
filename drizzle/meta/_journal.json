@@ -78,6 +78,13 @@
       "when": 1776948208119,
       "tag": "0010_familiar_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776950496050,
+      "tag": "0011_orange_wraith",
+      "breakpoints": true
     }
   ]
 }

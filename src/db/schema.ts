@@ -125,6 +125,24 @@ export const appOtpCodes = pgTable('app_otp_codes', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Web Push subscriptions — one per installed-device per app_user. Each
+// subscription is tied to a specific barbería context so we only send
+// push from barberías the user cares about (if they installed 2 apps,
+// they get 2 subscriptions with the same user but different clientId).
+// endpoint is globally unique across the push service; we dedupe on it.
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => appUsers.id),
+  clientId: uuid('client_id').references(() => clients.id),   // nullable for cross-barbería nudges
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  authKey: text('auth_key').notNull(),
+  userAgent: text('user_agent'),
+  enabled: boolean('enabled').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Active PWA sessions. Token cookie stores the raw value; DB stores
 // SHA-256 hash of it. Refreshed lastUsedAt on every request.
 export const appSessions = pgTable('app_sessions', {

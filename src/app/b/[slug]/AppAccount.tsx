@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { User, X, LogOut, Calendar, Loader2, ChevronLeft } from 'lucide-react'
+import { User, X, LogOut, Calendar, Loader2, ChevronLeft, Bell, BellOff } from 'lucide-react'
+import { getPushStatus, pushSupported, subscribeToPush, unsubscribeFromPush, type PushStatus } from '@/lib/app-auth/push-client'
 
 // -----------------------------------------------------------------------------
 // AppAccount — floating "Mi cuenta" button + full-screen panel.
@@ -123,6 +124,12 @@ export default function AppAccount({ slug, brand }: Props) {
       await refreshMe()
       setPanel('home')
       setCode('')
+      // Ask for push permission right after login so the user gets confirmations
+      // and reminders from this barbería. Fire-and-forget — if they deny,
+      // the Perfil panel lets them reconsider later.
+      if (pushSupported() && Notification.permission === 'default') {
+        subscribeToPush(slug).catch(() => {})
+      }
     } catch {
       setError('Error de red')
     } finally {
@@ -403,6 +410,7 @@ export default function AppAccount({ slug, brand }: Props) {
             <Field label="Nombre" value={me.user?.name || '—'} />
             <Field label="Teléfono" value={me.user?.phone || '—'} />
             <Field label="Email" value={me.user?.email || '—'} />
+            <PushToggle slug={slug} brand={brand} />
             <p className="text-xs text-[var(--color-ink-3)] pt-4">
               Edición de perfil próximamente. Para cambios urgentes escríbenos por WhatsApp.
             </p>
@@ -421,5 +429,79 @@ function Field({ label, value }: { label: string; value: string }) {
       <span className="text-xs uppercase tracking-wider text-[var(--color-ink-3)]">{label}</span>
       <span className="font-medium truncate">{value}</span>
     </div>
+  )
+}
+
+function PushToggle({ slug, brand }: { slug: string; brand: string }) {
+  const [status, setStatus] = useState<PushStatus>('unsupported')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setStatus(getPushStatus())
+  }, [])
+
+  if (status === 'unsupported') {
+    return (
+      <div className="rounded-xl border border-[var(--color-line)] p-3 text-xs text-[var(--color-ink-3)] flex items-center gap-2">
+        <BellOff className="h-3.5 w-3.5" />
+        Este dispositivo no soporta notificaciones.
+      </div>
+    )
+  }
+
+  const enable = async () => {
+    setBusy(true)
+    const next = await subscribeToPush(slug)
+    setStatus(next)
+    setBusy(false)
+  }
+
+  const disable = async () => {
+    setBusy(true)
+    await unsubscribeFromPush()
+    setStatus('default')
+    setBusy(false)
+  }
+
+  if (status === 'denied') {
+    return (
+      <div className="rounded-xl border border-[var(--color-line)] p-3 text-xs text-[var(--color-ink-2)] flex items-center gap-2">
+        <BellOff className="h-3.5 w-3.5" />
+        Notificaciones bloqueadas en los ajustes del navegador. Actívalas ahí para recibir recordatorios.
+      </div>
+    )
+  }
+
+  if (status === 'granted') {
+    return (
+      <button
+        type="button"
+        onClick={disable}
+        disabled={busy}
+        className="w-full flex items-center gap-3 rounded-xl border border-[var(--color-line)] p-3 text-left hover:bg-[var(--color-overlay)] transition-colors disabled:opacity-60"
+      >
+        <Bell className="h-5 w-5" style={{ color: brand }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Notificaciones activadas</p>
+          <p className="text-xs text-[var(--color-ink-3)]">Te avisamos antes de cada cita. Toca para desactivar.</p>
+        </div>
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={enable}
+      disabled={busy}
+      className="w-full flex items-center gap-3 rounded-xl p-3 text-left text-white disabled:opacity-60"
+      style={{ background: brand }}
+    >
+      <Bell className="h-5 w-5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold">Activar notificaciones</p>
+        <p className="text-xs opacity-90">Recordatorios de cita y novedades — cero spam.</p>
+      </div>
+    </button>
   )
 }

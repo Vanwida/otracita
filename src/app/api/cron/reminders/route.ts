@@ -4,6 +4,7 @@ import { eq, and, lt, sql } from 'drizzle-orm';
 import { sendWhatsAppButtons } from '@/lib/whatsapp/sender';
 import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
+import { sendPushByPhone } from '@/lib/app-auth/push';
 
 type Lang = 'es' | 'en';
 
@@ -82,6 +83,18 @@ export async function GET(request: Request) {
       await db.update(bookings)
         .set({ reminderSent: true })
         .where(eq(bookings.id, booking.id));
+
+      // Fire-and-forget push to the PWA subscription. The app_user may or
+      // may not exist — the helper no-ops if this phone isn't registered.
+      void sendPushByPhone(booking.customerPhone, client.id, {
+        title: `Mañana tu cita en ${client.businessName}`,
+        body: `${booking.service}${booking.barber ? ` con ${booking.barber}` : ''} · ${formatDateSpanish(booking.date)} a las ${booking.time}`,
+        url: client.publicSlug ? `/b/${client.publicSlug}` : '/',
+        tag: `reminder-${booking.id}`,
+        data: { bookingId: booking.id, kind: 'reminder_24h' },
+      }).catch((err) => {
+        console.error(`[cron/reminders] push failed for ${booking.id}:`, err);
+      });
 
       sent++;
     } catch (error) {
