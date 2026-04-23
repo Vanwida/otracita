@@ -59,7 +59,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description =
     client.publicDescription ||
     `Reserva tu cita en ${client.businessName} online. Sin llamadas, sin esperas.`
-  const brand =
+  // themeColor de la pestaña del browser = color accent si hay, si no negro.
+  const accent =
     client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor) ? client.brandColor : '#111111'
   const iconUrl = client.brandLogoUrl ?? `/manifest/${slug}/icon.svg`
 
@@ -67,7 +68,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title,
     description,
     manifest: `/manifest/${slug}/manifest.webmanifest`,
-    themeColor: brand,
+    themeColor: accent,
     appleWebApp: {
       capable: true,
       title: client.businessName,
@@ -111,7 +112,7 @@ export default async function PublicBookingPage({ params }: Props) {
     }))
     .filter((s) => s.name.length > 0)
 
-  const palette = buildPalette(client.brandColor, client.brandColorSecondary)
+  const palette = buildPalette(client.brandTheme, client.brandColor)
   const whatsappNumber = client.whatsappNumber || client.phone
   const waLink = whatsappNumber
     ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}`
@@ -129,29 +130,36 @@ export default async function PublicBookingPage({ params }: Props) {
     <main
       className="min-h-screen antialiased"
       style={{
-        // ── Paleta de marca ──────────────────────────────────────────────
-        ['--brand' as string]: palette.brand,
-        ['--brand-2' as string]: palette.brand2,
-        ['--brand-soft' as string]: palette.brandSoft,
-        ['--brand-2-soft' as string]: palette.brand2Soft,
-        ['--brand-strong' as string]: palette.brandStrong,
-        ['--brand-ink' as string]: palette.brandInk,
-        // ── Tokens de superficie (tema adaptativo claro/oscuro) ──────────
-        ['--theme-canvas' as string]: palette.theme.canvas,
-        ['--theme-surface' as string]: palette.theme.surface,
-        ['--theme-surface-elevated' as string]: palette.theme.surfaceElevated,
-        ['--theme-overlay' as string]: palette.theme.overlay,
-        ['--theme-line' as string]: palette.theme.line,
-        ['--theme-ink' as string]: palette.theme.ink,
-        ['--theme-ink-2' as string]: palette.theme.ink2,
-        ['--theme-ink-3' as string]: palette.theme.ink3,
+        // ── Accent (la UNICA identidad cromática del barbero) ───────────
+        // Mantenemos también los alias antiguos (--brand*) para no romper
+        // los componentes que aún referencian esos nombres — apuntan todos
+        // al accent.
+        ['--accent' as string]: palette.accent,
+        ['--accent-soft' as string]: palette.accentSoft,
+        ['--accent-strong' as string]: palette.accentStrong,
+        ['--accent-ink' as string]: palette.accentInk,
+        ['--brand' as string]: palette.accent,
+        ['--brand-2' as string]: palette.accent,
+        ['--brand-soft' as string]: palette.accentSoft,
+        ['--brand-2-soft' as string]: palette.accentSoft,
+        ['--brand-strong' as string]: palette.accentStrong,
+        ['--brand-ink' as string]: palette.accentInk,
+        // ── Tokens de superficie (tema light/dark) ──────────────────────
+        ['--theme-canvas' as string]: palette.tokens.canvas,
+        ['--theme-surface' as string]: palette.tokens.surface,
+        ['--theme-surface-elevated' as string]: palette.tokens.surfaceElevated,
+        ['--theme-overlay' as string]: palette.tokens.overlay,
+        ['--theme-line' as string]: palette.tokens.line,
+        ['--theme-ink' as string]: palette.tokens.ink,
+        ['--theme-ink-2' as string]: palette.tokens.ink2,
+        ['--theme-ink-3' as string]: palette.tokens.ink3,
         // ── Anular variables "canvas/ink" globales de otracita ──────────
-        ['--color-canvas' as string]: palette.theme.canvas,
-        ['--color-surface' as string]: palette.theme.surface,
-        ['--color-line' as string]: palette.theme.line,
-        ['--color-ink' as string]: palette.theme.ink,
-        ['--color-ink-2' as string]: palette.theme.ink2,
-        ['--color-ink-3' as string]: palette.theme.ink3,
+        ['--color-canvas' as string]: palette.tokens.canvas,
+        ['--color-surface' as string]: palette.tokens.surface,
+        ['--color-line' as string]: palette.tokens.line,
+        ['--color-ink' as string]: palette.tokens.ink,
+        ['--color-ink-2' as string]: palette.tokens.ink2,
+        ['--color-ink-3' as string]: palette.tokens.ink3,
         backgroundColor: 'var(--theme-canvas)',
         color: 'var(--theme-ink)',
         // Bajo la bottom tab bar (64px) + safe area.
@@ -179,13 +187,13 @@ export default async function PublicBookingPage({ params }: Props) {
               <div
                 className="absolute inset-0"
                 style={{
-                  background: `linear-gradient(180deg, ${hexToRgba(palette.brand, 0.15)} 0%, rgba(0,0,0,0.1) 30%, rgba(0,0,0,0.88) 100%)`,
+                  background: `linear-gradient(180deg, ${hexToRgba(palette.accent, 0.15)} 0%, rgba(0,0,0,0.1) 30%, rgba(0,0,0,0.88) 100%)`,
                 }}
               />
               {/* Halo de color secundario en esquina inferior izquierda. */}
               <div
                 className="absolute -bottom-8 -left-8 w-52 h-52 rounded-full opacity-50 blur-3xl pointer-events-none"
-                style={{ background: palette.brand2 }}
+                style={{ background: palette.accent }}
               />
             </>
           ) : (
@@ -193,7 +201,7 @@ export default async function PublicBookingPage({ params }: Props) {
               <div
                 className="absolute inset-0"
                 style={{
-                  background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brand2} 100%)`,
+                  background: `linear-gradient(135deg, ${palette.accent} 0%, ${palette.accent} 100%)`,
                 }}
               />
               <div
@@ -214,7 +222,7 @@ export default async function PublicBookingPage({ params }: Props) {
                 <div className="flex items-center gap-2 mb-1">
                   <div
                     className="h-[2px] w-6 rounded-full"
-                    style={{ backgroundColor: palette.brand2 }}
+                    style={{ backgroundColor: palette.accent }}
                   />
                   <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-white/80">
                     Premium Experience
@@ -224,7 +232,7 @@ export default async function PublicBookingPage({ params }: Props) {
               {heroLogoUrl && (
                 <div
                   className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl overflow-hidden bg-white shadow-lg shrink-0"
-                  style={{ boxShadow: `0 8px 24px -8px ${palette.brand2}` }}
+                  style={{ boxShadow: `0 8px 24px -8px ${palette.accent}` }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={heroLogoUrl} alt={client.businessName} className="h-full w-full object-cover" />
@@ -251,9 +259,9 @@ export default async function PublicBookingPage({ params }: Props) {
                 href="#reservar"
                 className="mt-4 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
                 style={{
-                  background: palette.brand,
-                  color: palette.brandInk,
-                  boxShadow: `0 10px 24px -8px ${palette.brand}`,
+                  background: palette.accent,
+                  color: palette.accentInk,
+                  boxShadow: `0 10px 24px -8px ${palette.accent}`,
                 }}
               >
                 Reservar cita
@@ -306,8 +314,8 @@ export default async function PublicBookingPage({ params }: Props) {
 
       <BottomTabBar />
 
-      <PwaBootstrap businessName={client.businessName} brand={palette.brand} />
-      <AppAccount slug={slug} brand={palette.brand} />
+      <PwaBootstrap businessName={client.businessName} brand={palette.accent} />
+      <AppAccount slug={slug} brand={palette.accent} />
     </main>
   )
 }

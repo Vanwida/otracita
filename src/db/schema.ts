@@ -85,8 +85,9 @@ export const clients = pgTable('clients', {
   brandLogoUrl: text('brand_logo_url'),
   brandLogoAltUrl: text('brand_logo_alt_url'),               // logo para fondo oscuro (solo si principal tira a oscuro)
   brandCoverUrl: text('brand_cover_url'),
-  brandColor: text('brand_color'),                           // hex primary; null = neutral black
-  brandColorSecondary: text('brand_color_secondary'),        // hex optional accent; null = derived from primary
+  brandTheme: text('brand_theme').notNull().default('light'),  // 'light' | 'dark' — drives bg/ink tokens
+  brandColor: text('brand_color'),                             // hex accent color (selected states, CTAs)
+  brandColorSecondary: text('brand_color_secondary'),          // deprecated — legacy; no longer read by /b/[slug]
   publicDescription: text('public_description'),             // short "about" paragraph
   instagramHandle: text('instagram_handle'),                 // without @
   tiktokHandle: text('tiktok_handle'),                       // without @

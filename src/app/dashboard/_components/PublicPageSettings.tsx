@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { upload } from '@vercel/blob/client'
-import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2 } from 'lucide-react'
+import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2, Sun, Moon } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // PublicPageSettings — "Página pública" tab in Mi negocio.
@@ -17,7 +17,7 @@ export interface PublicPageInitial {
   brandLogoAltUrl: string | null
   brandCoverUrl: string | null
   brandColor: string | null
-  brandColorSecondary: string | null
+  brandTheme: string
   publicDescription: string | null
   instagramHandle: string | null
   tiktokHandle: string | null
@@ -37,8 +37,10 @@ export default function PublicPageSettings({ initial }: Props) {
   const [brandLogoUrl, setBrandLogoUrl] = useState(initial.brandLogoUrl || '')
   const [brandLogoAltUrl, setBrandLogoAltUrl] = useState(initial.brandLogoAltUrl || '')
   const [brandCoverUrl, setBrandCoverUrl] = useState(initial.brandCoverUrl || '')
-  const [brandColor, setBrandColor] = useState(initial.brandColor || '#111111')
-  const [brandColorSecondary, setBrandColorSecondary] = useState(initial.brandColorSecondary || '')
+  const [brandColor, setBrandColor] = useState(initial.brandColor || '#C9653C')
+  const [brandTheme, setBrandTheme] = useState<'light' | 'dark'>(
+    initial.brandTheme === 'dark' ? 'dark' : 'light',
+  )
   const [publicDescription, setPublicDescription] = useState(initial.publicDescription || '')
   const [instagramHandle, setInstagramHandle] = useState(initial.instagramHandle || '')
   const [tiktokHandle, setTiktokHandle] = useState(initial.tiktokHandle || '')
@@ -77,7 +79,7 @@ export default function PublicPageSettings({ initial }: Props) {
             brandLogoAltUrl: brandLogoAltUrl.trim() || null,
             brandCoverUrl: brandCoverUrl.trim() || null,
             brandColor,
-            brandColorSecondary: brandColorSecondary.trim() || null,
+            brandTheme,
             publicDescription: publicDescription.trim() || null,
             instagramHandle: instagramHandle.trim() || null,
             tiktokHandle: tiktokHandle.trim() || null,
@@ -203,45 +205,77 @@ export default function PublicPageSettings({ initial }: Props) {
         darkPreview
       />
 
-      {/* Colores — principal dirige los CTAs y el degradado del hero; el
-          acento (opcional) se usa para detalles decorativos. Si se deja
-          vacío, derivamos el acento del principal (−18% brillo). */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <label className="text-sm font-medium text-ink-2">Color principal</label>
-            <p className="text-xs text-ink-3 mt-0.5">Botones, slot seleccionado, degradado del hero.</p>
+      {/* Apariencia — dos decisiones:
+          1) Tema: claro u oscuro (fondos/textos neutros)
+          2) Color de acento: UN hex que tiñe CTAs, estados seleccionados,
+             badges, etc. Es la identidad cromática del barbero. */}
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium text-ink-2 block mb-2">Tema</label>
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl border border-line bg-overlay max-w-sm">
+            <ThemeOption
+              label="Claro"
+              icon={Sun}
+              active={brandTheme === 'light'}
+              onClick={() => setBrandTheme('light')}
+              previewBg="#FAFAF7"
+              previewInk="#0F0F0F"
+            />
+            <ThemeOption
+              label="Oscuro"
+              icon={Moon}
+              active={brandTheme === 'dark'}
+              onClick={() => setBrandTheme('dark')}
+              previewBg="#18181C"
+              previewInk="#FAFAFA"
+            />
           </div>
-          <input
-            type="color"
-            value={brandColor}
-            onChange={(e) => setBrandColor(e.target.value)}
-            className="h-10 w-14 rounded border border-line cursor-pointer shrink-0"
-          />
-          <span className="font-mono text-[10px] text-ink-3 w-14 text-right">{brandColor}</span>
+          <p className="text-xs text-ink-3 mt-2">
+            Define el fondo y el color del texto. Si eliges oscuro y tu logo no se
+            ve sobre fondo negro, sube un logo alternativo arriba.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <label className="text-sm font-medium text-ink-2">Color de acento <span className="text-ink-3 font-normal">(opcional)</span></label>
-            <p className="text-xs text-ink-3 mt-0.5">Detalles decorativos. Vacío = lo derivamos del principal.</p>
+
+        <div>
+          <label className="text-sm font-medium text-ink-2 block mb-2">Color de acento</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={brandColor}
+              onChange={(e) => setBrandColor(e.target.value)}
+              className="h-12 w-16 rounded-lg border border-line cursor-pointer shrink-0"
+            />
+            <div className="flex-1 flex flex-col gap-1">
+              <span className="font-mono text-xs text-ink">{brandColor}</span>
+              <p className="text-xs text-ink-3">
+                Pinta CTAs, servicio seleccionado, hora elegida, badges. Elige un color
+                vibrante que represente tu marca — rojo, amarillo, verde, dorado, el que sea.
+              </p>
+            </div>
+            {/* Preview del accent contra ambos temas */}
+            <div className="flex gap-1.5 shrink-0">
+              <div
+                className="h-12 w-12 rounded-lg flex items-center justify-center text-[10px] font-bold"
+                style={{ background: '#FAFAF7', color: '#0F0F0F', border: '1px solid #E5E7EB' }}
+                title="Preview en tema claro"
+              >
+                <span
+                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  style={{ background: brandColor }}
+                />
+              </div>
+              <div
+                className="h-12 w-12 rounded-lg flex items-center justify-center text-[10px] font-bold"
+                style={{ background: '#18181C', color: '#FAFAFA' }}
+                title="Preview en tema oscuro"
+              >
+                <span
+                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  style={{ background: brandColor }}
+                />
+              </div>
+            </div>
           </div>
-          <input
-            type="color"
-            value={brandColorSecondary || '#000000'}
-            onChange={(e) => setBrandColorSecondary(e.target.value)}
-            className="h-10 w-14 rounded border border-line cursor-pointer shrink-0"
-          />
-          {brandColorSecondary ? (
-            <button
-              type="button"
-              onClick={() => setBrandColorSecondary('')}
-              className="font-mono text-[10px] text-ink-3 hover:text-danger w-14 text-right underline decoration-dotted"
-            >
-              quitar
-            </button>
-          ) : (
-            <span className="font-mono text-[10px] text-ink-3 w-14 text-right">auto</span>
-          )}
         </div>
       </div>
 
@@ -284,6 +318,41 @@ export default function PublicPageSettings({ initial }: Props) {
         </button>
       </div>
     </div>
+  )
+}
+
+function ThemeOption({
+  label,
+  icon: Icon,
+  active,
+  onClick,
+  previewBg,
+  previewInk,
+}: {
+  label: string
+  icon: typeof Sun
+  active: boolean
+  onClick: () => void
+  previewBg: string
+  previewInk: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+        active ? 'bg-surface shadow-sm ring-1 ring-brand' : 'hover:bg-surface/50'
+      }`}
+      aria-pressed={active}
+    >
+      <span
+        className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 border"
+        style={{ background: previewBg, color: previewInk, borderColor: active ? previewInk + '20' : 'transparent' }}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className={active ? 'text-ink' : 'text-ink-2'}>{label}</span>
+    </button>
   )
 }
 

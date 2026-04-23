@@ -23,7 +23,7 @@ interface Body {
   brandLogoAltUrl?: unknown
   brandCoverUrl?: unknown
   brandColor?: unknown
-  brandColorSecondary?: unknown
+  brandTheme?: unknown
   publicDescription?: unknown
   instagramHandle?: unknown
   tiktokHandle?: unknown
@@ -103,7 +103,9 @@ export async function PATCH(req: Request) {
   if ('brandLogoAltUrl' in body) patch.brandLogoAltUrl = cleanUrl(body.brandLogoAltUrl)
   if ('brandCoverUrl' in body) patch.brandCoverUrl = cleanUrl(body.brandCoverUrl)
   if ('brandColor' in body) patch.brandColor = cleanHexColor(body.brandColor)
-  if ('brandColorSecondary' in body) patch.brandColorSecondary = cleanHexColor(body.brandColorSecondary)
+  if ('brandTheme' in body) {
+    patch.brandTheme = body.brandTheme === 'dark' ? 'dark' : 'light'
+  }
   if ('publicDescription' in body) patch.publicDescription = cleanString(body.publicDescription, 600)
   if ('instagramHandle' in body) patch.instagramHandle = cleanHandle(body.instagramHandle)
   if ('tiktokHandle' in body) patch.tiktokHandle = cleanHandle(body.tiktokHandle)
@@ -120,7 +122,7 @@ export async function PATCH(req: Request) {
     brandLogoAltUrl: updated.brandLogoAltUrl,
     brandCoverUrl: updated.brandCoverUrl,
     brandColor: updated.brandColor,
-    brandColorSecondary: updated.brandColorSecondary,
+    brandTheme: updated.brandTheme,
     publicDescription: updated.publicDescription,
     instagramHandle: updated.instagramHandle,
     tiktokHandle: updated.tiktokHandle,
