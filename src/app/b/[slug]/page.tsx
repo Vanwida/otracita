@@ -263,10 +263,16 @@ export default async function PublicBookingPage({ params }: Props) {
                   {todayHours ? `Abierto · ${todayHours.start}–${todayHours.end}` : 'Cerrado hoy'}
                 </span>
                 {client.address && (
-                  <span className="inline-flex items-center gap-1.5 max-w-full">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.address)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 max-w-full underline decoration-white/30 underline-offset-2 hover:decoration-white/80"
+                    aria-label={`Abrir ${client.address} en Google Maps`}
+                  >
                     <MapPin className="h-3 w-3 shrink-0" />
                     <span className="truncate">{client.address}</span>
-                  </span>
+                  </a>
                 )}
               </div>
             </div>
