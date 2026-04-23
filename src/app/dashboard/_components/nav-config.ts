@@ -8,6 +8,7 @@ import {
   CreditCard,
   FileText,
   HelpCircle,
+  Smartphone,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,6 +54,7 @@ export const CONFIG_NAV: NavSection = {
   items: [
     { href: '/dashboard/negocio', icon: Store, label: 'Mi negocio' },
     { href: '/dashboard/bot', icon: Bot, label: 'El bot' },
+    { href: '/dashboard/app', icon: Smartphone, label: 'Mi app' },
     { href: '/dashboard/facturas', icon: FileText, label: 'Facturación' },
     { href: '/dashboard/mi-plan', icon: CreditCard, label: 'Mi plan' },
   ],
