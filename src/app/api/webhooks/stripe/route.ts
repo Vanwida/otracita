@@ -220,6 +220,24 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
+  // Auto-generate the public booking page slug on first signup. We only do
+  // it when the client was newly created AND the slug is still null (legacy
+  // clients without a slug get picked up on edit via the dashboard).
+  if (isNewClient && !client.publicSlug) {
+    try {
+      const { generateInitialSlug, ensureUniqueSlug } = await import('@/lib/slug');
+      const seed = client.id;
+      const candidate = generateInitialSlug(client.businessName, seed);
+      const finalSlug = await ensureUniqueSlug(candidate, client.id);
+      await db
+        .update(clients)
+        .set({ publicSlug: finalSlug })
+        .where(eq(clients.id, client.id));
+    } catch (err) {
+      console.error('[stripe-webhook] slug generation failed:', err);
+    }
+  }
+
   // --- Subscription row: check-then-update-or-insert -----------------------
   const subscriptionId = (session.subscription as string) || null;
   if (subscriptionId) {

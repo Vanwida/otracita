@@ -64,6 +64,13 @@
       "when": 1776878538787,
       "tag": "0008_illegal_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776935968727,
+      "tag": "0009_organic_scarecrow",
+      "breakpoints": true
     }
   ]
 }

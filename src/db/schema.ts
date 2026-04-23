@@ -76,6 +76,20 @@ export const clients = pgTable('clients', {
   minLeadTimeMinutes: integer('min_lead_time_minutes').default(15).notNull(),
   maxBookingHorizonDays: integer('max_booking_horizon_days').default(45).notNull(),
   serviceBufferMinutes: integer('service_buffer_minutes').default(5).notNull(),
+  // Public booking page (/b/[slug]) — the shareable link a barber can drop
+  // on Instagram, Google Business Profile, flyers, email signatures, etc.
+  // Slug is globally unique and URL-safe. The branding fields below drive
+  // the visual identity of that page and of any OG share preview.
+  publicSlug: text('public_slug').unique(),
+  publicEnabled: boolean('public_enabled').default(true).notNull(),
+  brandLogoUrl: text('brand_logo_url'),
+  brandCoverUrl: text('brand_cover_url'),
+  brandColor: text('brand_color'),                           // hex e.g. "#C9653C"; null = use otracita default
+  publicDescription: text('public_description'),             // short "about" paragraph
+  instagramHandle: text('instagram_handle'),                 // without @
+  tiktokHandle: text('tiktok_handle'),                       // without @
+  facebookUrl: text('facebook_url'),
+  websiteUrl: text('website_url'),
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -100,6 +114,9 @@ export const barbers = pgTable('barbers', {
   blockedDates: jsonb('blocked_dates').$type<string[]>().default([]).notNull(),
   displayOrder: integer('display_order').default(0).notNull(),
   active: boolean('active').default(true).notNull(),
+  // Public-page assets. Optional — falls back to name-only rendering.
+  photoUrl: text('photo_url'),
+  bio: text('bio'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

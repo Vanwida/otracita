@@ -184,6 +184,18 @@ export default async function NegocioPage() {
             followupMinutesAfter: client.followupMinutesAfter,
             connectActive: client.stripeConnectStatus === 'active',
           },
+          publicPage: {
+            slug: client.publicSlug,
+            publicEnabled: client.publicEnabled,
+            brandLogoUrl: client.brandLogoUrl,
+            brandCoverUrl: client.brandCoverUrl,
+            brandColor: client.brandColor,
+            publicDescription: client.publicDescription,
+            instagramHandle: client.instagramHandle,
+            tiktokHandle: client.tiktokHandle,
+            facebookUrl: client.facebookUrl,
+            websiteUrl: client.websiteUrl,
+          },
         }}
         save={saveBusiness}
       />
