@@ -18,12 +18,21 @@ import { Home, Scissors, Calendar, User } from 'lucide-react'
 
 type Tab = 'inicio' | 'servicios' | 'reservar' | 'perfil'
 
-export default function BottomTabBar() {
-  const [active, setActive] = useState<Tab>('inicio')
+interface Props {
+  slug: string
+  /** Si la página es un sub-route (ej. /cuenta), fija la tab activa aquí y
+   *  deshabilita el IntersectionObserver — el scroll-spy solo tiene sentido
+   *  en la home de la barbería. */
+  activeTab?: Tab
+}
+
+export default function BottomTabBar({ slug, activeTab }: Props) {
+  const [active, setActive] = useState<Tab>(activeTab ?? 'inicio')
 
   // Observar qué sección está en viewport para marcar la tab correcta.
+  // Solo en la página home de la barbería (donde hay los anchors).
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || activeTab) return
     const sections: Array<{ id: string; tab: Tab }> = [
       { id: 'hero', tab: 'inicio' },
       { id: 'servicios', tab: 'servicios' },
@@ -47,9 +56,15 @@ export default function BottomTabBar() {
       if (el) observer.observe(el)
     })
     return () => observer.disconnect()
-  }, [])
+  }, [activeTab])
 
   const scrollTo = (id: string) => () => {
+    // Si estamos fuera de la home de la barbería, primero navegamos allí
+    // con el anchor; si estamos dentro, solo scroll.
+    if (activeTab) {
+      window.location.href = `/b/${slug}#${id}`
+      return
+    }
     const el = document.getElementById(id)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -83,7 +98,12 @@ export default function BottomTabBar() {
           onClick={scrollTo('reservar')}
           highlight
         />
-        <TabLink label="Perfil" icon={User} href="/app" />
+        <TabLink
+          label="Perfil"
+          icon={User}
+          href={`/b/${slug}/cuenta`}
+          active={activeTab === 'perfil'}
+        />
       </div>
     </nav>
   )
@@ -144,29 +164,35 @@ function TabLink({
   label,
   icon: Icon,
   href,
+  active,
 }: {
   label: string
   icon: typeof Home
   href: string
+  active?: boolean
 }) {
   return (
     <Link
       href={href}
       className="flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95"
+      aria-current={active ? 'page' : undefined}
     >
       <div
-        className="rounded-full flex items-center justify-center"
+        className="rounded-full flex items-center justify-center transition-all"
         style={{
           height: 32,
           width: 44,
-          color: 'var(--theme-ink-3)',
+          background: active ? 'var(--brand-soft)' : 'transparent',
+          color: active ? 'var(--brand-strong)' : 'var(--theme-ink-3)',
         }}
       >
         <Icon className="h-4 w-4" />
       </div>
       <span
         className="text-[10px] font-semibold"
-        style={{ color: 'var(--theme-ink-3)' }}
+        style={{
+          color: active ? 'var(--theme-ink)' : 'var(--theme-ink-3)',
+        }}
       >
         {label}
       </span>

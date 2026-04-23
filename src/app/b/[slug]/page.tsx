@@ -302,7 +302,7 @@ export default async function PublicBookingPage({ params }: Props) {
         barbers={barbers.map((b) => ({ id: b.id, name: b.name, photoUrl: b.photoUrl }))}
       />
 
-      <BottomTabBar />
+      <BottomTabBar slug={slug} />
 
       <PwaBootstrap businessName={client.businessName} brand={palette.accent} />
     </main>
