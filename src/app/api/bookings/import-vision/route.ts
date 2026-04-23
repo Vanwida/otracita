@@ -23,9 +23,17 @@ import { createBooking } from '@/lib/bookings/create'
 // caller's screenshots only — never other tenants' data.
 // -----------------------------------------------------------------------------
 
-const EXTRACTION_PROMPT = `Eres un extractor de datos de una agenda de citas (puede ser Booksy, Treatwell, una libreta, etc.). El usuario te pasa una o varias capturas de pantalla con una lista de reservas.
+function buildExtractionPrompt(): string {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }) // YYYY-MM-DD
+  const weekday = new Date().toLocaleDateString('es-ES', {
+    weekday: 'long',
+    timeZone: 'Europe/Madrid',
+  })
+  return `Eres un extractor de datos de una agenda de citas (Booksy, Treatwell, libreta, etc.). El usuario te pasa capturas de pantalla con reservas.
 
-Devuelve SOLO un objeto JSON válido, sin markdown, sin comentarios, con la forma:
+HOY ES ${today} (${weekday} en Europa/Madrid). ESTA es tu fecha de referencia para cualquier cálculo relativo. Ignora tu conocimiento de fechas — usa SIEMPRE la de arriba.
+
+Devuelve SOLO un objeto JSON válido, sin markdown, con la forma:
 
 {
   "bookings": [
@@ -44,14 +52,21 @@ Devuelve SOLO un objeto JSON válido, sin markdown, sin comentarios, con la form
   ]
 }
 
-Reglas:
-- Interpreta fechas relativas ("hoy", "mañana", "lunes") asumiendo que la fecha de referencia es la que aparece en la captura; si no aparece ninguna, usa hoy.
+Reglas de fecha (CRÍTICO):
+- Si la captura muestra fecha completa (día + mes + año) → usa esa.
+- Si muestra solo día + mes (ej. "23 abr", "Lun 2 Oct") → usa el año actual (${today.slice(0, 4)}). Si el día+mes ya pasó este año, usa el año siguiente (la reserva es futura).
+- Si muestra solo día de la semana (ej. "Lunes", "Mar") → calcula la próxima ocurrencia de ese día a partir de HOY.
+- Si muestra fechas relativas ("hoy", "mañana", "ayer") → resuelve respecto a HOY.
+- NUNCA devuelvas años anteriores a ${today.slice(0, 4)} salvo que la captura lo indique explícitamente. Marca confidence="low" si tienes que inferir el año.
+
+Reglas generales:
 - Si el precio no está visible, priceEuros = null.
-- Si la duración no está visible, estima 30 min para corte normal, 45 para corte+barba, 60 para tratamientos largos. Marca "confidence": "low" en ese caso.
-- customerPhone: solo lo incluyas si aparece literal en la captura. No inventes.
-- Si un slot está bloqueado/descanso/vacaciones y NO es una reserva, OMÍTELO del array.
-- No inventes reservas que no estén visibles.
-- Si no puedes leer nada útil, devuelve {"bookings": []}.`
+- Si la duración no está visible, estima 30 min para corte normal, 45 para corte+barba, 60 para tratamientos largos. confidence="low" al estimar.
+- customerPhone: solo si aparece literal en la captura. No inventes.
+- Si un slot está bloqueado/descanso/vacaciones y NO es reserva, OMÍTELO.
+- No inventes reservas no visibles.
+- Si no lees nada útil, devuelve {"bookings": []}.`
+}
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -86,7 +101,7 @@ function normalisePhone(raw: string | null | undefined): string | null {
 
 async function extractWithVision(images: string[]): Promise<ParsedBooking[]> {
   const content = [
-    { type: 'text' as const, text: EXTRACTION_PROMPT },
+    { type: 'text' as const, text: buildExtractionPrompt() },
     ...images.map((url) => ({
       type: 'image_url' as const,
       image_url: { url },
