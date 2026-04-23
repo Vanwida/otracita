@@ -8,7 +8,6 @@ import { MapPin, Clock } from 'lucide-react'
 import PublicBookingFlow from './PublicBookingFlow'
 import SocialLinks from './SocialLinks'
 import PwaBootstrap from './PwaBootstrap'
-import AppAccount from './AppAccount'
 import TopBar from './TopBar'
 import BottomTabBar from './BottomTabBar'
 import { buildPalette, hexToRgba } from './brand-utils'
@@ -315,7 +314,6 @@ export default async function PublicBookingPage({ params }: Props) {
       <BottomTabBar />
 
       <PwaBootstrap businessName={client.businessName} brand={palette.accent} />
-      <AppAccount slug={slug} brand={palette.accent} />
     </main>
   )
 }
