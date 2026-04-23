@@ -45,7 +45,25 @@ export const clients = pgTable('clients', {
   // botName: the human name the bot introduces itself with ("Soy Raúl, el
   // asistente de Barbería X..."). Null ⇒ generic "Soy el asistente".
   botName: text('bot_name'),
+  // botTone: define el registro que usa el LLM al responder. 'cercano' tutea
+  // y usa emojis, 'neutro' sin emojis pero tuteo, 'formal' usa 'usted'.
+  botTone: text('bot_tone').notNull().default('cercano'),
   chatbotGreeting: text('chatbot_greeting'),
+  // Mensaje que el bot envía cuando un cliente escribe fuera del horario de
+  // apertura. null = usa el mensaje genérico. Soporta placeholders como
+  // {businessName} / {nextOpen}.
+  botOutOfHoursMessage: text('bot_out_of_hours_message'),
+  // Permitir al cliente cancelar su reserva escribiendo al WhatsApp del bot.
+  // Si false, el bot le redirige a llamar / escribir al dueño.
+  botAllowCancelWhatsapp: boolean('bot_allow_cancel_whatsapp').notNull().default(true),
+  // Tras N no-shows el cliente se bloquea automáticamente del bot. Default 3.
+  noShowBlockThreshold: integer('no_show_block_threshold').notNull().default(3),
+  // Plantilla del recordatorio diario. null = plantilla por defecto.
+  // Placeholders soportados: {name} {service} {time} {barber}.
+  reminderTemplate: text('reminder_template'),
+  // Link a la ficha de Google Reviews del negocio. Cuando el cliente valora
+  // 5 estrellas en el follow-up, el bot le invita a dejar review con este link.
+  googleReviewUrl: text('google_review_url'),
   chatbotServices: jsonb('chatbot_services'), // array of services they offer
   chatbotHours: jsonb('chatbot_hours'), // business hours
   blockedDates: jsonb('blocked_dates').$type<string[]>().default([]),

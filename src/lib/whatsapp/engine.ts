@@ -135,8 +135,8 @@ const T = {
       `Hola ${name}! 👋 Recuerda que mañana tienes cita:\n\n📋 *${service}*\n📅 ${date}\n🕐 ${time}${barber ? `\n💈 ${barber}` : ''}\n\n¿Todo bien?`,
     btnConfirmReminder: '✅ Ahí estaré',
     btnCancelReminder: '❌ Necesito cancelar',
-    questionSystemPrompt: (businessName: string, services: string, address: string) =>
-      `Eres el asistente virtual de ${businessName}. Responde breve y amigable en español.\nServicios disponibles:\n${services || 'No hay servicios configurados aún.'}\nDirección: ${address || 'No disponible'}\nSi el cliente quiere reservar, dile que escriba "reservar" o "cita".`,
+    questionSystemPrompt: (businessName: string, services: string, address: string, tone: BotTone = 'cercano') =>
+      `Eres el asistente virtual de ${businessName}. Responde siempre breve (máx. 2 frases) en español.\nTono: ${TONE_DIRECTIVES.es[tone]}\n\nServicios disponibles:\n${services || 'No hay servicios configurados aún.'}\nDirección: ${address || 'No disponible'}\nSi el cliente quiere reservar, dile que escriba "reservar" o "cita".`,
   },
   en: {
     greeting: (name: string | null) => name ? `Hey ${name}! 👋\n\nHow can I help you?` : `Hey there! 👋\n\nHow can I help you?`,
@@ -177,10 +177,27 @@ const T = {
       `Hey ${name}! 👋 Just a reminder that tomorrow you have an appointment:\n\n📋 *${service}*\n📅 ${date}\n🕐 ${time}${barber ? `\n💈 ${barber}` : ''}\n\nAll good?`,
     btnConfirmReminder: "✅ I'll be there",
     btnCancelReminder: '❌ I need to cancel',
-    questionSystemPrompt: (businessName: string, services: string, address: string) =>
-      `You are the virtual assistant of ${businessName}. Reply briefly and in a friendly tone in English.\nAvailable services:\n${services || 'No services configured yet.'}\nAddress: ${address || 'Not available'}\nIf the customer wants to book, tell them to write "book" or "appointment".`,
+    questionSystemPrompt: (businessName: string, services: string, address: string, tone: BotTone = 'cercano') =>
+      `You are the virtual assistant of ${businessName}. Reply briefly (max 2 sentences) in English.\nTone: ${TONE_DIRECTIVES.en[tone]}\n\nAvailable services:\n${services || 'No services configured yet.'}\nAddress: ${address || 'Not available'}\nIf the customer wants to book, tell them to write "book" or "appointment".`,
   },
 } as const;
+
+// Tonos disponibles — el barbero elige 1 en /dashboard/bot y el LLM aplica
+// el directive correspondiente. 'cercano' es el default histórico.
+export type BotTone = 'cercano' | 'neutro' | 'formal';
+
+const TONE_DIRECTIVES: Record<'es' | 'en', Record<BotTone, string>> = {
+  es: {
+    cercano: 'Tutea al cliente, usa emojis con moderación, frases cortas y tono cálido. Evita formalismos ("usted", "rogamos").',
+    neutro: 'Tutea al cliente pero sin emojis. Registro profesional cercano, claro y directo.',
+    formal: 'Usa "usted" en todas las frases, cero emojis, registro cortés y pulcro. Evita muletillas y expresiones coloquiales.',
+  },
+  en: {
+    cercano: 'Use a warm, casual tone. Occasional emojis OK. Short sentences.',
+    neutro: 'Professional but friendly. No emojis. Clear and direct.',
+    formal: 'Formal, courteous register. No emojis. Full sentences, avoid contractions.',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Intent classification
@@ -413,7 +430,8 @@ async function answerQuestion(
     .map((s) => `- ${s.name}: ${s.duration}min, ${s.price}EUR`)
     .join('\n');
 
-  const systemPrompt = T[lang].questionSystemPrompt(config.businessName, servicesList, config.address || '');
+  const tone = (config.botTone ?? 'cercano') as BotTone
+  const systemPrompt = T[lang].questionSystemPrompt(config.businessName, servicesList, config.address || '', tone);
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',

@@ -241,14 +241,16 @@ export async function handleFollowupReply(
       .slice(0, 2); // 2 amounts + "No gracias" = 3 buttons total (Meta max)
 
     if (!client.tipsEnabled || !client.stripeConnectAccountId || suggested.length === 0) {
-      // Tips disabled or Connect not ready — thank and exit without offering
-      // a tip we can't actually collect.
-      await sendWhatsAppMessage(
-        phoneNumberId,
-        customerPhone,
-        '¡Gracias por tu valoración! 🙌',
-        token,
-      );
+      // Tips disabled or Connect not ready — thank + (si configurado) invitar
+      // a dejar reseña en Google. Solo en 5★ (rating >=4 ya filtra esto arriba)
+      // porque un 4★ puede esconder feedback crítico — no queremos amplificar
+      // tibias en Google.
+      const base = '¡Gracias por tu valoración! 🙌';
+      const withReview =
+        rating === 5 && client.googleReviewUrl
+          ? `${base}\n\n¿Nos dejas una reseña? Ayuda mucho:\n${client.googleReviewUrl}`
+          : base;
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, withReview, token);
       await upsertFollowupState(client.id, customerPhone, null);
       return true;
     }

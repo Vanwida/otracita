@@ -44,6 +44,7 @@ export interface BarbershopConfig {
   maxBookingHorizonDays: number;
   serviceBufferMinutes: number;
   slotStepMinutes: number;
+  botTone: string;
 }
 
 export async function getClientByPhoneNumberId(
@@ -98,5 +99,6 @@ export async function getClientByPhoneNumberId(
     maxBookingHorizonDays: client.maxBookingHorizonDays,
     serviceBufferMinutes: client.serviceBufferMinutes,
     slotStepMinutes: client.slotStepMinutes,
+    botTone: client.botTone,
   };
 }
