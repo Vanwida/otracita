@@ -30,7 +30,7 @@ const DISMISS_KEY = 'otracita-pwa-install-dismissed'
 
 export default function PwaBootstrap({ businessName, brand }: Props) {
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null)
-  const [isIOS, setIsIOS] = useState(false)
+  const [iosBrowser, setIosBrowser] = useState<'safari' | 'chrome' | 'firefox' | 'other' | null>(null)
   const [isStandalone, setIsStandalone] = useState(false)
   const [showIosHint, setShowIosHint] = useState(false)
   const [dismissed, setDismissed] = useState(false)
@@ -43,11 +43,19 @@ export default function PwaBootstrap({ businessName, brand }: Props) {
       })
     }
 
-    // Detect iOS + standalone mode. Standalone = already installed,
-    // no need to nag.
-    const ua = navigator.userAgent.toLowerCase()
-    const ios = /iphone|ipad|ipod/.test(ua)
-    setIsIOS(ios)
+    // Detect iOS + which browser is running. On iOS, PWA install only works
+    // from Safari (Apple restriction) — if the user is in Chrome/Firefox iOS
+    // we need to tell them to open in Safari, NOT point them at a share
+    // sheet that doesn't have "Add to Home Screen".
+    const ua = navigator.userAgent
+    const isIOS = /iPhone|iPad|iPod/.test(ua)
+    if (isIOS) {
+      if (/CriOS\//.test(ua)) setIosBrowser('chrome')
+      else if (/FxiOS\//.test(ua)) setIosBrowser('firefox')
+      else if (/EdgiOS\//.test(ua)) setIosBrowser('other')
+      else if (/Safari\//.test(ua)) setIosBrowser('safari')
+      else setIosBrowser('other')
+    }
 
     const standaloneMedia = window.matchMedia('(display-mode: standalone)').matches
     // Safari-specific non-standard flag for home-screen apps.
@@ -77,10 +85,10 @@ export default function PwaBootstrap({ businessName, brand }: Props) {
 
   // Show iOS hint after 8 seconds on the page to not annoy on first bounce.
   useEffect(() => {
-    if (!isIOS || isStandalone || dismissed) return
+    if (!iosBrowser || isStandalone || dismissed) return
     const timer = setTimeout(() => setShowIosHint(true), 8000)
     return () => clearTimeout(timer)
-  }, [isIOS, isStandalone, dismissed])
+  }, [iosBrowser, isStandalone, dismissed])
 
   const install = async () => {
     if (!installEvent) return
@@ -136,7 +144,30 @@ export default function PwaBootstrap({ businessName, brand }: Props) {
     )
   }
 
-  if (showIosHint) {
+  if (showIosHint && iosBrowser) {
+    // iOS PWA install is Safari-only (Apple restriction). If the user is in
+    // Chrome/Firefox/Edge on iOS, a "share → add to home screen" hint would
+    // send them looking for a button that doesn't exist. Show a different
+    // message telling them to switch to Safari, and — crucially — suppress
+    // the Safari hint.
+    const isSafari = iosBrowser === 'safari'
+    const copy = isSafari ? {
+      title: `Instala ${businessName} en tu móvil`,
+      body: (
+        <>
+          Pulsa <span aria-label="compartir">⎋</span> <strong>Compartir</strong> y luego{' '}
+          <strong>Añadir a pantalla de inicio</strong>.
+        </>
+      ),
+    } : {
+      title: `Para instalar la app, abre esta página en Safari`,
+      body: (
+        <>
+          En iOS solo se puede instalar desde Safari. Copia esta URL y ábrela en Safari → Compartir →{' '}
+          <strong>Añadir a pantalla de inicio</strong>.
+        </>
+      ),
+    }
     return (
       <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto rounded-2xl shadow-lg border bg-white border-[var(--color-line)] p-4">
         <div className="flex items-start gap-3">
@@ -147,11 +178,8 @@ export default function PwaBootstrap({ businessName, brand }: Props) {
             {businessName.slice(0, 1).toUpperCase()}
           </div>
           <div className="flex-1 text-sm">
-            <p className="font-semibold">Instala {businessName} en tu móvil</p>
-            <p className="text-xs text-[var(--color-ink-2)] mt-0.5 leading-relaxed">
-              Pulsa <span aria-label="compartir">⎋</span> <strong>Compartir</strong> en Safari y luego{' '}
-              <strong>Añadir a pantalla de inicio</strong>.
-            </p>
+            <p className="font-semibold">{copy.title}</p>
+            <p className="text-xs text-[var(--color-ink-2)] mt-0.5 leading-relaxed">{copy.body}</p>
           </div>
           <button
             type="button"
