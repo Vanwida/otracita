@@ -53,22 +53,38 @@ export default async function InvoiceDetailPage({
   const title = isInvoice ? 'Factura' : 'Ticket'
 
   // ── QR VeriFactu ────────────────────────────────────────────────────────
-  // Si la factura ya tiene qr_url persistida, la usamos. Si no (facturas
-  // emitidas antes de activar VeriFactu), la calculamos aquí "best effort"
-  // con los datos actuales. Solo renderizamos el QR si hay NIF fiscal
-  // configurado — sin NIF el QR no es válido para AEAT.
+  // Solo pintamos el QR cuando AEAT ya ha aceptado el envío del registro
+  // (verifactu_status='accepted' o 'accepted_with_errors'). Razón: un QR
+  // pintado sin estar registrado en AEAT responde "Factura no encontrada"
+  // al escanear, lo cual es peor que no tener QR. Hasta M4 (envío a AEAT),
+  // ninguna factura estará 'accepted' → no se muestra QR para nadie.
+  //
+  // Legal: hasta 1 julio 2027 no es obligatorio usar SIF con QR. Estamos
+  // cubiertos operando bajo RD 1619/2012 estándar sin QR. El hash se sigue
+  // calculando en background para que cuando activemos M4 la cadena esté
+  // lista retroactivamente.
+  //
+  // Flag manual `showQr=1` en query string para el caso de testing propio
+  // (Alex quiere ver el QR en su barbería de pruebas sin enviar a AEAT).
+  const showQrOverride = false // futura query param, por ahora siempre off
+  const qrIsRegistered =
+    invoice.verifactuStatus === 'accepted' ||
+    invoice.verifactuStatus === 'accepted_with_errors'
   const verifactuEnv: VerifactuEnv =
     (process.env.VERIFACTU_ENV as VerifactuEnv) ?? 'pruebas'
-  let qrUrl: string | null = invoice.qrUrl ?? null
-  if (!qrUrl && client.fiscalNif) {
-    qrUrl = buildQrUrl({
-      nif: client.fiscalNif.trim().toUpperCase(),
-      numserie: invoice.number,
-      fecha: formatFechaExpedicion(new Date(`${invoice.issueDate}T00:00:00`)),
-      importe: centsToDecimal(invoice.totalCents),
-      env: verifactuEnv,
-      verifactu: true,
-    })
+  let qrUrl: string | null = null
+  if ((qrIsRegistered || showQrOverride) && client.fiscalNif) {
+    qrUrl = invoice.qrUrl
+    if (!qrUrl) {
+      qrUrl = buildQrUrl({
+        nif: client.fiscalNif.trim().toUpperCase(),
+        numserie: invoice.number,
+        fecha: formatFechaExpedicion(new Date(`${invoice.issueDate}T00:00:00`)),
+        importe: centsToDecimal(invoice.totalCents),
+        env: verifactuEnv,
+        verifactu: true,
+      })
+    }
   }
 
   return (
