@@ -9,6 +9,7 @@ import { eq, and } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { ChevronLeft, AlertOctagon, Receipt } from 'lucide-react'
 import PrintButton from './PrintButton'
+import RectificativaButton from './RectificativaButton'
 import QrBlock from '@/lib/verifactu/QrBlock'
 import { buildQrUrl, type VerifactuEnv } from '@/lib/verifactu/qr'
 import { formatFechaExpedicion, centsToDecimal } from '@/lib/verifactu/format'
@@ -101,7 +102,19 @@ export default async function InvoiceDetailPage({
             <ChevronLeft className="h-4 w-4" />
             Volver
           </Link>
-          <PrintButton />
+          <div className="flex items-center gap-2 flex-wrap">
+            {!isVoided && invoice.status !== 'rectified' && !invoice.rectifiesInvoiceId && (
+              <RectificativaButton
+                originalInvoiceId={invoice.id}
+                originalNumber={invoice.number}
+                originalSubtotalCents={invoice.subtotalCents}
+                originalTotalCents={invoice.totalCents}
+                originalIvaRate={invoice.ivaRate}
+                alreadyRectified={false}
+              />
+            )}
+            <PrintButton />
+          </div>
         </div>
       </div>
 

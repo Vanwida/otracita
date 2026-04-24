@@ -287,6 +287,152 @@ export function shouldAutoInvoiceBooking(booking: Pick<BookingRow, 'status' | 'p
 }
 
 // -----------------------------------------------------------------------------
+// Rectificativa — crea una factura rectificativa (tipo R1-R5) que referencia
+// a una original.
+//
+// Regla fiscal (RD 1619/2012 art. 15): la factura original NO se modifica
+// nunca. La rectificativa es un documento independiente con su propio número
+// de serie, propia huella VeriFactu, y un puntero a la original para
+// auditoría.
+//
+// Motivos estándar:
+//   R1: datos incorrectos del emisor/receptor
+//   R2: importes incorrectos
+//   R3: cliente ha devuelto el servicio (abono total)
+//   R4: ajuste de IVA
+//   R5: otros motivos
+//
+// La rectificativa puede ser:
+//   - "Sustitución": reemplaza los importes de la original (nuevos importes)
+//   - "Diferencia": solo el delta respecto a la original
+// Para simplificar MVP usamos SIEMPRE "Sustitución" (lo más común en servicios
+// B2C). El caller pasa los NUEVOS importes deseados.
+//
+// Si el motivo es R3 (cliente devuelve servicio) y newTotalCents=0, la
+// rectificativa anula efectivamente la original dejándola a 0€.
+// -----------------------------------------------------------------------------
+
+export type RectificationMotivo = 'R1' | 'R2' | 'R3' | 'R4' | 'R5'
+
+export interface CreateRectificativaInput {
+  /** ID de la factura original que se rectifica. */
+  originalInvoiceId: string
+  /** Motivo AEAT (R1-R5). */
+  motivo: RectificationMotivo
+  /** Nueva base imponible en céntimos. */
+  newSubtotalCents: number
+  /** Nueva cuota IVA en céntimos. */
+  newIvaAmountCents: number
+  /** Nuevo total en céntimos. */
+  newTotalCents: number
+  /** Nota opcional que se añade al campo notes. */
+  notes?: string
+}
+
+export interface CreateRectificativaResult {
+  invoiceId: string
+  number: string
+}
+
+/**
+ * Crea una factura rectificativa.
+ *
+ * Tenant-scoped: valida que la factura original pertenece al clientId.
+ * Reserva un número correlativo nuevo (no reutiliza el de la original).
+ * El tipo de factura es 'R1'..'R5' según el motivo. El sellado VeriFactu
+ * corre al final con tipoFactura='RX' correspondiente (eso cambia el hash
+ * vs 'F1' de una ordinaria).
+ */
+export async function createRectificativa(
+  clientId: string,
+  input: CreateRectificativaInput,
+): Promise<CreateRectificativaResult> {
+  // 1. Cargar la original y verificar ownership.
+  const [original] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.id, input.originalInvoiceId), eq(invoices.clientId, clientId)))
+  if (!original) throw new Error('Factura original no encontrada o no pertenece a este cliente.')
+  if (original.status === 'rectified')
+    throw new Error('Esta factura ya tiene una rectificativa emitida.')
+
+  // 2. Cargar cliente y reservar número atómico.
+  const [client] = await db.select().from(clients).where(eq(clients.id, clientId))
+  if (!client) throw new Error('Cliente no encontrado.')
+  if (!client.invoicingEnabled)
+    throw new Error('La facturación no está activa para este cliente.')
+
+  const [reserved] = await db
+    .update(clients)
+    .set({ invoiceNumberNext: sql`${clients.invoiceNumberNext} + 1` })
+    .where(eq(clients.id, clientId))
+    .returning({
+      reservedNumber: clients.invoiceNumberNext,
+      prefix: clients.invoiceNumberPrefix,
+    })
+  const reservedNumber = (reserved?.reservedNumber ?? 1) - 1
+  const prefix = reserved?.prefix ?? ''
+  const number = generateInvoiceNumber({
+    invoiceNumberPrefix: prefix,
+    invoiceNumberNext: reservedNumber,
+  })
+
+  const issueDate = new Date().toISOString().slice(0, 10)
+
+  // 3. Insertar la rectificativa.
+  const [inserted] = await db
+    .insert(invoices)
+    .values({
+      clientId,
+      bookingId: null, // rectificativas son independientes de la reserva
+      number,
+      issueDate,
+      customerName: original.customerName,
+      customerPhone: original.customerPhone,
+      customerNif: original.customerNif,
+      customerAddress: original.customerAddress,
+      serviceName: original.serviceName,
+      barberName: original.barberName,
+      subtotalCents: input.newSubtotalCents,
+      ivaRate: original.ivaRate,
+      ivaAmountCents: input.newIvaAmountCents,
+      totalCents: input.newTotalCents,
+      currency: original.currency,
+      // Tipo comercial sigue siendo invoice/ticket según la original, pero
+      // el campo `type` lo mantenemos (ticket simplificado vs factura
+      // completa lo decide el cliente/NIF, no el hecho de ser rectificativa).
+      type: original.type,
+      status: 'issued',
+      notes: input.notes
+        ? `Rectificativa de ${original.number}. ${input.notes}`
+        : `Rectificativa de ${original.number}. Motivo: ${input.motivo}`,
+      rectifiesInvoiceId: original.id,
+      rectificationMotivo: input.motivo,
+    })
+    .returning({ id: invoices.id, number: invoices.number })
+
+  // 4. Marcar la original como "rectified" (soft-link; no se modifica nada
+  //    que entre en el hash original — status no entra en el hash).
+  await db
+    .update(invoices)
+    .set({ status: 'rectified' })
+    .where(eq(invoices.id, original.id))
+
+  // 5. Sellar VeriFactu con tipoFactura correspondiente al motivo.
+  await sealInvoiceVerifactu(
+    clientId,
+    inserted.id,
+    inserted.number,
+    issueDate,
+    input.newIvaAmountCents,
+    input.newTotalCents,
+    input.motivo, // R1..R5 — entra directamente como TipoFactura en el hash
+  )
+
+  return { invoiceId: inserted.id, number: inserted.number }
+}
+
+// -----------------------------------------------------------------------------
 // VeriFactu sealing — sella una factura recién emitida con la cadena de
 // hash + URL QR. Se llama después de cada inserción en `invoices`.
 //
