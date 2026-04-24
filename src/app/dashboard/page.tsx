@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth/server";
 import NoShowButton from "./_components/NoShowButton";
 import StatsPeriodTabs from "./_components/StatsPeriodTabs";
 import WelcomeBanner from "./_components/WelcomeBanner";
+import BotActivationStatus from "./_components/BotActivationStatus";
 import { Suspense } from "react";
 
 export default async function DashboardOverview({ searchParams }: { searchParams: Promise<{ period?: string; welcome?: string }> }) {
@@ -129,6 +130,15 @@ export default async function DashboardOverview({ searchParams }: { searchParams
           businessName={client.businessName}
           publicSlug={client.publicSlug}
           invoicingEnabled={client.invoicingEnabled}
+        />
+      )}
+      {client && (
+        <BotActivationStatus
+          whatsappPhoneNumberId={client.whatsappPhoneNumberId}
+          whatsappAccessToken={client.whatsappAccessToken}
+          metaWebhookVerifiedAt={client.metaWebhookVerifiedAt}
+          publicSlug={client.publicSlug}
+          publicEnabled={client.publicEnabled}
         />
       )}
       <div className="mb-6 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">

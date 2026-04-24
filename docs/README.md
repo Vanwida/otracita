@@ -28,6 +28,11 @@ documento. Vive en git para que esté versionado.
   necesitamos, qué plantillas usa otracita, paso a paso para crearlas,
   arquitectura OTP central + booking per-barbería.
 
+- **[meta-whatsapp-activacion-barbero.md](./meta-whatsapp-activacion-barbero.md)** —
+  paso a paso para activar el bot WhatsApp de un barbero nuevo tras
+  firmarse en otracita: añadir número, verificación, webhook, token,
+  guardado en DB, test. Errores típicos y recovery.
+
 ## Migraciones de datos
 
 - **migrations.md** — workflow de migraciones Drizzle (si existe en el
