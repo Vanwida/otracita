@@ -11,6 +11,7 @@ import { monthRangeInclusive } from '@/lib/invoicing'
 import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 import { MonthSelect, TypeSelect, VoidedToggle } from './FiltersBar'
 import VerifactuBadge, { type VerifactuStatus } from './_components/VerifactuBadge'
+import VerifactuHelpPanel from './_components/VerifactuHelpPanel'
 
 // -----------------------------------------------------------------------------
 // /dashboard/facturas — lista mensual de tickets y facturas que el barbero
@@ -161,6 +162,10 @@ export default async function FacturasPage({
   return (
     <div className="p-4 md:p-8 max-w-6xl">
       <Header month={month} />
+
+      {/* Panel educativo VeriFactu — da contexto, tranquilidad y valor.
+          Colocado arriba para que barberos nuevos lo vean al entrar. */}
+      <VerifactuHelpPanel />
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
