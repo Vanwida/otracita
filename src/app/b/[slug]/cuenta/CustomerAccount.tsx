@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { User, LogOut, Calendar, Loader2, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react'
+import LoyaltyCard from './LoyaltyCard'
 
 // -----------------------------------------------------------------------------
 // CustomerAccount — Flujo completo de cuenta del cliente PWA.
@@ -323,6 +324,8 @@ export default function CustomerAccount({ slug, businessName }: Props) {
             <p className="text-sm opacity-85 truncate">{me.user?.phone}</p>
           </div>
         </div>
+
+        <LoyaltyCard slug={slug} />
 
         <div
           className="rounded-2xl overflow-hidden"

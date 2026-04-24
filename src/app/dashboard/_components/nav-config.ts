@@ -9,6 +9,7 @@ import {
   FileText,
   HelpCircle,
   Smartphone,
+  Gift,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -55,6 +56,7 @@ export const CONFIG_NAV: NavSection = {
     { href: '/dashboard/negocio', icon: Store, label: 'Mi negocio' },
     { href: '/dashboard/bot', icon: Bot, label: 'El bot' },
     { href: '/dashboard/app', icon: Smartphone, label: 'Mi app' },
+    { href: '/dashboard/fidelidad', icon: Gift, label: 'Fidelidad' },
     { href: '/dashboard/facturas', icon: FileText, label: 'Facturación' },
     { href: '/dashboard/mi-plan', icon: CreditCard, label: 'Mi plan' },
   ],

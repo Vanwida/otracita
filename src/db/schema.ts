@@ -88,6 +88,14 @@ export const clients = pgTable('clients', {
   tipsEnabled: boolean('tips_enabled').default(false).notNull(),
   tipsSuggestedCents: integer('tips_suggested_cents').array().default([200, 300, 500]).notNull(),
   followupMinutesAfter: integer('followup_minutes_after').default(30).notNull(),
+  // Loyalty / fidelización — opt-in por barbería. Toda la config (sellos
+  // necesarios, recompensa, servicios elegibles, precio mínimo, caducidad)
+  // vive en `loyaltyConfig` jsonb cuya shape varía según `loyaltyMode`. Ver
+  // src/lib/loyalty/types.ts para el contrato. El saldo por cliente se
+  // computa vía SUM(delta) sobre la tabla `loyalty_ledger` (append-only).
+  loyaltyEnabled: boolean('loyalty_enabled').default(false).notNull(),
+  loyaltyMode: text('loyalty_mode').default('stamps').notNull(),         // 'stamps' | 'points'
+  loyaltyConfig: jsonb('loyalty_config').default({}).notNull(),
   // Scheduling standards (Booksy/Treatwell conventions)
   // minLeadTimeMinutes: how far in advance a customer can book. Prevents
   //   "book in 2 minutes" scenarios where the barber wouldn't even see it.
@@ -519,5 +527,30 @@ export const tips = pgTable('tips', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Loyalty ledger — append-only record de cada sello/punto. El saldo del
+// cliente = SUM(delta) filtrado por (clientId, customerId). Nunca mutamos
+// filas, solo añadimos. Auditoría completa si un cliente reclama.
+//
+// delta > 0 = earn (normalmente booking_completed en el cron).
+// delta < 0 = canje / ajuste a la baja.
+// reason clasifica el motivo; note admite texto libre del barbero para
+// ajustes manuales. rewardSnapshot captura qué se canjeó, para que
+// renombrar servicios no rompa la auditoría.
+//
+// Idempotencia del cron: índice parcial UNIQUE sobre (booking_id) donde
+// reason='booking_completed'. El awarder puede reintentar sin duplicar.
+export const loyaltyLedger = pgTable('loyalty_ledger', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  bookingId: uuid('booking_id').references(() => bookings.id),             // null para ajustes manuales
+  delta: integer('delta').notNull(),                                       // +N earn / -N canje
+  reason: text('reason').notNull(),                                        // 'booking_completed' | 'redeem' | 'adjustment_manual' | 'expired'
+  note: text('note'),                                                      // texto libre del barbero
+  rewardSnapshot: jsonb('reward_snapshot'),                                // snapshot de la recompensa canjeada
+  createdBy: text('created_by').notNull(),                                 // 'system_cron' | 'barber:<clientId>' | 'customer:<userId>'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
