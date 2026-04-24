@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import DropdownMenu, { type DropdownOption } from './_components/DropdownMenu'
+import DropdownMenu, { type DropdownOption } from '@/components/DropdownMenu'
 
 // -----------------------------------------------------------------------------
 // /dashboard/facturas — barra de filtros.

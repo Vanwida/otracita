@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Gift, Check, Loader2, Plus, X, Info } from 'lucide-react'
+import DropdownMenu from '@/components/DropdownMenu'
 import type {
   LoyaltyConfig,
   LoyaltyPointsConfig,
@@ -412,17 +413,15 @@ function RewardEditor({
               <span className="font-semibold">Mi negocio</span> para poder regalarlos.
             </div>
           ) : (
-            <select
-              value={value.serviceName ?? ''}
-              onChange={(e) => onChange({ type: 'service', serviceName: e.target.value })}
-              className="w-full max-w-xs bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
-            >
-              {services.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+            <div className="max-w-xs">
+              <DropdownMenu
+                label="Servicio"
+                fullWidth
+                selected={value.serviceName ?? services[0]}
+                options={services.map((s) => ({ value: s, label: s }))}
+                onSelect={(s) => onChange({ type: 'service', serviceName: s })}
+              />
+            </div>
           )}
         </>
       )}
@@ -559,21 +558,22 @@ function CommonEditor({
 
       <div className="max-w-xs">
         <label className="text-xs text-ink-2 block mb-1.5">Caducidad</label>
-        <select
-          value={value.expirationMonths == null ? 'never' : String(value.expirationMonths)}
-          onChange={(e) => {
-            const v = e.target.value
+        <DropdownMenu
+          label="Caducidad"
+          fullWidth
+          selected={value.expirationMonths == null ? 'never' : String(value.expirationMonths)}
+          options={[
+            { value: 'never', label: 'Nunca caducan' },
+            { value: '6', label: '6 meses sin usar' },
+            { value: '12', label: '12 meses sin usar' },
+            { value: '24', label: '24 meses sin usar' },
+          ]}
+          onSelect={(v) =>
             onChange({
               expirationMonths: v === 'never' ? null : Number.parseInt(v, 10),
             })
-          }}
-          className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
-        >
-          <option value="never">Nunca caducan</option>
-          <option value="6">6 meses sin usar</option>
-          <option value="12">12 meses sin usar</option>
-          <option value="24">24 meses sin usar</option>
-        </select>
+          }
+        />
       </div>
     </div>
   )

@@ -11,11 +11,18 @@ import { ChevronDown, Check } from 'lucide-react'
 // decide (a veces descolocado, a veces como wheel mobile). Para un barbero
 // que usa iPad como POS, eso es UX amateur. Aquí montamos el dropdown
 // nosotros: aparece siempre justo debajo del trigger, con click-outside,
-// ESC para cerrar, y opciones que son <Link> (navegación URL-driven, sin
-// estado extra de React).
+// ESC para cerrar.
 //
-// Cada opción es una URL que añade/cambia query params. Cuando el usuario
-// clica, Next navega. Cero JS de submit.
+// Soporta dos patrones de selección (mutuamente excluyentes):
+//   1. URL-driven (`option.href`) — cada opción es un <Link>. Úsalo para
+//      filtros donde el estado vive en la URL (query params).
+//   2. State-driven (`onSelect(value)` prop) — cada opción es un <button>
+//      que llama al handler. Úsalo cuando el selector cambia un state de
+//      React (formularios, configuraciones en memoria).
+//
+// Si una opción trae `href`, siempre se comporta como Link (tiene prioridad
+// sobre onSelect). Así puedes mezclar opciones nav y opciones state en el
+// mismo dropdown si hiciera falta, aunque por defecto se elige un modo.
 // -----------------------------------------------------------------------------
 
 export interface DropdownOption {
@@ -23,8 +30,8 @@ export interface DropdownOption {
   value: string
   /** Label visible. */
   label: string
-  /** URL a navegar cuando se selecciona esta opción. */
-  href: string
+  /** URL opcional — si está set, la opción es un <Link> de navegación. */
+  href?: string
 }
 
 interface Props {
@@ -35,9 +42,20 @@ interface Props {
   selected: string
   /** Ancho mínimo del botón. Default suficiente para un mes. */
   minWidth?: string
+  /** Callback state-driven. Se invoca si la opción NO tiene href. */
+  onSelect?: (value: string) => void
+  /** Expande el botón al ancho completo del contenedor. */
+  fullWidth?: boolean
 }
 
-export default function DropdownMenu({ label, options, selected, minWidth = '10rem' }: Props) {
+export default function DropdownMenu({
+  label,
+  options,
+  selected,
+  minWidth = '10rem',
+  onSelect,
+  fullWidth = false,
+}: Props) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -72,7 +90,10 @@ export default function DropdownMenu({ label, options, selected, minWidth = '10r
   }, [open])
 
   return (
-    <div ref={wrapRef} className="relative inline-block">
+    <div
+      ref={wrapRef}
+      className={`relative ${fullWidth ? 'block' : 'inline-block'}`}
+    >
       <button
         ref={btnRef}
         type="button"
@@ -80,7 +101,9 @@ export default function DropdownMenu({ label, options, selected, minWidth = '10r
         aria-expanded={open}
         aria-label={label}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center justify-between gap-2 bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none transition-colors hover:border-line-strong"
+        className={`inline-flex items-center justify-between gap-2 bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none transition-colors hover:border-line-strong ${
+          fullWidth ? 'w-full' : ''
+        }`}
         style={{ minWidth }}
       >
         <span className="truncate">{currentLabel}</span>
@@ -97,23 +120,48 @@ export default function DropdownMenu({ label, options, selected, minWidth = '10r
         >
           {options.map((opt) => {
             const isSelected = opt.value === selected
-            return (
-              <Link
-                key={opt.value}
-                href={opt.href}
-                prefetch={false}
-                onClick={() => setOpen(false)}
-                role="option"
-                aria-selected={isSelected}
-                className={`flex items-center justify-between gap-2 px-4 py-2.5 text-sm transition-colors ${
-                  isSelected
-                    ? 'bg-brand-softer text-ink font-medium'
-                    : 'text-ink-2 hover:bg-overlay hover:text-ink'
-                }`}
-              >
+            const itemClass = `flex items-center justify-between gap-2 px-4 py-2.5 text-sm transition-colors ${
+              isSelected
+                ? 'bg-brand-softer text-ink font-medium'
+                : 'text-ink-2 hover:bg-overlay hover:text-ink'
+            }`
+            const content = (
+              <>
                 <span className="truncate">{opt.label}</span>
                 {isSelected && <Check className="h-4 w-4 text-brand shrink-0" />}
-              </Link>
+              </>
+            )
+
+            if (opt.href) {
+              return (
+                <Link
+                  key={opt.value}
+                  href={opt.href}
+                  prefetch={false}
+                  onClick={() => setOpen(false)}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={itemClass}
+                >
+                  {content}
+                </Link>
+              )
+            }
+
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onSelect?.(opt.value)
+                  setOpen(false)
+                }}
+                role="option"
+                aria-selected={isSelected}
+                className={`${itemClass} w-full text-left`}
+              >
+                {content}
+              </button>
             )
           })}
         </div>
