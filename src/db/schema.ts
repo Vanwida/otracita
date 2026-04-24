@@ -383,9 +383,66 @@ export const invoices = pgTable('invoices', {
   // customer chose to settle via the QR-code flow.
   paidOnlineAt: timestamp('paid_online_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  // ── VeriFactu (RD 1007/2023 + Orden HAC/1177/2024) ─────────────────────
+  // huella: SHA-256 hex upper 64 chars del RegistroAlta de esta factura.
+  // huella_anterior: huella del registro anterior del MISMO emisor (clientId).
+  // Chain completa → auditable. Si huella_anterior IS NULL → primer registro
+  // del SIF para ese emisor (is_primer_registro=true).
+  huella: text('huella'),
+  huellaAnterior: text('huella_anterior'),
+  isPrimerRegistro: boolean('is_primer_registro').default(false).notNull(),
+  // tipo_factura L1 AEAT: F1 (ordinaria) | F2 (simplificada) | F3 (sust. asentada) | R1..R5 (rectificativas)
+  tipoFactura: text('tipo_factura').default('F1').notNull(),
+  // Timestamp de GENERACIÓN del registro (parte del hash; DEBE quedar fijo).
+  fechaHoraHusoGen: timestamp('fecha_hora_huso_gen', { withTimezone: true }),
+  // URL completa al servicio de cotejo AEAT (embebida en el QR).
+  qrUrl: text('qr_url'),
+  // Estado del envío a AEAT: pending|sent|accepted|accepted_with_errors|rejected|error
+  verifactuStatus: text('verifactu_status').default('pending').notNull(),
+  verifactuSentAt: timestamp('verifactu_sent_at', { withTimezone: true }),
+  verifactuResponseAt: timestamp('verifactu_response_at', { withTimezone: true }),
+  verifactuErrorCode: text('verifactu_error_code'),
+  verifactuErrorMsg: text('verifactu_error_msg'),
+  verifactuXmlSent: text('verifactu_xml_sent'),
+  verifactuXmlResponse: text('verifactu_xml_response'),
+  verifactuRetryCount: integer('verifactu_retry_count').default(0).notNull(),
+  // Rectificativa: referencia a la factura original + motivo R1-R5.
+  rectifiesInvoiceId: uuid('rectifies_invoice_id'),
+  rectificationMotivo: text('rectification_motivo'),
+  // Anulación: timestamp + hash del RegistroAnulacion encadenado.
+  anuladaAt: timestamp('anulada_at', { withTimezone: true }),
+  anulacionHuella: text('anulacion_huella'),
 }, (table) => ({
   clientNumberUnique: unique('invoices_client_number_unique').on(table.clientId, table.number),
 }));
+
+// -----------------------------------------------------------------------------
+// invoice_registro_events — Libro de eventos del SIF (AEAT VeriFactu).
+//
+// RD 1007/2023 exige registrar eventos del sistema de facturación: altas,
+// anulaciones y eventos propios del sistema (arranque, error, cambio de
+// versión). Cada evento encadena con el anterior (huella SHA-256).
+//
+// El campo `invoice_id` es nullable porque los eventos del sistema no
+// referencian a una factura concreta.
+// -----------------------------------------------------------------------------
+export const invoiceRegistroEvents = pgTable('invoice_registro_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  eventType: text('event_type').notNull(),  // 'alta' | 'anulacion' | 'sistema'
+  invoiceId: uuid('invoice_id').references(() => invoices.id),
+  huella: text('huella'),
+  huellaAnterior: text('huella_anterior'),
+  fechaHoraHusoGen: timestamp('fecha_hora_huso_gen', { withTimezone: true }).defaultNow().notNull(),
+  xmlPayload: text('xml_payload'),
+  verifactuStatus: text('verifactu_status').default('pending').notNull(),
+  verifactuSentAt: timestamp('verifactu_sent_at', { withTimezone: true }),
+  verifactuResponseAt: timestamp('verifactu_response_at', { withTimezone: true }),
+  verifactuErrorCode: text('verifactu_error_code'),
+  verifactuErrorMsg: text('verifactu_error_msg'),
+  data: jsonb('data'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 // Online payments — money flowing from the END CUSTOMER to the BARBER via
 // Stripe Connect (destination charges). Rows are created when the barber
