@@ -8,6 +8,10 @@ export const clients = pgTable('clients', {
   businessName: text('business_name').notNull(),
   ownerName: text('owner_name').notNull(),
   email: text('email').notNull().unique(),
+  // Email usado en Stripe Checkout — puede ser distinto del email de login.
+  // Sirve para contactar por temas de facturación si hay pagos rechazados.
+  // Stripe ya manda recibos a este email automáticamente.
+  billingEmail: text('billing_email'),
   phone: text('phone').notNull(),
   whatsappNumber: text('whatsapp_number'), // their business WhatsApp number
   city: text('city').default('Barcelona'),

@@ -197,7 +197,12 @@ async function handleCheckoutSessionCompleted(
     .values({
       businessName: businessName || 'Sin nombre',
       ownerName: '',
+      // `email` = login (de momento usamos el billing como placeholder; el
+      // barbero podrá cambiarlo en /gracias al elegir su email de acceso).
       email,
+      // `billingEmail` = email de Stripe, se guarda FIJO. Si el login email
+      // se cambia luego, este se mantiene para contactar por temas de pago.
+      billingEmail: email,
       phone: phone || '',
       plan: plan || 'chatbot',
       status: 'pending',

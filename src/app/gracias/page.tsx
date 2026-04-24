@@ -165,28 +165,24 @@ function GraciasContent() {
             </div>
           ) : (
             <form onSubmit={handleCreateAccount} className="mt-10 space-y-4">
-              {/* Email — readOnly cuando viene de Stripe (el pago lo fija) */}
+              {/* Email de LOGIN — editable. Puede ser distinto del que pagó
+                  en Stripe (ej. pagos@empresa.com vs barberos@gmail.com).
+                  Lo pre-llenamos con el de Stripe como sugerencia cómoda. */}
               <div className="flex flex-col gap-1.5 text-left">
-                <label className="text-sm font-medium text-ink-2">Email</label>
+                <label className="text-sm font-medium text-ink-2">Email de acceso al panel</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  readOnly={!!sessionId}
                   placeholder="tu@email.com"
                   required
                   autoComplete="email"
-                  className={`rounded-lg border border-line bg-surface px-3 py-3 text-sm outline-none transition-all ${
-                    sessionId
-                      ? 'text-ink-2 cursor-not-allowed'
-                      : 'text-ink focus:border-brand focus:ring-2 focus:ring-brand/20'
-                  }`}
+                  className="rounded-lg border border-line bg-surface px-3 py-3 text-sm text-ink outline-none transition-all focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
-                {sessionId && (
-                  <p className="text-xs text-ink-3">
-                    Usaremos este email (el que pagó en Stripe) como tu acceso.
-                  </p>
-                )}
+                <p className="text-xs text-ink-3">
+                  El que usarás para entrar al panel. Puede ser distinto del que
+                  usaste para pagar.
+                </p>
               </div>
 
               {/* Password con toggle mostrar/ocultar */}
