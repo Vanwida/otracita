@@ -131,3 +131,11 @@ body {
 .animate-gentle-rise {
   animation: gentle-rise 0.6s ease-out forwards;
 }
+
+/* Dashboard sidebar collapse — controlled by SidebarToggle client component.
+ * Writes `data-sidebar="collapsed"` on <html>; we hide the aside on lg+
+ * viewports. Mobile already hides the aside via `.hidden lg:flex` classes
+ * so the collapse only applies to desktop/tablet. */
+html[data-sidebar="collapsed"] aside[data-dashboard-sidebar] {
+  display: none;
+}

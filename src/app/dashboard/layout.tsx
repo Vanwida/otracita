@@ -7,6 +7,7 @@ import Link from "next/link"
 import { LogOut, Shield } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import { ConfirmDialogHost } from "./_components/ConfirmDialog"
+import SidebarToggle from "./_components/SidebarToggle"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
 import MobileMoreTrigger from "@/app/dashboard/_components/MobileMoreTrigger"
 import { Wordmark } from "@/components/brand"
@@ -46,8 +47,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <MobileSidebar email={email} isAdmin={isAdmin} needsSetup={needsSetup} />
       </div>
 
-      {/* Sidebar — hidden on mobile, shown on lg+ */}
-      <aside className="hidden lg:flex lg:flex-col w-60 border-r border-sidebar-line bg-sidebar p-5 shrink-0">
+      {/* Sidebar — hidden on mobile, shown on lg+. data-dashboard-sidebar
+          marca el elemento para que CSS global lo oculte cuando el usuario
+          colapsa vía SidebarToggle (html[data-sidebar="collapsed"]). */}
+      <aside
+        data-dashboard-sidebar
+        className="hidden lg:flex lg:flex-col w-60 border-r border-sidebar-line bg-sidebar p-5 shrink-0"
+      >
         <Link href="/dashboard" className="flex items-center mb-8 text-ink">
           <Wordmark height={30} />
         </Link>
@@ -128,7 +134,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pt-14 pb-16 lg:pt-0 lg:pb-0">
+      <main className="flex-1 overflow-y-auto pt-14 pb-16 lg:pt-0 lg:pb-0 relative">
+        {/* Sidebar toggle — solo desktop/tablet (lg+). En mobile el sidebar
+            ya se oculta vía `hidden lg:flex` y se accede con MobileSidebar. */}
+        <div className="hidden lg:block sticky top-0 z-30 bg-canvas/80 backdrop-blur-sm border-b border-line">
+          <div className="px-3 py-2">
+            <SidebarToggle />
+          </div>
+        </div>
         {children}
       </main>
 
