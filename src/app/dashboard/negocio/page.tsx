@@ -148,7 +148,7 @@ export default async function NegocioPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
+    <div className="p-4 md:p-8 max-w-6xl">
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Mi negocio</h1>
         <p className="text-ink-2">Los datos, servicios, equipo, horario y facturación con los que opera tu bot.</p>

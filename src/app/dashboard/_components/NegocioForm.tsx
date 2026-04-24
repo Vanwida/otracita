@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt, CreditCard } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
@@ -68,6 +68,14 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
   const [tab, setTab] = useState<TabKey>('info')
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
+  // Refs para auto-scrollear el tab activo a vista — indispensable cuando el
+  // ancho de pantalla obliga a overflow-x horizontal (mobile o desktop a
+  // resolución media). Sin esto, al deep-linkear a ?tab=blocked el tab queda
+  // fuera de la zona visible.
+  const tabBtnRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
+    info: null, services: null, team: null, hours: null,
+    facturacion: null, cobros: null, blocked: null,
+  })
 
   // Allow deep-linking: ?tab=cobros lands the user on the Cobros tab so the
   // "Activa cobros" CTA in BookingDetailPanel can bring them to the right
@@ -83,6 +91,15 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
     }
   }, [])
 
+  // Al cambiar de tab, centra el botón activo en la vista horizontal si es
+  // que el contenedor tiene scroll. En desktop ancho no hace nada (no hay
+  // overflow); en anchos reducidos evita que el tab activo quede fuera.
+  useEffect(() => {
+    const btn = tabBtnRefs.current[tab]
+    if (!btn) return
+    btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [tab])
+
   const onSubmit = (formData: FormData) => {
     startTransition(async () => {
       await save(formData)
@@ -93,26 +110,42 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Tabs — scroll horizontally on mobile */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-line -mx-4 px-4 md:mx-0 md:px-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const active = tab === key
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                active
-                  ? 'border-brand text-ink'
-                  : 'border-transparent text-ink-2 hover:text-ink'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          )
-        })}
+      {/* Tabs — overflow horizontal con scroll auto al tab activo.
+          El contenedor externo aplica un mask gradiente que afila los bordes
+          izquierdo/derecho cuando hay overflow, señal visual clara de que
+          la fila se puede seguir hacia los lados. */}
+      <div
+        className="relative -mx-4 md:mx-0 border-b border-line"
+        style={{
+          maskImage:
+            'linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)',
+          WebkitMaskImage:
+            'linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)',
+        }}
+      >
+        <div className="flex items-center gap-2 overflow-x-auto px-4 md:px-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {TABS.map(({ key, label, icon: Icon }) => {
+            const active = tab === key
+            return (
+              <button
+                key={key}
+                ref={(el) => { tabBtnRefs.current[key] = el }}
+                type="button"
+                onClick={() => setTab(key)}
+                aria-selected={active}
+                role="tab"
+                className={`shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  active
+                    ? 'border-brand text-ink'
+                    : 'border-transparent text-ink-2 hover:text-ink'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {tab === 'blocked' ? (
