@@ -8,10 +8,12 @@ import { CalendarCheck, CheckCircle2, CreditCard, AlertCircle, Clock, User, Scis
 import { auth } from "@/lib/auth/server";
 import NoShowButton from "./_components/NoShowButton";
 import StatsPeriodTabs from "./_components/StatsPeriodTabs";
+import WelcomeBanner from "./_components/WelcomeBanner";
 import { Suspense } from "react";
 
-export default async function DashboardOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
-  const { period = 'lifetime' } = await searchParams
+export default async function DashboardOverview({ searchParams }: { searchParams: Promise<{ period?: string; welcome?: string }> }) {
+  const { period = 'lifetime', welcome } = await searchParams
+  const showWelcome = welcome === '1'
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user) {
@@ -122,6 +124,13 @@ export default async function DashboardOverview({ searchParams }: { searchParams
 
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
+      {showWelcome && client && (
+        <WelcomeBanner
+          businessName={client.businessName}
+          publicSlug={client.publicSlug}
+          invoicingEnabled={client.invoicingEnabled}
+        />
+      )}
       <div className="mb-6 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-ink mb-2">
