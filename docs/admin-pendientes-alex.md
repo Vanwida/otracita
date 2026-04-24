@@ -93,20 +93,16 @@ cerrando.
 
 ### 4. Cuenta Google dedicada
 
-- **Qué desbloquea:**
-  - Google SSO en login barbero (Task #32)
-  - Gmail API para sync de emails de Booksy (`agendalo.sync@…`)
-- **Cómo:**
-  1. Crear Gmail nuevo: `otracita.platform@gmail.com` (o similar).
-     Consideración: más tarde podemos migrar a Google Workspace con
-     dominio propio si hace falta, pero para empezar Gmail free basta.
-  2. 2FA + guardar credenciales en 1Password.
-  3. Google Cloud Console: crear proyecto `otracita` con OAuth 2.0
-     (consent screen + credentials para SSO web).
-  4. Habilitar APIs: **Gmail API**, **Pub/Sub**, **Identity Platform**.
-- **Tiempo:** ~1h
-- **Qué me pasas:** client ID + client secret de OAuth (los subimos a
-  Vercel como `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`).
+- ✅ **Cuenta creada 2026-04-24**: `otracita.es@gmail.com`. Verificada con la
+  SIM Simyo del número bot otracita.
+- **Pendiente sobre esta cuenta:**
+  1. Activar **2FA** + guardar backup codes en 1Password
+  2. Entrar a Google Cloud Console con esta cuenta, crear proyecto `otracita`
+     con OAuth 2.0 (consent screen + credentials para SSO web)
+  3. Habilitar APIs: **Gmail API**, **Pub/Sub**, **Identity Platform**
+  4. Pasarme `client ID` + `client secret` de OAuth → los meto en Vercel
+     como `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
+- **Tiempo restante:** ~30 min
 
 ### 5. Verificar que `hola@otracita.es` funciona
 
