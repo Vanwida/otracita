@@ -160,7 +160,7 @@ no tener QR.
 | M4 | Envío AEAT | Firma XAdES-BES + mTLS + HTTP client al servicio AEAT | 🔴 BLOQUEADO | — |
 | M5.1 | UX dashboard | Badges estado + Timeline + Banner errores | ✅ DONE | `ff1d7cd` |
 | M5.2 | Rectificativa | Modal + endpoint + flow completo | ✅ DONE | `dac0835` |
-| M6 | Declaración Responsable | Redacción + firma + publicación `/legal/verifactu` | ⏳ PENDIENTE | — |
+| M6 | Declaración Responsable | Redacción + publicación `/legal/verifactu` | 🟡 PARCIAL | pendiente datos personales de Alex |
 | M7 | Producción | Switch env + pruebas intensivas + monitoreo | ⏳ PENDIENTE | — |
 
 **Estado global**: 5/8 milestones cerrados. Los 3 restantes dependen del
@@ -395,24 +395,57 @@ fabricante del software emitir una Declaración Responsable. **Sanción
 hasta 150.000€/producto/año si no se hace o se hace mal.** Es un
 documento legal, no código.
 
-**Qué se construirá:**
+**Estado actual**: 🟡 **PARCIAL** — página publicada, datos personales
+pendientes.
 
-1. **Redactar Declaración Responsable** usando la plantilla oficial AEAT
-   (documento `EjemplosDeclaracionResponsable.pdf` disponible en la
-   sede).
+**Qué hay construido (commit pendiente al escribir esto):**
 
-2. **Alex la firma digitalmente** con su certificado FNMT.
+- Página pública `/legal/verifactu` implementada 1:1 con la plantilla
+  oficial AEAT (`EjemplosDeclaracionResponsable V0.5.1`).
+- Todos los apartados 1.a–1.l del cuerpo + ANEXO 2.a–2.c.
+- Hardcoded ground truth del SIF:
+  - 1.a) `otracita`
+  - 1.b) `01` (sincronizado con `VERIFACTU_SIF_ID`)
+  - 1.c) versión `1.0.0` (bumpear en cada cambio de la DR)
+  - 1.e) S (solo VeriFactu)
+  - 1.f) S (multi-OT — SaaS multi-tenant)
+  - 1.g) N/A (al ser solo VeriFactu, los envíos auth'd con cert FNMT
+    actúan como firma conforme al RD 1007/2023)
+  - 1.k) Declaración literal de cumplimiento RD 1007/2023 + Orden
+    HAC/1177/2024
+  - 2.c) Descripción técnica de implementación: SHA-256, encadenamiento
+    con `pg_advisory_xact_lock`, QR tributario, remisión VeriFactu,
+    multi-tenant estanco, etc.
+- Bloque de histórico de versiones (2.b) con entrada v1.0.0.
+- Tratamiento como **persona física** (footnote i de la plantilla
+  AEAT): "Nombre y apellidos de la persona productora" en 1.h,
+  "persona productora" en 1.i/1.j/1.k/1.l.
 
-3. **Publicar en `/legal/verifactu`** como página pública con:
-   - PDF de la declaración firmada
-   - Metadatos: versión del software, fecha, identificación del SIF
-   - Información técnica resumida (por si algún inspector AEAT quiere
-     ver el certificado de cumplimiento)
+**Qué falta (bloqueante para publicar de verdad):**
 
-4. **Re-firmar cada vez que cambia la versión** (aunque sean cambios
-   mínimos). Automatizable vía CI en el futuro.
+Rellenar las 4 constantes `[PENDIENTE: ...]` en
+`src/app/legal/verifactu/page.tsx` con los datos legales de Alex:
 
-**Esfuerzo**: 1-2 días. Trabajo de escribir más que de programar.
+- `PRODUCTOR.nombreCompleto` → nombre y apellidos legales de Alex
+- `PRODUCTOR.nif` → NIF español
+- `PRODUCTOR.direccion` → calle + número + piso + CP + ciudad
+  (provincia)
+- `PRODUCTOR.telefono` → teléfono de contacto
+
+Sin esos 4 valores la DR está publicada pero no es jurídicamente
+firmable. Al rellenarlos, bump `SIF.version` a `1.0.1` y añadir
+entrada a `HISTORY[]`.
+
+**Nota sobre firma**: el RD 1007/2023 NO exige que la DR esté firmada
+digitalmente — basta con que esté publicada en una URL accesible del
+fabricante y que el contenido sea veraz. La autenticación de los envíos
+a AEAT con el certificado FNMT cualificado (M4) es lo que actúa como
+firma a efectos del art. 13.
+
+**Re-emisión**: cada vez que cambie algo material del SIF (hash,
+encadenamiento, QR, estructura XML), bump versión en `SIF.version` +
+entrada en `HISTORY[]`. Añadir snapshot de la versión anterior bajo
+`/legal/verifactu/historico/v{X.Y.Z}` cuando llegue la primera.
 
 **Puede arrancarse en paralelo a M4** — no depende del envío funcionando.
 
