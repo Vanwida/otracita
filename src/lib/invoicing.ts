@@ -2,6 +2,10 @@ import { db } from '@/db';
 import { clients, bookings, invoices } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { notifyAlex } from '@/lib/notify-alex';
+import { chainRegistroAlta, getEmisorNif } from '@/lib/verifactu/chain';
+import { buildQrUrl, type VerifactuEnv } from '@/lib/verifactu/qr';
+import { formatFechaExpedicion, centsToDecimal } from '@/lib/verifactu/format';
+import type { TipoFactura } from '@/lib/verifactu/hash';
 
 // -----------------------------------------------------------------------------
 // Invoicing helper — tickets/facturas the barbershop emits to its own
@@ -258,6 +262,18 @@ export async function generateInvoiceFromBooking(
     })
     .returning({ id: invoices.id, number: invoices.number });
 
+  // Sellado VeriFactu (hash + QR) tras la emisión. Best-effort, no tumba
+  // el flujo si falla — el estado queda 'error' para reintentar.
+  await sealInvoiceVerifactu(
+    client.id,
+    inserted.id,
+    inserted.number,
+    issueDate,
+    amounts.ivaAmountCents,
+    amounts.totalCents,
+    'F1', // auto-facturación de booking = ordinaria
+  );
+
   return {
     invoiceId: inserted.id,
     number: inserted.number,
@@ -268,6 +284,72 @@ export async function generateInvoiceFromBooking(
 /** Tag on a booking row cast — isolates the check so callers don't duplicate logic. */
 export function shouldAutoInvoiceBooking(booking: Pick<BookingRow, 'status' | 'price'>): boolean {
   return booking.status === 'confirmed' && booking.price != null;
+}
+
+// -----------------------------------------------------------------------------
+// VeriFactu sealing — sella una factura recién emitida con la cadena de
+// hash + URL QR. Se llama después de cada inserción en `invoices`.
+//
+// - Si el emisor no tiene NIF → log warning y skip (no podemos hashear sin
+//   NIF válido). El SealVerifactuStatus queda 'error' para no enviarlo.
+// - Si algo falla en el hash → status='error' + msg. Nunca tumba la emisión
+//   de la factura en sí; el barbero sigue viendo su factura, el envío queda
+//   pendiente.
+// -----------------------------------------------------------------------------
+async function sealInvoiceVerifactu(
+  clientId: string,
+  invoiceId: string,
+  invoiceNumber: string,
+  issueDateIso: string, // YYYY-MM-DD
+  ivaAmountCents: number,
+  totalCents: number,
+  tipoFactura: TipoFactura = 'F1',
+): Promise<void> {
+  try {
+    const nif = await getEmisorNif(clientId);
+    const fechaExpedicion = new Date(`${issueDateIso}T00:00:00`);
+
+    // Calcula huella + encadena + persiste.
+    const chainResult = await chainRegistroAlta({
+      clientId,
+      invoiceId,
+      emisorNif: nif,
+      serieNumero: invoiceNumber,
+      tipoFactura,
+      cuotaTotalCents: ivaAmountCents,
+      importeTotalCents: totalCents,
+      fechaExpedicion,
+    });
+
+    // Construye URL QR con los mismos 4 parámetros y persiste.
+    const env: VerifactuEnv = (process.env.VERIFACTU_ENV as VerifactuEnv) ?? 'pruebas';
+    const qrUrl = buildQrUrl({
+      nif,
+      numserie: invoiceNumber,
+      fecha: formatFechaExpedicion(fechaExpedicion),
+      importe: centsToDecimal(totalCents),
+      env,
+      verifactu: true,
+    });
+
+    await db.update(invoices).set({ qrUrl }).where(eq(invoices.id, invoiceId));
+
+    void chainResult; // usado arriba; evitamos warning de variable no usada
+  } catch (err) {
+    // Never throws: la emisión fiscal de la factura está hecha (la row ya
+    // existe en DB). Solo logeamos el fallo de sellado VeriFactu para que
+    // saltemos a M4 (envío a AEAT) sepamos que hay que reintentar.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[verifactu] seal failed for invoice ${invoiceId}:`, msg);
+    await db
+      .update(invoices)
+      .set({
+        verifactuStatus: 'error',
+        verifactuErrorMsg: msg.slice(0, 500),
+      })
+      .where(eq(invoices.id, invoiceId))
+      .catch(() => null);
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -443,6 +525,17 @@ export async function generateManualInvoice(
       notes: input.notes?.trim() || null,
     })
     .returning({ id: invoices.id, number: invoices.number });
+
+  // Sellado VeriFactu también en facturación manual (walk-ins).
+  await sealInvoiceVerifactu(
+    client.id,
+    inserted.id,
+    inserted.number,
+    issueDate,
+    amounts.ivaAmountCents,
+    amounts.totalCents,
+    'F1',
+  );
 
   return {
     invoiceId: inserted.id,

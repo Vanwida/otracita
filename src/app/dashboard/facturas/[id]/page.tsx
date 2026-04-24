@@ -9,6 +9,9 @@ import { eq, and } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { ChevronLeft, AlertOctagon } from 'lucide-react'
 import PrintButton from './PrintButton'
+import QrBlock from '@/lib/verifactu/QrBlock'
+import { buildQrUrl, type VerifactuEnv } from '@/lib/verifactu/qr'
+import { formatFechaExpedicion, centsToDecimal } from '@/lib/verifactu/format'
 
 // -----------------------------------------------------------------------------
 // Detalle de factura — vista print-ready. El barbero imprime o "Guardar como
@@ -49,6 +52,25 @@ export default async function InvoiceDetailPage({
   const isVoided = invoice.status === 'voided'
   const title = isInvoice ? 'Factura' : 'Ticket'
 
+  // ── QR VeriFactu ────────────────────────────────────────────────────────
+  // Si la factura ya tiene qr_url persistida, la usamos. Si no (facturas
+  // emitidas antes de activar VeriFactu), la calculamos aquí "best effort"
+  // con los datos actuales. Solo renderizamos el QR si hay NIF fiscal
+  // configurado — sin NIF el QR no es válido para AEAT.
+  const verifactuEnv: VerifactuEnv =
+    (process.env.VERIFACTU_ENV as VerifactuEnv) ?? 'pruebas'
+  let qrUrl: string | null = invoice.qrUrl ?? null
+  if (!qrUrl && client.fiscalNif) {
+    qrUrl = buildQrUrl({
+      nif: client.fiscalNif.trim().toUpperCase(),
+      numserie: invoice.number,
+      fecha: formatFechaExpedicion(new Date(`${invoice.issueDate}T00:00:00`)),
+      importe: centsToDecimal(invoice.totalCents),
+      env: verifactuEnv,
+      verifactu: true,
+    })
+  }
+
   return (
     <div className="min-h-screen bg-canvas">
       {/* Actions bar — hidden on print */}
@@ -87,23 +109,31 @@ export default async function InvoiceDetailPage({
           </div>
         )}
         <article className="bg-surface border border-line rounded-2xl p-8 md:p-12 print:border-0 print:rounded-none print:shadow-none print:p-8">
-          {/* Header: emisor + nº factura */}
+          {/* Header: emisor + nº factura + QR VeriFactu en esquina sup-dcha */}
           <div className="flex items-start justify-between gap-6 flex-wrap pb-6 border-b border-line">
             <div>
               <p className="font-display text-xs font-semibold uppercase tracking-widest text-brand">{title}</p>
               <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mt-1">{invoice.number}</h1>
               <p className="text-ink-2 text-sm mt-1">Emitida el {formatDate(invoice.issueDate)}</p>
+              <div className="mt-4">
+                <p className="font-display font-semibold text-ink text-lg">{client.fiscalName || client.businessName}</p>
+                {client.fiscalNif && <p className="text-ink-2 text-sm mt-0.5">NIF: {client.fiscalNif}</p>}
+                {client.fiscalAddress && <p className="text-ink-2 text-sm mt-0.5">{client.fiscalAddress}</p>}
+                {(client.fiscalPostalCode || client.fiscalCity) && (
+                  <p className="text-ink-2 text-sm">
+                    {[client.fiscalPostalCode, client.fiscalCity].filter(Boolean).join(' ')}
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="text-right">
-              <p className="font-display font-semibold text-ink text-lg">{client.fiscalName || client.businessName}</p>
-              {client.fiscalNif && <p className="text-ink-2 text-sm mt-0.5">NIF: {client.fiscalNif}</p>}
-              {client.fiscalAddress && <p className="text-ink-2 text-sm mt-0.5">{client.fiscalAddress}</p>}
-              {(client.fiscalPostalCode || client.fiscalCity) && (
-                <p className="text-ink-2 text-sm">
-                  {[client.fiscalPostalCode, client.fiscalCity].filter(Boolean).join(' ')}
-                </p>
-              )}
-            </div>
+            {/* QR VeriFactu — AEAT exige primera página, arriba, bien visible.
+                Oculto si no hay NIF (la factura no es emitible según RD
+                1619/2012 art. 6 — el wizard de facturación ya lo bloquea). */}
+            {qrUrl && (
+              <div className="shrink-0">
+                <QrBlock qrUrl={qrUrl} verifactu />
+              </div>
+            )}
           </div>
 
           {/* Customer block */}
