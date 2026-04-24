@@ -3,8 +3,25 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Wordmark } from '@/components/brand';
+
+// -----------------------------------------------------------------------------
+// /gracias — post-checkout de Stripe.
+//
+// Flow: barbero paga → Stripe redirige aquí con session_id → pre-cargamos su
+// email vía /api/session-info (readOnly) → pide solo contraseña → POST
+// /api/auth/create-account verifica pago + email + crea cuenta → redirige al
+// setup wizard.
+//
+// UX 2026:
+//   · Email pre-rellenado y bloqueado (viene de Stripe).
+//   · Password 8 chars min, un solo campo con toggle mostrar/ocultar.
+//   · Expectativas claras: dashboard YA funciona; bot WhatsApp lo activamos
+//     nosotros en paralelo.
+// -----------------------------------------------------------------------------
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function GraciasPage() {
   return (
@@ -33,13 +50,13 @@ function GraciasContent() {
   const [email, setEmail] = useState('');
   const [plan, setPlan] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingSession, setFetchingSession] = useState(false);
   const [error, setError] = useState('');
   const [accountCreated, setAccountCreated] = useState(false);
 
-  // Fetch session info from Stripe
+  // Fetch session info from Stripe — pre-llena email + plan.
   useEffect(() => {
     if (!sessionId) return;
 
@@ -51,7 +68,7 @@ function GraciasContent() {
         if (data.plan) setPlan(data.plan);
       })
       .catch(() => {
-        setError('No se pudo verificar tu sesion de pago.');
+        setError('No se pudo verificar tu sesión de pago.');
       })
       .finally(() => setFetchingSession(false));
   }, [sessionId]);
@@ -60,13 +77,8 @@ function GraciasContent() {
     e.preventDefault();
     setError('');
 
-    if (password.length < 6) {
-      setError('La contrasena debe tener al menos 6 caracteres.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Las contrasenas no coinciden.');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
 
@@ -87,11 +99,11 @@ function GraciasContent() {
 
       setAccountCreated(true);
 
-      // Give the user a moment to read the activation expectations before
-      // bouncing them to the setup wizard.
+      // Transición rápida al setup — el barbero ya leyó el mensaje de éxito,
+      // no hay necesidad de hacerle esperar 4s.
       setTimeout(() => {
         router.push('/dashboard/setup');
-      }, 4000);
+      }, 1500);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error inesperado');
     } finally {
@@ -105,31 +117,28 @@ function GraciasContent() {
     if (!plan) setPlan(demoPlan);
   }
 
-  // Show password creation form for payment OR demo
+  // ── Estado: cuenta recién creada ────────────────────────────────────────
+  if ((sessionId || isDemo) && accountCreated) {
+    return (
+      <ThankYouShell>
+        <div className="mx-auto w-full max-w-lg">
+          <CheckIcon />
+          <h1 className="font-display mt-8 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+            Cuenta creada
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-base text-ink-2">
+            Te llevamos al asistente de configuración.
+          </p>
+          <p className="mt-8 text-sm text-ink-3">
+            <Spinner /> Redirigiendo…
+          </p>
+        </div>
+      </ThankYouShell>
+    );
+  }
+
+  // ── Estado: formulario de crear cuenta ──────────────────────────────────
   if (sessionId || isDemo) {
-    if (accountCreated) {
-      return (
-        <ThankYouShell>
-          <div className="mx-auto w-full max-w-lg">
-            <CheckIcon />
-
-            <h1 className="font-display mt-8 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-              Cuenta creada
-            </h1>
-            <p className="mx-auto mt-4 max-w-md text-base text-ink-2">
-              Te llevamos al panel para que completes los datos de tu negocio.
-            </p>
-
-            <ActivationExpectations className="mt-8" />
-
-            <p className="mt-6 text-sm text-ink-3">
-              Redirigiendo al panel de configuracion...
-            </p>
-          </div>
-        </ThankYouShell>
-      );
-    }
-
     return (
       <ThankYouShell>
         <div className="mx-auto w-full max-w-md">
@@ -139,12 +148,12 @@ function GraciasContent() {
             Bienvenido a otracita
           </h1>
           <p className="mt-4 text-ink-2">
-            Tu pago se ha procesado correctamente. Crea tu contrasena para
-            acceder al panel de configuracion.
+            Pago confirmado. Elige tu contraseña para entrar al panel y
+            configurar tu cuenta.
           </p>
 
           {plan && (
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-softer border border-brand/20 px-4 py-2 text-sm font-bold text-brand uppercase">
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-softer border border-brand/20 px-4 py-1.5 text-xs font-bold text-brand uppercase tracking-widest">
               Plan: {plan}
             </div>
           )}
@@ -152,12 +161,12 @@ function GraciasContent() {
           {fetchingSession ? (
             <div className="mt-10 flex items-center justify-center gap-3 text-ink-2">
               <Spinner />
-              Verificando pago...
+              Verificando pago…
             </div>
           ) : (
-            <form onSubmit={handleCreateAccount} className="mt-10 space-y-5">
-              {/* Email (read-only when from Stripe) */}
-              <div className="flex flex-col gap-2 text-left">
+            <form onSubmit={handleCreateAccount} className="mt-10 space-y-4">
+              {/* Email — readOnly cuando viene de Stripe (el pago lo fija) */}
+              <div className="flex flex-col gap-1.5 text-left">
                 <label className="text-sm font-medium text-ink-2">Email</label>
                 <input
                   type="email"
@@ -166,50 +175,55 @@ function GraciasContent() {
                   readOnly={!!sessionId}
                   placeholder="tu@email.com"
                   required
-                  className={`rounded-lg border border-line bg-surface p-3 text-sm outline-none transition-all ${
+                  autoComplete="email"
+                  className={`rounded-lg border border-line bg-surface px-3 py-3 text-sm outline-none transition-all ${
                     sessionId
                       ? 'text-ink-2 cursor-not-allowed'
                       : 'text-ink focus:border-brand focus:ring-2 focus:ring-brand/20'
                   }`}
                 />
+                {sessionId && (
+                  <p className="text-xs text-ink-3">
+                    Usaremos este email (el que pagó en Stripe) como tu acceso.
+                  </p>
+                )}
               </div>
 
-              {/* Password */}
-              <div className="flex flex-col gap-2 text-left">
+              {/* Password con toggle mostrar/ocultar */}
+              <div className="flex flex-col gap-1.5 text-left">
                 <label className="text-sm font-medium text-ink-2">
-                  Contrasena
+                  Contraseña
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimo 6 caracteres"
-                  required
-                  minLength={6}
-                  className="rounded-lg border border-line bg-surface p-3 text-sm text-ink outline-none transition-all focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </div>
-
-              {/* Confirm Password */}
-              <div className="flex flex-col gap-2 text-left">
-                <label className="text-sm font-medium text-ink-2">
-                  Confirmar Contrasena
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repite tu contrasena"
-                  required
-                  minLength={6}
-                  className="rounded-lg border border-line bg-surface p-3 text-sm text-ink outline-none transition-all focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
+                    required
+                    minLength={MIN_PASSWORD_LENGTH}
+                    autoComplete="new-password"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-3 pr-10 text-sm text-ink outline-none transition-all focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-overlay transition-colors"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error && (
                 <div
                   role="alert"
-                  className="rounded-xl bg-danger/10 border border-danger/30 p-4 text-sm text-danger"
+                  className="rounded-xl bg-danger/10 border border-danger/30 p-3 text-sm text-danger"
                 >
                   {error}
                 </div>
@@ -217,16 +231,16 @@ function GraciasContent() {
 
               <button
                 type="submit"
-                disabled={loading || !email}
+                disabled={loading || !email || password.length < MIN_PASSWORD_LENGTH}
                 className="w-full rounded-lg bg-brand py-3.5 text-sm font-semibold text-brand-ink transition-colors hover:bg-brand-strong active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
                     <Spinner />
-                    Creando cuenta...
+                    Creando cuenta…
                   </>
                 ) : (
-                  'Crear mi cuenta'
+                  'Entrar al panel'
                 )}
               </button>
             </form>
@@ -238,39 +252,20 @@ function GraciasContent() {
     );
   }
 
-  // Generic thank you (no params)
+  // ── Vista genérica (sin session_id ni demo) — raro, mensaje neutro ─────
   return (
     <ThankYouShell>
       <CheckIcon />
       <h1 className="font-display mt-8 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-        Gracias por confiar en nosotros
+        Gracias
       </h1>
       <p className="mx-auto mt-6 max-w-lg text-lg text-ink-2">
-        Tu chatbot estara listo en menos de 48 horas. Te contactaremos por
-        WhatsApp para configurar todo.
+        Si acabas de suscribirte, revisa tu email para acceder al panel. Si
+        has entrado aquí por error, vuelve al inicio.
       </p>
-
-      <div className="mt-14 grid gap-6 text-left sm:grid-cols-3">
-        <StepItem
-          number={1}
-          title="Te escribimos"
-          description="En las proximas 24 horas nos pondremos en contacto contigo por WhatsApp"
-        />
-        <StepItem
-          number={2}
-          title="Conectamos tu Booksy"
-          description="Sincronizamos tu calendario para que el bot vea tus huecos"
-        />
-        <StepItem
-          number={3}
-          title="Activamos tu bot"
-          description="Lo instalamos en tu WhatsApp y lo dejamos funcionando"
-        />
-      </div>
-
       <Link
         href="/"
-        className="mt-14 inline-flex items-center gap-2 rounded-full bg-brand px-8 py-4 text-lg font-semibold text-brand-ink transition-colors hover:bg-brand-strong"
+        className="mt-12 inline-flex items-center gap-2 rounded-full bg-brand px-8 py-4 text-lg font-semibold text-brand-ink transition-colors hover:bg-brand-strong"
       >
         Volver al inicio
       </Link>
@@ -278,16 +273,18 @@ function GraciasContent() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-componentes
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ThankYouShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center bg-canvas px-6 py-20 text-center text-ink">
-      {/* Logo top-left */}
       <div className="absolute left-6 top-5 z-20">
         <Link href="/" className="flex items-center text-ink">
           <Wordmark height={32} inkColor="currentColor" />
         </Link>
       </div>
-
       <div className="relative z-10 mx-auto max-w-2xl">{children}</div>
     </main>
   );
@@ -303,7 +300,7 @@ function CheckIcon() {
 
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+    <svg className="h-4 w-4 animate-spin inline-block" viewBox="0 0 24 24" fill="none">
       <circle
         className="opacity-25"
         cx="12"
@@ -321,39 +318,23 @@ function Spinner() {
   );
 }
 
-function StepItem({
-  number,
-  title,
-  description,
-}: {
-  number: number;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-brand/30 bg-brand/10 text-sm font-bold text-brand">
-        {number}
-      </div>
-      <h3 className="mt-4 text-lg font-semibold text-ink">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-ink-2">{description}</p>
-    </div>
-  );
-}
-
 /**
- * Shared block that sets clear expectations about bot activation timing.
- * Used in both the post-signup success view and after the account is created.
+ * Comunica expectativas realistas del producto tras crear cuenta:
+ *   · Dashboard + agenda + facturación + PWA pública funcionan YA
+ *   · Bot de WhatsApp requiere activación técnica paralela (nosotros)
  */
 function ActivationExpectations({ className = '' }: { className?: string }) {
   return (
-    <div
-      className={`rounded-2xl border border-line bg-surface p-5 text-left ${className}`}
-    >
+    <div className={`rounded-2xl border border-line bg-surface p-5 text-left ${className}`}>
       <p className="text-sm leading-relaxed text-ink-2">
-        <span className="font-semibold text-ink">Activamos tu bot en 24 horas.</span>{' '}
-        Te escribiremos por WhatsApp cuando este listo para hacer pruebas.
-        Mientras tanto, completa los datos de tu negocio en el dashboard.
+        <span className="font-semibold text-ink">Tu panel estará listo en cuanto completes la configuración.</span>{' '}
+        Podrás recibir reservas desde tu link público, emitir facturas y
+        gestionar tu agenda inmediatamente.
+      </p>
+      <p className="mt-3 text-sm leading-relaxed text-ink-2">
+        <span className="font-semibold text-ink">El bot de WhatsApp</span> lo
+        activamos nosotros en paralelo con tu número (trámite con Meta). Te
+        avisamos cuando pueda responder a tus clientes.
       </p>
     </div>
   );
