@@ -11,6 +11,13 @@ documento. Vive en git para que esté versionado.
 
 ---
 
+## Operación / Admin
+
+- **[admin-pendientes-alex.md](./admin-pendientes-alex.md)** — lista
+  viva de cosas que solo Alex puede hacer (cert FNMT, datos personales
+  para la DR, plantilla Meta OTP, cuentas dedicadas…). Para atacarlas
+  del tirón en sesiones de papeleo.
+
 ## Cumplimiento fiscal (VeriFactu / AEAT)
 
 - **[verifactu-estado-completo.md](./verifactu-estado-completo.md)** —
