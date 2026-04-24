@@ -10,6 +10,7 @@ import { auth } from '@/lib/auth/server'
 import { monthRangeInclusive } from '@/lib/invoicing'
 import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 import { MonthSelect, TypeSelect, VoidedToggle } from './FiltersBar'
+import VerifactuBadge, { type VerifactuStatus } from './_components/VerifactuBadge'
 
 // -----------------------------------------------------------------------------
 // /dashboard/facturas — lista mensual de tickets y facturas que el barbero
@@ -143,6 +144,20 @@ export default async function FacturasPage({
     totalCents: Number(statsRow?.total ?? 0),
   }
 
+  // Cuenta facturas con problema VeriFactu (rechazo AEAT o error técnico)
+  // en el cliente actual, sin filtro de mes — son asuntos que hay que
+  // atender independientemente del mes que tengas seleccionado.
+  const [errStatsRow] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.clientId, client.id),
+        sql`${invoices.verifactuStatus} IN ('rejected', 'error')`,
+      ),
+    )
+  const verifactuErrorCount = Number(errStatsRow?.n ?? 0)
+
   return (
     <div className="p-4 md:p-8 max-w-6xl">
       <Header month={month} />
@@ -173,6 +188,28 @@ export default async function FacturasPage({
           Nueva factura / walk-in
         </Link>
       </div>
+
+      {/* Banner VeriFactu — solo visible si hay facturas con problema en Hacienda */}
+      {verifactuErrorCount > 0 && (
+        <div className="mt-6 rounded-xl border border-danger/30 bg-danger/10 p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-danger shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-ink">
+              {verifactuErrorCount} factura{verifactuErrorCount === 1 ? '' : 's'} con problema en Hacienda
+            </p>
+            <p className="text-xs text-ink-2 mt-0.5">
+              Hacienda rechazó el envío o hubo un error técnico. Revisa los detalles para corregir o reintentar.
+            </p>
+          </div>
+          <Link
+            href={`/dashboard/facturas?showVoided=1&verifactuError=1`}
+            className="inline-flex items-center gap-1 rounded-lg bg-danger hover:bg-danger/90 text-white px-3 py-2 text-xs font-semibold transition-colors"
+          >
+            Ver detalles
+            <ChevronRight className="h-3 w-3" />
+          </Link>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="mt-6 flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
@@ -237,6 +274,7 @@ export default async function FacturasPage({
                   <th className="px-4 md:px-6 py-3 font-semibold text-right">IVA</th>
                   <th className="px-4 md:px-6 py-3 font-semibold text-right">Total</th>
                   <th className="px-4 md:px-6 py-3 font-semibold">Tipo</th>
+                  <th className="px-4 md:px-6 py-3 font-semibold">Hacienda</th>
                   <th className="px-4 md:px-6 py-3"></th>
                 </tr>
               </thead>
@@ -270,6 +308,9 @@ export default async function FacturasPage({
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 md:px-6 py-3">
+                        <VerifactuBadge status={row.verifactuStatus as VerifactuStatus} />
                       </td>
                       <td className="px-4 md:px-6 py-3">
                         <Link

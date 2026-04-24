@@ -7,11 +7,13 @@ import { db } from '@/db'
 import { clients, invoices } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { ChevronLeft, AlertOctagon } from 'lucide-react'
+import { ChevronLeft, AlertOctagon, Receipt } from 'lucide-react'
 import PrintButton from './PrintButton'
 import QrBlock from '@/lib/verifactu/QrBlock'
 import { buildQrUrl, type VerifactuEnv } from '@/lib/verifactu/qr'
 import { formatFechaExpedicion, centsToDecimal } from '@/lib/verifactu/format'
+import VerifactuTimeline from '../_components/VerifactuTimeline'
+import type { VerifactuStatus } from '../_components/VerifactuBadge'
 
 // -----------------------------------------------------------------------------
 // Detalle de factura — vista print-ready. El barbero imprime o "Guardar como
@@ -217,6 +219,24 @@ export default async function InvoiceDetailPage({
             Emitida con otracita · otracita.es
           </p>
         </article>
+
+        {/* Timeline VeriFactu — estado del registro ante Hacienda. Solo en
+            pantalla, no en print (el barbero lo ve; el cliente que imprima
+            la factura no). */}
+        <section className="mt-6 print:hidden bg-surface border border-line rounded-2xl p-5 md:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Receipt className="h-4 w-4 text-brand" />
+            <h2 className="text-base font-semibold text-ink">Estado en Hacienda</h2>
+          </div>
+          <VerifactuTimeline
+            status={invoice.verifactuStatus as VerifactuStatus}
+            sentAt={invoice.verifactuSentAt}
+            responseAt={invoice.verifactuResponseAt}
+            errorCode={invoice.verifactuErrorCode}
+            errorMsg={invoice.verifactuErrorMsg}
+            createdAt={invoice.createdAt}
+          />
+        </section>
       </div>
     </div>
   )
