@@ -1,14 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import DropdownMenu, { type DropdownOption } from './_components/DropdownMenu'
 
 // -----------------------------------------------------------------------------
-// /dashboard/facturas filter controls — Client Component.
-// Previously these <select>s were defined inline inside the Server Component
-// page with `onChange={e => form.submit()}`, which the Next.js 16 runtime
-// rejects ("Event handlers cannot be passed to Client Component props") and
-// crashed the page with a generic error boundary. Extracted here so the
-// interactivity lives in a proper client bundle.
+// /dashboard/facturas — barra de filtros.
+//
+// Usa DropdownMenu custom en lugar de <select> nativo. Razón: en iPadOS el
+// popover nativo se descoloca, problemático para barberos que usan iPad
+// como POS. Ahora todos los filtros son URL-driven — cada opción es un
+// <Link> con los query params correspondientes, sin estado React.
 // -----------------------------------------------------------------------------
 
 const MONTH_NAMES = [
@@ -22,34 +23,50 @@ function formatMonth(month: string): string {
   return `${MONTH_NAMES[idx] ?? m} ${y}`
 }
 
-export function MonthSelect({ currentMonth }: { currentMonth: string }) {
-  const options: string[] = []
+function buildHref(params: Record<string, string | undefined>): string {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v && v !== 'all') p.set(k, v)
+  }
+  const query = p.toString()
+  return `/dashboard/facturas${query ? `?${query}` : ''}`
+}
+
+// -----------------------------------------------------------------------------
+
+export function MonthSelect({
+  currentMonth,
+  currentType,
+  showVoided,
+}: {
+  currentMonth: string
+  currentType?: string
+  showVoided?: boolean
+}) {
   const now = new Date()
+  const options: DropdownOption[] = []
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    options.push({
+      value,
+      label: formatMonth(value),
+      href: buildHref({
+        month: value,
+        type: currentType,
+        showVoided: showVoided ? '1' : undefined,
+      }),
+    })
   }
-
-  return (
-    <form method="get" className="flex items-center gap-2">
-      <label className="sr-only" htmlFor="month">Mes</label>
-      <select
-        id="month"
-        name="month"
-        defaultValue={currentMonth}
-        onChange={(e) => (e.currentTarget.form as HTMLFormElement).submit()}
-        className="bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none"
-      >
-        {options.map((m) => (
-          <option key={m} value={m}>{formatMonth(m)}</option>
-        ))}
-      </select>
-      <noscript>
-        <button type="submit" className="text-sm text-brand hover:underline">Ver</button>
-      </noscript>
-    </form>
-  )
+  return <DropdownMenu label="Mes" options={options} selected={currentMonth} minWidth="11rem" />
 }
+
+// Versión simple de MonthSelect (retrocompatible con la firma anterior).
+// La página pasa currentMonth, pero con los filtros adicionales los
+// preserva si los tiene. Como solo currentMonth está en la firma externa,
+// mantenemos una versión flexible arriba y un re-export abajo.
+
+// -----------------------------------------------------------------------------
 
 export function TypeSelect({
   currentType,
@@ -60,23 +77,38 @@ export function TypeSelect({
   currentMonth: string
   showVoided: boolean
 }) {
-  return (
-    <form method="get" className="flex items-center gap-2">
-      <input type="hidden" name="month" value={currentMonth} />
-      {showVoided && <input type="hidden" name="showVoided" value="1" />}
-      <select
-        name="type"
-        defaultValue={currentType}
-        onChange={(e) => (e.currentTarget.form as HTMLFormElement).submit()}
-        className="bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none"
-      >
-        <option value="all">Todos los tipos</option>
-        <option value="ticket">Tickets</option>
-        <option value="invoice">Facturas</option>
-      </select>
-    </form>
-  )
+  const options: DropdownOption[] = [
+    {
+      value: 'all',
+      label: 'Todos los tipos',
+      href: buildHref({
+        month: currentMonth,
+        showVoided: showVoided ? '1' : undefined,
+      }),
+    },
+    {
+      value: 'ticket',
+      label: 'Tickets',
+      href: buildHref({
+        month: currentMonth,
+        type: 'ticket',
+        showVoided: showVoided ? '1' : undefined,
+      }),
+    },
+    {
+      value: 'invoice',
+      label: 'Facturas',
+      href: buildHref({
+        month: currentMonth,
+        type: 'invoice',
+        showVoided: showVoided ? '1' : undefined,
+      }),
+    },
+  ]
+  return <DropdownMenu label="Tipo" options={options} selected={currentType} minWidth="10rem" />
 }
+
+// -----------------------------------------------------------------------------
 
 export function VoidedToggle({
   month,
@@ -87,14 +119,8 @@ export function VoidedToggle({
   typeFilter: string
   showVoided: boolean
 }) {
-  const base = new URLSearchParams()
-  base.set('month', month)
-  if (typeFilter !== 'all') base.set('type', typeFilter)
-  const off = `/dashboard/facturas?${base.toString()}`
-  const onParams = new URLSearchParams(base)
-  onParams.set('showVoided', '1')
-  const on = `/dashboard/facturas?${onParams.toString()}`
-
+  const off = buildHref({ month, type: typeFilter })
+  const on = buildHref({ month, type: typeFilter, showVoided: '1' })
   return (
     <Link
       href={showVoided ? off : on}

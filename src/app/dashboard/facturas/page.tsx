@@ -219,7 +219,7 @@ export default async function FacturasPage({
       {/* Controls */}
       <div className="mt-6 flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
         <div className="flex flex-col md:flex-row gap-3 md:items-center">
-          <MonthSelect currentMonth={month} />
+          <MonthSelect currentMonth={month} currentType={typeFilter} showVoided={showVoided} />
           <TypeSelect currentType={typeFilter} currentMonth={month} showVoided={showVoided} />
           <VoidedToggle month={month} typeFilter={typeFilter} showVoided={showVoided} />
         </div>
