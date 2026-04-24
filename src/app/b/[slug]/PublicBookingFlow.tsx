@@ -607,10 +607,15 @@ function ServiceRow({
           <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: 'var(--theme-ink-3)' }}>
             <Clock className="h-3 w-3" />
             {service.duration} min
-            {hasDescription && !selected && (
-              <span className="ml-1 opacity-70">· Toca para ver detalles</span>
-            )}
           </p>
+          {hasDescription && !selected && (
+            <p
+              className="text-xs mt-1 leading-snug line-clamp-2"
+              style={{ color: 'var(--theme-ink-2)' }}
+            >
+              {service.description}
+            </p>
+          )}
         </div>
         <div className="text-right shrink-0">
           <p className="font-display text-lg sm:text-xl font-bold" style={{ color: 'var(--brand-strong)' }}>
@@ -629,7 +634,7 @@ function ServiceRow({
         </div>
       </div>
 
-      {/* Descripción expandible — solo cuando esta seleccionado Y tiene */}
+      {/* Descripción completa expandida cuando se selecciona. */}
       {selected && hasDescription && (
         <div
           className="pl-[60px] sm:pl-[72px] pr-2 pb-1 text-xs sm:text-sm leading-relaxed"
