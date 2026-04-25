@@ -68,9 +68,15 @@ export async function sendPushToUser(opts: {
   await Promise.all(
     subs.map(async (s) => {
       try {
+        // Apple silently retains/drops Urgency: normal pushes on iOS until
+        // the device is "active" — for user-visible notifications we want
+        // them to land immediately, so always send with high urgency. TTL
+        // 1h is enough; if the device is offline longer the notification
+        // is stale anyway (reminder = today, promo = now).
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.authKey } },
           body,
+          { urgency: 'high', TTL: 3600 },
         )
         sent++
         // Fire-and-forget lastUsed update.

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { User, LogOut, Calendar, Loader2, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react'
+import { User, LogOut, Calendar, Loader2, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Bell, BellOff } from 'lucide-react'
 import LoyaltyCard from './LoyaltyCard'
+import { getPushStatus, pushSupported, subscribeToPush, unsubscribeFromPush, type PushStatus } from '@/lib/app-auth/push-client'
 
 // -----------------------------------------------------------------------------
 // CustomerAccount — Flujo completo de cuenta del cliente PWA.
@@ -327,6 +328,8 @@ export default function CustomerAccount({ slug, businessName }: Props) {
 
         <LoyaltyCard slug={slug} />
 
+        <PushNotificationsRow slug={slug} />
+
         <div
           className="rounded-2xl overflow-hidden"
           style={{ background: 'var(--theme-surface)', border: '1px solid var(--theme-line)' }}
@@ -501,6 +504,132 @@ function RowStatic({
         )}
       </div>
     </div>
+  )
+}
+
+// Tarjeta de activación de notificaciones push. iOS requiere PWA instalada
+// para que el sistema operativo permita la suscripción — si el usuario está
+// en Safari sin instalar, mostramos un hint en lugar del botón.
+function PushNotificationsRow({ slug }: { slug: string }) {
+  const [status, setStatus] = useState<PushStatus | 'loading'>('loading')
+  const [busy, setBusy] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(false)
+
+  useEffect(() => {
+    if (!pushSupported()) {
+      setStatus('unsupported')
+      return
+    }
+    setStatus(getPushStatus())
+    const standaloneMedia = window.matchMedia('(display-mode: standalone)').matches
+    const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone
+    setIsStandalone(standaloneMedia || iosStandalone === true)
+  }, [])
+
+  const enable = async () => {
+    setBusy(true)
+    try {
+      const next = await subscribeToPush(slug)
+      setStatus(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disable = async () => {
+    setBusy(true)
+    try {
+      await unsubscribeFromPush()
+      setStatus('default')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (status === 'loading' || status === 'unsupported') return null
+
+  // En iOS Safari sin instalar, la API responde 'default' pero el subscribe
+  // falla. Mejor avisamos antes para no frustrar al usuario.
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const isIOS = /iPhone|iPad|iPod/.test(ua)
+  if (isIOS && !isStandalone) {
+    return (
+      <div
+        className="rounded-2xl px-5 py-4 flex items-start gap-3"
+        style={{ background: 'var(--theme-surface)', border: '1px solid var(--theme-line)' }}
+      >
+        <div
+          className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}
+        >
+          <Bell className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold" style={{ color: 'var(--theme-ink)' }}>
+            Notificaciones
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--theme-ink-3)' }}>
+            Para recibir avisos en iOS, instala primero la app desde Compartir → Añadir a pantalla de inicio.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'denied') {
+    return (
+      <div
+        className="rounded-2xl px-5 py-4 flex items-start gap-3"
+        style={{ background: 'var(--theme-surface)', border: '1px solid var(--theme-line)' }}
+      >
+        <div
+          className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: 'var(--theme-overlay)', color: 'var(--theme-ink-3)' }}
+        >
+          <BellOff className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold" style={{ color: 'var(--theme-ink)' }}>
+            Notificaciones bloqueadas
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--theme-ink-3)' }}>
+            Actívalas desde Ajustes del móvil → Notificaciones.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const granted = status === 'granted'
+  return (
+    <button
+      type="button"
+      onClick={granted ? disable : enable}
+      disabled={busy}
+      className="w-full rounded-2xl px-5 py-4 flex items-center gap-3 text-left transition-colors disabled:opacity-60"
+      style={{ background: 'var(--theme-surface)', border: '1px solid var(--theme-line)' }}
+    >
+      <div
+        className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+        style={{
+          background: granted ? 'var(--accent-soft)' : 'var(--theme-overlay)',
+          color: granted ? 'var(--accent-strong)' : 'var(--theme-ink-2)',
+        }}
+      >
+        {granted ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold" style={{ color: 'var(--theme-ink)' }}>
+          {granted ? 'Notificaciones activadas' : 'Activar notificaciones'}
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--theme-ink-3)' }}>
+          {granted
+            ? 'Recibes recordatorios y promos. Toca para desactivar.'
+            : 'Recibe recordatorio del día antes y avisos.'}
+        </p>
+      </div>
+      {busy && <Loader2 className="h-4 w-4 animate-spin shrink-0" style={{ color: 'var(--theme-ink-3)' }} />}
+    </button>
   )
 }
 
