@@ -16,12 +16,13 @@ import {
   subMonths,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone } from 'lucide-react';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
 import DayGrid from './DayGrid';
 import BookingDetailPanel from './BookingDetailPanel';
 import NewBookingPanel from './NewBookingPanel';
+import PromosFillModal from './PromosFillModal';
 import type { CalendarEvent } from './types';
 
 interface Props {
@@ -34,9 +35,12 @@ interface Props {
    * shows the "Activa cobros" CTA or the "Generar link de pago" flow.
    */
   stripeConnectStatus: 'none' | 'pending' | 'active' | 'restricted' | string;
+  /** Cuando true, muestra el botón "Llenar huecos" en la cabecera. */
+  promosEnabled: boolean;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled }: Props) {
+  const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
@@ -194,10 +198,21 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           </select>
         )}
 
-        {/* Import + new booking */}
+        {/* Promos + import + new booking */}
+        {promosEnabled && (
+          <button
+            type="button"
+            onClick={() => setIsPromosOpen(true)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-brand/40 hover:border-brand text-brand-strong hover:bg-brand-softer transition-colors"
+            title="Avisar a clientes habituales para llenar huecos"
+          >
+            <Megaphone className="h-3.5 w-3.5" />
+            Llenar huecos
+          </button>
+        )}
         <a
           href="/dashboard/agenda/importar"
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors"
+          className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
           title="Importar reservas desde Booksy / agenda externa"
         >
           Importar
@@ -255,6 +270,14 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         onClose={() => setSelectedBooking(null)}
         stripeConnectStatus={stripeConnectStatus}
       />
+
+      {/* Promos modal — solo se renderiza si está activado en /dashboard/app */}
+      {promosEnabled && (
+        <PromosFillModal
+          isOpen={isPromosOpen}
+          onClose={() => setIsPromosOpen(false)}
+        />
+      )}
 
       {/* New booking panel */}
       <NewBookingPanel

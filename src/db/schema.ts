@@ -96,6 +96,10 @@ export const clients = pgTable('clients', {
   loyaltyEnabled: boolean('loyalty_enabled').default(false).notNull(),
   loyaltyMode: text('loyalty_mode').default('stamps').notNull(),         // 'stamps' | 'points'
   loyaltyConfig: jsonb('loyalty_config').default({}).notNull(),
+  // Promos contextuales — opt-in. Cuando true, aparece el botón "Llenar
+  // huecos" en /dashboard/agenda. El barbero declara que sus clientes han
+  // consentido recibir comunicaciones de marketing al activarlo.
+  promosEnabled: boolean('promos_enabled').default(false).notNull(),
   // Scheduling standards (Booksy/Treatwell conventions)
   // minLeadTimeMinutes: how far in advance a customer can book. Prevents
   //   "book in 2 minutes" scenarios where the barber wouldn't even see it.
@@ -551,6 +555,28 @@ export const loyaltyLedger = pgTable('loyalty_ledger', {
   note: text('note'),                                                      // texto libre del barbero
   rewardSnapshot: jsonb('reward_snapshot'),                                // snapshot de la recompensa canjeada
   createdBy: text('created_by').notNull(),                                 // 'system_cron' | 'barber:<clientId>' | 'customer:<userId>'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Promo pushes log — una fila por cada cliente al que se le mandó una
+// promo "llenar huecos". Sirve para dos cosas:
+//   1. Rate limiting: máx 1 promo / cliente / 7 días (consultable vía
+//      WHERE customerPhone=X AND createdAt > now()-7d).
+//   2. Auditoría: el barbero puede ver el histórico de qué promos mandó
+//      y a quién, por si hay reclamaciones del cliente.
+//
+// `discountPct` se snapshot-ea aquí porque el barbero podría cambiar el
+// default después y queremos preservar lo que efectivamente se ofreció.
+export const promoPushes = pgTable('promo_pushes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  customerPhone: text('customer_phone').notNull(),
+  customerName: text('customer_name'),
+  discountPct: integer('discount_pct').notNull(),
+  windowStart: text('window_start').notNull(),                             // YYYY-MM-DD HH:MM legible
+  windowEnd: text('window_end').notNull(),
+  channel: text('channel').notNull(),                                      // 'push' | 'whatsapp' | 'none'
+  message: text('message').notNull(),                                      // snapshot del texto enviado
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -10,11 +10,11 @@ import { auth } from '@/lib/auth/server'
 import {
   Smartphone,
   Bell,
-  Link as LinkIcon,
   ExternalLink,
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
+import PromosToggle from './PromosToggle'
 
 const SITE_ORIGIN = 'https://otracita.es'
 
@@ -168,39 +168,9 @@ export default async function AppPage() {
         </p>
       </section>
 
-      {/* Upcoming features */}
-      <section className="bg-surface border border-dashed border-line rounded-2xl p-5 md:p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand-softer px-2 py-0.5 text-[10px] uppercase tracking-widest font-semibold text-brand-strong">
-            Próximamente
-          </span>
-        </div>
-        <div className="grid grid-cols-1 gap-4">
-          <RoadmapTile
-            icon={LinkIcon}
-            title="Promos contextuales"
-            description="Si tienes hueco esta tarde, push a tus clientes fieles con descuento. Llenas huecos sin esfuerzo."
-          />
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function RoadmapTile({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: typeof LinkIcon
-  title: string
-  description: string
-}) {
-  return (
-    <div className="rounded-xl border border-line bg-overlay/40 p-4">
-      <Icon className="h-4 w-4 text-brand mb-2" />
-      <h3 className="text-sm font-semibold text-ink">{title}</h3>
-      <p className="text-xs text-ink-2 mt-1 leading-relaxed">{description}</p>
+      {/* Promos contextuales — toggle on/off. Cuando ON, en /dashboard/agenda
+          aparece el botón "Llenar huecos" que dispara el modal completo. */}
+      <PromosToggle initialEnabled={client.promosEnabled} />
     </div>
   )
 }
