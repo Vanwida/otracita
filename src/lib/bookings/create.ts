@@ -340,7 +340,7 @@ export async function createBooking(
         await sendPushByPhone(customerPhone.trim(), client.id, {
           title: `Cita confirmada en ${client.businessName}`,
           body: `${created.service}${resolved ? ` con ${resolved.name}` : ''} · ${dateLabel} a las ${created.time}`,
-          url: `/b/${client.publicSlug ?? ''}`,
+          url: client.publicSlug ? `/b/${client.publicSlug}/cuenta` : '/',
           tag: `booking-${created.id}`,
           data: { bookingId: created.id, kind: 'booking_confirmed' },
         });

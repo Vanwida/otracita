@@ -78,7 +78,7 @@ export async function GET(request: Request) {
         push: {
           title: `Mañana tu cita en ${client.businessName}`,
           body: `${booking.service}${booking.barber ? ` con ${booking.barber}` : ''} · ${formatDateSpanish(booking.date)} a las ${booking.time}`,
-          url: client.publicSlug ? `/b/${client.publicSlug}` : '/',
+          url: client.publicSlug ? `/b/${client.publicSlug}/cuenta` : '/',
           tag: `reminder-${booking.id}`,
           data: { bookingId: booking.id, kind: 'reminder_24h' },
         },
