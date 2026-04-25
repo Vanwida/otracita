@@ -4,7 +4,7 @@ import { eq, and, lt, sql } from 'drizzle-orm';
 import { sendWhatsAppButtons } from '@/lib/whatsapp/sender';
 import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
-import { sendPushByPhone } from '@/lib/app-auth/push';
+import { dispatchUserNotification } from '@/lib/notifications/dispatch';
 
 type Lang = 'es' | 'en';
 
@@ -68,33 +68,38 @@ export async function GET(request: Request) {
     }
 
     try {
-      await sendWhatsAppButtons(
-        phoneNumberId,
-        booking.customerPhone,
-        messageBody,
-        [
-          { id: 'reminder_confirm', title: lang === 'en' ? "✅ I'll be there" : '✅ Confirmo' },
-          { id: 'reminder_cancel', title: lang === 'en' ? '❌ Cancel' : '❌ Cancelar' },
-        ],
-        token
-      );
+      // One channel only — push if the customer has the PWA, WhatsApp
+      // otherwise. Avoids paying for a template + vibrating the phone twice.
+      // The WhatsApp message keeps the interactive Confirm/Cancel buttons
+      // because that's the canonical reply path the engine listens to.
+      await dispatchUserNotification({
+        phone: booking.customerPhone,
+        clientId: client.id,
+        push: {
+          title: `Mañana tu cita en ${client.businessName}`,
+          body: `${booking.service}${booking.barber ? ` con ${booking.barber}` : ''} · ${formatDateSpanish(booking.date)} a las ${booking.time}`,
+          url: client.publicSlug ? `/b/${client.publicSlug}` : '/',
+          tag: `reminder-${booking.id}`,
+          data: { bookingId: booking.id, kind: 'reminder_24h' },
+        },
+        whatsappFallback: async () => {
+          await sendWhatsAppButtons(
+            phoneNumberId,
+            booking.customerPhone,
+            messageBody,
+            [
+              { id: 'reminder_confirm', title: lang === 'en' ? "✅ I'll be there" : '✅ Confirmo' },
+              { id: 'reminder_cancel', title: lang === 'en' ? '❌ Cancel' : '❌ Cancelar' },
+            ],
+            token,
+          );
+        },
+      });
 
-      // Mark as reminded
+      // Mark as reminded — regardless of channel.
       await db.update(bookings)
         .set({ reminderSent: true })
         .where(eq(bookings.id, booking.id));
-
-      // Fire-and-forget push to the PWA subscription. The app_user may or
-      // may not exist — the helper no-ops if this phone isn't registered.
-      void sendPushByPhone(booking.customerPhone, client.id, {
-        title: `Mañana tu cita en ${client.businessName}`,
-        body: `${booking.service}${booking.barber ? ` con ${booking.barber}` : ''} · ${formatDateSpanish(booking.date)} a las ${booking.time}`,
-        url: client.publicSlug ? `/b/${client.publicSlug}` : '/',
-        tag: `reminder-${booking.id}`,
-        data: { bookingId: booking.id, kind: 'reminder_24h' },
-      }).catch((err) => {
-        console.error(`[cron/reminders] push failed for ${booking.id}:`, err);
-      });
 
       sent++;
     } catch (error) {

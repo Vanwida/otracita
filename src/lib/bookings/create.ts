@@ -328,22 +328,28 @@ export async function createBooking(
   // If this phone belongs to an app user with a subscription for THIS
   // barbería, send an instant confirmation to their phone/PWA. Silently
   // noops for guests without an app account.
-  (async () => {
-    try {
-      const { sendPushByPhone } = await import('@/lib/app-auth/push');
-      const dateLabel = created.date.split('-').reverse().join('/'); // DD/MM/YYYY
-      await sendPushByPhone(customerPhone.trim(), client.id, {
-        title: `Cita confirmada en ${client.businessName}`,
-        body: `${created.service}${resolved ? ` con ${resolved.name}` : ''} · ${dateLabel} a las ${created.time}`,
-        url: `/b/${client.publicSlug ?? ''}`,
-        tag: `booking-${created.id}`,
-        data: { bookingId: created.id, kind: 'booking_confirmed' },
-      });
-    } catch (err) {
-      // push failures never break the booking flow
-      console.error('[createBooking] push failed:', err);
-    }
-  })();
+  //
+  // Skipped when the booking came from the WhatsApp bot — the engine
+  // sends a "Cita confirmada" reply in the same chat thread right after,
+  // so the push would just duplicate the same notification.
+  if (source !== 'bot') {
+    (async () => {
+      try {
+        const { sendPushByPhone } = await import('@/lib/app-auth/push');
+        const dateLabel = created.date.split('-').reverse().join('/'); // DD/MM/YYYY
+        await sendPushByPhone(customerPhone.trim(), client.id, {
+          title: `Cita confirmada en ${client.businessName}`,
+          body: `${created.service}${resolved ? ` con ${resolved.name}` : ''} · ${dateLabel} a las ${created.time}`,
+          url: `/b/${client.publicSlug ?? ''}`,
+          tag: `booking-${created.id}`,
+          data: { bookingId: created.id, kind: 'booking_confirmed' },
+        });
+      } catch (err) {
+        // push failures never break the booking flow
+        console.error('[createBooking] push failed:', err);
+      }
+    })();
+  }
 
   return { success: true, booking: created };
 }
