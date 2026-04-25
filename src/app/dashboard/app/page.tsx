@@ -9,8 +9,6 @@ import { and, count, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   Smartphone,
-  Image as ImageIcon,
-  Heart,
   Bell,
   Link as LinkIcon,
   ExternalLink,
@@ -177,17 +175,7 @@ export default async function AppPage() {
             Próximamente
           </span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <RoadmapTile
-            icon={Heart}
-            title="Fidelidad por puntos"
-            description="Tus clientes suman puntos con cada cita. Al llegar al umbral, canjean premio (corte gratis, descuento). Configurable por ti."
-          />
-          <RoadmapTile
-            icon={ImageIcon}
-            title="Galería de cortes"
-            description="Sube fotos de tus trabajos. Aparecen en un carrusel visible en la app para que clientes nuevos vean tu estilo."
-          />
+        <div className="grid grid-cols-1 gap-4">
           <RoadmapTile
             icon={LinkIcon}
             title="Promos contextuales"
@@ -204,7 +192,7 @@ function RoadmapTile({
   title,
   description,
 }: {
-  icon: typeof Heart
+  icon: typeof LinkIcon
   title: string
   description: string
 }) {
