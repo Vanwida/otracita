@@ -54,7 +54,7 @@ export default async function AppPage() {
   const readyForApp = Boolean(url && client.publicEnabled)
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl space-y-6">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
       <AjustesBreadcrumb current="App para clientes" />
       <div className="mb-2">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">

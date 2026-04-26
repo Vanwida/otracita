@@ -65,7 +65,7 @@ export default async function FacturasPage({
   // Empty state if invoicing disabled
   if (!client.invoicingEnabled) {
     return (
-      <div className="p-4 md:p-8 max-w-4xl">
+      <div className="p-4 md:p-8 max-w-4xl mx-auto">
         <Header month={month} />
         <div className="mt-8 bg-surface border border-line rounded-2xl p-8 md:p-12 text-center">
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
@@ -89,7 +89,7 @@ export default async function FacturasPage({
 
   if (!range) {
     return (
-      <div className="p-4 md:p-8 max-w-4xl">
+      <div className="p-4 md:p-8 max-w-4xl mx-auto">
         <Header month={currentMonth()} />
         <div className="mt-8 bg-surface border border-line rounded-2xl p-8 text-center text-ink-2">
           Mes inválido. <Link href="/dashboard/facturas" className="text-brand hover:underline">Ver mes actual</Link>.
@@ -161,7 +161,7 @@ export default async function FacturasPage({
   const verifactuErrorCount = Number(errStatsRow?.n ?? 0)
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <Header month={month} />
 
       {/* Panel educativo VeriFactu — da contexto, tranquilidad y valor.

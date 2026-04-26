@@ -149,7 +149,7 @@ export default async function NegocioPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <AjustesBreadcrumb current="Tu barbería" />
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Tu barbería</h1>

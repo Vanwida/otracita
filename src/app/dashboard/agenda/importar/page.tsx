@@ -15,7 +15,7 @@ export default async function ImportPage() {
   if (!client) redirect('/dashboard/setup')
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">
           Importar reservas

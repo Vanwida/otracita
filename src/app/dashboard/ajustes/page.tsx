@@ -125,7 +125,7 @@ export default async function AjustesPage() {
   const planPriceEur = planMeta ? planMeta.price / 100 : null
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Ajustes</h1>
         <p className="text-ink-2">Todo lo que configuras una vez y se queda funcionando. Un vistazo y sabes qué está activo.</p>
