@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { bookings, clients, invoices, tips } from '@/db/schema'
-import { and, eq, gte, lt, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   Wallet,
@@ -16,13 +16,13 @@ import {
   TrendingDown,
   Minus,
   ChevronRight,
-  AlertCircle,
   FileText,
   ChevronLeft,
 } from 'lucide-react'
 import { Suspense } from 'react'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 import ConnectSettings from '../_components/ConnectSettings'
+import InvoicingSettings from '../_components/InvoicingSettings'
 
 // -----------------------------------------------------------------------------
 // /dashboard/caja — panel financiero del barbero.
@@ -123,25 +123,18 @@ export default async function CajaPage({ searchParams }: PageProps) {
     tipsPrevEur = prevRow ? Number(prevRow.tips_cents) / 100 : null
   }
 
-  // ─── Datos fiscales completos? + nº facturas este mes ────────────────────
-  const fiscalDataComplete = Boolean(
-    client.fiscalName && client.fiscalNif && client.fiscalAddress &&
-    client.fiscalCity && client.fiscalPostalCode,
-  )
-
+  // ─── Facturas: contador este mes + flag hasEmittedInvoices para lock ────
   const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
   const nextMonthStartIso = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10)
   const [invoiceCountRow] = await db
-    .select({ n: sql<number>`count(*)` })
+    .select({
+      thisMonth: sql<number>`count(*) FILTER (WHERE issue_date >= ${monthStartIso} AND issue_date < ${nextMonthStartIso})`,
+      total: sql<number>`count(*)`,
+    })
     .from(invoices)
-    .where(
-      and(
-        eq(invoices.clientId, client.id),
-        gte(invoices.issueDate, monthStartIso),
-        lt(invoices.issueDate, nextMonthStartIso),
-      ),
-    )
-  const invoiceCountThisMonth = Number(invoiceCountRow?.n ?? 0)
+    .where(eq(invoices.clientId, client.id))
+  const invoiceCountThisMonth = Number(invoiceCountRow?.thisMonth ?? 0)
+  const hasEmittedInvoices = Number(invoiceCountRow?.total ?? 0) > 0
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
@@ -203,40 +196,23 @@ export default async function CajaPage({ searchParams }: PageProps) {
         />
       </section>
 
-      {/* Datos fiscales — TEMPORAL: link a Negocio hasta refactor del commit 4
-          que migrará InvoicingSettings a self-contained con endpoint propio. */}
-      <section className="mb-8 bg-surface border border-line rounded-2xl p-5">
-        <div className="flex items-start gap-3 flex-wrap">
-          <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
-            fiscalDataComplete ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
-          }`}>
-            {fiscalDataComplete ? <Receipt className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-ink">Datos fiscales</h3>
-            {fiscalDataComplete ? (
-              <>
-                <p className="text-sm text-ink-2 mt-1">
-                  {client.fiscalName} · {client.fiscalNif}
-                </p>
-                <p className="text-xs text-ink-3 mt-0.5">
-                  {client.fiscalAddress}, {client.fiscalPostalCode} {client.fiscalCity} · IVA {client.ivaRate}%
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-ink-2 mt-1">
-                Faltan datos para emitir tickets y facturas. Completa NIF, dirección y IVA.
-              </p>
-            )}
-          </div>
-          <Link
-            href="/dashboard/negocio?tab=facturacion"
-            className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:text-brand-strong"
-          >
-            {fiscalDataComplete ? 'Editar' : 'Completar'}
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
+      {/* Datos fiscales — InvoicingSettings self-contained (commit 4): toggle
+          emisión + datos fiscales + numeración. Save via /api/invoicing/config. */}
+      <section className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
+        <InvoicingSettings
+          initial={{
+            invoicingEnabled: client.invoicingEnabled,
+            fiscalName: client.fiscalName || '',
+            fiscalNif: client.fiscalNif || '',
+            fiscalAddress: client.fiscalAddress || '',
+            fiscalCity: client.fiscalCity || '',
+            fiscalPostalCode: client.fiscalPostalCode || '',
+            ivaRate: client.ivaRate,
+            invoiceNumberPrefix: client.invoiceNumberPrefix,
+            invoiceNumberNext: client.invoiceNumberNext,
+            hasEmittedInvoices,
+          }}
+        />
       </section>
 
       {/* Facturas emitidas — link al detalle */}

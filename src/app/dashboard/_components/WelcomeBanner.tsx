@@ -140,7 +140,7 @@ export default function WelcomeBanner({ businessName, publicSlug, invoicingEnabl
               icon={FileText}
               label="Activa la facturación cuando estés listo"
               hint="Emite tickets y facturas automáticas con cada reserva. Cumple VeriFactu de serie."
-              href="/dashboard/negocio?tab=facturacion"
+              href="/dashboard/caja"
             />
           )}
         </ul>

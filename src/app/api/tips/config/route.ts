@@ -10,7 +10,7 @@ import {
 // PATCH /api/tips/config
 //
 // Tenant-authenticated endpoint for the "Propinas y rating" panel on
-// /dashboard/negocio?tab=cobros. Body shape:
+// /dashboard/resenas (panel TipsSettings). Body shape:
 //
 //   { tipsEnabled: boolean,
 //     tipsSuggestedCents: number[],   // 1-3 positive ints, each >= 100 (1€)

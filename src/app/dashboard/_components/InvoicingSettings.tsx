@@ -1,17 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { AlertTriangle, Info } from 'lucide-react'
+import { useState, useTransition } from 'react'
+import { AlertTriangle, Info, Check, Loader2 } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
-// Invoicing settings panel — controls inside the NegocioForm's "Facturación"
-// tab. Kept as its own component because it carries local state (NIF validation
-// hint, toggle, invoice-next lock), and the form keeps the save button.
+// InvoicingSettings — panel de datos fiscales + numeración + toggle de
+// emisión automática.
 //
-// This component is uncontrolled for its text inputs (we read them via
-// FormData at submit time, same as the rest of NegocioForm), but it does drive
-// the enabled/disabled state of the toggle based on required fields and
-// surfaces a soft NIF-format warning.
+// Vive en /dashboard/caja desde commit 4 — antes vivía en NegocioForm tab
+// "Facturación" como uncontrolled (recogía via FormData). Ahora es
+// self-contained: state controlado + botón save propio + endpoint dedicado
+// /api/invoicing/config. Misma validación legal que el saveBusiness viejo.
+//
+// Reglas legales (RD 1619/2012 art. 6):
+//   · Activar el toggle requiere los 5 campos fiscales rellenos
+//   · invoiceNumberNext es read-only si ya hay facturas emitidas (numeración
+//     correlativa obligatoria)
 // -----------------------------------------------------------------------------
 
 export interface InvoicingInitial {
@@ -32,11 +36,8 @@ interface Props {
   initial: InvoicingInitial
 }
 
-// Matches the helper in src/lib/invoicing.ts — single source of truth for the
-// shape check (lenient, not a real checksum).
 const NIF_SHAPE = /^[0-9A-Z][0-9]{7}[0-9A-Z]$/i
 
-/** IVA rates offered in Spain for services. 21% is the default general rate. */
 const IVA_OPTIONS = [
   { value: 21, label: '21% — general' },
   { value: 10, label: '10% — reducido' },
@@ -44,7 +45,6 @@ const IVA_OPTIONS = [
   { value: 0, label: '0% — exento' },
 ]
 
-/** Zero-pad width used by the backend — keep in sync with lib/invoicing.ts. */
 const PREVIEW_PAD = 4
 
 export default function InvoicingSettings({ initial }: Props) {
@@ -54,11 +54,15 @@ export default function InvoicingSettings({ initial }: Props) {
   const [fiscalAddress, setFiscalAddress] = useState(initial.fiscalAddress)
   const [fiscalCity, setFiscalCity] = useState(initial.fiscalCity)
   const [fiscalPostalCode, setFiscalPostalCode] = useState(initial.fiscalPostalCode)
+  const [ivaRate, setIvaRate] = useState<number>(initial.ivaRate)
   const [prefix, setPrefix] = useState(initial.invoiceNumberPrefix)
+  const [nextNumber, setNextNumber] = useState<string>(String(initial.invoiceNumberNext))
 
-  // Real Decreto 1619/2012 art. 6 — a valid factura emisor block requires
-  // fiscal name, NIF, and full postal address. All five fields are mandatory
-  // before the barber can toggle invoicing on.
+  const [saving, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // RD 1619/2012 art. 6 — emisor block requires los 5 campos fiscales.
   const canEnable =
     fiscalName.trim().length > 0 &&
     fiscalNif.trim().length > 0 &&
@@ -67,7 +71,6 @@ export default function InvoicingSettings({ initial }: Props) {
     fiscalCity.trim().length > 0
   const nifLooksOff = fiscalNif.trim().length > 0 && !NIF_SHAPE.test(fiscalNif.trim())
 
-  // Toggle guard: if user tries to enable while required fields empty, stop.
   const onToggle = () => {
     if (!enabled && !canEnable) return
     setEnabled(!enabled)
@@ -75,6 +78,49 @@ export default function InvoicingSettings({ initial }: Props) {
 
   const paddedPreview = String(initial.invoiceNumberNext).padStart(PREVIEW_PAD, '0')
   const numberPreview = `${prefix}${paddedPreview}`
+
+  const onSave = () => {
+    setError(null)
+    setSaved(false)
+
+    const parsedNext = Number.parseInt(nextNumber, 10)
+    if (!Number.isFinite(parsedNext) || parsedNext < 1) {
+      setError('El próximo número debe ser ≥ 1.')
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const r = await fetch('/api/invoicing/config', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invoicingEnabled: enabled,
+            fiscalName,
+            fiscalNif,
+            fiscalAddress,
+            fiscalCity,
+            fiscalPostalCode,
+            ivaRate,
+            invoiceNumberPrefix: prefix,
+            invoiceNumberNext: parsedNext,
+          }),
+        })
+        const d = (await r.json().catch(() => ({}))) as { error?: string; invoicingEnabled?: boolean }
+        if (!r.ok) {
+          setError(d?.error ?? 'No se pudo guardar')
+          return
+        }
+        // Sync local toggle con lo que el backend persistió (por si lo
+        // bajó a false porque faltaban campos).
+        if (typeof d.invoicingEnabled === 'boolean') setEnabled(d.invoicingEnabled)
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2500)
+      } catch {
+        setError('Error de red')
+      }
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -93,8 +139,6 @@ export default function InvoicingSettings({ initial }: Props) {
       >
         <input
           type="checkbox"
-          name="invoicingEnabled"
-          value="on"
           checked={enabled}
           onChange={onToggle}
           disabled={!enabled && !canEnable}
@@ -117,10 +161,9 @@ export default function InvoicingSettings({ initial }: Props) {
       {/* Fiscal details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <TextField
-          name="fiscalName"
           label="Nombre fiscal"
-          defaultValue={fiscalName}
-          onChange={(v) => setFiscalName(v)}
+          value={fiscalName}
+          onChange={setFiscalName}
           placeholder="Ej. Barbería Central SL"
           required
         />
@@ -130,9 +173,8 @@ export default function InvoicingSettings({ initial }: Props) {
           </label>
           <input
             id="fiscalNif"
-            name="fiscalNif"
             type="text"
-            defaultValue={fiscalNif}
+            value={fiscalNif}
             onChange={(e) => setFiscalNif(e.target.value.toUpperCase())}
             placeholder="B12345678"
             className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors uppercase"
@@ -147,28 +189,25 @@ export default function InvoicingSettings({ initial }: Props) {
       </div>
 
       <TextField
-        name="fiscalAddress"
         label="Dirección fiscal"
-        defaultValue={fiscalAddress}
-        onChange={(v) => setFiscalAddress(v)}
+        value={fiscalAddress}
+        onChange={setFiscalAddress}
         placeholder="Calle Gran Vía 123"
         required
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <TextField
-          name="fiscalCity"
           label="Ciudad"
-          defaultValue={fiscalCity}
-          onChange={(v) => setFiscalCity(v)}
+          value={fiscalCity}
+          onChange={setFiscalCity}
           placeholder="Barcelona"
           required
         />
         <TextField
-          name="fiscalPostalCode"
           label="Código postal"
-          defaultValue={fiscalPostalCode}
-          onChange={(v) => setFiscalPostalCode(v)}
+          value={fiscalPostalCode}
+          onChange={setFiscalPostalCode}
           placeholder="08001"
           required
         />
@@ -181,8 +220,8 @@ export default function InvoicingSettings({ initial }: Props) {
           </label>
           <select
             id="ivaRate"
-            name="ivaRate"
-            defaultValue={String(initial.ivaRate)}
+            value={String(ivaRate)}
+            onChange={(e) => setIvaRate(Number(e.target.value))}
             className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
           >
             {IVA_OPTIONS.map((o) => (
@@ -202,9 +241,8 @@ export default function InvoicingSettings({ initial }: Props) {
           </label>
           <input
             id="invoiceNumberPrefix"
-            name="invoiceNumberPrefix"
             type="text"
-            defaultValue={prefix}
+            value={prefix}
             onChange={(e) => setPrefix(e.target.value)}
             placeholder="FAC-2026-"
             className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
@@ -222,11 +260,11 @@ export default function InvoicingSettings({ initial }: Props) {
         </label>
         <input
           id="invoiceNumberNext"
-          name="invoiceNumberNext"
           type="number"
           min={1}
           step={1}
-          defaultValue={initial.invoiceNumberNext}
+          value={nextNumber}
+          onChange={(e) => setNextNumber(e.target.value)}
           disabled={initial.hasEmittedInvoices}
           className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         />
@@ -240,38 +278,54 @@ export default function InvoicingSettings({ initial }: Props) {
           </p>
         )}
       </div>
+
+      {/* Save button */}
+      <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
+        {saved && (
+          <span className="inline-flex items-center gap-1.5 text-sm text-success">
+            <Check className="h-4 w-4" />
+            Guardado
+          </span>
+        )}
+        {error && <span className="text-sm text-danger">{error}</span>}
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="rounded-xl bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+        >
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          Guardar facturación
+        </button>
+      </div>
     </div>
   )
 }
 
 function TextField({
-  name,
   label,
-  defaultValue,
+  value,
   placeholder,
   required,
   onChange,
 }: {
-  name: string
   label: string
-  defaultValue?: string
+  value: string
   placeholder?: string
   required?: boolean
-  onChange?: (v: string) => void
+  onChange: (v: string) => void
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={name} className="text-sm font-medium text-ink-2">
+      <label className="text-sm font-medium text-ink-2">
         {label} {required && <span className="text-danger">*</span>}
       </label>
       <input
-        id={name}
-        name={name}
         type="text"
-        defaultValue={defaultValue || ''}
+        value={value}
         placeholder={placeholder}
         required={required}
-        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        onChange={(e) => onChange(e.target.value)}
         className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors"
       />
     </div>

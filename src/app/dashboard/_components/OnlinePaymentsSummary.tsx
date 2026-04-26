@@ -82,7 +82,7 @@ export default function OnlinePaymentsSummary({ connectStatus }: Props) {
               vaya directo a tu banco.
             </p>
             <Link
-              href="/dashboard/negocio?tab=cobros"
+              href="/dashboard/caja"
               className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
             >
               <CreditCard className="h-4 w-4" />

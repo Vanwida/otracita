@@ -1,17 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { Store, Scissors, Users, Clock, CalendarX, Check, Receipt, CreditCard } from 'lucide-react'
+import { Store, Scissors, Users, Clock, CalendarX, Check } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
 import BarbersManager from './BarbersManager'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
-import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
-import ConnectSettings, { type ConnectInitial } from './ConnectSettings'
-import type { TipsInitial } from './TipsSettings'
-import Link from 'next/link'
-import { Star } from 'lucide-react'
 
 interface ServiceItem {
   name: string
@@ -33,15 +28,14 @@ interface Props {
     hours: HoursMap | null
     slotStepMinutes: number
     blockedDates: string[]
-    invoicing: InvoicingInitial
-    connect: ConnectInitial
-    tips: TipsInitial
   }
-  /** Server action that saves the core business fields (everything except blocked dates). */
+  /** Server action that saves the core business fields. Datos fiscales y
+   *  Cobros Stripe Connect viven ahora en /dashboard/caja con sus propios
+   *  endpoints (/api/invoicing/config y /api/stripe/connect/*). */
   save: (formData: FormData) => Promise<void>
 }
 
-type TabKey = 'info' | 'services' | 'team' | 'hours' | 'facturacion' | 'cobros' | 'blocked'
+type TabKey = 'info' | 'services' | 'team' | 'hours' | 'blocked'
 
 interface Tab {
   key: TabKey
@@ -54,8 +48,6 @@ const TABS: Tab[] = [
   { key: 'services', label: 'Servicios', icon: Scissors },
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'hours', label: 'Horario', icon: Clock },
-  { key: 'facturacion', label: 'Facturación', icon: Receipt },
-  { key: 'cobros', label: 'Cobros online', icon: CreditCard },
   { key: 'blocked', label: 'Días bloqueados', icon: CalendarX },
 ]
 
@@ -75,19 +67,23 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
   // resolución media). Sin esto, al deep-linkear a ?tab=blocked el tab queda
   // fuera de la zona visible.
   const tabBtnRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
-    info: null, services: null, team: null, hours: null,
-    facturacion: null, cobros: null, blocked: null,
+    info: null, services: null, team: null, hours: null, blocked: null,
   })
 
-  // Allow deep-linking: ?tab=cobros lands the user on the Cobros tab so the
-  // "Activa cobros" CTA in BookingDetailPanel can bring them to the right
-  // place in one click.
+  // Allow deep-linking: ?tab=blocked lands en el tab correspondiente.
+  // Las viejas tabs ?tab=facturacion y ?tab=cobros se redirigen a /dashboard/caja
+  // (vivien ahí desde commit 4) — handled abajo.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const raw = params.get('tab')
     if (!raw) return
-    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'facturacion', 'cobros', 'blocked']
+    // Redirección legacy: enlaces externos viejos llegan a estas tabs.
+    if (raw === 'facturacion' || raw === 'cobros') {
+      window.location.replace('/dashboard/caja')
+      return
+    }
+    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'blocked']
     if ((valid as string[]).includes(raw)) {
       setTab(raw as TabKey)
     }
@@ -157,23 +153,6 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
             <p className="text-sm text-ink-2 mt-1">Bloquea fechas específicas (vacaciones, festivos) para que el bot no ofrezca esos días.</p>
           </div>
           <BlockedDatesManager initialDates={initial.blockedDates} clientId={clientId} />
-        </div>
-      ) : tab === 'cobros' ? (
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
-          <ConnectSettings initial={initial.connect} />
-          {/* Propinas vivían aquí — ahora se configuran en /dashboard/resenas
-              porque conceptualmente son parte del flow post-servicio (rating
-              + tip). Stripe Connect (lo que queda en este tab) es la
-              infraestructura previa que tienen que activar primero. */}
-          <div className="border-t border-line pt-6">
-            <Link
-              href="/dashboard/resenas"
-              className="inline-flex items-center gap-2 text-sm text-brand hover:text-brand-strong"
-            >
-              <Star className="h-4 w-4" />
-              Configurar reseñas y propinas
-            </Link>
-          </div>
         </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
@@ -262,17 +241,9 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
             </div>
           </div>
 
-          {/* ─── Facturación ─── */}
-          <div className={tab === 'facturacion' ? 'space-y-4' : 'hidden'}>
-            <div>
-              <h2 className="text-lg font-semibold text-ink">Facturación</h2>
-              <p className="text-sm text-ink-2 mt-1">
-                Emite tickets y facturas automáticamente por cada reserva confirmada.
-                Los datos fiscales aparecen en cada documento que recibe tu cliente.
-              </p>
-            </div>
-            <InvoicingSettings initial={initial.invoicing} />
-          </div>
+          {/* Facturación y Cobros vivían aquí — movidos a /dashboard/caja
+              (commit 4) con InvoicingSettings y ConnectSettings ya
+              self-contained con sus propios endpoints API. */}
 
           <div className="pt-4 flex items-center justify-end gap-3 border-t border-line">
             {saved && (

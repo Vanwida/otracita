@@ -14,7 +14,6 @@ import {
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
-import PromosToggle from './PromosToggle'
 import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 
 const SITE_ORIGIN = 'https://otracita.es'
@@ -170,9 +169,8 @@ export default async function AppPage() {
         </p>
       </section>
 
-      {/* Promos contextuales — toggle on/off. Cuando ON, en /dashboard/agenda
-          aparece el botón "Llenar huecos" que dispara el modal completo. */}
-      <PromosToggle initialEnabled={client.promosEnabled} />
+      {/* Promos contextuales se gestionan ahora en /dashboard/marketing —
+          conceptualmente son marketing, no configuración de la app. */}
     </div>
   )
 }

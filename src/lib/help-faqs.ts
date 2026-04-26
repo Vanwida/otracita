@@ -159,7 +159,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     items: [
       {
         q: '¿Cómo activo las facturas?',
-        a: '[Mi negocio → Facturación](/dashboard/negocio?tab=facturacion). Rellena nombre fiscal, NIF, dirección, CP y ciudad. Sin estos 5 datos no podemos emitir por ley (Real Decreto 1619/2012).',
+        a: '[Mi negocio → Facturación](/dashboard/caja). Rellena nombre fiscal, NIF, dirección, CP y ciudad. Sin estos 5 datos no podemos emitir por ley (Real Decreto 1619/2012).',
       },
       {
         q: '¿Ticket o factura?',
@@ -179,7 +179,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       },
       {
         q: '¿Qué número tendrá mi próxima factura?',
-        a: 'En [Mi negocio → Facturación](/dashboard/negocio?tab=facturacion) ves y editas el prefijo + número siguiente. Si ya emitiste alguna, el número se bloquea (no se puede ir hacia atrás, es requisito legal).',
+        a: 'En [Mi negocio → Facturación](/dashboard/caja) ves y editas el prefijo + número siguiente. Si ya emitiste alguna, el número se bloquea (no se puede ir hacia atrás, es requisito legal).',
       },
       {
         q: 'Un walk-in que no reservó, ¿cómo le emito factura?',
@@ -213,7 +213,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       },
       {
         q: '¿Cómo activo los cobros?',
-        a: '[Mi negocio → Cobros online](/dashboard/negocio?tab=cobros). Pulsa "Activar cobros online" y sigue el formulario de Stripe (DNI, IBAN, selfie). En pocos minutos está listo.',
+        a: '[Mi negocio → Cobros online](/dashboard/caja). Pulsa "Activar cobros online" y sigue el formulario de Stripe (DNI, IBAN, selfie). En pocos minutos está listo.',
       },
       {
         q: '¿Cuánto cobra Stripe?',
@@ -247,7 +247,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     items: [
       {
         q: '¿Cómo activo propinas?',
-        a: 'Primero Stripe activo. Luego en [Mi negocio → Cobros](/dashboard/negocio?tab=cobros) abajo encontrarás "Propinas y rating". Activa el toggle y define importes sugeridos (ej. 2€/3€/5€).',
+        a: 'Primero Stripe activo. Luego en [Mi negocio → Cobros](/dashboard/caja) abajo encontrarás "Propinas y rating". Activa el toggle y define importes sugeridos (ej. 2€/3€/5€).',
       },
       {
         q: '¿Cómo funciona?',

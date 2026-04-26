@@ -76,7 +76,7 @@ export default async function FacturasPage({
             Emite tickets y facturas automáticamente con cada reserva confirmada. Exporta cada mes un CSV para tu gestor.
           </p>
           <Link
-            href="/dashboard/negocio?tab=facturacion"
+            href="/dashboard/caja"
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
           >
             Activar facturación
