@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
+import SearchAndSort from './SearchAndSort'
 
 // -----------------------------------------------------------------------------
 // /dashboard/clientes — listado de clientes de la barbería con stats
@@ -41,9 +42,29 @@ import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButt
 
 type Reputation = 'good' | 'warning' | 'blocked'
 type ReputationFilter = Reputation | 'all'
+type SortKey = 'recent' | 'spent' | 'visits' | 'rating' | 'name'
 
 interface Props {
-  searchParams: Promise<{ rep?: string }>
+  searchParams: Promise<{ rep?: string; q?: string; sort?: string }>
+}
+
+// Mapa de ORDER BY válido — defendemos contra inyección por URL.
+const SORT_SQL: Record<SortKey, string> = {
+  recent: 'c.last_booking_at DESC NULLS LAST',
+  spent: 'COALESCE(b.spent_cents, 0) DESC',
+  visits: 'COALESCE(c.total_bookings, 0) DESC',
+  rating: 'r.avg_rating DESC NULLS LAST',
+  name: `LOWER(COALESCE(c.name, '')) ASC`,
+}
+
+/** Construye href para los pills de reputación preservando search y sort actuales. */
+function buildPillHref(rep: ReputationFilter | null, q: string, sort: SortKey): string {
+  const params = new URLSearchParams()
+  if (rep && rep !== 'all') params.set('rep', rep)
+  if (q.length > 0) params.set('q', q)
+  if (sort !== 'recent') params.set('sort', sort)
+  const qs = params.toString()
+  return qs ? `/dashboard/clientes?${qs}` : '/dashboard/clientes'
 }
 
 interface CustomerRow {
@@ -66,7 +87,7 @@ const HABITUAL_DAYS = 30
 const INACTIVO_DAYS = 90
 
 export default async function ClientesPage({ searchParams }: Props) {
-  const { rep: rawRep } = await searchParams
+  const { rep: rawRep, q: rawQ, sort: rawSort } = await searchParams
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -76,12 +97,23 @@ export default async function ClientesPage({ searchParams }: Props) {
   const repFilter: ReputationFilter =
     rawRep === 'warning' || rawRep === 'blocked' || rawRep === 'good' ? rawRep : 'all'
 
+  const search = (rawQ ?? '').trim().slice(0, 100)
+  const searchLike = `%${search.toLowerCase()}%`
+
+  // Sort whitelist — sino caemos en 'recent'. CRITICAL: SORT_SQL es un
+  // string literal mapeado, NO interpolación de input del usuario.
+  const sortKey: SortKey = (rawSort && rawSort in SORT_SQL ? (rawSort as SortKey) : 'recent')
+  const orderClause = SORT_SQL[sortKey]
+
   // Single SQL — customers + aggregates por LEFT JOIN. Más eficiente que
   // N+1 queries y mantiene la lectura simple en JS.
   const repWhere =
-    repFilter === 'all'
-      ? sql``
-      : sql`AND c.reputation = ${repFilter}`
+    repFilter === 'all' ? sql`` : sql`AND c.reputation = ${repFilter}`
+
+  // Búsqueda por nombre o phone (insensible a mayúsculas, parcial).
+  const searchWhere = search
+    ? sql`AND (LOWER(COALESCE(c.name, '')) LIKE ${searchLike} OR c.phone LIKE ${searchLike})`
+    : sql``
 
   const result = await db.execute(sql`
     SELECT
@@ -115,7 +147,8 @@ export default async function ClientesPage({ searchParams }: Props) {
     ) r ON r.customer_phone = c.phone
     WHERE c.client_id = ${client.id}
     ${repWhere}
-    ORDER BY c.last_booking_at DESC NULLS LAST
+    ${searchWhere}
+    ORDER BY ${sql.raw(orderClause)}
   `)
 
   const rows = (result as unknown as { rows: CustomerRow[] }).rows.map((r) => ({
@@ -210,12 +243,16 @@ export default async function ClientesPage({ searchParams }: Props) {
         )}
       </div>
 
-      {/* Filter tabs */}
+      {/* Search + sort + export */}
+      <SearchAndSort />
+
+      {/* Filter tabs — los hrefs preservan q y sort vía buildPillHref para
+          que cambiar reputación no pierda el resto de filtros activos. */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto">
-        <FilterPill href="/dashboard/clientes" active={repFilter === 'all'} label="Todos" />
-        <FilterPill href="/dashboard/clientes?rep=good" active={repFilter === 'good'} label="Buena" />
-        <FilterPill href="/dashboard/clientes?rep=warning" active={repFilter === 'warning'} label="Aviso" />
-        <FilterPill href="/dashboard/clientes?rep=blocked" active={repFilter === 'blocked'} label="Bloqueados" />
+        <FilterPill href={buildPillHref(null, search, sortKey)} active={repFilter === 'all'} label="Todos" />
+        <FilterPill href={buildPillHref('good', search, sortKey)} active={repFilter === 'good'} label="Buena" />
+        <FilterPill href={buildPillHref('warning', search, sortKey)} active={repFilter === 'warning'} label="Aviso" />
+        <FilterPill href={buildPillHref('blocked', search, sortKey)} active={repFilter === 'blocked'} label="Bloqueados" />
       </div>
 
       {/* Table */}
