@@ -2,14 +2,18 @@ import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
-// Breadcrumb que aparece en cada subpágina del hub Ajustes:
+// Breadcrumb que aparece en cada subpágina del hub:
 //
-//     ‹ Ajustes  ›  Tu barbería
+//     ‹ Más  ›  Tu barbería
 //
 // Sirve dos funciones:
 //   1. Vuelta clara al hub (el barbero no se "pierde" en una página de form).
-//   2. Indicar visualmente que esa página vive *dentro* de Ajustes — la Fase 2
-//      moverá las URLs a /dashboard/ajustes/* y el breadcrumb seguirá igual.
+//   2. Indicar visualmente que esa página vive *dentro* del hub.
+//
+// El hub vivía bajo el label "Ajustes"; renombrado a "Más" en commit 5
+// porque ahora contiene también marketing, fidelización, etc. — no solo
+// configuración. La URL /dashboard/ajustes se mantiene (no rompemos
+// bookmarks).
 // -----------------------------------------------------------------------------
 
 interface Props {
@@ -23,7 +27,7 @@ export default function AjustesBreadcrumb({ current }: Props) {
         href="/dashboard/ajustes"
         className="text-ink-3 hover:text-ink transition-colors"
       >
-        Ajustes
+        Más
       </Link>
       <ChevronRight className="h-3.5 w-3.5 text-ink-3 shrink-0" />
       <span className="text-ink font-medium truncate">{current}</span>

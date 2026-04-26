@@ -4,15 +4,14 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
 import { db } from '@/db'
-import { clients, barbers as barbersTable, pushSubscriptions, invoices, ratings } from '@/db/schema'
-import { and, eq, gte, lt, sql } from 'drizzle-orm'
+import { clients, barbers as barbersTable, pushSubscriptions, ratings } from '@/db/schema'
+import { and, eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   Store,
   Bot,
   Smartphone,
   Gift,
-  FileText,
   CreditCard,
   HelpCircle,
   ChevronRight,
@@ -26,6 +25,7 @@ import {
   Mail,
   Bell,
   Star,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import { PLANS, type PlanId } from '@/lib/stripe'
@@ -61,13 +61,9 @@ export default async function AjustesPage() {
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  // Mes actual en zona Madrid para las queries de facturación.
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10)
-
-  // Queries paralelas — un único round-trip para todos los counters.
-  const [barberCountRow, pushCountRow, invoiceStatsRow, ratingStatsRow] = await Promise.all([
+  // Queries paralelas — un único round-trip para todos los counters
+  // que necesitan las cards del hub.
+  const [barberCountRow, pushCountRow, ratingStatsRow] = await Promise.all([
     db
       .select({ n: sql<number>`count(*)` })
       .from(barbersTable)
@@ -81,20 +77,6 @@ export default async function AjustesPage() {
     db
       .select({
         count: sql<number>`count(*)`,
-        totalCents: sql<number>`coalesce(sum(${invoices.totalCents}), 0)`,
-      })
-      .from(invoices)
-      .where(
-        and(
-          eq(invoices.clientId, client.id),
-          gte(invoices.issueDate, monthStart),
-          lt(invoices.issueDate, nextMonthStart),
-        ),
-      )
-      .then((rows) => rows[0]),
-    db
-      .select({
-        count: sql<number>`count(*)`,
         avg: sql<number>`avg(${ratings.rating})`,
       })
       .from(ratings)
@@ -104,8 +86,6 @@ export default async function AjustesPage() {
 
   const barberCount = Number(barberCountRow?.n ?? 0)
   const pushCount = Number(pushCountRow?.n ?? 0)
-  const invoiceCount = Number(invoiceStatsRow?.count ?? 0)
-  const invoiceTotalEur = Number(invoiceStatsRow?.totalCents ?? 0) / 100
   const ratingCount = Number(ratingStatsRow?.count ?? 0)
   const ratingAvg = ratingCount > 0 ? Number(ratingStatsRow?.avg ?? 0) : 0
 
@@ -114,15 +94,6 @@ export default async function AjustesPage() {
   const serviceCount = Array.isArray(services)
     ? services.filter((s) => typeof s?.name === 'string' && s.name.trim().length > 0).length
     : 0
-
-  // Datos fiscales completos (RD 1619/2012 art. 6).
-  const fiscalDataComplete = Boolean(
-    client.fiscalName &&
-      client.fiscalNif &&
-      client.fiscalAddress &&
-      client.fiscalCity &&
-      client.fiscalPostalCode,
-  )
 
   const hours = (client.chatbotHours as Record<string, string> | null) ?? null
   const horarioSummary = summariseHours(hours)
@@ -138,8 +109,8 @@ export default async function AjustesPage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Ajustes</h1>
-        <p className="text-ink-2">Todo lo que configuras una vez y se queda funcionando. Un vistazo y sabes qué está activo.</p>
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Más</h1>
+        <p className="text-ink-2">Configuración, marketing y todo lo que no es del día a día. Un vistazo y sabes qué está activo.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -270,33 +241,26 @@ export default async function AjustesPage() {
           )}
         </Card>
 
-        {/* Facturación */}
+        {/* Marketing — punto de entrada para Promos contextuales y futuras
+            features de crecimiento (reactivación, cumpleaños, tienda). */}
         <Card
-          href="/dashboard/facturas"
-          icon={FileText}
-          title="Facturación"
+          href="/dashboard/marketing"
+          icon={Sparkles}
+          title="Marketing"
           status={
-            client.invoicingEnabled
-              ? { tone: 'ok', label: 'Activa' }
-              : fiscalDataComplete
-                ? { tone: 'neutral', label: 'Lista' }
-                : { tone: 'warn', label: 'Faltan datos' }
+            client.promosEnabled
+              ? { tone: 'ok', label: 'Promos activas' }
+              : { tone: 'neutral', label: 'Sin activar' }
           }
         >
-          {client.invoicingEnabled ? (
-            <CardLine bold>
-              {invoiceCount} {invoiceCount === 1 ? 'factura' : 'facturas'} este mes · {invoiceTotalEur.toFixed(2)} €
-            </CardLine>
-          ) : fiscalDataComplete ? (
-            <CardLine>Datos fiscales listos. Activa para empezar a emitir.</CardLine>
+          {client.promosEnabled ? (
+            <CardLine bold>Promos contextuales activadas</CardLine>
           ) : (
-            <CardLine>Faltan datos fiscales (NIF, dirección).</CardLine>
+            <CardLine>Llenar huecos, fidelizar y vender más.</CardLine>
           )}
           <ChipRow>
-            <Chip>IVA {client.ivaRate}%</Chip>
-            {client.invoicingEnabled && (
-              <Chip>Prefijo: {client.invoiceNumberPrefix || '—'}</Chip>
-            )}
+            {client.promosEnabled && <Chip icon={Sparkles}>Llenar huecos</Chip>}
+            <Chip>+ próximamente</Chip>
           </ChipRow>
         </Card>
 
