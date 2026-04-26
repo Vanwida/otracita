@@ -6,7 +6,8 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { Megaphone, Repeat, Cake, ShoppingBag, Sparkles } from 'lucide-react'
+import Link from 'next/link'
+import { Megaphone, Repeat, Cake, ShoppingBag, Sparkles, ChevronRight } from 'lucide-react'
 import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 import PromosToggle from './PromosToggle'
 
@@ -43,9 +44,30 @@ export default async function MarketingPage() {
         <p className="text-ink-2">Herramientas para llenar huecos, fidelizar y vender más.</p>
       </header>
 
-      {/* Promos contextuales — única feature live hoy */}
-      <section className="mb-6">
+      {/* Features live */}
+      <section className="mb-6 space-y-4">
         <PromosToggle initialEnabled={client.promosEnabled} />
+
+        {/* Tienda de productos — feature live (modelo manual: el barbero
+            registra venta al cobrar). Tienda online en /b/[slug] queda
+            para fase futura. */}
+        <Link
+          href="/dashboard/marketing/tienda"
+          className="group flex items-start gap-4 bg-surface border border-line hover:border-line-strong rounded-2xl p-5 md:p-6 transition-colors"
+        >
+          <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-brand-softer text-brand-strong">
+            <ShoppingBag className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-ink">Tienda de productos</h3>
+            <p className="text-sm text-ink-2 mt-1">
+              Da de alta lo que vendes en mostrador (champú, ceras, peines...).
+              Al cobrar, registras la venta desde la agenda y se atribuye al barbero
+              que la hace. Aparece en Caja como upsells.
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-ink-3 mt-2 shrink-0 group-hover:text-ink transition-colors" />
+        </Link>
       </section>
 
       {/* Roadmap — placeholders honestos para que el barbero vea qué viene */}
@@ -61,11 +83,6 @@ export default async function MarketingPage() {
             icon={Cake}
             title="Felicitar cumpleaños"
             description="Apunta el cumpleaños del cliente y el bot le manda felicitación con regalo (corte gratis o descuento). Tú decides la oferta."
-          />
-          <ComingSoonCard
-            icon={ShoppingBag}
-            title="Tienda de productos"
-            description="Champú, ceras, peines... Vende productos online a tus clientes con un carrito en tu página pública. Stripe conectado, cero papeleo extra."
           />
           <ComingSoonCard
             icon={Megaphone}
