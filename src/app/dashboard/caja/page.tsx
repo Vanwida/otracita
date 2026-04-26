@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { bookings, clients, invoices, tips } from '@/db/schema'
+import { bookings, clients, invoices, productSales, tips } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
@@ -18,6 +18,7 @@ import {
   ChevronRight,
   FileText,
   ChevronLeft,
+  ShoppingBag,
 } from 'lucide-react'
 import { Suspense } from 'react'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
@@ -89,12 +90,20 @@ export default async function CajaPage({ searchParams }: PageProps) {
         ${periodWhereDate})::int AS completed_count,
       (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
         WHERE client_id = ${client.id} AND status = 'paid'
-        ${periodStart ? sql`AND paid_at >= ${periodStart}` : sql``})::bigint AS tips_cents
+        ${periodStart ? sql`AND paid_at >= ${periodStart}` : sql``})::bigint AS tips_cents,
+      (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
+        WHERE client_id = ${client.id}
+        ${periodStart ? sql`AND sold_at >= ${periodStart}` : sql``})::bigint AS upsells_cents,
+      (SELECT COUNT(*) FROM ${productSales}
+        WHERE client_id = ${client.id}
+        ${periodStart ? sql`AND sold_at >= ${periodStart}` : sql``})::int AS upsells_count
   `).then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? []
 
   const billedEur = Number(kpiRow?.billed_eur ?? 0)
   const completedCount = Number(kpiRow?.completed_count ?? 0)
   const tipsEur = Number(kpiRow?.tips_cents ?? 0) / 100
+  const upsellsEur = Number(kpiRow?.upsells_cents ?? 0) / 100
+  const upsellsCount = Number(kpiRow?.upsells_count ?? 0)
   const ticketMedio = completedCount > 0 ? billedEur / completedCount : 0
 
   // KPIs del periodo anterior (para flechas tendencia).
@@ -156,7 +165,7 @@ export default async function CajaPage({ searchParams }: PageProps) {
           </Suspense>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <Kpi
             icon={Wallet}
             label="Facturado"
@@ -174,6 +183,12 @@ export default async function CajaPage({ searchParams }: PageProps) {
             label="Servicios"
             value={completedCount.toLocaleString('es-ES')}
             trend={computeTrend(completedCount, completedPrev)}
+          />
+          <Kpi
+            icon={ShoppingBag}
+            label="Productos"
+            value={upsellsEur > 0 ? `${upsellsEur.toFixed(2)} €` : '—'}
+            hint={upsellsCount > 0 ? `${upsellsCount} ${upsellsCount === 1 ? 'venta' : 'ventas'}` : undefined}
           />
           <Kpi
             icon={Heart}
@@ -273,6 +288,8 @@ interface KpiRow {
   billed_eur: number | string
   completed_count: number
   tips_cents: number | string
+  upsells_cents: number | string
+  upsells_count: number
 }
 
 interface Trend {

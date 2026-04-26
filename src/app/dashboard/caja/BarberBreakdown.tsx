@@ -1,7 +1,7 @@
 import { db } from '@/db'
-import { barbers as barbersTable, bookings, ratings, tips } from '@/db/schema'
+import { barbers as barbersTable, bookings, productSales, ratings, tips } from '@/db/schema'
 import { sql } from 'drizzle-orm'
-import { Wallet, Receipt, CalendarCheck, Heart, Star, User } from 'lucide-react'
+import { Wallet, Receipt, CalendarCheck, Heart, Star, User, ShoppingBag } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // BarberBreakdown — desglose de la actividad financiera por barbero.
@@ -40,6 +40,8 @@ interface BarberRow {
   tips_cents: number | string
   rating_count: number
   avg_rating: number | null
+  upsells_cents: number | string
+  upsells_count: number
 }
 
 export default async function BarberBreakdown({ clientId, periodStartIso }: Props) {
@@ -57,6 +59,9 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
     : sql``
   const ratingPeriodWhere = periodStartIso
     ? sql`AND r.created_at >= ${periodStartIso}::date`
+    : sql``
+  const salesPeriodWhere = periodStartIso
+    ? sql`AND ps.sold_at >= ${periodStartIso}::date`
     : sql``
 
   // Single SQL — agregamos por barbero con LEFT JOIN para enriquecer con
@@ -100,6 +105,16 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
         AND r.barber_name IS NOT NULL
         ${ratingPeriodWhere}
       GROUP BY barber_name_key
+    ),
+    sales_by_barber AS (
+      SELECT
+        ps.barber_id,
+        COALESCE(SUM(ps.total_cents), 0)::bigint AS upsells_cents,
+        COUNT(*)::int AS upsells_count
+      FROM ${productSales} ps
+      WHERE ps.client_id = ${clientId}
+        ${salesPeriodWhere}
+      GROUP BY ps.barber_id
     )
     SELECT
       bb.barber_key,
@@ -109,12 +124,20 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
       bb.billed_eur,
       COALESCE(t.tips_cents, 0)::bigint AS tips_cents,
       COALESCE(r.rating_count, 0)::int AS rating_count,
-      r.avg_rating
+      r.avg_rating,
+      COALESCE(s.upsells_cents, 0)::bigint AS upsells_cents,
+      COALESCE(s.upsells_count, 0)::int AS upsells_count
     FROM bookings_by_barber bb
     LEFT JOIN tips_by_barber t ON t.barber_name_key = lower(bb.barber_name)
     LEFT JOIN ratings_by_barber r ON r.barber_name_key = lower(bb.barber_name)
+    LEFT JOIN sales_by_barber s ON (
+      (bb.barber_key = '__unassigned__' AND s.barber_id IS NULL)
+      OR (bb.barber_key != '__unassigned__' AND s.barber_id::text = bb.barber_key)
+    )
     WHERE bb.completed_count > 0 OR bb.barber_key != '__unassigned__'
-    ORDER BY bb.billed_eur DESC NULLS LAST, bb.completed_count DESC
+    ORDER BY
+      (bb.billed_eur + COALESCE(s.upsells_cents, 0) / 100.0) DESC NULLS LAST,
+      bb.completed_count DESC
   `)
 
   const rows = (result as unknown as { rows: BarberRow[] }).rows.map((r) => ({
@@ -124,6 +147,8 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
     completed_count: Number(r.completed_count),
     rating_count: Number(r.rating_count),
     avg_rating: r.avg_rating !== null ? Number(r.avg_rating) : null,
+    upsells_cents: Number(r.upsells_cents),
+    upsells_count: Number(r.upsells_count),
   }))
 
   if (rows.length === 0) return null
@@ -153,6 +178,9 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
               </th>
               <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right hidden sm:table-cell">
                 <Receipt className="h-3 w-3 inline-block mr-1" />Ticket
+              </th>
+              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right hidden lg:table-cell">
+                <ShoppingBag className="h-3 w-3 inline-block mr-1" />Upsells
               </th>
               <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right hidden md:table-cell">
                 <Heart className="h-3 w-3 inline-block mr-1" />Propinas
@@ -196,6 +224,16 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
                   </td>
                   <td className="px-4 py-3 text-right text-ink-2 tabular-nums hidden sm:table-cell">
                     {tickets > 0 ? `${ticketMedio.toFixed(2)} €` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right text-ink-2 tabular-nums hidden lg:table-cell">
+                    {Number(r.upsells_cents) > 0 ? (
+                      <>
+                        <span className="text-ink">{(Number(r.upsells_cents) / 100).toFixed(2)} €</span>
+                        <span className="block text-[10px] text-ink-3">{r.upsells_count} {r.upsells_count === 1 ? 'venta' : 'ventas'}</span>
+                      </>
+                    ) : (
+                      <span className="text-ink-3">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right text-ink-2 tabular-nums hidden md:table-cell">
                     {tipsEur > 0 ? `${tipsEur.toFixed(2)} €` : '—'}
