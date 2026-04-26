@@ -23,6 +23,7 @@ import { Suspense } from 'react'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 import ConnectSettings from '../_components/ConnectSettings'
 import InvoicingSettings from '../_components/InvoicingSettings'
+import BarberBreakdown from './BarberBreakdown'
 
 // -----------------------------------------------------------------------------
 // /dashboard/caja — panel financiero del barbero.
@@ -181,6 +182,13 @@ export default async function CajaPage({ searchParams }: PageProps) {
             trend={computeTrend(tipsEur, tipsPrevEur)}
           />
         </div>
+      </section>
+
+      {/* Desglose por barbero — solo se renderiza si hay ≥2 barberos activos.
+          BarberBreakdown devuelve null si <2 (con 1 barbero es redundante con
+          los KPIs globales de arriba). Usa el mismo periodStartIso. */}
+      <section className="mb-8">
+        <BarberBreakdown clientId={client.id} periodStartIso={periodStartIso} />
       </section>
 
       {/* Cobros online (Stripe Connect) */}
