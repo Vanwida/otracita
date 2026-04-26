@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { notFound, redirect } from 'next/navigation'
 import { db } from '@/db'
-import { appUsers, bookings, clients, ratings } from '@/db/schema'
+import { appUsers, bookings, clients, ratings, tips } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { getAppSession } from '@/lib/app-auth/session'
 import RateForm from './RateForm'
@@ -54,6 +54,23 @@ export default async function RatePage({ params }: Props) {
     .from(ratings)
     .where(eq(ratings.bookingId, bookingId))
 
+  // ¿Tip ya pagado para esta reserva? Si sí, no ofrecemos el CTA otra vez.
+  const [existingTip] = await db
+    .select({ amountCents: tips.amountCents, status: tips.status })
+    .from(tips)
+    .where(eq(tips.bookingId, bookingId))
+
+  // Tip CTA disponible si la barbería está configurada para cobrar online.
+  // Connect debe estar "active" (no solo creado), tipsEnabled true, y al
+  // menos una sugerencia de importe válida (≥ MIN_TIP_CENTS = 100¢).
+  const canTip =
+    client.tipsEnabled &&
+    client.stripeConnectStatus === 'active' &&
+    Boolean(client.stripeConnectAccountId)
+  const suggestedTipsCents = (client.tipsSuggestedCents ?? [])
+    .filter((n) => Number.isInteger(n) && n >= 100)
+    .slice(0, 3)
+
   return (
     <RateForm
       slug={slug}
@@ -64,6 +81,16 @@ export default async function RatePage({ params }: Props) {
       date={booking.date}
       time={booking.time}
       existing={existing ?? null}
+      tipConfig={
+        canTip && suggestedTipsCents.length > 0
+          ? { suggestedCents: suggestedTipsCents }
+          : null
+      }
+      existingTip={
+        existingTip && existingTip.status === 'paid'
+          ? { amountCents: existingTip.amountCents }
+          : null
+      }
     />
   )
 }

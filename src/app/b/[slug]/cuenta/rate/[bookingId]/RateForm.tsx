@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Star, Check, ChevronLeft, Loader2 } from 'lucide-react'
+import { Star, Check, ChevronLeft, Loader2, Heart } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // RateForm — UX táctil para valorar una visita desde la PWA del cliente.
@@ -24,6 +24,15 @@ interface ExistingRating {
   createdAt: Date
 }
 
+interface TipConfig {
+  /** Importes en céntimos sugeridos por la barbería. Hasta 3. */
+  suggestedCents: number[]
+}
+
+interface ExistingTip {
+  amountCents: number
+}
+
 interface Props {
   slug: string
   bookingId: string
@@ -33,6 +42,10 @@ interface Props {
   date: string
   time: string
   existing: ExistingRating | null
+  /** null = la barbería no acepta propinas online (no Connect / no tipsEnabled). */
+  tipConfig: TipConfig | null
+  /** Si ya pagó propina para este booking, mostramos confirmación en vez de CTA. */
+  existingTip: ExistingTip | null
 }
 
 export default function RateForm({
@@ -44,6 +57,8 @@ export default function RateForm({
   date,
   time,
   existing,
+  tipConfig,
+  existingTip,
 }: Props) {
   const router = useRouter()
   const [rating, setRating] = useState<number | null>(existing?.rating ?? null)
@@ -52,6 +67,38 @@ export default function RateForm({
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(Boolean(existing))
   const [error, setError] = useState<string | null>(null)
+  const [tipBusy, setTipBusy] = useState(false)
+  const [tipError, setTipError] = useState<string | null>(null)
+
+  // El bloque de propina solo aparece tras enviar la valoración Y solo si:
+  //   · La nota es ≥ 4 (Booksy convention: tip a clientes contentos)
+  //   · La barbería acepta propinas online (tipConfig != null)
+  //   · No hay propina ya pagada (existingTip == null)
+  const finalRating = rating ?? existing?.rating ?? 0
+  const showTipBlock =
+    submitted && finalRating >= 4 && tipConfig !== null && existingTip === null
+
+  const payTip = async (amountCents: number) => {
+    setTipBusy(true)
+    setTipError(null)
+    try {
+      const r = await fetch('/api/app/tips/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, amountCents }),
+      })
+      const d = (await r.json().catch(() => ({}))) as { url?: string; error?: string }
+      if (!r.ok || !d.url) {
+        setTipError(d?.error ?? 'No se pudo iniciar el pago')
+        return
+      }
+      window.location.href = d.url
+    } catch {
+      setTipError('Error de red')
+    } finally {
+      setTipBusy(false)
+    }
+  }
 
   const submit = async () => {
     if (rating === null) return
@@ -104,37 +151,142 @@ export default function RateForm({
         </p>
 
         {submitted ? (
-          <div
-            className="rounded-2xl p-6 text-center"
-            style={{
-              background: 'var(--theme-surface)',
-              border: '1px solid var(--theme-line)',
-            }}
-          >
+          <>
             <div
-              className="mx-auto mb-4 h-14 w-14 rounded-full flex items-center justify-center"
-              style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}
+              className="rounded-2xl p-6 text-center"
+              style={{
+                background: 'var(--theme-surface)',
+                border: '1px solid var(--theme-line)',
+              }}
             >
-              <Check className="h-6 w-6" />
+              <div
+                className="mx-auto mb-4 h-14 w-14 rounded-full flex items-center justify-center"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}
+              >
+                <Check className="h-6 w-6" />
+              </div>
+              <p className="text-base font-semibold mb-1" style={{ color: 'var(--theme-ink)' }}>
+                {existing
+                  ? `Valoraste ${existing.rating}/5`
+                  : `${rating}/5 · valoración guardada`}
+              </p>
+              <p className="text-sm" style={{ color: 'var(--theme-ink-3)' }}>
+                {existing
+                  ? 'Ya habías valorado esta visita. Gracias.'
+                  : 'Tu opinión ayuda mucho a la barbería a mejorar.'}
+              </p>
             </div>
-            <p className="text-base font-semibold mb-1" style={{ color: 'var(--theme-ink)' }}>
-              {existing
-                ? `Valoraste ${existing.rating}/5`
-                : `${rating}/5 · valoración guardada`}
-            </p>
-            <p className="text-sm" style={{ color: 'var(--theme-ink-3)' }}>
-              {existing
-                ? 'Ya habías valorado esta visita. Gracias.'
-                : 'Tu opinión ayuda mucho a la barbería a mejorar.'}
-            </p>
-            <Link
-              href={`/b/${slug}/cuenta`}
-              className="mt-5 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
-              style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}
-            >
-              Volver a mi cuenta
-            </Link>
-          </div>
+
+            {/* Confirmación de propina ya pagada — caso "el cliente vuelve a abrir el link después de pagar". */}
+            {existingTip && (
+              <div
+                className="mt-4 rounded-2xl p-5 flex items-center gap-3"
+                style={{
+                  background: 'var(--theme-surface)',
+                  border: '1px solid var(--theme-line)',
+                }}
+              >
+                <div
+                  className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}
+                >
+                  <Heart className="h-5 w-5" fill="currentColor" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--theme-ink)' }}>
+                    Propina pagada · {(existingTip.amountCents / 100).toFixed(0)} €
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--theme-ink-3)' }}>
+                    Gracias por reconocer el trabajo del barbero.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* CTA propina — solo si nota ≥ 4, barbería acepta tips, no pagó aún. */}
+            {showTipBlock && tipConfig && (
+              <div
+                className="mt-4 rounded-2xl p-5"
+                style={{
+                  background: 'var(--theme-surface)',
+                  border: '1px solid var(--theme-line)',
+                }}
+              >
+                <div className="flex items-start gap-3 mb-4">
+                  <div
+                    className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}
+                  >
+                    <Heart className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--theme-ink)' }}>
+                      ¿Dejas propina{barber ? ` a ${barber}` : ''}?
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--theme-ink-3)' }}>
+                      100% va al barbero. Pago seguro con tarjeta o Apple Pay.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {tipConfig.suggestedCents.map((cents) => (
+                    <button
+                      key={cents}
+                      type="button"
+                      onClick={() => payTip(cents)}
+                      disabled={tipBusy}
+                      className="rounded-xl px-3 py-3 text-base font-bold transition-transform active:scale-95 disabled:opacity-60"
+                      style={{
+                        background: 'var(--theme-overlay)',
+                        border: '1px solid var(--theme-line)',
+                        color: 'var(--theme-ink)',
+                      }}
+                    >
+                      {(cents / 100).toFixed(0)} €
+                    </button>
+                  ))}
+                </div>
+
+                {tipError && (
+                  <p className="mt-3 text-xs text-center" style={{ color: '#DC2626' }}>
+                    {tipError}
+                  </p>
+                )}
+
+                {tipBusy && (
+                  <p
+                    className="mt-3 text-xs text-center flex items-center justify-center gap-1.5"
+                    style={{ color: 'var(--theme-ink-3)' }}
+                  >
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Preparando pago…
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => router.push(`/b/${slug}/cuenta`)}
+                  className="mt-3 w-full text-sm py-2 transition-colors"
+                  style={{ color: 'var(--theme-ink-3)' }}
+                >
+                  No, gracias
+                </button>
+              </div>
+            )}
+
+            {/* Si no hay tip CTA (nota baja, o barbería sin Connect), simplemente
+                botón para volver a cuenta. */}
+            {!showTipBlock && (
+              <Link
+                href={`/b/${slug}/cuenta`}
+                className="mt-4 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
+                style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}
+              >
+                Volver a mi cuenta
+              </Link>
+            )}
+          </>
         ) : (
           <>
             <div
