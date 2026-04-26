@@ -9,7 +9,9 @@ import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
 import InvoicingSettings, { type InvoicingInitial } from './InvoicingSettings'
 import ConnectSettings, { type ConnectInitial } from './ConnectSettings'
-import TipsSettings, { type TipsInitial } from './TipsSettings'
+import type { TipsInitial } from './TipsSettings'
+import Link from 'next/link'
+import { Star } from 'lucide-react'
 
 interface ServiceItem {
   name: string
@@ -159,7 +161,19 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
       ) : tab === 'cobros' ? (
         <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
           <ConnectSettings initial={initial.connect} />
-          <TipsSettings initial={initial.tips} />
+          {/* Propinas vivían aquí — ahora se configuran en /dashboard/resenas
+              porque conceptualmente son parte del flow post-servicio (rating
+              + tip). Stripe Connect (lo que queda en este tab) es la
+              infraestructura previa que tienen que activar primero. */}
+          <div className="border-t border-line pt-6">
+            <Link
+              href="/dashboard/resenas"
+              className="inline-flex items-center gap-2 text-sm text-brand hover:text-brand-strong"
+            >
+              <Star className="h-4 w-4" />
+              Configurar reseñas y propinas
+            </Link>
+          </div>
         </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">

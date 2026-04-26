@@ -9,6 +9,7 @@ import { auth } from '@/lib/auth/server'
 import { Star, MessageSquare, MessageCircle, Smartphone } from 'lucide-react'
 import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 import RatingsToggle from './RatingsToggle'
+import TipsSettings from '@/app/dashboard/_components/TipsSettings'
 
 // -----------------------------------------------------------------------------
 // /dashboard/reseñas — Vista de reseñas que recibe el barbero.
@@ -74,8 +75,23 @@ export default async function ReseñasPage() {
         </p>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <RatingsToggle initialEnabled={client.ratingsEnabled} />
+      </div>
+
+      {/* Propinas — viven aquí porque conceptualmente son parte del flow
+          post-servicio (rating + tip). El barbero las activa una sola vez
+          junto con las reseñas. Stripe Connect (la infraestructura) sigue
+          en Tu barbería → Cobros porque es prerrequisito. */}
+      <div className="mb-6 bg-surface border border-line rounded-2xl p-5 md:p-6">
+        <TipsSettings
+          initial={{
+            tipsEnabled: client.tipsEnabled,
+            tipsSuggestedCents: client.tipsSuggestedCents || [200, 300, 500],
+            followupMinutesAfter: client.followupMinutesAfter,
+            connectActive: client.stripeConnectStatus === 'active',
+          }}
+        />
       </div>
 
       {total === 0 ? (
