@@ -669,7 +669,48 @@ export const productSales = pgTable('product_sales', {
   totalCents: integer('total_cents').notNull(),                            // = unitPriceCents * quantity (sanity check)
   customerPhone: text('customer_phone'),
   paymentMethod: text('payment_method').notNull(),                         // 'cash' | 'card' | 'online'
+  // Idempotencia frente a auto-facturación: cuando una venta ya está incluida
+  // en una factura emitida (booking → completed → factura con items), se
+  // estampa este timestamp. Las ventas con `invoicedAt != null` NO vuelven a
+  // entrar en facturas posteriores aunque el booking sufra reaperturas.
+  invoicedAt: timestamp('invoiced_at', { withTimezone: true }),
   soldAt: timestamp('sold_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// -----------------------------------------------------------------------------
+// invoice_items — líneas individuales de una factura (1→N).
+//
+// Necesario para que una factura pueda combinar el SERVICIO del booking con
+// los PRODUCTOS vendidos durante la cita. Hasta ahora `invoices.serviceName`
+// guardaba un único concepto (texto plano) y `total_cents` era el importe del
+// servicio puro — los productos no se reflejaban en la factura.
+//
+// Convenciones (mismas que invoices):
+//   · Importes en céntimos enteros, currency siempre EUR de momento.
+//   · `unit_price_cents` y `total_cents` son IVA INCLUIDO (precio retail).
+//   · `subtotal_cents` (base imponible) e `iva_amount_cents` se calculan a
+//     partir del `total_cents` con el `iva_rate` heredado de la factura.
+//   · `kind` discrimina servicio vs producto en UI/exports.
+//   · `productSaleId` enlaza a la venta concreta para idempotencia y trazas.
+//
+// VeriFactu: NO entra en el hash AEAT (el hash usa solo totales agregados de
+// la factura). Es seguro añadir items sin invalidar la cadena existente.
+// -----------------------------------------------------------------------------
+export const invoiceItems = pgTable('invoice_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  invoiceId: uuid('invoice_id').notNull().references(() => invoices.id, { onDelete: 'cascade' }),
+  // 'service' = línea del servicio del booking; 'product' = venta de producto.
+  kind: text('kind').notNull(),
+  // Snapshot del nombre en el momento de emisión (productos pueden renombrarse después).
+  name: text('name').notNull(),
+  quantity: integer('quantity').notNull(),
+  unitPriceCents: integer('unit_price_cents').notNull(),                   // IVA incluido
+  subtotalCents: integer('subtotal_cents').notNull(),                      // base imponible
+  ivaAmountCents: integer('iva_amount_cents').notNull(),
+  totalCents: integer('total_cents').notNull(),                            // = unit * qty, IVA incluido
+  productSaleId: uuid('product_sale_id').references(() => productSales.id),
+  displayOrder: integer('display_order').default(0).notNull(),             // 0 = servicio primero
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
