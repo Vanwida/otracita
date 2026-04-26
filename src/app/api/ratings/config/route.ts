@@ -17,6 +17,18 @@ import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-cli
 
 interface Body {
   ratingsEnabled?: unknown
+  /** Minutos entre fin del servicio y envío de la solicitud. 15..240. */
+  followupMinutesAfter?: unknown
+}
+
+const MIN_DELAY = 15
+const MAX_DELAY = 240
+const DEFAULT_DELAY = 30
+
+function sanitizeDelay(input: unknown): number {
+  const n = typeof input === 'number' ? input : Number.parseInt(String(input), 10)
+  if (!Number.isFinite(n)) return DEFAULT_DELAY
+  return Math.min(MAX_DELAY, Math.max(MIN_DELAY, Math.round(n)))
 }
 
 export async function PATCH(req: Request) {
@@ -32,11 +44,21 @@ export async function PATCH(req: Request) {
   }
 
   const enabled = body.ratingsEnabled === true
+  // followupMinutesAfter es OPCIONAL — si el caller solo flipea el toggle no
+  // toca la delay; si manda valor lo sanitizamos y lo aplicamos.
+  const updates: { ratingsEnabled: boolean; followupMinutesAfter?: number; updatedAt: Date } = {
+    ratingsEnabled: enabled,
+    updatedAt: new Date(),
+  }
+  if (body.followupMinutesAfter !== undefined) {
+    updates.followupMinutesAfter = sanitizeDelay(body.followupMinutesAfter)
+  }
 
-  await db
-    .update(clients)
-    .set({ ratingsEnabled: enabled, updatedAt: new Date() })
-    .where(eq(clients.id, client.id))
+  await db.update(clients).set(updates).where(eq(clients.id, client.id))
 
-  return Response.json({ ok: true, ratingsEnabled: enabled })
+  return Response.json({
+    ok: true,
+    ratingsEnabled: enabled,
+    followupMinutesAfter: updates.followupMinutesAfter,
+  })
 }

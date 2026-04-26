@@ -60,22 +60,32 @@ export async function PATCH(request: Request) {
 
   const tipsEnabled = body.tipsEnabled === true;
   const tipsSuggestedCents = sanitizeAmounts(body.tipsSuggestedCents);
-  const followupMinutesAfter = sanitizeDelay(body.followupMinutesAfter);
 
-  await db
-    .update(clients)
-    .set({
-      tipsEnabled,
-      tipsSuggestedCents,
-      followupMinutesAfter,
-      updatedAt: new Date(),
-    })
-    .where(eq(clients.id, access.client.id));
+  // followupMinutesAfter ya no se gestiona desde aquí — vive en
+  // /api/ratings/config porque es timing del flow post-servicio (rating +
+  // tip), no exclusivo de tip. Mantenemos el parsing para back-compat: si
+  // un caller viejo todavía lo manda, lo respetamos; si no, NO lo tocamos
+  // (cero side-effect sobre lo que el barbero configuró en RatingsToggle).
+  const updates: {
+    tipsEnabled: boolean;
+    tipsSuggestedCents: number[];
+    followupMinutesAfter?: number;
+    updatedAt: Date;
+  } = {
+    tipsEnabled,
+    tipsSuggestedCents,
+    updatedAt: new Date(),
+  };
+  if (body.followupMinutesAfter !== undefined) {
+    updates.followupMinutesAfter = sanitizeDelay(body.followupMinutesAfter);
+  }
+
+  await db.update(clients).set(updates).where(eq(clients.id, access.client.id));
 
   return Response.json({
     ok: true,
     tipsEnabled,
     tipsSuggestedCents,
-    followupMinutesAfter,
+    followupMinutesAfter: updates.followupMinutesAfter,
   });
 }

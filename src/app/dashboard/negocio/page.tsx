@@ -189,7 +189,6 @@ export default async function NegocioPage() {
           tips: {
             tipsEnabled: client.tipsEnabled,
             tipsSuggestedCents: client.tipsSuggestedCents || [200, 300, 500],
-            followupMinutesAfter: client.followupMinutesAfter,
             connectActive: client.stripeConnectStatus === 'active',
           },
         }}

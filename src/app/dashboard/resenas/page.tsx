@@ -76,7 +76,10 @@ export default async function ReseñasPage() {
       </div>
 
       <div className="mb-4">
-        <RatingsToggle initialEnabled={client.ratingsEnabled} />
+        <RatingsToggle
+          initialEnabled={client.ratingsEnabled}
+          initialDelayMinutes={client.followupMinutesAfter}
+        />
       </div>
 
       {/* Propinas — viven aquí porque conceptualmente son parte del flow
@@ -88,7 +91,6 @@ export default async function ReseñasPage() {
           initial={{
             tipsEnabled: client.tipsEnabled,
             tipsSuggestedCents: client.tipsSuggestedCents || [200, 300, 500],
-            followupMinutesAfter: client.followupMinutesAfter,
             connectActive: client.stripeConnectStatus === 'active',
           }}
         />

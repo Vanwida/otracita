@@ -6,7 +6,6 @@ import { Heart, Check, AlertCircle, Loader2 } from 'lucide-react'
 export interface TipsInitial {
   tipsEnabled: boolean
   tipsSuggestedCents: number[]
-  followupMinutesAfter: number
   /** Whether the tenant has a Connect account ready to receive tips. Disables
    *  the toggle otherwise, so the barber can't activate something that would
    *  silently fail. */
@@ -18,22 +17,19 @@ interface Props {
 }
 
 // -----------------------------------------------------------------------------
-// TipsSettings — panel that lives at /dashboard/negocio?tab=cobros, below
-// ConnectSettings. Lets the barber:
+// TipsSettings — panel de propinas online en /dashboard/resenas. Maneja:
 //   · toggle `tipsEnabled`
-//   · customise the 3 suggested amounts (in euros, persisted as cents)
-//   · choose the delay (minutes) between end of service and the WhatsApp
-//     rating/tip message
+//   · 3 importes sugeridos (en euros, persistidos como cents)
 //
-// The panel self-saves via PATCH /api/tips/config — no need to wire into
-// NegocioForm's big save button, because tip config is a distinct concern.
+// El TIMING (followupMinutesAfter) NO vive aquí — lo controla RatingsToggle
+// porque es timing del flow post-servicio completo (rating + tip), no
+// específico de tip. Ver feedback_map_full_field_surface en memoria.
 // -----------------------------------------------------------------------------
 export default function TipsSettings({ initial }: Props) {
   const [enabled, setEnabled] = useState(initial.tipsEnabled)
   const [amounts, setAmounts] = useState<string[]>(
     (initial.tipsSuggestedCents || [200, 300, 500]).slice(0, 3).map((c) => (c / 100).toFixed(2)),
   )
-  const [delay, setDelay] = useState(String(initial.followupMinutesAfter ?? 30))
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,12 +62,6 @@ export default function TipsSettings({ initial }: Props) {
       return
     }
 
-    const minutes = Number.parseInt(delay, 10)
-    if (enabled && (!Number.isFinite(minutes) || minutes < 15 || minutes > 240)) {
-      setError('Delay inválido. Usa un valor entre 15 y 240 minutos.')
-      return
-    }
-
     startTransition(async () => {
       try {
         const res = await fetch('/api/tips/config', {
@@ -80,7 +70,6 @@ export default function TipsSettings({ initial }: Props) {
           body: JSON.stringify({
             tipsEnabled: enabled,
             tipsSuggestedCents: cents.length > 0 ? cents : [200, 300, 500],
-            followupMinutesAfter: Number.isFinite(minutes) ? minutes : 30,
           }),
         })
         const data = await res.json()
@@ -162,19 +151,6 @@ export default function TipsSettings({ initial }: Props) {
               />
             </div>
           ))}
-        </div>
-
-        <div className="mt-4 flex flex-col gap-1.5 max-w-xs">
-          <label className="text-xs text-ink-2">Enviar mensaje a los … min después del corte</label>
-          <input
-            type="number"
-            min={15}
-            max={240}
-            value={delay}
-            onChange={(e) => setDelay(e.target.value)}
-            className="bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
-          />
-          <p className="text-xs text-ink-3">Recomendado: 30 min. Rango permitido 15–240.</p>
         </div>
       </div>
 
