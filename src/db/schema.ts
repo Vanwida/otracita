@@ -621,3 +621,55 @@ export const promoPushes = pgTable('promo_pushes', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Productos que la barbería vende (champú, ceras, peines, etc.). Modelo
+// inicial = venta MANUAL al cobrar — el barbero registra cada venta desde
+// el dashboard cuando vende un producto al cliente. La tienda online en
+// /b/[slug] vendrá en una fase posterior si los datos lo justifican.
+//
+// `stockQuantity` nullable significa stock ilimitado (no se trackea). Si
+// se pone valor concreto, el endpoint de venta valida con UPDATE atómico.
+//
+// `imageUrl` opcional — Vercel Blob pathname. UI muestra placeholder si null.
+export const products = pgTable('products', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  name: text('name').notNull(),
+  description: text('description'),
+  imageUrl: text('image_url'),
+  priceCents: integer('price_cents').notNull(),                            // IVA incluido — el barbero ingresa precio final
+  stockQuantity: integer('stock_quantity'),                                // null = ilimitado / no trackeado
+  active: boolean('active').default(true).notNull(),                       // soft-delete via active=false
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Ventas individuales de productos. Una fila por venta (no agrupado por
+// ticket). Atribución per-barbero alimenta la columna 'Upsells' del
+// BarberBreakdown en /dashboard/caja.
+//
+// `bookingId` nullable: la venta puede asociarse a un booking concreto
+// (cliente que vino para corte y se llevó cera) o ser standalone (cliente
+// pasaba por la tienda y se llevó algo, sin cita).
+//
+// `barberId` nullable: ideal asignar quién vendió (atribución), pero
+// admitimos null por flexibilidad.
+//
+// `unitPriceCents` snapshot del precio en el momento de la venta — si el
+// barbero cambia el precio del producto después, el histórico no se ve
+// afectado.
+export const productSales = pgTable('product_sales', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  bookingId: uuid('booking_id').references(() => bookings.id),
+  barberId: uuid('barber_id'),                                             // FK lógica a barbers.id; nullable
+  quantity: integer('quantity').notNull(),
+  unitPriceCents: integer('unit_price_cents').notNull(),                   // snapshot
+  totalCents: integer('total_cents').notNull(),                            // = unitPriceCents * quantity (sanity check)
+  customerPhone: text('customer_phone'),
+  paymentMethod: text('payment_method').notNull(),                         // 'cash' | 'card' | 'online'
+  soldAt: timestamp('sold_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
