@@ -145,15 +145,19 @@ export default async function AjustesPage() {
           </ChipRow>
         </Card>
 
-        {/* Asistente WhatsApp */}
+        {/* Asistente WhatsApp — "Conectado" si tiene phone_number_id de Meta
+            (el access token tiene fallback al global, así que el phone es el
+            único requisito real para que el bot pueda enviar mensajes).
+            metaWebhookVerifiedAt es admin-tracking interno, no señal útil
+            para el barbero. */}
         <Card
           href="/dashboard/bot"
           icon={Bot}
           title="Asistente WhatsApp"
           status={
-            client.metaWebhookVerifiedAt
+            client.whatsappPhoneNumberId
               ? { tone: 'ok', label: 'Conectado' }
-              : { tone: 'warn', label: 'Pendiente' }
+              : { tone: 'warn', label: 'Sin conectar' }
           }
         >
           {client.whatsappNumber || client.phone ? (
