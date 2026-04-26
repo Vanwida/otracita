@@ -249,9 +249,11 @@ export default async function ClientesPage({ searchParams }: Props) {
                   const status = computeStatus(c.last_booking_at, c.total_bookings ?? 0)
                   const reputationVal = (c.reputation as Reputation | null) ?? 'good'
                   return (
-                    <tr key={c.id} className="hover:bg-canvas transition-colors">
+                    <tr key={c.id} className="hover:bg-canvas transition-colors group">
                       <td className="px-4 py-3">
-                        <div className="font-medium text-ink">{c.name || '—'}</div>
+                        <Link href={`/dashboard/clientes/${c.id}`} className="font-medium text-ink hover:text-brand transition-colors">
+                          {c.name || '—'}
+                        </Link>
                         <div className="text-xs text-ink-3 lg:hidden flex items-center gap-1 mt-0.5">
                           <Phone className="h-3 w-3" /> {c.phone}
                         </div>

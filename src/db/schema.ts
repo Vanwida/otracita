@@ -281,6 +281,11 @@ export const customers = pgTable('customers', {
   cancellations: integer('cancellations').default(0),
   reputation: text('reputation').default('good'), // good, warning, blocked
   lastBookingAt: timestamp('last_booking_at'),
+  // Notas libres del barbero sobre este cliente, visibles solo en el
+  // dashboard. Útil para apuntar cosas tipo "alérgico a X", "no le
+  // gustan los degradados", "siempre llega tarde 5 min". Privadas: nunca
+  // se exponen al cliente vía PWA ni se mandan por WhatsApp.
+  barberNotes: text('barber_notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
