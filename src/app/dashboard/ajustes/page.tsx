@@ -219,7 +219,7 @@ export default async function AjustesPage() {
         {/* Reseñas — un punto de entrada propio porque ahora son una entidad
             independiente de propinas (ratings_enabled flag). */}
         <Card
-          href="/dashboard/rese%C3%B1as"
+          href="/dashboard/resenas"
           icon={Star}
           title="Reseñas"
           status={
