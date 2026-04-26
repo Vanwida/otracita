@@ -22,7 +22,15 @@ import BotStatusCopyButton from './BotStatusCopyButton'
 
 interface Props {
   whatsappPhoneNumberId: string | null
+  /** @deprecated mantenido por compat con callers viejos — ya no se usa para
+   *  decidir si mostrar el banner. El access token cae al env global como
+   *  fallback en `whatsapp/sender.ts`, así que su presencia per-cliente no
+   *  decide si el bot funciona. */
   whatsappAccessToken: string | null
+  /** @deprecated igual — `metaWebhookVerifiedAt` es un flag admin-only que
+   *  Alex marca tras verificar el webhook. Si no lo marca, el banner salía
+   *  como "EN PROCESO" eternamente aunque el bot funcione. Misma trampa que
+   *  la card de Ajustes hub. Ver feedback_map_full_field_surface en memoria. */
   metaWebhookVerifiedAt: Date | string | null
   publicSlug: string | null
   publicEnabled: boolean
@@ -32,13 +40,14 @@ const SITE_ORIGIN = 'https://otracita.es'
 
 export default function BotActivationStatus({
   whatsappPhoneNumberId,
-  whatsappAccessToken,
-  metaWebhookVerifiedAt,
   publicSlug,
   publicEnabled,
 }: Props) {
-  // Bot está listo cuando los 3 campos están rellenos.
-  const botReady = !!(whatsappPhoneNumberId && whatsappAccessToken && metaWebhookVerifiedAt)
+  // Bot está listo cuando tiene phone_number_id de Meta. El access_token
+  // tiene fallback al env global así que no es señal user-facing — y el
+  // metaWebhookVerifiedAt es admin tracking interno. Misma señal que usa
+  // /dashboard/ajustes para el pill "Conectado".
+  const botReady = !!whatsappPhoneNumberId
   if (botReady) return null
 
   const publicUrl = publicSlug && publicEnabled ? `${SITE_ORIGIN}/b/${publicSlug}` : null
