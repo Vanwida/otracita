@@ -12,13 +12,13 @@ import {
   Repeat,
   Shield,
   Phone,
-  Wallet,
-  Receipt,
-  Heart,
   Star,
   Sparkles,
   Clock,
   Snowflake,
+  TrendingUp,
+  UserPlus,
+  Heart,
 } from 'lucide-react'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
@@ -161,19 +161,48 @@ export default async function ClientesPage({ searchParams }: Props) {
     last_booking_at: r.last_booking_at ? new Date(r.last_booking_at) : null,
   }))
 
-  // Stats globales — siempre sobre TODO el set, no afectados por el filtro.
-  // Hacemos otra query separada (en lugar de juntar) porque cambiar el filtro
-  // no debe alterar los KPIs y queremos paralelizar si en el futuro añadimos
-  // más cosas.
+  // Stats globales DE clientes — siempre sobre TODO el set, no afectados
+  // por filtros. Las métricas financieras (Facturado, Ticket medio, Propinas,
+  // Nota media) viven ahora en /dashboard/caja porque son métricas DEL
+  // NEGOCIO, no DE clientes.
+  //
+  // Aquí solo las que describen al SET de personas:
+  //   · Total / Recurrentes / Bloqueados (counts básicos)
+  //   · Nuevos este mes (acquisición)
+  //   · Retención: % de recurrentes que volvieron en últimos 60 días
+  //   · Frecuencia media: días promedio entre bookings (sólo recurrentes)
+  const monthStartIso = (() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+  })()
+
   const globalsResult = await db.execute(sql`
     SELECT
-      (SELECT COUNT(*) FROM ${customers} WHERE client_id = ${client.id})::int AS total_customers,
-      (SELECT COUNT(*) FROM ${customers} WHERE client_id = ${client.id} AND COALESCE(total_bookings, 0) >= 2)::int AS recurring,
-      (SELECT COUNT(*) FROM ${customers} WHERE client_id = ${client.id} AND reputation = 'blocked')::int AS blocked,
-      (SELECT COALESCE(SUM(price), 0) FROM ${bookings} WHERE client_id = ${client.id} AND status = 'completed')::bigint AS billed_eur,
-      (SELECT COUNT(*) FROM ${bookings} WHERE client_id = ${client.id} AND status = 'completed')::int AS completed_total,
-      (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips} WHERE client_id = ${client.id} AND status = 'paid')::bigint AS tips_total_cents,
-      (SELECT AVG(rating)::float FROM ${ratings} WHERE client_id = ${client.id}) AS avg_rating_global
+      COUNT(*)::int AS total_customers,
+      COUNT(*) FILTER (WHERE COALESCE(total_bookings, 0) >= 2)::int AS recurring,
+      COUNT(*) FILTER (WHERE reputation = 'blocked')::int AS blocked,
+      COUNT(*) FILTER (WHERE created_at >= ${monthStartIso}::date)::int AS new_this_month,
+      -- Retención: % de recurrentes que han venido en últimos 60d
+      CASE
+        WHEN COUNT(*) FILTER (WHERE COALESCE(total_bookings, 0) >= 2) > 0
+        THEN ROUND(
+          100.0 * COUNT(*) FILTER (
+            WHERE COALESCE(total_bookings, 0) >= 2
+            AND last_booking_at >= NOW() - INTERVAL '60 days'
+          )
+          / COUNT(*) FILTER (WHERE COALESCE(total_bookings, 0) >= 2)
+        )::int
+        ELSE NULL
+      END AS retention_pct,
+      -- Frecuencia media: días entre primera (created_at) y última visita
+      -- dividido por (total_bookings - 1) — solo para clientes con ≥2 visitas.
+      -- Es aproximación (asume distribución uniforme); buena señal a escala.
+      ROUND(AVG(
+        EXTRACT(EPOCH FROM (last_booking_at - created_at)) / 86400.0
+        / NULLIF(GREATEST(total_bookings - 1, 1), 0)
+      ) FILTER (WHERE COALESCE(total_bookings, 0) >= 2 AND last_booking_at IS NOT NULL))::int AS avg_freq_days
+    FROM ${customers}
+    WHERE client_id = ${client.id}
   `)
 
   const g = (globalsResult as unknown as {
@@ -181,58 +210,55 @@ export default async function ClientesPage({ searchParams }: Props) {
       total_customers: number
       recurring: number
       blocked: number
-      billed_eur: number | string
-      completed_total: number
-      tips_total_cents: number | string
-      avg_rating_global: number | null
+      new_this_month: number
+      retention_pct: number | null
+      avg_freq_days: number | null
     }>
   }).rows[0]
 
   const totalCustomers = Number(g?.total_customers ?? 0)
   const recurring = Number(g?.recurring ?? 0)
   const blocked = Number(g?.blocked ?? 0)
-  const billedEur = Number(g?.billed_eur ?? 0)
-  const completedTotal = Number(g?.completed_total ?? 0)
-  const tipsTotalEur = Number(g?.tips_total_cents ?? 0) / 100
-  const avgTicketEur = completedTotal > 0 ? billedEur / completedTotal : 0
-  const avgRatingGlobal = g?.avg_rating_global !== null && g?.avg_rating_global !== undefined
-    ? Number(g.avg_rating_global)
-    : null
+  const newThisMonth = Number(g?.new_this_month ?? 0)
+  const retentionPct = g?.retention_pct ?? null
+  const avgFreqDays = g?.avg_freq_days ?? null
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Clientes</h1>
-        <p className="text-ink-2">Las personas que han reservado contigo a través del bot.</p>
+        <p className="text-ink-2">Tus clientes y cómo se comportan. Para ver dinero, ve a Caja.</p>
       </div>
 
-      {/* Top stats — 6 KPIs principales en grid responsive. Bloqueados sigue en
-          tono danger porque es señal de problema. */}
+      {/* Top stats — métricas DE clientes (no del negocio). Las financieras
+          (facturado, ticket medio, propinas, nota media) viven ahora en
+          /dashboard/caja porque son métricas DEL NEGOCIO. */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        <StatCard icon={Users} label="Clientes" value={totalCustomers.toLocaleString('es-ES')} />
-        <StatCard icon={Repeat} label="Recurrentes" value={recurring.toLocaleString('es-ES')} hint="Con 2+ reservas" />
+        <StatCard icon={Users} label="Total" value={totalCustomers.toLocaleString('es-ES')} />
         <StatCard
-          icon={Wallet}
-          label="Facturado"
-          value={`${billedEur.toFixed(0)} €`}
-          hint="Servicios completados"
+          icon={Repeat}
+          label="Recurrentes"
+          value={recurring.toLocaleString('es-ES')}
+          hint="Con 2+ reservas"
         />
         <StatCard
-          icon={Receipt}
-          label="Ticket medio"
-          value={completedTotal > 0 ? `${avgTicketEur.toFixed(2)} €` : '—'}
+          icon={UserPlus}
+          label="Nuevos este mes"
+          value={newThisMonth.toLocaleString('es-ES')}
         />
         <StatCard
           icon={Heart}
-          label="Propinas"
-          value={tipsTotalEur > 0 ? `${tipsTotalEur.toFixed(2)} €` : '—'}
+          label="Retención"
+          value={retentionPct !== null ? `${retentionPct}%` : '—'}
+          hint={retentionPct !== null ? 'Vuelven en 60 días' : 'Necesitas recurrentes'}
         />
         <StatCard
-          icon={Star}
-          label="Nota media"
-          value={avgRatingGlobal !== null ? `${avgRatingGlobal.toFixed(1)} / 5` : '—'}
+          icon={TrendingUp}
+          label="Frecuencia"
+          value={avgFreqDays !== null ? `${avgFreqDays}d` : '—'}
+          hint={avgFreqDays !== null ? 'Días entre visitas' : 'Necesitas recurrentes'}
         />
-        {/* Bloqueados se muestra solo si hay alguno — ahorra ruido visual. */}
+        {/* Bloqueados solo si > 0 — ahorra ruido visual. */}
         {blocked > 0 && (
           <StatCard
             icon={Shield}
