@@ -1,7 +1,8 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle } from 'lucide-react';
+import { X, Copy, Check, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag } from 'lucide-react';
+import AddProductSaleModal from './AddProductSaleModal';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -58,6 +59,10 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const canMarkNoShow = booking?.status === 'confirmed' || booking?.status === 'no_show';
   const canCancel = booking?.status === 'confirmed' || booking?.status === 'no_show';
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [productSaleOpen, setProductSaleOpen] = useState(false);
+  // Cuántas ventas de producto hay registradas en este booking, para mostrar
+  // un badge "X productos vendidos" tras añadir. Se actualiza tras el modal.
+  const [productSalesCount, setProductSalesCount] = useState(0);
   const canCharge =
     !!booking &&
     booking.price !== null &&
@@ -450,6 +455,32 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
+              {/* Productos vendidos — botón para añadir venta de producto al
+                  cobrar el corte (champú, ceras, etc.). La venta se atribuye
+                  automáticamente al barbero del booking → alimenta la columna
+                  Upsells del desglose por barbero en /dashboard/caja. */}
+              {(booking.status === 'confirmed' || booking.status === 'completed') && (
+                <div className="pt-2 border-t border-line space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                    Productos
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setProductSaleOpen(true)}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface hover:border-line-strong px-4 py-2.5 text-sm font-medium text-ink transition-colors"
+                  >
+                    <ShoppingBag className="h-4 w-4 text-brand" />
+                    Añadir venta de producto
+                  </button>
+                  {productSalesCount > 0 && (
+                    <p className="text-xs text-success inline-flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      {productSalesCount} {productSalesCount === 1 ? 'venta registrada' : 'ventas registradas'} en esta cita
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Cobrar online — only for chargeable bookings (confirmed or
                   no_show, with a price). Two states:
                     A) Connect not active -> CTA to activate.
@@ -598,6 +629,17 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             router.refresh()
             onClose()
           }}
+        />
+      )}
+
+      {booking && (
+        <AddProductSaleModal
+          isOpen={productSaleOpen}
+          bookingId={booking.id}
+          customerName={booking.customerName ?? null}
+          barberName={booking.barber ?? null}
+          onClose={() => setProductSaleOpen(false)}
+          onCreated={() => setProductSalesCount((n) => n + 1)}
         />
       )}
     </AnimatePresence>
