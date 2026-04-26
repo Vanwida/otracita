@@ -1,6 +1,6 @@
 import { stripe } from '@/lib/stripe';
 import { db } from '@/db';
-import { tips, type clients } from '@/db/schema';
+import { ratings, tips, type clients } from '@/db/schema';
 import type { InferSelectModel } from 'drizzle-orm';
 import { PAYMENT_CURRENCY, SITE_URL } from '@/lib/payments';
 
@@ -152,40 +152,80 @@ export async function createTipSession(
   return { tipId: row.id, url: session.url };
 }
 
-interface RecordRatingOnlyArgs {
+interface RecordRatingArgs {
+  clientId: string;
+  bookingId?: string | null;
+  customerPhone: string;
+  customerName?: string | null;
+  barberName?: string | null;
+  rating: number;
+  comment?: string | null;
+  channel: 'whatsapp' | 'pwa';
+}
+
+/**
+ * Persist a customer rating in the canonical `ratings` table.
+ *
+ * Idempotente vía UNIQUE parcial sobre booking_id: si el cliente ya valoró
+ * la misma reserva (p.ej. respondió en WhatsApp y luego abrió la PWA),
+ * conservamos la primera valoración y devolvemos su id sin sobrescribir.
+ */
+export async function recordRating(args: RecordRatingArgs): Promise<string> {
+  const { clientId, bookingId, customerPhone, customerName, barberName, rating, comment, channel } = args;
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error('Rating must be integer 1-5.');
+  }
+
+  const [row] = await db
+    .insert(ratings)
+    .values({
+      clientId,
+      bookingId: bookingId ?? null,
+      customerPhone,
+      customerName: customerName ?? null,
+      barberName: barberName ?? null,
+      rating,
+      comment: comment?.trim() || null,
+      channel,
+    })
+    .onConflictDoNothing({ target: ratings.bookingId })
+    .returning({ id: ratings.id });
+
+  if (row?.id) return row.id;
+
+  // Conflict path: la valoración ya existía. Devolvemos la id existente
+  // para que el caller pueda referenciarla si lo necesita.
+  if (bookingId) {
+    const { eq } = await import('drizzle-orm');
+    const [existing] = await db
+      .select({ id: ratings.id })
+      .from(ratings)
+      .where(eq(ratings.bookingId, bookingId));
+    if (existing) return existing.id;
+  }
+  throw new Error('Rating insert returned no row and no existing match');
+}
+
+/**
+ * @deprecated Usa `recordRating({ ..., channel: 'whatsapp' })`. Esta firma
+ * vivía cuando las reseñas estaban embebidas en `tips`; redirige a la
+ * implementación nueva para no romper callers existentes.
+ */
+export async function recordRatingOnly(args: {
   clientId: string;
   bookingId?: string | null;
   customerPhone: string;
   barberName?: string | null;
   rating: number;
   ratingComment?: string | null;
-}
-
-/**
- * Persist a rating WITHOUT an associated tip payment. Used when the customer
- * taps a star rating in WhatsApp but skips the tip step. Row goes in with
- * status `rating_only` and `amount_cents = 0` so aggregated stats can still
- * include it.
- */
-export async function recordRatingOnly(args: RecordRatingOnlyArgs): Promise<string> {
-  const { clientId, bookingId, customerPhone, barberName, rating, ratingComment } = args;
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    throw new Error('Rating must be integer 1-5.');
-  }
-
-  const [row] = await db
-    .insert(tips)
-    .values({
-      clientId,
-      bookingId: bookingId ?? null,
-      amountCents: 0,
-      status: 'rating_only',
-      customerPhone,
-      barberName: barberName ?? null,
-      rating,
-      ratingComment: ratingComment ?? null,
-    })
-    .returning({ id: tips.id });
-
-  return row.id;
+}): Promise<string> {
+  return recordRating({
+    clientId: args.clientId,
+    bookingId: args.bookingId,
+    customerPhone: args.customerPhone,
+    barberName: args.barberName,
+    rating: args.rating,
+    comment: args.ratingComment,
+    channel: 'whatsapp',
+  });
 }

@@ -2,25 +2,30 @@ import { db } from '@/db';
 import { bookings, clients } from '@/db/schema';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { requireCron } from '@/lib/auth/require-cron';
-import { sendRatingMessage } from '@/lib/whatsapp/followup';
+import { sendRatingFollowup } from '@/lib/whatsapp/followup';
 
 // -----------------------------------------------------------------------------
 // GET /api/cron/post-booking-followup
 //
-// Scheduled DAILY at 21:00 Europe/Madrid (Vercel Hobby plan limit — Pro
-// would allow hourly or every-10-min for near-real-time followups). For
-// barbershops with `tips_enabled = true`, finds bookings where:
-//   · `status` is confirmed/completed (never send on cancel/no-show)
-//   · `followup_sent_at` is null (idempotent — send once)
-//   · booking's end-of-service + client.followup_minutes_after ≤ now()
-//   · booking's end-of-service > now() - 24h (window covers one full day
-//     of services since the cron only runs once every 24h).
+// Scheduled cada 30 min (Vercel Pro). Para barberías con
+// `ratings_enabled = true`, encuentra bookings donde:
+//   · `status` in ('confirmed', 'completed') — nunca a no-show o cancelled
+//   · `followup_sent_at` is null (idempotente — manda una vez)
+//   · endsAt + client.followup_minutes_after ≤ now()
+//   · endsAt > now() - 6h (ventana corta — el cron va frecuente, no necesitamos
+//     barrer 24h hacia atrás; reduce el riesgo de mandar reseñas a citas viejas
+//     si por algún motivo el cron estuvo caído un día)
 //
-// Ships in **dry-run** by default (env FOLLOWUP_DRY_RUN). Flip to "false"
-// in Vercel env when ready to start sending real messages.
+// Filtramos por `ratings_enabled` (no tips_enabled): el barbero puede pedir
+// reseñas sin tener Stripe Connect ni propinas. Si encima tiene tips
+// activos, el flow de propina se inserta dentro del de rating cuando la
+// nota es ≥ 4 (lógica en `handleFollowupReply`).
 //
-// End-of-service is computed from `(date || ' ' || time)::timestamp + duration`
-// in Europe/Madrid so we align with the barbershop's local clock.
+// Ships en **dry-run** por defecto (env FOLLOWUP_DRY_RUN). Flip a "false"
+// en Vercel env cuando estemos listos para enviar de verdad.
+//
+// End-of-service se computa con `(date || ' ' || time)::timestamp + duration`
+// en Europe/Madrid para alinear con el reloj local de la barbería.
 // -----------------------------------------------------------------------------
 
 const DRY_RUN = process.env.FOLLOWUP_DRY_RUN !== 'false'; // default ON until flipped
@@ -46,14 +51,14 @@ export async function GET(request: Request) {
     .innerJoin(clients, eq(bookings.clientId, clients.id))
     .where(
       and(
-        eq(clients.tipsEnabled, true),
+        eq(clients.ratingsEnabled, true),
         isNull(bookings.followupSentAt),
         or(eq(bookings.status, 'confirmed'), eq(bookings.status, 'completed')),
-        // Window: [now - 24h, now]. The upper bound ensures the service
-        // actually ended + followup delay elapsed; the lower bound avoids
-        // resuscitating days-old bookings.
+        // Ventana: [now - 6h, now]. El cron corre cada 30 min, no necesita
+        // mirar 24h atrás. Limitar a 6h reduce el riesgo de mandar reseñas
+        // a citas viejas si el cron estuvo caído un rato.
         sql`${triggerAt} <= now()`,
-        sql`${triggerAt} > now() - interval '24 hours'`,
+        sql`${triggerAt} > now() - interval '6 hours'`,
       ),
     )
     .limit(MAX_BATCH);
@@ -75,7 +80,7 @@ export async function GET(request: Request) {
   let sent = 0;
   let failed = 0;
   for (const { booking, client } of candidates) {
-    const ok = await sendRatingMessage(client, booking);
+    const ok = await sendRatingFollowup(client, booking);
     if (ok) sent++;
     else failed++;
   }

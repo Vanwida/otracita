@@ -1,8 +1,9 @@
 import { db } from '@/db';
-import { bookings, clients, conversations, tips } from '@/db/schema';
+import { bookings, clients, conversations } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { sendWhatsAppButtons, sendWhatsAppList, sendWhatsAppMessage } from '@/lib/whatsapp/sender';
-import { createTipSession, recordRatingOnly } from '@/lib/tips';
+import { createTipSession, recordRating } from '@/lib/tips';
+import { dispatchUserNotification } from '@/lib/notifications/dispatch';
 import type { InferSelectModel } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
@@ -39,7 +40,29 @@ interface FollowupState {
   bookingId: string;
   step: 'awaiting_rating' | 'awaiting_tip';
   rating?: number;
-  tipRowId?: string;
+}
+
+// -----------------------------------------------------------------------------
+// Anti-fraude: el barbero no puede pedir reseñas a sus propios números (las
+// reservas que él se crea para testear, números del propio negocio, etc.).
+// Comparamos por dígitos puros para tolerar formatos distintos (+34, 0034,
+// con espacios, etc.).
+// -----------------------------------------------------------------------------
+
+function digitsOnly(p: string | null | undefined): string {
+  return (p ?? '').replace(/\D/g, '');
+}
+
+function isOwnBusinessPhone(customerPhone: string, client: Client): boolean {
+  const target = digitsOnly(customerPhone);
+  if (!target) return false;
+  for (const p of [client.phone, client.whatsappNumber]) {
+    const own = digitsOnly(p);
+    if (own && (own === target || own.endsWith(target) || target.endsWith(own))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 interface ConversationContext {
@@ -97,61 +120,162 @@ export function isFollowupReplyId(id: string): boolean {
 }
 
 // -----------------------------------------------------------------------------
-// Outbound — send the rating request. Called by the cron.
+// Outbound — manda la solicitud de reseña usando el dispatcher unificado:
+//
+//   1. Si el cliente tiene la PWA instalada con push activo → push con
+//      deep-link a /b/<slug>/cuenta/rate/<bookingId>. UX nativa con
+//      estrellas táctiles + comentario opcional + propina inline si aplica.
+//   2. Si no → fallback a WhatsApp interactive list (las 5 estrellas como
+//      filas tappables) — la conversación arranca el state machine viejo
+//      via upsertFollowupState.
+//
+// Anti-fraude: si el customerPhone coincide con un número del propio
+// negocio (test bookings autocreados por el barbero), se omite el envío.
+//
+// Marcamos `bookings.followupSentAt` SOLO si el dispatcher entregó por
+// algún canal — si fue 'none' (ni PWA ni WhatsApp configurados) no
+// quemamos el slot, el cron lo reintentará en el próximo barrido.
 // -----------------------------------------------------------------------------
-export async function sendRatingMessage(
+export async function sendRatingFollowup(
   client: Client,
   booking: Booking,
 ): Promise<boolean> {
+  if (isOwnBusinessPhone(booking.customerPhone, client)) {
+    console.log(`[followup] skipping booking ${booking.id} — own business phone`);
+    return false;
+  }
+
   const token = client.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '';
   const phoneNumberId = client.whatsappPhoneNumberId;
+
+  const greetingName = booking.customerName?.split(' ')[0] || '';
+  const barberClause = booking.barber ? ` con ${booking.barber}` : '';
+  const whatsappBody = greetingName
+    ? `Hola ${greetingName} 👋\n¿Qué tal el corte${barberClause}? Tu opinión ayuda mucho.`
+    : `Hola 👋\n¿Qué tal el corte${barberClause}? Tu opinión ayuda mucho.`;
+
+  // Push payload — el deep link aterriza en la página PWA de rating.
+  // Si el cliente no tiene publicSlug (raro pero posible), nos vamos
+  // directo al fallback de WhatsApp.
+  if (!client.publicSlug) {
+    return sendRatingWhatsApp(client, booking, whatsappBody, token, phoneNumberId);
+  }
+
+  const ratePath = `/b/${client.publicSlug}/cuenta/rate/${booking.id}`;
+  let dispatched: 'push' | 'whatsapp' | 'none' = 'none';
+
+  try {
+    const result = await dispatchUserNotification({
+      phone: booking.customerPhone,
+      clientId: client.id,
+      push: {
+        title: `¿Qué tal en ${client.businessName}?`,
+        body: `Toca para valorar tu visita${barberClause}.`,
+        url: ratePath,
+        tag: `rate-${booking.id}`,
+        data: { kind: 'rating_request', bookingId: booking.id },
+      },
+      whatsappFallback: token && phoneNumberId
+        ? async () => {
+            await sendRatingWhatsAppList(
+              phoneNumberId,
+              booking.customerPhone,
+              whatsappBody,
+              token,
+            );
+            await upsertFollowupState(client.id, booking.customerPhone, {
+              bookingId: booking.id,
+              step: 'awaiting_rating',
+            });
+          }
+        : undefined,
+    });
+    dispatched = result.channel;
+  } catch (err) {
+    console.error(`[followup] dispatch failed for booking ${booking.id}:`, err);
+    return false;
+  }
+
+  if (dispatched === 'none') return false;
+
+  await db
+    .update(bookings)
+    .set({ followupSentAt: new Date() })
+    .where(eq(bookings.id, booking.id));
+
+  return true;
+}
+
+/**
+ * Backwards-compat alias — el cron y otros callers viejos importaban
+ * `sendRatingMessage`. Lo mantenemos como wrapper sobre el nombre nuevo
+ * (sendRatingFollowup) para no obligar a tocar todos los callers en este
+ * mismo commit.
+ */
+export const sendRatingMessage = sendRatingFollowup;
+
+/**
+ * Fallback puro a WhatsApp cuando no hay slug público (sin PWA posible).
+ * Encapsula la lógica de envío + state para reusarla.
+ */
+async function sendRatingWhatsApp(
+  client: Client,
+  booking: Booking,
+  body: string,
+  token: string,
+  phoneNumberId: string | null,
+): Promise<boolean> {
   if (!token || !phoneNumberId) {
     console.warn(`[followup] client ${client.id} missing WhatsApp config — skipping`);
     return false;
   }
-
-  const greetingName = booking.customerName?.split(' ')[0] || '';
-  const barberClause = booking.barber ? ` con ${booking.barber}` : '';
-  const body = greetingName
-    ? `Hola ${greetingName} 👋\n¿Qué tal el corte${barberClause}? Tu opinión ayuda mucho.`
-    : `Hola 👋\n¿Qué tal el corte${barberClause}? Tu opinión ayuda mucho.`;
-
   try {
-    await sendWhatsAppList(
-      phoneNumberId,
-      booking.customerPhone,
-      body,
-      'Valorar',
-      [
-        {
-          title: 'Tu valoración',
-          rows: [
-            { id: `${PREFIX_RATING}5`, title: '⭐⭐⭐⭐⭐', description: 'Genial' },
-            { id: `${PREFIX_RATING}4`, title: '⭐⭐⭐⭐', description: 'Muy bueno' },
-            { id: `${PREFIX_RATING}3`, title: '⭐⭐⭐', description: 'Bien' },
-            { id: `${PREFIX_RATING}2`, title: '⭐⭐', description: 'Regular' },
-            { id: `${PREFIX_RATING}1`, title: '⭐', description: 'Mal' },
-          ],
-        },
-      ],
-      token,
-    );
-
+    await sendRatingWhatsAppList(phoneNumberId, booking.customerPhone, body, token);
     await db
       .update(bookings)
       .set({ followupSentAt: new Date() })
       .where(eq(bookings.id, booking.id));
-
     await upsertFollowupState(client.id, booking.customerPhone, {
       bookingId: booking.id,
       step: 'awaiting_rating',
     });
-
     return true;
   } catch (err) {
-    console.error(`[followup] send failed for booking ${booking.id}:`, err);
+    console.error(`[followup] whatsapp send failed for booking ${booking.id}:`, err);
     return false;
   }
+}
+
+/**
+ * Mensaje WhatsApp con lista interactiva de 5 estrellas. Idéntico al que
+ * existía antes — extraído a función propia para que tanto el path normal
+ * como el fallback lo usen sin duplicar el array de filas.
+ */
+async function sendRatingWhatsAppList(
+  phoneNumberId: string,
+  to: string,
+  body: string,
+  token: string,
+): Promise<void> {
+  await sendWhatsAppList(
+    phoneNumberId,
+    to,
+    body,
+    'Valorar',
+    [
+      {
+        title: 'Tu valoración',
+        rows: [
+          { id: `${PREFIX_RATING}5`, title: '⭐⭐⭐⭐⭐', description: 'Genial' },
+          { id: `${PREFIX_RATING}4`, title: '⭐⭐⭐⭐', description: 'Muy bueno' },
+          { id: `${PREFIX_RATING}3`, title: '⭐⭐⭐', description: 'Bien' },
+          { id: `${PREFIX_RATING}2`, title: '⭐⭐', description: 'Regular' },
+          { id: `${PREFIX_RATING}1`, title: '⭐', description: 'Mal' },
+        ],
+      },
+    ],
+    token,
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -209,15 +333,18 @@ export async function handleFollowupReply(
       .from(bookings)
       .where(eq(bookings.id, state.bookingId));
 
-    // Always persist the rating (as rating_only — the tip may or may not
-    // happen next). We write the row NOW even before the tip so the data
-    // survives if the user abandons the flow.
-    const tipRowId = await recordRatingOnly({
+    // Persistimos la valoración en la tabla canónica `ratings` ANTES de
+    // ofrecer la propina. Si el cliente abandona el flow, la valoración
+    // ya está guardada. La idempotencia del UNIQUE parcial impide
+    // sobrescribir si por algún caso de carrera ya existía.
+    await recordRating({
       clientId: client.id,
       bookingId: state.bookingId,
       customerPhone,
+      customerName: bookingRow?.customerName ?? null,
       barberName: bookingRow?.barber ?? null,
       rating,
+      channel: 'whatsapp',
     });
 
     // Low rating path: don't ask for a tip. Surface to Alex so he can ping
@@ -274,7 +401,6 @@ export async function handleFollowupReply(
       bookingId: state.bookingId,
       step: 'awaiting_tip',
       rating,
-      tipRowId,
     });
     return true;
   }
@@ -311,13 +437,10 @@ export async function handleFollowupReply(
         rating: state.rating ?? null,
       });
 
-      // Link the rating row (rating_only) to the new paid tip by flagging
-      // the old one as superseded. Cleanest is to just carry the rating on
-      // the new row via `createTipSession` (we already pass rating) and
-      // delete the placeholder.
-      if (state.tipRowId) {
-        await db.delete(tips).where(eq(tips.id, state.tipRowId));
-      }
+      // Antes borrábamos un "tip placeholder" (la fila tips status=rating_only).
+      // Con la tabla `ratings` separada ya no existe ese placeholder — la
+      // valoración vive independiente. La fila `tips` que se acaba de crear
+      // representa solo el cobro, sin acoplamiento.
 
       await sendWhatsAppMessage(
         phoneNumberId,

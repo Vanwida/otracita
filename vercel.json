@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/post-booking-followup",
-      "schedule": "0 21 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/loyalty-award",
