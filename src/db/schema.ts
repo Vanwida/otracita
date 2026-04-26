@@ -88,6 +88,13 @@ export const clients = pgTable('clients', {
   tipsEnabled: boolean('tips_enabled').default(false).notNull(),
   tipsSuggestedCents: integer('tips_suggested_cents').array().default([200, 300, 500]).notNull(),
   followupMinutesAfter: integer('followup_minutes_after').default(30).notNull(),
+  // Reseñas — opt-in independiente de propinas. Cuando está activo el cron
+  // post-booking-followup envía la solicitud de valoración tras endsAt +
+  // followupMinutesAfter. El barbero puede pedir reseñas sin tener Stripe
+  // Connect ni propinas online configurados; si encima `tipsEnabled` está
+  // activo, el flow de tip se inserta dentro del de rating cuando la nota
+  // es ≥ 4.
+  ratingsEnabled: boolean('ratings_enabled').default(false).notNull(),
   // Loyalty / fidelización — opt-in por barbería. Toda la config (sellos
   // necesarios, recompensa, servicios elegibles, precio mínimo, caducidad)
   // vive en `loyaltyConfig` jsonb cuya shape varía según `loyaltyMode`. Ver
@@ -557,6 +564,35 @@ export const loyaltyLedger = pgTable('loyalty_ledger', {
   createdBy: text('created_by').notNull(),                                 // 'system_cron' | 'barber:<clientId>' | 'customer:<userId>'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Reseñas — almacén canónico de valoraciones de clientes a barberías.
+//
+// Antes vivían embebidas en la tabla `tips` con `status='rating_only'`
+// porque el flow original las acoplaba al pago de propina. Ahora son una
+// entidad independiente: el barbero puede pedir reseñas sin haber
+// configurado Stripe Connect (recibe la valoración por WhatsApp/PWA pero
+// no la propina). Si encima tiene propinas activas, se crea además un
+// `tips` row enlazado por bookingId.
+//
+// `channel` distingue el origen para métricas: WhatsApp envía interactive
+// list (5 estrellas tappables); PWA muestra una pantalla rica con estrellas
+// + comentario opcional + opcionalmente CTA propina.
+//
+// UNIQUE parcial sobre booking_id evita doble valoración de la misma
+// reserva (el barbero podría tener un cliente que respondió tanto en
+// WhatsApp como en la PWA — solo guardamos la primera).
+export const ratings = pgTable('ratings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  bookingId: uuid('booking_id').references(() => bookings.id),
+  customerPhone: text('customer_phone').notNull(),
+  customerName: text('customer_name'),
+  barberName: text('barber_name'),
+  rating: integer('rating').notNull(),
+  comment: text('comment'),
+  channel: text('channel').notNull(),                                      // 'whatsapp' | 'pwa'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
 
 // Promo pushes log — una fila por cada cliente al que se le mandó una
 // promo "llenar huecos". Sirve para dos cosas:
