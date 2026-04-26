@@ -9,17 +9,20 @@ import {
   ratings,
   subscriptions,
 } from '@/db/schema'
-import { and, eq, gte, lt, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, lt, sql } from 'drizzle-orm'
 import {
   CheckCircle2,
   CreditCard,
   Clock,
   Wrench,
   ArrowRight,
-  Wallet,
   CalendarCheck,
   UserPlus,
   Star,
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react'
 import { Suspense } from 'react'
 import { auth } from '@/lib/auth/server'
@@ -29,26 +32,26 @@ import BotActivationStatus from './_components/BotActivationStatus'
 import AttentionPanel, { type AttentionAlert } from './_components/AttentionPanel'
 import TodayMiniAgenda, { type MiniBooking } from './_components/TodayMiniAgenda'
 import { hoursForDate } from '@/lib/availability'
+import { computeOccupancy } from '@/lib/dashboard/occupancy'
 
 // -----------------------------------------------------------------------------
-// /dashboard — Inicio rediseñado.
+// /dashboard — Inicio.
+//
+// Privacidad: la pantalla del barbero suele estar visible para clientes en
+// mostrador. NO mostramos cifras monetarias aquí. Facturación, propinas y
+// ticket medio viven en /dashboard/clientes y /dashboard/facturas (donde
+// el barbero entra explícitamente).
 //
 // Estructura:
-//   1. Saludo + fecha
-//   2. BotActivationStatus (alerta si bot no activado)
-//   3. WelcomeBanner condicional (?welcome=1 tras setup)
-//   4. ActivationTracker condicional (cuando isPending)
+//   1. Saludo + fecha + chip "Próxima cita: en X min"
+//   2. BotActivationStatus
+//   3. WelcomeBanner condicional (?welcome=1)
+//   4. ActivationTracker condicional (isPending)
 //   5. AttentionPanel — alertas accionables (solo si hay)
-//   6. KPIs negocio: facturado, visitas, clientes nuevos, nota media
-//      (filtrables por periodo via StatsPeriodTabs)
+//   6. KPIs no-sensibles: Visitas, Clientes nuevos, % Ocupación, Nota media
+//      Cada KPI con flecha tendencia vs periodo anterior cuando aplica.
 //   7. TodayMiniAgenda — citas de hoy con huecos visibles
 //   8. Plan/suscripción al final
-//
-// Cambios vs versión anterior:
-//   - Quitamos KPIs vanity del bot (mensajes respondidos, clientes contactados)
-//   - KPIs ahora son del NEGOCIO (facturado, visitas reales, nuevos, nota)
-//   - AttentionPanel + mini-agenda son nuevos
-//   - Plan al final, no estorba arriba
 // -----------------------------------------------------------------------------
 
 interface PageProps {
@@ -95,8 +98,18 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
     hour12: false,
   })
 
-  // ─── KPIs del negocio (sobre el periodo seleccionado) ────────────────────
-  // bookings.price está en EUROS (foot-gun documentado).
+  // ─── KPIs del negocio (sobre el periodo + el periodo anterior para tendencia) ─
+  // Privacidad: NO incluimos importe facturado aquí — la pantalla del barbero
+  // suele estar visible al cliente. Para € ir a /dashboard/clientes o
+  // /dashboard/facturas que requieren navegación explícita.
+  //
+  // Para tendencia comparamos contra el periodo "anterior" del mismo tamaño:
+  //   - day → ayer
+  //   - week → 7 días anteriores a periodStart
+  //   - month → mes pasado completo
+  //   - lifetime → no hay tendencia (mostramos KPI sin flecha)
+  const previousPeriod = computePreviousPeriod(period, periodStart)
+
   const periodWhereDate = periodStartIso
     ? sql`AND ${bookings.date} >= ${periodStartIso}`
     : sql``
@@ -109,9 +122,6 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
 
   const [kpiRow] = (await db.execute(sql`
     SELECT
-      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
-        WHERE client_id = ${client.id} AND status = 'completed'
-        ${periodWhereDate})::bigint AS billed_eur,
       (SELECT COUNT(*) FROM ${bookings}
         WHERE client_id = ${client.id}
         AND status IN ('confirmed', 'completed')
@@ -124,10 +134,62 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
         ${periodWhereRating}) AS avg_rating
   `).then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? [{} as KpiRow]
 
-  const billedEur = Number(kpiRow?.billed_eur ?? 0)
   const visitsCount = Number(kpiRow?.visits_count ?? 0)
   const newCustomers = Number(kpiRow?.new_customers ?? 0)
   const avgRating = kpiRow?.avg_rating !== null && kpiRow?.avg_rating !== undefined ? Number(kpiRow.avg_rating) : null
+
+  // KPIs del periodo anterior — solo si tenemos un previousPeriod definido
+  // (lifetime → null → todas las tendencias quedan null).
+  let visitsPrev: number | null = null
+  let newCustomersPrev: number | null = null
+  if (previousPeriod) {
+    const [prevRow] = (await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*) FROM ${bookings}
+          WHERE client_id = ${client.id}
+          AND status IN ('confirmed', 'completed')
+          AND date >= ${previousPeriod.startIso} AND date < ${periodStartIso ?? previousPeriod.endIso}
+        )::int AS visits_count,
+        (SELECT COUNT(*) FROM ${customers}
+          WHERE client_id = ${client.id}
+          AND created_at >= ${previousPeriod.startDate} AND created_at < ${periodStart ?? previousPeriod.endDate}
+        )::int AS new_customers
+    `).then((r) => (r as unknown as { rows: { visits_count: number; new_customers: number }[] }).rows)) ?? []
+    visitsPrev = prevRow ? Number(prevRow.visits_count) : null
+    newCustomersPrev = prevRow ? Number(prevRow.new_customers) : null
+  }
+
+  // % Ocupación — solo tiene sentido para periodos acotados (no lifetime).
+  // Coste: O(días × barberos), aceptable hasta 31 días.
+  const occupancy = periodStart
+    ? await computeOccupancy({
+        clientId: client.id,
+        rangeStart: periodStartIso!,
+        rangeEnd: todayStr,
+        nowTime,
+      })
+    : null
+
+  // Próxima cita confirmada (en futuro) — para el badge de cabecera.
+  const [nextBooking] = await db
+    .select({
+      id: bookings.id,
+      date: bookings.date,
+      time: bookings.time,
+      service: bookings.service,
+      barber: bookings.barber,
+      customerName: bookings.customerName,
+    })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, client.id),
+        eq(bookings.status, 'confirmed'),
+        sql`(${bookings.date} || ' ' || ${bookings.time})::timestamp >= now() AT TIME ZONE 'Europe/Madrid'`,
+      ),
+    )
+    .orderBy(asc(bookings.date), asc(bookings.time))
+    .limit(1)
 
   // ─── Bookings de hoy + ayer (para mini-agenda y alertas) ─────────────────
   const todayAndYesterday = await db
@@ -229,12 +291,25 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
 
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
-      {/* Header */}
-      <header className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-ink mb-1">
-          Hola, <span className="text-brand">{client.businessName || session.user.email!.split('@')[0]}</span>
-        </h1>
-        <p className="text-sm text-ink-3">{formatTodayLong()}</p>
+      {/* Header con próxima cita destacada */}
+      <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-ink mb-1">
+            Hola, <span className="text-brand">{client.businessName || session.user.email!.split('@')[0]}</span>
+          </h1>
+          <p className="text-sm text-ink-3">{formatTodayLong()}</p>
+        </div>
+        {nextBooking && (
+          <NextBookingBadge
+            date={nextBooking.date}
+            time={nextBooking.time}
+            customerName={nextBooking.customerName}
+            service={nextBooking.service}
+            barber={nextBooking.barber}
+            todayStr={todayStr}
+            nowTime={nowTime}
+          />
+        )}
       </header>
 
       {showWelcome && (
@@ -288,10 +363,31 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
           </Suspense>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi icon={Wallet} label="Facturado" value={billedEur > 0 ? `${billedEur.toFixed(0)} €` : '—'} />
-          <Kpi icon={CalendarCheck} label="Visitas" value={visitsCount.toLocaleString('es-ES')} />
-          <Kpi icon={UserPlus} label="Clientes nuevos" value={newCustomers.toLocaleString('es-ES')} />
-          <Kpi icon={Star} label="Nota media" value={avgRating !== null ? `${avgRating.toFixed(1)} / 5` : '—'} />
+          <Kpi
+            icon={CalendarCheck}
+            label="Visitas"
+            value={visitsCount.toLocaleString('es-ES')}
+            trend={computeTrend(visitsCount, visitsPrev)}
+          />
+          <Kpi
+            icon={UserPlus}
+            label="Clientes nuevos"
+            value={newCustomers.toLocaleString('es-ES')}
+            trend={computeTrend(newCustomers, newCustomersPrev)}
+          />
+          <Kpi
+            icon={Activity}
+            label="Ocupación"
+            value={occupancy ? `${occupancy.pct}%` : '—'}
+            hint={occupancy && occupancy.availableMinutes > 0
+              ? `${Math.round(occupancy.availableMinutes / 60 - occupancy.bookedMinutes / 60)}h libres`
+              : period === 'lifetime' ? 'Elige un periodo' : undefined}
+          />
+          <Kpi
+            icon={Star}
+            label="Nota media"
+            value={avgRating !== null ? `${avgRating.toFixed(1)} / 5` : '—'}
+          />
         </div>
       </section>
 
@@ -341,20 +437,30 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface KpiRow {
-  billed_eur: number | string
   visits_count: number
   new_customers: number
   avg_rating: number | null
+}
+
+interface Trend {
+  /** Direccion: up = mejor, down = peor, flat = igual, none = sin tendencia. */
+  direction: 'up' | 'down' | 'flat' | 'none'
+  /** Texto a mostrar, tipo "+12%" o "−5%" o "=". */
+  label: string
 }
 
 function Kpi({
   icon: Icon,
   label,
   value,
+  trend,
+  hint,
 }: {
-  icon: typeof Wallet
+  icon: typeof CalendarCheck
   label: string
   value: string
+  trend?: Trend
+  hint?: string
 }) {
   return (
     <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
@@ -362,9 +468,122 @@ function Kpi({
         <Icon className="h-3.5 w-3.5 text-ink-3" />
         <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{label}</p>
       </div>
-      <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
+      <div className="flex items-baseline gap-2">
+        <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
+        {trend && trend.direction !== 'none' && (
+          <TrendChip trend={trend} />
+        )}
+      </div>
+      {hint && <p className="text-[10px] text-ink-3 mt-1">{hint}</p>}
     </div>
   )
+}
+
+function TrendChip({ trend }: { trend: Trend }) {
+  const Icon = trend.direction === 'up' ? TrendingUp : trend.direction === 'down' ? TrendingDown : Minus
+  const color = trend.direction === 'up' ? 'text-success' : trend.direction === 'down' ? 'text-danger' : 'text-ink-3'
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${color}`}>
+      <Icon className="h-3 w-3" />
+      {trend.label}
+    </span>
+  )
+}
+
+function NextBookingBadge({
+  date,
+  time,
+  customerName,
+  service,
+  barber,
+  todayStr,
+  nowTime,
+}: {
+  date: string
+  time: string
+  customerName: string | null
+  service: string
+  barber: string | null
+  todayStr: string
+  nowTime: string
+}) {
+  // Texto temporal: si es hoy, "En X min" o "Ahora"; si mañana, "Mañana HH:MM"; sino, fecha relativa.
+  let when: string
+  if (date === todayStr) {
+    const [bH, bM] = time.split(':').map(Number)
+    const [nH, nM] = nowTime.split(':').map(Number)
+    const diffMin = bH * 60 + bM - (nH * 60 + nM)
+    if (diffMin <= 0) when = 'Ahora'
+    else if (diffMin < 60) when = `En ${diffMin} min`
+    else when = `Hoy ${time}`
+  } else {
+    const d = new Date(`${date}T00:00:00`)
+    const today = new Date(`${todayStr}T00:00:00`)
+    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    if (diffDays === 1) when = `Mañana ${time}`
+    else when = `${new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)} · ${time}`
+  }
+
+  const subtitle = `${customerName || '—'} · ${service}${barber ? ` con ${barber}` : ''}`
+
+  return (
+    <Link
+      href="/dashboard/agenda"
+      className="inline-flex items-center gap-3 rounded-xl border border-brand/30 bg-brand-softer px-4 py-2.5 text-left hover:border-brand transition-colors max-w-sm"
+    >
+      <Clock className="h-4 w-4 text-brand-strong shrink-0" />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-strong">Próxima cita · {when}</p>
+        <p className="text-sm text-ink truncate">{subtitle}</p>
+      </div>
+    </Link>
+  )
+}
+
+interface PreviousPeriod {
+  startIso: string  // YYYY-MM-DD
+  endIso: string    // YYYY-MM-DD (exclusive)
+  startDate: Date
+  endDate: Date
+}
+
+function computePreviousPeriod(period: Period, periodStart: Date | null): PreviousPeriod | null {
+  if (!periodStart || period === 'lifetime') return null
+  const now = new Date()
+  let prevStart: Date
+  let prevEnd: Date
+  if (period === 'day') {
+    // Ayer 00:00 → hoy 00:00 (excl)
+    prevEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    prevStart = new Date(prevEnd.getTime() - 24 * 60 * 60 * 1000)
+  } else if (period === 'week') {
+    // 14 días atrás → 7 días atrás
+    prevEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
+  } else {
+    // month: mes pasado completo
+    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    prevEnd = new Date(now.getFullYear(), now.getMonth(), 1)
+  }
+  return {
+    startIso: prevStart.toISOString().slice(0, 10),
+    endIso: prevEnd.toISOString().slice(0, 10),
+    startDate: prevStart,
+    endDate: prevEnd,
+  }
+}
+
+function computeTrend(current: number, previous: number | null): Trend {
+  if (previous === null) return { direction: 'none', label: '' }
+  if (previous === 0 && current === 0) return { direction: 'flat', label: '=' }
+  if (previous === 0) return { direction: 'up', label: 'nuevo' }
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (pct === 0) return { direction: 'flat', label: '=' }
+  const sign = pct > 0 ? '+' : '−'
+  return {
+    direction: pct > 0 ? 'up' : 'down',
+    label: `${sign}${Math.abs(pct)}%`,
+  }
 }
 
 function formatTodayLong(): string {
