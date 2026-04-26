@@ -1,0 +1,379 @@
+export const dynamic = 'force-dynamic'
+
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { headers } from 'next/headers'
+import { db } from '@/db'
+import { bookings, clients, invoices, tips } from '@/db/schema'
+import { and, eq, gte, lt, sql } from 'drizzle-orm'
+import { auth } from '@/lib/auth/server'
+import {
+  Wallet,
+  Receipt,
+  Heart,
+  CalendarCheck,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ChevronRight,
+  AlertCircle,
+  FileText,
+  ChevronLeft,
+} from 'lucide-react'
+import { Suspense } from 'react'
+import StatsPeriodTabs from '../_components/StatsPeriodTabs'
+import ConnectSettings from '../_components/ConnectSettings'
+
+// -----------------------------------------------------------------------------
+// /dashboard/caja — panel financiero del barbero.
+//
+// Por qué existe esta sección (mover de /clientes y /negocio):
+//   · Antes los KPIs financieros vivían en /dashboard/clientes — pero son
+//     métricas DEL NEGOCIO, no DE clientes. Mal alocado.
+//   · Cobros (Stripe Connect) vivía en /dashboard/negocio → tab Cobros — su
+//     sitio natural es Caja, junto al resto de lo monetario.
+//   · Datos fiscales vivirán también aquí (commit 4 — refactor InvoicingSettings
+//     a self-contained con su propio API endpoint).
+//
+// Privacidad: la pantalla del barbero suele ser visible a clientes en
+// mostrador. Caja es de ENTRADA EXPLÍCITA (click en menú), nunca aparece
+// por defecto. El Inicio tampoco muestra cifras monetarias.
+//
+// KPIs con tabs Hoy / Semana / Mes / Año / Total + comparativa vs periodo
+// anterior cuando aplica.
+// -----------------------------------------------------------------------------
+
+interface PageProps {
+  searchParams: Promise<{ period?: string }>
+}
+
+const PERIODS = ['day', 'week', 'month', 'lifetime'] as const
+type Period = (typeof PERIODS)[number]
+
+export default async function CajaPage({ searchParams }: PageProps) {
+  const { period: rawPeriod = 'month' } = await searchParams
+  const period: Period = (PERIODS as readonly string[]).includes(rawPeriod) ? (rawPeriod as Period) : 'month'
+
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.email) redirect('/login')
+
+  const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
+  if (!client) redirect('/dashboard/setup')
+
+  // Periodo actual y anterior — mismo patrón que Inicio.
+  const now = new Date()
+  let periodStart: Date | null = null
+  if (period === 'day') {
+    periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  } else if (period === 'week') {
+    periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  } else if (period === 'month') {
+    periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  }
+  const periodStartIso = periodStart ? periodStart.toISOString().slice(0, 10) : null
+
+  const previousPeriod = computePreviousPeriod(period, periodStart)
+
+  const periodWhereDate = periodStartIso ? sql`AND date >= ${periodStartIso}` : sql``
+
+  // ─── KPIs principales ────────────────────────────────────────────────────
+  // bookings.price está en EUROS (foot-gun documentado en CLAUDE.md).
+  const [kpiRow] = (await db.execute(sql`
+    SELECT
+      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+        WHERE client_id = ${client.id} AND status = 'completed'
+        ${periodWhereDate})::bigint AS billed_eur,
+      (SELECT COUNT(*) FROM ${bookings}
+        WHERE client_id = ${client.id} AND status = 'completed'
+        ${periodWhereDate})::int AS completed_count,
+      (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
+        WHERE client_id = ${client.id} AND status = 'paid'
+        ${periodStart ? sql`AND paid_at >= ${periodStart}` : sql``})::bigint AS tips_cents
+  `).then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? []
+
+  const billedEur = Number(kpiRow?.billed_eur ?? 0)
+  const completedCount = Number(kpiRow?.completed_count ?? 0)
+  const tipsEur = Number(kpiRow?.tips_cents ?? 0) / 100
+  const ticketMedio = completedCount > 0 ? billedEur / completedCount : 0
+
+  // KPIs del periodo anterior (para flechas tendencia).
+  let billedPrev: number | null = null
+  let completedPrev: number | null = null
+  let tipsPrevEur: number | null = null
+  if (previousPeriod) {
+    const [prevRow] = (await db.execute(sql`
+      SELECT
+        (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+          WHERE client_id = ${client.id} AND status = 'completed'
+          AND date >= ${previousPeriod.startIso} AND date < ${periodStartIso ?? previousPeriod.endIso}
+        )::bigint AS billed_eur,
+        (SELECT COUNT(*) FROM ${bookings}
+          WHERE client_id = ${client.id} AND status = 'completed'
+          AND date >= ${previousPeriod.startIso} AND date < ${periodStartIso ?? previousPeriod.endIso}
+        )::int AS completed_count,
+        (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
+          WHERE client_id = ${client.id} AND status = 'paid'
+          AND paid_at >= ${previousPeriod.startDate} AND paid_at < ${periodStart ?? previousPeriod.endDate}
+        )::bigint AS tips_cents
+    `).then((r) => (r as unknown as {
+      rows: { billed_eur: string | number; completed_count: number; tips_cents: string | number }[]
+    }).rows)) ?? []
+    billedPrev = prevRow ? Number(prevRow.billed_eur) : null
+    completedPrev = prevRow ? Number(prevRow.completed_count) : null
+    tipsPrevEur = prevRow ? Number(prevRow.tips_cents) / 100 : null
+  }
+
+  // ─── Datos fiscales completos? + nº facturas este mes ────────────────────
+  const fiscalDataComplete = Boolean(
+    client.fiscalName && client.fiscalNif && client.fiscalAddress &&
+    client.fiscalCity && client.fiscalPostalCode,
+  )
+
+  const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+  const nextMonthStartIso = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10)
+  const [invoiceCountRow] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.clientId, client.id),
+        gte(invoices.issueDate, monthStartIso),
+        lt(invoices.issueDate, nextMonthStartIso),
+      ),
+    )
+  const invoiceCountThisMonth = Number(invoiceCountRow?.n ?? 0)
+
+  return (
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
+      <header className="mb-6">
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
+          <Wallet className="h-7 w-7 text-brand" />
+          Caja
+        </h1>
+        <p className="text-ink-2">Tu dinero: facturado, propinas, cobros online y datos fiscales.</p>
+      </header>
+
+      {/* KPIs principales con tabs por periodo */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">Ingresos</h2>
+          <Suspense>
+            <StatsPeriodTabs />
+          </Suspense>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Kpi
+            icon={Wallet}
+            label="Facturado"
+            value={billedEur > 0 ? `${billedEur.toFixed(0)} €` : '—'}
+            trend={computeTrend(billedEur, billedPrev)}
+          />
+          <Kpi
+            icon={Receipt}
+            label="Ticket medio"
+            value={completedCount > 0 ? `${ticketMedio.toFixed(2)} €` : '—'}
+            hint={completedCount > 0 ? `${completedCount} servicios` : undefined}
+          />
+          <Kpi
+            icon={CalendarCheck}
+            label="Servicios"
+            value={completedCount.toLocaleString('es-ES')}
+            trend={computeTrend(completedCount, completedPrev)}
+          />
+          <Kpi
+            icon={Heart}
+            label="Propinas"
+            value={tipsEur > 0 ? `${tipsEur.toFixed(2)} €` : '—'}
+            trend={computeTrend(tipsEur, tipsPrevEur)}
+          />
+        </div>
+      </section>
+
+      {/* Cobros online (Stripe Connect) */}
+      <section className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
+        <ConnectSettings
+          initial={{
+            status: client.stripeConnectStatus,
+            accountId: client.stripeConnectAccountId,
+            activatedAt: client.stripeConnectActivatedAt
+              ? client.stripeConnectActivatedAt.toISOString()
+              : null,
+          }}
+        />
+      </section>
+
+      {/* Datos fiscales — TEMPORAL: link a Negocio hasta refactor del commit 4
+          que migrará InvoicingSettings a self-contained con endpoint propio. */}
+      <section className="mb-8 bg-surface border border-line rounded-2xl p-5">
+        <div className="flex items-start gap-3 flex-wrap">
+          <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
+            fiscalDataComplete ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
+          }`}>
+            {fiscalDataComplete ? <Receipt className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-ink">Datos fiscales</h3>
+            {fiscalDataComplete ? (
+              <>
+                <p className="text-sm text-ink-2 mt-1">
+                  {client.fiscalName} · {client.fiscalNif}
+                </p>
+                <p className="text-xs text-ink-3 mt-0.5">
+                  {client.fiscalAddress}, {client.fiscalPostalCode} {client.fiscalCity} · IVA {client.ivaRate}%
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-2 mt-1">
+                Faltan datos para emitir tickets y facturas. Completa NIF, dirección y IVA.
+              </p>
+            )}
+          </div>
+          <Link
+            href="/dashboard/negocio?tab=facturacion"
+            className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:text-brand-strong"
+          >
+            {fiscalDataComplete ? 'Editar' : 'Completar'}
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Facturas emitidas — link al detalle */}
+      <section className="mb-8 bg-surface border border-line rounded-2xl p-5">
+        <div className="flex items-start gap-3 flex-wrap">
+          <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-brand-softer text-brand-strong">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-ink">Facturas emitidas</h3>
+            <p className="text-sm text-ink-2 mt-1">
+              {client.invoicingEnabled ? (
+                <>
+                  {invoiceCountThisMonth} {invoiceCountThisMonth === 1 ? 'factura' : 'facturas'} este mes ·{' '}
+                  Próximo número: <span className="font-mono">{client.invoiceNumberPrefix}{client.invoiceNumberNext}</span>
+                </>
+              ) : (
+                'Facturación desactivada. Actívala desde Datos fiscales.'
+              )}
+            </p>
+          </div>
+          <Link
+            href="/dashboard/facturas"
+            className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:text-brand-strong"
+          >
+            Ver facturas
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
+      <div className="pt-4 border-t border-line">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1 text-xs text-ink-3 hover:text-ink transition-colors"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Volver al inicio
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-componentes + helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface KpiRow {
+  billed_eur: number | string
+  completed_count: number
+  tips_cents: number | string
+}
+
+interface Trend {
+  direction: 'up' | 'down' | 'flat' | 'none'
+  label: string
+}
+
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  trend,
+  hint,
+}: {
+  icon: typeof Wallet
+  label: string
+  value: string
+  trend?: Trend
+  hint?: string
+}) {
+  return (
+    <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon className="h-3.5 w-3.5 text-ink-3" />
+        <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{label}</p>
+      </div>
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
+        {trend && trend.direction !== 'none' && <TrendChip trend={trend} />}
+      </div>
+      {hint && <p className="text-[10px] text-ink-3 mt-1">{hint}</p>}
+    </div>
+  )
+}
+
+function TrendChip({ trend }: { trend: Trend }) {
+  const Icon = trend.direction === 'up' ? TrendingUp : trend.direction === 'down' ? TrendingDown : Minus
+  const color = trend.direction === 'up' ? 'text-success' : trend.direction === 'down' ? 'text-danger' : 'text-ink-3'
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${color}`}>
+      <Icon className="h-3 w-3" />
+      {trend.label}
+    </span>
+  )
+}
+
+interface PreviousPeriod {
+  startIso: string
+  endIso: string
+  startDate: Date
+  endDate: Date
+}
+
+function computePreviousPeriod(period: Period, periodStart: Date | null): PreviousPeriod | null {
+  if (!periodStart || period === 'lifetime') return null
+  const now = new Date()
+  let prevStart: Date
+  let prevEnd: Date
+  if (period === 'day') {
+    prevEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    prevStart = new Date(prevEnd.getTime() - 24 * 60 * 60 * 1000)
+  } else if (period === 'week') {
+    prevEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
+  } else {
+    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    prevEnd = new Date(now.getFullYear(), now.getMonth(), 1)
+  }
+  return {
+    startIso: prevStart.toISOString().slice(0, 10),
+    endIso: prevEnd.toISOString().slice(0, 10),
+    startDate: prevStart,
+    endDate: prevEnd,
+  }
+}
+
+function computeTrend(current: number, previous: number | null): Trend {
+  if (previous === null) return { direction: 'none', label: '' }
+  if (previous === 0 && current === 0) return { direction: 'flat', label: '=' }
+  if (previous === 0) return { direction: 'up', label: 'nuevo' }
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (pct === 0) return { direction: 'flat', label: '=' }
+  const sign = pct > 0 ? '+' : '−'
+  return {
+    direction: pct > 0 ? 'up' : 'down',
+    label: `${sign}${Math.abs(pct)}%`,
+  }
+}
