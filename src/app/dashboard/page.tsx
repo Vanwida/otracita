@@ -1,41 +1,77 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { db } from "@/db"
-import { analytics, clients, subscriptions, bookings, customers } from "@/db/schema"
-import { eq, sql, gte, and, or } from "drizzle-orm"
-import { CalendarCheck, CheckCircle2, CreditCard, AlertCircle, Clock, User, Scissors, Wrench, ArrowRight } from "lucide-react"
-import { auth } from "@/lib/auth/server";
-import NoShowButton from "./_components/NoShowButton";
-import StatsPeriodTabs from "./_components/StatsPeriodTabs";
-import WelcomeBanner from "./_components/WelcomeBanner";
-import BotActivationStatus from "./_components/BotActivationStatus";
-import { Suspense } from "react";
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
+import { db } from '@/db'
+import {
+  bookings,
+  clients,
+  customers,
+  ratings,
+  subscriptions,
+} from '@/db/schema'
+import { and, eq, gte, lt, sql } from 'drizzle-orm'
+import {
+  CheckCircle2,
+  CreditCard,
+  Clock,
+  Wrench,
+  ArrowRight,
+  Wallet,
+  CalendarCheck,
+  UserPlus,
+  Star,
+} from 'lucide-react'
+import { Suspense } from 'react'
+import { auth } from '@/lib/auth/server'
+import StatsPeriodTabs from './_components/StatsPeriodTabs'
+import WelcomeBanner from './_components/WelcomeBanner'
+import BotActivationStatus from './_components/BotActivationStatus'
+import AttentionPanel, { type AttentionAlert } from './_components/AttentionPanel'
+import TodayMiniAgenda, { type MiniBooking } from './_components/TodayMiniAgenda'
+import { hoursForDate } from '@/lib/availability'
 
-export default async function DashboardOverview({ searchParams }: { searchParams: Promise<{ period?: string; welcome?: string }> }) {
-  const { period = 'lifetime', welcome } = await searchParams
+// -----------------------------------------------------------------------------
+// /dashboard — Inicio rediseñado.
+//
+// Estructura:
+//   1. Saludo + fecha
+//   2. BotActivationStatus (alerta si bot no activado)
+//   3. WelcomeBanner condicional (?welcome=1 tras setup)
+//   4. ActivationTracker condicional (cuando isPending)
+//   5. AttentionPanel — alertas accionables (solo si hay)
+//   6. KPIs negocio: facturado, visitas, clientes nuevos, nota media
+//      (filtrables por periodo via StatsPeriodTabs)
+//   7. TodayMiniAgenda — citas de hoy con huecos visibles
+//   8. Plan/suscripción al final
+//
+// Cambios vs versión anterior:
+//   - Quitamos KPIs vanity del bot (mensajes respondidos, clientes contactados)
+//   - KPIs ahora son del NEGOCIO (facturado, visitas reales, nuevos, nota)
+//   - AttentionPanel + mini-agenda son nuevos
+//   - Plan al final, no estorba arriba
+// -----------------------------------------------------------------------------
+
+interface PageProps {
+  searchParams: Promise<{ period?: string; welcome?: string }>
+}
+
+const PERIODS = ['day', 'week', 'month', 'lifetime'] as const
+type Period = (typeof PERIODS)[number]
+
+export default async function DashboardOverview({ searchParams }: PageProps) {
+  const { period: rawPeriod = 'lifetime', welcome } = await searchParams
+  const period: Period = (PERIODS as readonly string[]).includes(rawPeriod) ? (rawPeriod as Period) : 'lifetime'
   const showWelcome = welcome === '1'
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await auth.api.getSession({ headers: await headers() })
 
-  if (!session?.user) {
-    redirect("/login");
-  }
+  if (!session?.user) redirect('/login')
 
-  // Get client details
-  const clientRecords = await db.select().from(clients).where(eq(clients.email, session.user.email))
-  const client = clientRecords[0]
+  const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
+  if (!client) redirect('/dashboard/setup')
 
-  // No client record at all — user hasn't been through Stripe yet. Push to
-  // the setup wizard which will create the record.
-  if (!client) {
-    redirect("/dashboard/setup");
-  }
-
-  // Pending clients stay on the dashboard and see a prominent CTA below —
-  // setup is no longer a forced redirect.
   const isPending = client.status === 'pending'
 
-  // Compute period start date
+  // Periodo → date range para queries.
   const now = new Date()
   let periodStart: Date | null = null
   if (period === 'day') {
@@ -45,330 +81,364 @@ export default async function DashboardOverview({ searchParams }: { searchParams
   } else if (period === 'month') {
     periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
   }
+  const periodStartIso = periodStart ? periodStart.toISOString().slice(0, 10) : null
 
-  // Get analytics data filtered by period
-  let uniqueClients = 0
-  let totalReplied = 0
-  let totalBookings = 0
-  let totalCancelled = 0
+  // Today / yesterday string (Madrid timezone).
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
 
-  if (client) {
-    const statsWhere = periodStart
-      ? and(eq(analytics.clientId, client.id), gte(analytics.date, periodStart))
-      : eq(analytics.clientId, client.id)
+  // Hora actual HH:MM en Madrid — para no marcar huecos pasados.
+  const nowTime = new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 
-    const stats = await db
-      .select({
-        totalReplied: sql<number>`coalesce(sum(${analytics.messagesReplied}), 0)`,
-        totalBookings: sql<number>`coalesce(sum(${analytics.bookingsMade}), 0)`,
-        totalCancelled: sql<number>`coalesce(sum(${analytics.bookingsCancelled}), 0)`,
+  // ─── KPIs del negocio (sobre el periodo seleccionado) ────────────────────
+  // bookings.price está en EUROS (foot-gun documentado).
+  const periodWhereDate = periodStartIso
+    ? sql`AND ${bookings.date} >= ${periodStartIso}`
+    : sql``
+  const periodWhereCreated = periodStart
+    ? sql`AND ${customers.createdAt} >= ${periodStart}`
+    : sql``
+  const periodWhereRating = periodStart
+    ? sql`AND ${ratings.createdAt} >= ${periodStart}`
+    : sql``
+
+  const [kpiRow] = (await db.execute(sql`
+    SELECT
+      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+        WHERE client_id = ${client.id} AND status = 'completed'
+        ${periodWhereDate})::bigint AS billed_eur,
+      (SELECT COUNT(*) FROM ${bookings}
+        WHERE client_id = ${client.id}
+        AND status IN ('confirmed', 'completed')
+        ${periodWhereDate})::int AS visits_count,
+      (SELECT COUNT(*) FROM ${customers}
+        WHERE client_id = ${client.id}
+        ${periodWhereCreated})::int AS new_customers,
+      (SELECT AVG(${ratings.rating})::float FROM ${ratings}
+        WHERE client_id = ${client.id}
+        ${periodWhereRating}) AS avg_rating
+  `).then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? [{} as KpiRow]
+
+  const billedEur = Number(kpiRow?.billed_eur ?? 0)
+  const visitsCount = Number(kpiRow?.visits_count ?? 0)
+  const newCustomers = Number(kpiRow?.new_customers ?? 0)
+  const avgRating = kpiRow?.avg_rating !== null && kpiRow?.avg_rating !== undefined ? Number(kpiRow.avg_rating) : null
+
+  // ─── Bookings de hoy + ayer (para mini-agenda y alertas) ─────────────────
+  const todayAndYesterday = await db
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, client.id),
+        gte(bookings.date, yesterdayStr),
+        lt(bookings.date, sql`(${todayStr}::date + interval '1 day')::text`),
+      ),
+    )
+  const yesterdayConfirmed = todayAndYesterday.filter(
+    (b) => b.date === yesterdayStr && b.status === 'confirmed',
+  )
+  const todayBookings: MiniBooking[] = todayAndYesterday
+    .filter((b) => b.date === todayStr)
+    .map((b) => ({
+      id: b.id,
+      time: b.time,
+      duration: b.duration,
+      customerName: b.customerName,
+      customerPhone: b.customerPhone,
+      service: b.service,
+      barber: b.barber,
+      status: b.status,
+    }))
+
+  // Horario shop hoy.
+  const shopHoursMap = (client.chatbotHours as Record<string, string> | null) ?? null
+  const shopHoursToday = hoursForDate(todayStr, shopHoursMap)
+
+  // ─── Construir alertas accionables ───────────────────────────────────────
+  const alerts: AttentionAlert[] = []
+
+  // Reservas de ayer status='confirmed' sin marcar (no completed ni no_show).
+  if (yesterdayConfirmed.length > 0) {
+    alerts.push({
+      id: 'yesterday-unmarked',
+      tone: 'warn',
+      title: `${yesterdayConfirmed.length} ${yesterdayConfirmed.length === 1 ? 'reserva de ayer sin marcar' : 'reservas de ayer sin marcar'}`,
+      description: 'Marca si vinieron o fueron no-shows para que las stats salgan bien.',
+      cta: { label: 'Ir a agenda', href: '/dashboard/agenda' },
+      icon: 'alert',
+    })
+  }
+
+  // Token Meta a punto de expirar (< 7 días).
+  if (client.metaTokenExpiresAt) {
+    const daysToExpiry = Math.floor(
+      (client.metaTokenExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    )
+    if (daysToExpiry <= 7 && daysToExpiry >= 0) {
+      alerts.push({
+        id: 'meta-token-expiring',
+        tone: 'danger',
+        title: `Token de WhatsApp expira en ${daysToExpiry} ${daysToExpiry === 1 ? 'día' : 'días'}`,
+        description: 'Si caduca, el bot dejará de responder. Renueva el token desde Meta Business.',
+        icon: 'key',
       })
-      .from(analytics)
-      .where(statsWhere)
-
-    if (stats[0]) {
-      totalReplied = Number(stats[0].totalReplied) || 0
-      totalBookings = Number(stats[0].totalBookings) || 0
-      totalCancelled = Number(stats[0].totalCancelled) || 0
-    }
-
-    // Count unique customers (distinct phone numbers) for this period
-    const customersWhere = periodStart
-      ? and(eq(customers.clientId, client.id), gte(customers.createdAt, periodStart))
-      : eq(customers.clientId, client.id)
-
-    const clientCount = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(customers)
-      .where(customersWhere)
-
-    uniqueClients = Number(clientCount[0]?.count) || 0
-  }
-
-  // Get subscription info
-  let subscription = null
-  if (client) {
-    const subs = await db.select().from(subscriptions).where(eq(subscriptions.clientId, client.id))
-    subscription = subs[0] || null
-  }
-
-  // Get upcoming bookings (today + next 7 days) + yesterday's confirmed (for no-show marking)
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  const upcomingBookings = client
-    ? await db.select().from(bookings).where(
-        and(
-          eq(bookings.clientId, client.id),
-          or(eq(bookings.status, 'confirmed'), eq(bookings.status, 'no_show')),
-          gte(bookings.date, yesterdayStr)
-        )
-      ).then(rows => rows.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)).slice(0, 30))
-    : []
-
-  // Get customer reputation data indexed by phone
-  const customerPhones = [...new Set(upcomingBookings.map(b => b.customerPhone))]
-  const customerMap: Record<string, { reputation: string | null; noShows: number | null }> = {}
-  if (customerPhones.length > 0 && client) {
-    const customerRows = await db.select().from(customers).where(eq(customers.clientId, client.id))
-    for (const c of customerRows) {
-      customerMap[c.phone] = { reputation: c.reputation, noShows: c.noShows }
+    } else if (daysToExpiry < 0) {
+      alerts.push({
+        id: 'meta-token-expired',
+        tone: 'danger',
+        title: 'Token de WhatsApp caducado',
+        description: 'El bot no puede responder hasta que renueves el token en Meta Business.',
+        icon: 'key',
+      })
     }
   }
 
-  const todayBookings = upcomingBookings.filter(b => b.date === todayStr)
-  const yesterdayBookings = upcomingBookings.filter(b => b.date === yesterdayStr)
-  const futureBookings = upcomingBookings.filter(b => b.date > todayStr)
+  // Promos contextuales activas + huecos hoy detectables → CTA.
+  // Heurística simple: si hay >= 2 huecos detectables en la mini-agenda Y promos
+  // están activas, sugerir llenarlos. La detección real vive en /promos/preview;
+  // aquí solo miramos si el barbero tiene huecos relevantes hoy.
+  if (client.promosEnabled && shopHoursToday) {
+    const gapsToday = countSignificantGaps(
+      todayBookings.filter((b) => b.status !== 'cancelled'),
+      shopHoursToday,
+      nowTime,
+    )
+    if (gapsToday >= 2) {
+      alerts.push({
+        id: 'fill-gaps-today',
+        tone: 'info',
+        title: `Tienes ${gapsToday} huecos hoy`,
+        description: 'Manda una promo a tus clientes habituales para llenarlos.',
+        cta: { label: 'Llenar huecos', href: '/dashboard/agenda' },
+        icon: 'megaphone',
+      })
+    }
+  }
 
-  const nowTime = new Date().toTimeString().slice(0, 5) // HH:MM
-
-  const hasData = uniqueClients > 0 || totalReplied > 0 || totalBookings > 0
+  // ─── Suscripción (info al final) ─────────────────────────────────────────
+  const [subscription] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.clientId, client.id))
 
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
-      {showWelcome && client && (
+      {/* Header */}
+      <header className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-ink mb-1">
+          Hola, <span className="text-brand">{client.businessName || session.user.email!.split('@')[0]}</span>
+        </h1>
+        <p className="text-sm text-ink-3">{formatTodayLong()}</p>
+      </header>
+
+      {showWelcome && (
         <WelcomeBanner
           businessName={client.businessName}
           publicSlug={client.publicSlug}
           invoicingEnabled={client.invoicingEnabled}
         />
       )}
-      {client && (
-        <BotActivationStatus
-          whatsappPhoneNumberId={client.whatsappPhoneNumberId}
-          whatsappAccessToken={client.whatsappAccessToken}
-          metaWebhookVerifiedAt={client.metaWebhookVerifiedAt}
-          publicSlug={client.publicSlug}
-          publicEnabled={client.publicEnabled}
-        />
-      )}
-      <div className="mb-6 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-ink mb-2">
-            Hola, <span className="text-brand">{client?.businessName || session.user.email.split('@')[0]}</span>
-          </h1>
-          <p className="text-ink-2 text-base">
-            Resumen del rendimiento de tu chatbot IA.
-          </p>
-        </div>
 
-        {isPending && (
-          <div className="bg-surface border border-line px-4 py-2 rounded-xl text-sm font-semibold text-warning flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full bg-warning shrink-0" />
-            Configuración pendiente
-          </div>
-        )}
-      </div>
+      <BotActivationStatus
+        whatsappPhoneNumberId={client.whatsappPhoneNumberId}
+        whatsappAccessToken={client.whatsappAccessToken}
+        metaWebhookVerifiedAt={client.metaWebhookVerifiedAt}
+        publicSlug={client.publicSlug}
+        publicEnabled={client.publicEnabled}
+      />
 
       {isPending && (
-        <div className="mb-8 bg-brand-softer border border-brand/30 rounded-2xl p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
-            <Wrench className="h-5 w-5 text-brand" />
-          </div>
-          <div className="flex-1">
-            <p className="text-ink font-semibold text-base md:text-lg mb-1">Termina de configurar tu negocio</p>
-            <p className="text-ink-2 text-sm leading-relaxed max-w-2xl">
-              Añade tus servicios, horarios y conecta tu calendario para que el bot empiece a agendar citas automáticamente.
-            </p>
-          </div>
-          <Link
-            href="/dashboard/setup"
-            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
-          >
-            Termina tu configuración
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      )}
-
-      {isPending && (
-        <ActivationTracker client={client} />
-      )}
-
-      {/* Plan & Subscription Info */}
-      {client && (
-        <div className="mb-8 flex items-center gap-3 flex-wrap">
-          <div className="bg-surface border border-line rounded-xl px-4 py-2 text-sm font-medium text-ink-2 flex items-center gap-2">
-            <CreditCard className="h-4 w-4 text-ink-3" />
-            Plan: <span className="uppercase text-ink ml-1">{client.plan}</span>
-          </div>
-          <div className={`rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 border ${
-            client.status === 'active'
-              ? 'bg-surface border-line text-success'
-              : client.status === 'pending'
-                ? 'bg-surface border-line text-warning'
-                : 'bg-surface border-line text-ink-3'
-          }`}>
-            Estado: <span className="uppercase tracking-wide ml-1">{client.status}</span>
-          </div>
-          {subscription && (
-            <div className="bg-surface border border-line rounded-xl px-4 py-2 text-sm font-medium text-ink-2">
-              {(subscription.amount / 100).toFixed(2)} EUR/mes
-              <span className="mx-2 text-line-strong">&bull;</span>
-              <span className="uppercase tracking-wide text-ink-3">{subscription.status}</span>
+        <>
+          <div className="mb-6 bg-brand-softer border border-brand/30 rounded-2xl p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+              <Wrench className="h-5 w-5 text-brand" />
             </div>
-          )}
-        </div>
+            <div className="flex-1">
+              <p className="text-ink font-semibold text-base md:text-lg mb-1">Termina de configurar tu negocio</p>
+              <p className="text-ink-2 text-sm leading-relaxed max-w-2xl">
+                Añade tus servicios, horarios y conecta tu calendario para que el bot empiece a agendar citas automáticamente.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/setup"
+              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
+            >
+              Termina tu configuración
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <ActivationTracker client={client} />
+        </>
       )}
 
-      {!hasData && !isPending && (
-        <div className="mb-8 bg-surface border border-line rounded-xl p-5 flex flex-col md:flex-row md:items-center gap-4">
-          <AlertCircle className="h-8 w-8 text-warning shrink-0" />
-          <div>
-            <p className="text-warning font-semibold text-base mb-0.5">Tu chatbot aún no tiene datos</p>
-            <p className="text-ink-2 text-sm leading-relaxed max-w-2xl">
-              Los datos aparecerán aquí cuando tu chatbot empiece a recibir y responder mensajes por WhatsApp.
-            </p>
-          </div>
+      <AttentionPanel alerts={alerts} />
+
+      {/* KPIs del negocio */}
+      <section className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">Tu negocio</h2>
+          <Suspense>
+            <StatsPeriodTabs />
+          </Suspense>
         </div>
-      )}
-
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-ink-2">Estadísticas</h2>
-        <Suspense>
-          <StatsPeriodTabs />
-        </Suspense>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-        {/* Messages Received */}
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-6 hover:bg-canvas transition-colors">
-          <p className="text-sm text-ink-2 mb-3">Clientes Contactados</p>
-          <span className="text-3xl md:text-4xl font-bold text-ink">{uniqueClients.toLocaleString('es-ES')}</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Kpi icon={Wallet} label="Facturado" value={billedEur > 0 ? `${billedEur.toFixed(0)} €` : '—'} />
+          <Kpi icon={CalendarCheck} label="Visitas" value={visitsCount.toLocaleString('es-ES')} />
+          <Kpi icon={UserPlus} label="Clientes nuevos" value={newCustomers.toLocaleString('es-ES')} />
+          <Kpi icon={Star} label="Nota media" value={avgRating !== null ? `${avgRating.toFixed(1)} / 5` : '—'} />
         </div>
+      </section>
 
-        {/* Messages Replied */}
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-6 hover:bg-canvas transition-colors">
-          <p className="text-sm text-ink-2 mb-3">Mensajes Respondidos</p>
-          <span className="text-3xl md:text-4xl font-bold text-ink">{totalReplied.toLocaleString('es-ES')}</span>
+      {/* Hoy mini-agenda con huecos */}
+      <section className="mb-6">
+        <TodayMiniAgenda
+          bookings={todayBookings}
+          shopHours={shopHoursToday}
+          nowTime={nowTime}
+        />
+      </section>
+
+      {/* Plan/suscripción al final */}
+      <footer className="border-t border-line pt-4 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-xs text-ink-3">
+          <CreditCard className="h-3.5 w-3.5" />
+          <span>Plan</span>
+          <span className="uppercase font-medium text-ink-2">{client.plan}</span>
         </div>
-
-        {/* Bookings Made */}
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-6 hover:bg-canvas transition-colors">
-          <p className="text-sm text-ink-2 mb-3">Reservas Realizadas</p>
-          <span className="text-3xl md:text-4xl font-bold text-ink">{totalBookings.toLocaleString('es-ES')}</span>
-        </div>
-
-        {/* Bookings Cancelled */}
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-6 hover:bg-canvas transition-colors">
-          <p className="text-sm text-ink-2 mb-3">Reservas Canceladas</p>
-          <span className="text-3xl md:text-4xl font-bold text-ink">{totalCancelled.toLocaleString('es-ES')}</span>
-        </div>
-      </div>
-
-      {/* Bookings */}
-      <div className="bg-surface border border-line rounded-xl overflow-hidden">
-        <div className="px-4 py-3 md:px-6 md:py-4 border-b border-line flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">Reservas</h2>
-          <span className="text-xs text-ink-2">
-            {upcomingBookings.filter(b => b.status === 'confirmed').length} confirmadas
-          </span>
-        </div>
-
-        {upcomingBookings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <CalendarCheck className="h-8 w-8 text-ink-3" />
-            <p className="text-ink-3 text-sm">No hay reservas próximas</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-line">
-
-            {/* Yesterday — needs no-show attention */}
-            {yesterdayBookings.length > 0 && (
-              <>
-                <div className="px-4 py-2 md:px-6 bg-overlay">
-                  <span className="text-xs font-semibold text-ink-2 uppercase tracking-wider">Ayer</span>
-                </div>
-                {yesterdayBookings.map(b => (
-                  <BookingRow key={b.id} booking={b} customer={customerMap[b.customerPhone]} canMarkNoShow={true} nowTime={nowTime} />
-                ))}
-              </>
-            )}
-
-            {/* Today */}
-            {todayBookings.length > 0 && (
-              <>
-                <div className="px-4 py-2 md:px-6 bg-overlay">
-                  <span className="text-xs font-semibold text-ink-2 uppercase tracking-wider">Hoy</span>
-                </div>
-                {todayBookings.map(b => (
-                  <BookingRow key={b.id} booking={b} customer={customerMap[b.customerPhone]} canMarkNoShow={b.time <= nowTime} nowTime={nowTime} />
-                ))}
-              </>
-            )}
-
-            {/* Upcoming — grouped by date */}
-            {futureBookings.length > 0 && (() => {
-              const grouped: Record<string, typeof futureBookings> = {}
-              for (const b of futureBookings) {
-                if (!grouped[b.date]) grouped[b.date] = []
-                grouped[b.date].push(b)
-              }
-              return Object.entries(grouped).map(([date, rows]) => {
-                const d = new Date(date + 'T00:00:00')
-                const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })
-                return (
-                  <div key={date}>
-                    <div className="px-4 py-2 md:px-6 bg-overlay">
-                      <span className="text-xs font-semibold text-ink-2 uppercase tracking-wider">{label}</span>
-                    </div>
-                    {rows.map(b => (
-                      <BookingRow key={b.id} booking={b} customer={customerMap[b.customerPhone]} canMarkNoShow={false} nowTime={nowTime} />
-                    ))}
-                  </div>
-                )
-              })
-            })()}
-
-          </div>
+        <span className="text-line-strong">·</span>
+        <span className={`text-xs uppercase font-medium ${
+          client.status === 'active' ? 'text-success' : client.status === 'pending' ? 'text-warning' : 'text-ink-3'
+        }`}>
+          {client.status}
+        </span>
+        {subscription && (
+          <>
+            <span className="text-line-strong">·</span>
+            <span className="text-xs text-ink-3">
+              {(subscription.amount / 100).toFixed(2)} €/mes
+            </span>
+          </>
         )}
-      </div>
+        <Link
+          href="/dashboard/mi-plan"
+          className="ml-auto text-xs text-brand hover:text-brand-strong transition-colors"
+        >
+          Gestionar suscripción →
+        </Link>
+      </footer>
     </div>
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-componentes + helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface KpiRow {
+  billed_eur: number | string
+  visits_count: number
+  new_customers: number
+  avg_rating: number | null
+}
+
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Wallet
+  label: string
+  value: string
+}) {
+  return (
+    <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon className="h-3.5 w-3.5 text-ink-3" />
+        <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{label}</p>
+      </div>
+      <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
+    </div>
+  )
+}
+
+function formatTodayLong(): string {
+  const dt = new Date()
+  const formatted = new Intl.DateTimeFormat('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'Europe/Madrid',
+  }).format(dt)
+  // Capitalize first letter ("domingo" → "Domingo").
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1)
+}
+
+function countSignificantGaps(
+  list: MiniBooking[],
+  shopHours: { start: string; end: string },
+  nowTime: string,
+): number {
+  const MIN_GAP = 30
+  const parseMin = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number)
+    return h * 60 + m
+  }
+  const sorted = [...list].sort((a, b) => a.time.localeCompare(b.time))
+  const openMin = Math.max(parseMin(shopHours.start), parseMin(nowTime))
+  const closeMin = parseMin(shopHours.end)
+
+  let cursor = openMin
+  let gaps = 0
+  for (const b of sorted) {
+    const bStart = parseMin(b.time)
+    const bEnd = bStart + b.duration
+    if (bStart - cursor >= MIN_GAP) gaps++
+    cursor = Math.max(cursor, bEnd)
+  }
+  if (closeMin - cursor >= MIN_GAP) gaps++
+  return gaps
+}
+
 // -----------------------------------------------------------------------------
 // Activation tracker — shown while client.status === 'pending'.
-//
-// 5 steps, each derived from fields on the `clients` row. Steps 3 and 4 flip
-// to "done" when our ops team wires up WhatsApp / Booksy for the client —
-// typically within 24h of signup.
+// (Lógica idéntica a la versión anterior — mantenido para no romper el
+// flujo de barberías nuevas.)
 // -----------------------------------------------------------------------------
 
 type ClientForTracker = {
-  businessName: string | null;
-  phone: string | null;
-  chatbotServices: unknown;
-  whatsappPhoneNumberId: string | null;
-  booksyInboundEmail: string | null;
-  status: string;
-};
+  businessName: string | null
+  phone: string | null
+  chatbotServices: unknown
+  whatsappPhoneNumberId: string | null
+  booksyInboundEmail: string | null
+  status: string
+}
 
 function isServicesFilled(services: unknown): boolean {
-  if (services == null) return false;
-  if (Array.isArray(services)) return services.length > 0;
-  if (typeof services === 'object') return Object.keys(services as object).length > 0;
-  return false;
+  if (services == null) return false
+  if (Array.isArray(services)) return services.length > 0
+  if (typeof services === 'object') return Object.keys(services as object).length > 0
+  return false
 }
 
 function ActivationTracker({ client }: { client: ClientForTracker }) {
   const businessDataDone = Boolean(
-    client.businessName &&
-      client.phone &&
-      isServicesFilled(client.chatbotServices)
-  );
-  const whatsappDone = Boolean(client.whatsappPhoneNumberId);
-  const booksyDone = Boolean(client.booksyInboundEmail);
-  const botActive = client.status === 'active';
+    client.businessName && client.phone && isServicesFilled(client.chatbotServices),
+  )
+  const whatsappDone = Boolean(client.whatsappPhoneNumberId)
+  const booksyDone = Boolean(client.booksyInboundEmail)
+  const botActive = client.status === 'active'
 
-  const opsPendingSubtitle =
-    'Nuestro equipo lo activa en 24h · Te avisaremos por WhatsApp cuando esté listo.';
+  const opsPendingSubtitle = 'Nuestro equipo lo activa en 24h · Te avisaremos por WhatsApp cuando esté listo.'
 
   const steps: Array<{ title: string; subtitle: string; done: boolean }> = [
-    {
-      title: 'Pago recibido',
-      subtitle: 'Tu suscripción está activa.',
-      done: true,
-    },
+    { title: 'Pago recibido', subtitle: 'Tu suscripción está activa.', done: true },
     {
       title: 'Datos del negocio',
       subtitle: businessDataDone
@@ -378,16 +448,12 @@ function ActivationTracker({ client }: { client: ClientForTracker }) {
     },
     {
       title: 'WhatsApp Business conectado',
-      subtitle: whatsappDone
-        ? 'Tu número de WhatsApp Business está conectado al bot.'
-        : opsPendingSubtitle,
+      subtitle: whatsappDone ? 'Tu número de WhatsApp Business está conectado al bot.' : opsPendingSubtitle,
       done: whatsappDone,
     },
     {
       title: 'Booksy sincronizado',
-      subtitle: booksyDone
-        ? 'Los emails de Booksy se sincronizan con tu agenda.'
-        : opsPendingSubtitle,
+      subtitle: booksyDone ? 'Los emails de Booksy se sincronizan con tu agenda.' : opsPendingSubtitle,
       done: booksyDone,
     },
     {
@@ -397,17 +463,14 @@ function ActivationTracker({ client }: { client: ClientForTracker }) {
         : 'Se activa automáticamente cuando los pasos anteriores estén listos.',
       done: botActive,
     },
-  ];
+  ]
 
   return (
-    <div className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
-      <h2 className="font-display text-2xl md:text-3xl font-semibold text-ink mb-1">
-        Activando tu bot
-      </h2>
+    <div className="mb-6 bg-surface border border-line rounded-2xl p-5 md:p-6">
+      <h2 className="font-display text-2xl md:text-3xl font-semibold text-ink mb-1">Activando tu bot</h2>
       <p className="text-sm text-ink-2 mb-5">
         Así va la activación de tu cuenta. Los pasos que dependen de nuestro equipo los hacemos por ti.
       </p>
-
       <ol className="space-y-3">
         {steps.map((step, idx) => (
           <li
@@ -420,89 +483,17 @@ function ActivationTracker({ client }: { client: ClientForTracker }) {
               ) : (
                 <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
               )}
-              <span className="sr-only">
-                {step.done ? 'Completado' : 'Pendiente'}
-              </span>
+              <span className="sr-only">{step.done ? 'Completado' : 'Pendiente'}</span>
             </div>
             <div className="min-w-0">
               <p className="text-sm md:text-base font-semibold text-ink">
                 {idx + 1}. {step.title}
               </p>
-              <p className="text-xs md:text-sm text-ink-2 mt-0.5 leading-relaxed">
-                {step.subtitle}
-              </p>
+              <p className="text-xs md:text-sm text-ink-2 mt-0.5 leading-relaxed">{step.subtitle}</p>
             </div>
           </li>
         ))}
       </ol>
-    </div>
-  );
-}
-
-function BookingRow({
-  booking,
-  customer,
-  canMarkNoShow,
-}: {
-  booking: { id: string; customerName: string | null; customerPhone: string; service: string; barber: string | null; date: string; time: string; status: string }
-  customer?: { reputation: string | null; noShows: number | null }
-  canMarkNoShow: boolean
-  nowTime: string
-}) {
-  const isNoShow = booking.status === 'no_show'
-  const rep = customer?.reputation ?? 'good'
-
-  return (
-    <div className={`px-4 py-3 md:px-6 md:py-4 flex items-center gap-4 ${isNoShow ? 'opacity-50' : ''}`}>
-      {/* Time */}
-      <div className="flex items-center gap-1.5 w-14 shrink-0">
-        <Clock className="h-3.5 w-3.5 text-ink-3" />
-        <span className="text-sm font-mono text-ink-2">{booking.time}</span>
-      </div>
-
-      {/* Customer */}
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <div className="h-7 w-7 rounded-full bg-overlay border border-line flex items-center justify-center shrink-0">
-          <User className="h-3.5 w-3.5 text-ink-3" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm text-ink font-medium truncate">
-            {booking.customerName || booking.customerPhone}
-          </p>
-          {booking.customerName && (
-            <p className="text-xs text-ink-3 truncate">{booking.customerPhone}</p>
-          )}
-        </div>
-        {rep === 'warning' && (
-          <span className="shrink-0 text-xs bg-amber-50 text-amber-600 border border-amber-200 rounded px-1.5 py-0.5">2 no-shows</span>
-        )}
-        {rep === 'blocked' && (
-          <span className="shrink-0 text-xs bg-red-50 text-red-500 border border-red-200 rounded px-1.5 py-0.5">Bloqueado</span>
-        )}
-      </div>
-
-      {/* Service */}
-      <div className="hidden md:flex items-center gap-1.5 w-48 shrink-0">
-        <Scissors className="h-3.5 w-3.5 text-ink-3 shrink-0" />
-        <span className="text-sm text-ink-2 truncate">{booking.service}</span>
-        {booking.barber && (
-          <span className="text-line-strong">·</span>
-        )}
-        {booking.barber && (
-          <span className="text-sm text-ink-3 truncate">{booking.barber}</span>
-        )}
-      </div>
-
-      {/* Status / Action */}
-      <div className="shrink-0 ml-auto">
-        {isNoShow ? (
-          <NoShowButton bookingId={booking.id} initiallyMarked={true} />
-        ) : canMarkNoShow ? (
-          <NoShowButton bookingId={booking.id} />
-        ) : (
-          <span className="text-xs text-success font-medium">Confirmada</span>
-        )}
-      </div>
     </div>
   )
 }
