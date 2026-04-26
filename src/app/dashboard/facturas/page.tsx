@@ -10,6 +10,7 @@ import { auth } from '@/lib/auth/server'
 import { monthRangeInclusive } from '@/lib/invoicing'
 import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 import { MonthSelect, TypeSelect, VoidedToggle } from './FiltersBar'
+import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 import VerifactuBadge, { type VerifactuStatus } from './_components/VerifactuBadge'
 import VerifactuHelpPanel from './_components/VerifactuHelpPanel'
 
@@ -341,6 +342,7 @@ export default async function FacturasPage({
 function Header({ month }: { month: string }) {
   return (
     <div>
+      <AjustesBreadcrumb current="Facturación" />
       <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
         <FileText className="h-7 w-7 text-brand" />
         Facturación

@@ -289,7 +289,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       },
       {
         q: '¿Puedo ver las conversaciones del bot?',
-        a: 'Sí, en [Mensajes](/dashboard/mensajes). Ves cada hilo, con quién habló, qué le preguntó, qué respondió el bot.',
+        a: 'Aún no desde el panel. En tu propio WhatsApp del negocio aparecen todos los hilos (el bot escribe desde tu número). En el roadmap.',
       },
       {
         q: 'Un cliente me llama por teléfono, no por WhatsApp. ¿Pierdo esa reserva?',
@@ -327,7 +327,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       },
       {
         q: 'Un cliente dice que no recibió la confirmación',
-        a: 'Revisa [Mensajes](/dashboard/mensajes) para ver si Meta marcó el mensaje como entregado. A veces filtros de spam del cliente bloquean — que guarde tu número como contacto.',
+        a: 'Mira tu WhatsApp del negocio: el hilo con ese cliente debería tener el doble check. Si no aparece, su número de WhatsApp puede estar mal — escríbele tú directamente para confirmar y pídele guarde tu número.',
       },
       {
         q: 'Se me cuelga el panel',

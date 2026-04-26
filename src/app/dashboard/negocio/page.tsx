@@ -8,6 +8,7 @@ import { eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import NegocioForm from '@/app/dashboard/_components/NegocioForm'
 import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
+import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 
 interface ServiceItem {
   name: string
@@ -149,9 +150,10 @@ export default async function NegocioPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl">
+      <AjustesBreadcrumb current="Tu barbería" />
       <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Mi negocio</h1>
-        <p className="text-ink-2">Los datos, servicios, equipo, horario y facturación con los que opera tu bot.</p>
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Tu barbería</h1>
+        <p className="text-ink-2">Datos, servicios, equipo, horario y facturación con los que opera tu asistente.</p>
       </div>
 
       <NegocioForm

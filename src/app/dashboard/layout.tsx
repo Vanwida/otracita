@@ -14,7 +14,7 @@ import { Wordmark } from "@/components/brand"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
-import { PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV, BOTTOM_NAV } from "@/app/dashboard/_components/nav-config"
+import DashboardSidebarNav from "@/app/dashboard/_components/DashboardSidebarNav"
 import { isAdminUser } from "@/lib/auth/admin"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -33,8 +33,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const needsSetup = !client || client.status === 'pending'
   const email = session.user.email || ''
   const isAdmin = isAdminUser(session)
-
-  const sections = [PRIMARY_NAV, CONFIG_NAV, FOOTER_NAV]
 
   return (
     <div className="flex h-screen bg-canvas text-ink overflow-hidden">
@@ -58,24 +56,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Wordmark height={30} />
         </Link>
 
-        <nav className="flex-1 space-y-6">
-          {sections.map((section) => (
-            <div key={section.heading} className="space-y-1">
-              <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
-                {section.heading}
-              </p>
-              {section.items.map(({ href, icon: Icon, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover transition-colors"
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          ))}
+        <nav className="flex-1 space-y-1">
+          <DashboardSidebarNav variant="sidebar" />
 
           {isAdmin && (
             <div className="pt-3 mt-2 border-t border-sidebar-line">
@@ -148,18 +130,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <DashboardChatWidget />
       <ConfirmDialogHost />
 
-      {/* Mobile Bottom Nav — 4 primary shortcuts + "Más" opens the drawer */}
+      {/* Mobile Bottom Nav — los 4 ítems del menú principal + "Más" para
+          acceder al drawer (sesión, cerrar sesión, panel admin si aplica). */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-surface border-t border-line flex items-center justify-around px-2 lg:hidden">
-        {BOTTOM_NAV.map(({ href, icon: Icon, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex flex-col items-center gap-0.5 px-3 py-2 text-ink-3 hover:text-ink transition-colors"
-          >
-            <Icon className="h-5 w-5" />
-            <span className="text-[10px] font-medium">{label}</span>
-          </Link>
-        ))}
+        <DashboardSidebarNav variant="bottom" />
         <MobileMoreTrigger />
       </nav>
 

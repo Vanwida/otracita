@@ -15,6 +15,7 @@ import {
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
 import PromosToggle from './PromosToggle'
+import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 
 const SITE_ORIGIN = 'https://otracita.es'
 
@@ -54,10 +55,11 @@ export default async function AppPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-5xl space-y-6">
+      <AjustesBreadcrumb current="App para clientes" />
       <div className="mb-2">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
           <Smartphone className="h-7 w-7 text-brand" />
-          Mi app
+          App para clientes
         </h1>
         <p className="text-ink-2 text-sm max-w-2xl">
           La app de tu barbería en el móvil de tus clientes. Instalable desde Safari y Chrome (sin App Store),

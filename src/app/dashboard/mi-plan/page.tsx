@@ -10,6 +10,7 @@ import { auth } from '@/lib/auth/server'
 import { CreditCard, Calendar, Receipt, AlertCircle, FileText, ArrowRight } from 'lucide-react'
 import OpenStripePortalButton from '@/app/dashboard/_components/OpenStripePortalButton'
 import OnlinePaymentsSummary from '@/app/dashboard/_components/OnlinePaymentsSummary'
+import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 import { stripe } from '@/lib/stripe'
 import { PLANS } from '@/lib/stripe'
 
@@ -77,8 +78,9 @@ export default async function MiPlanPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl">
+      <AjustesBreadcrumb current="Tu suscripción" />
       <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Mi plan</h1>
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Tu suscripción</h1>
         <p className="text-ink-2">Tu suscripción a otracita: plan, próximos cobros y facturas pasadas.</p>
       </div>
 

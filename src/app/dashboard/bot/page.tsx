@@ -6,6 +6,7 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
 import {
   Bot,
   MessageCircle,
@@ -106,13 +107,14 @@ export default async function BotPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl">
+      <AjustesBreadcrumb current="Asistente WhatsApp" />
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
           <Bot className="h-7 w-7 text-brand" />
-          El bot
+          Asistente WhatsApp
         </h1>
         <p className="text-ink-2 text-sm max-w-2xl">
-          Cómo se presenta y responde tu asistente por WhatsApp. Todo aplica a partir del
+          Cómo se presenta y responde por WhatsApp. Todo aplica a partir del
           siguiente mensaje que reciba.
         </p>
       </div>
