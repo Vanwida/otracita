@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
 import { db } from '@/db'
-import { clients, barbers as barbersTable, pushSubscriptions, invoices } from '@/db/schema'
+import { clients, barbers as barbersTable, pushSubscriptions, invoices, ratings } from '@/db/schema'
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
@@ -25,6 +25,7 @@ import {
   MessageCircle,
   Mail,
   Bell,
+  Star,
   type LucideIcon,
 } from 'lucide-react'
 import { PLANS, type PlanId } from '@/lib/stripe'
@@ -66,7 +67,7 @@ export default async function AjustesPage() {
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10)
 
   // Queries paralelas — un único round-trip para todos los counters.
-  const [barberCountRow, pushCountRow, invoiceStatsRow] = await Promise.all([
+  const [barberCountRow, pushCountRow, invoiceStatsRow, ratingStatsRow] = await Promise.all([
     db
       .select({ n: sql<number>`count(*)` })
       .from(barbersTable)
@@ -91,12 +92,22 @@ export default async function AjustesPage() {
         ),
       )
       .then((rows) => rows[0]),
+    db
+      .select({
+        count: sql<number>`count(*)`,
+        avg: sql<number>`avg(${ratings.rating})`,
+      })
+      .from(ratings)
+      .where(eq(ratings.clientId, client.id))
+      .then((rows) => rows[0]),
   ])
 
   const barberCount = Number(barberCountRow?.n ?? 0)
   const pushCount = Number(pushCountRow?.n ?? 0)
   const invoiceCount = Number(invoiceStatsRow?.count ?? 0)
   const invoiceTotalEur = Number(invoiceStatsRow?.totalCents ?? 0) / 100
+  const ratingCount = Number(ratingStatsRow?.count ?? 0)
+  const ratingAvg = ratingCount > 0 ? Number(ratingStatsRow?.avg ?? 0) : 0
 
   // Servicios configurados (jsonb) → contar nombres no vacíos.
   const services = (client.chatbotServices as ServiceItem[] | null) ?? []
@@ -203,6 +214,34 @@ export default async function AjustesPage() {
             )}
             {client.promosEnabled && <Chip icon={Bell}>Promos ON</Chip>}
           </ChipRow>
+        </Card>
+
+        {/* Reseñas — un punto de entrada propio porque ahora son una entidad
+            independiente de propinas (ratings_enabled flag). */}
+        <Card
+          href="/dashboard/rese%C3%B1as"
+          icon={Star}
+          title="Reseñas"
+          status={
+            client.ratingsEnabled
+              ? { tone: 'ok', label: 'Activa' }
+              : { tone: 'neutral', label: 'Desactivada' }
+          }
+        >
+          {ratingCount > 0 ? (
+            <CardLine bold>
+              {ratingAvg.toFixed(1)}/5 · {ratingCount} {ratingCount === 1 ? 'valoración' : 'valoraciones'}
+            </CardLine>
+          ) : client.ratingsEnabled ? (
+            <CardLine>Aún no has recibido valoraciones.</CardLine>
+          ) : (
+            <CardLine>Pide opinión a tus clientes tras cada servicio.</CardLine>
+          )}
+          {ratingCount > 0 && (
+            <ChipRow>
+              <Chip icon={Star}>Media {ratingAvg.toFixed(1)}</Chip>
+            </ChipRow>
+          )}
         </Card>
 
         {/* Tarjeta de fidelización */}

@@ -50,6 +50,7 @@ const AJUSTES_PREFIXES = [
   '/dashboard/facturas',
   '/dashboard/mi-plan',
   '/dashboard/ayuda',
+  '/dashboard/reseñas',
 ];
 
 export function isNavItemActive(itemHref: string, pathname: string): boolean {
