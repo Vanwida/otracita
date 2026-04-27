@@ -11,6 +11,7 @@ import {
   tryAutoInvoiceForCompletedBooking,
 } from '@/lib/invoicing'
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
+import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 
 // -----------------------------------------------------------------------------
 // /api/bookings/[id] — PATCH para acciones del dashboard sobre una reserva.
@@ -191,6 +192,15 @@ export async function PATCH(
     access.client.invoicingEnabled
   ) {
     tryAutoInvoiceForCompletedBooking(updated.id)
+  }
+
+  // ── Push solicitud de reseña al cliente ──────────────────────────────
+  // Solo cuando se transiciona a 'completed' (no en cancel ni en barber
+  // reassign). Fire-and-forget: si el barbero olvida marcar completed, el
+  // sweep diario del cron de reminders también dispara este helper. NO
+  // hay un cron dedicado de followup desde este commit — cierre = trigger.
+  if (patch.status === 'completed' && updated && access.client.ratingsEnabled) {
+    tryRatingFollowupForCompletedBooking(updated.id)
   }
 
   // ── Cash movement enlazado al booking completado ─────────────────────

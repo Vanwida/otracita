@@ -11,9 +11,10 @@ import RateForm from './RateForm'
 // /b/[slug]/cuenta/rate/[bookingId] — pantalla de valoración táctil para
 // clientes desde la PWA.
 //
-// Trigger: push notification con deep-link a esta URL desde el cron de
-// post-booking-followup. El cliente la abre, ve el contexto del servicio
-// (barbero + fecha) y elige las estrellas.
+// Trigger: push notification con deep-link a esta URL disparado al
+// marcar la cita como `completed` (manual desde el dashboard o por el
+// sweep diario del cron de reminders). El cliente la abre, ve el
+// contexto del servicio (barbero + fecha) y elige las estrellas.
 //
 // Auth: si no está logueado, redirigimos a /b/[slug]/cuenta para que haga
 // login OTP y vuelva. Si está logueado pero no es su reserva, 404.

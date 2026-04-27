@@ -88,11 +88,12 @@ export const clients = pgTable('clients', {
   tipsEnabled: boolean('tips_enabled').default(false).notNull(),
   tipsSuggestedCents: integer('tips_suggested_cents').array().default([200, 300, 500]).notNull(),
   followupMinutesAfter: integer('followup_minutes_after').default(30).notNull(),
-  // Reseñas — opt-in independiente de propinas. Cuando está activo el cron
-  // post-booking-followup envía la solicitud de valoración tras endsAt +
-  // followupMinutesAfter. El barbero puede pedir reseñas sin tener Stripe
-  // Connect ni propinas online configurados; si encima `tipsEnabled` está
-  // activo, el flow de tip se inserta dentro del de rating cuando la nota
+  // Reseñas — opt-in independiente de propinas. La solicitud de valoración
+  // se dispara cuando la cita pasa a status='completed' (botón manual del
+  // barbero o sweep diario del cron de reminders pasados 3 días). El
+  // barbero puede pedir reseñas sin tener Stripe Connect ni propinas
+  // online configurados; si encima `tipsEnabled` está activo, el flow
+  // de tip se inserta dentro del de rating cuando la nota
   // es ≥ 4.
   ratingsEnabled: boolean('ratings_enabled').default(false).notNull(),
   // Loyalty / fidelización — opt-in por barbería. Toda la config (sellos

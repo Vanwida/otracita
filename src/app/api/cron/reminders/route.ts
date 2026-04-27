@@ -6,6 +6,7 @@ import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
 import { dispatchUserNotification } from '@/lib/notifications/dispatch';
 import { tryAutoInvoiceForCompletedBooking } from '@/lib/invoicing';
+import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
 
 type Lang = 'es' | 'en';
 
@@ -191,6 +192,12 @@ export async function GET(request: Request) {
         tryAutoInvoiceForCompletedBooking(row.id);
         autoInvoicedCount++;
       }
+
+      // Push solicitud de reseña — el helper internamente comprueba
+      // ratingsEnabled e idempotencia (followupSentAt). El cron viejo
+      // dedicado de post-booking-followup queda eliminado: la review se
+      // dispara cuando la cita pasa a 'completed', sea manual o por sweep.
+      tryRatingFollowupForCompletedBooking(row.id);
     }
   } catch (err) {
     console.error('[cron/reminders] lifecycle sweep failed:', err);

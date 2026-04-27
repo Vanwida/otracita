@@ -10,10 +10,13 @@ import type { InferSelectModel } from 'drizzle-orm';
 // Post-service follow-up (rating + optional tip).
 //
 // This module owns:
-//   1. Outbound: `sendRatingMessage(client, booking)` — called by the cron
-//      at endsAt + client.followupMinutesAfter. Sends a single WhatsApp list
-//      message with 5 star options, marks `bookings.followupSentAt`, and
-//      stores flow state in `conversations.context.followup`.
+//   1. Outbound: `sendRatingFollowup(client, booking)` — disparado al
+//      transicionar el booking a `completed` (manual desde dashboard, o
+//      por el sweep diario del cron de reminders pasados 3 días). El
+//      helper `tryRatingFollowupForCompletedBooking(bookingId)` es el
+//      entry point fire-and-forget que usan los call-sites.
+//      Manda push si hay PWA, fallback a WhatsApp con 5 estrellas.
+//      Marca `bookings.followupSentAt` para idempotencia.
 //
 //   2. Inbound routing: the engine calls `isFollowupReplyId()` on every
 //      interactive reply. If true, `handleFollowupReply()` takes the turn
@@ -207,12 +210,38 @@ export async function sendRatingFollowup(
 }
 
 /**
- * Backwards-compat alias — el cron y otros callers viejos importaban
- * `sendRatingMessage`. Lo mantenemos como wrapper sobre el nombre nuevo
- * (sendRatingFollowup) para no obligar a tocar todos los callers en este
- * mismo commit.
+ * Fire-and-forget helper para disparar la solicitud de reseña tras
+ * marcar una cita como `completed`. Nunca lanza, idempotente.
+ *
+ * Caller la invoca en transiciones a completed:
+ *   1. PATCH /api/bookings/[id] cuando el barbero pulsa "Marcar completada"
+ *   2. cron/reminders lifecycle sweep cuando auto-cierra una cita olvidada
+ *
+ * Reglas:
+ *   - Si `client.ratingsEnabled === false` → no-op silencioso
+ *   - Si la cita ya tiene `followupSentAt` → no-op (idempotencia)
+ *   - Si la cita es cancelled/no_show → no-op (sendRatingFollowup ya lo
+ *     filtra pero blindamos antes para evitar la query)
  */
-export const sendRatingMessage = sendRatingFollowup;
+export function tryRatingFollowupForCompletedBooking(bookingId: string): void {
+  void (async () => {
+    try {
+      const [row] = await db
+        .select({ booking: bookings, client: clients })
+        .from(bookings)
+        .innerJoin(clients, eq(bookings.clientId, clients.id))
+        .where(eq(bookings.id, bookingId));
+      if (!row) return;
+      if (!row.client.ratingsEnabled) return;
+      if (row.booking.followupSentAt) return;
+      if (row.booking.status === 'cancelled' || row.booking.status === 'no_show') return;
+
+      await sendRatingFollowup(row.client, row.booking);
+    } catch (err) {
+      console.error('[followup] tryRatingFollowupForCompletedBooking failed:', bookingId, err);
+    }
+  })();
+}
 
 /**
  * Fallback puro a WhatsApp cuando no hay slug público (sin PWA posible).
