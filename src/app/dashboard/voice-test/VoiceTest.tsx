@@ -470,12 +470,17 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
         setStatus('connected');
 
         // 5. Send session.update
+        // Modelo: 'grok-voice-think-fast-1.0' (recomendado en docs xAI por
+        // mejor experiencia conversacional). Alternativa más barata/rápida:
+        // 'grok-voice-fast-1.0'. El antiguo 'grok-2-voice-agent' fue
+        // retirado al lanzar la generación voice-fast.
+        // Voice IDs son lowercase: eve, ara, rex, sal, leo.
         ws.send(
           JSON.stringify({
             type: 'session.update',
             session: {
-              model: 'grok-2-voice-agent',
-              voice: 'Eve',
+              model: 'grok-voice-think-fast-1.0',
+              voice: 'eve',
               instructions: buildSystemPrompt(client),
               audio: {
                 input: { format: { type: 'audio/pcm', rate: 16000 } },
