@@ -24,6 +24,7 @@ import { Suspense } from 'react'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 import ConnectSettings from '../_components/ConnectSettings'
 import InvoicingSettings from '../_components/InvoicingSettings'
+import CashRegisterPanel from '../_components/CashRegisterPanel'
 import BarberBreakdown from './BarberBreakdown'
 import {
   type Period,
@@ -153,6 +154,10 @@ export default async function CajaPage({ searchParams }: PageProps) {
         </h1>
         <p className="text-ink-2">Tu dinero: facturado, propinas, cobros online y datos fiscales.</p>
       </header>
+
+      {/* Caja del día — solo si el tenant lo tiene activado. Encima de los
+          KPIs porque es la operativa diaria, no histórica. */}
+      {client.cashRegisterEnabled && <CashRegisterPanel />}
 
       {/* KPIs principales con tabs por periodo */}
       <section className="mb-8">
