@@ -25,6 +25,12 @@ import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 import ConnectSettings from '../_components/ConnectSettings'
 import InvoicingSettings from '../_components/InvoicingSettings'
 import BarberBreakdown from './BarberBreakdown'
+import {
+  type Period,
+  resolvePeriod,
+  getPeriodStart,
+  getPreviousPeriod,
+} from '@/lib/dashboard/period'
 
 // -----------------------------------------------------------------------------
 // /dashboard/caja — panel financiero del barbero.
@@ -49,12 +55,9 @@ interface PageProps {
   searchParams: Promise<{ period?: string }>
 }
 
-const PERIODS = ['day', 'week', 'month', 'lifetime'] as const
-type Period = (typeof PERIODS)[number]
-
 export default async function CajaPage({ searchParams }: PageProps) {
-  const { period: rawPeriod = 'month' } = await searchParams
-  const period: Period = (PERIODS as readonly string[]).includes(rawPeriod) ? (rawPeriod as Period) : 'month'
+  const { period: rawPeriod } = await searchParams
+  const period: Period = resolvePeriod(rawPeriod, 'month')
 
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
@@ -62,19 +65,14 @@ export default async function CajaPage({ searchParams }: PageProps) {
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  // Periodo actual y anterior — mismo patrón que Inicio.
+  // Periodo actual y anterior — centralizado en lib/dashboard/period.
   const now = new Date()
-  let periodStart: Date | null = null
-  if (period === 'day') {
-    periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  } else if (period === 'week') {
-    periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  } else if (period === 'month') {
-    periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  }
-  const periodStartIso = periodStart ? periodStart.toISOString().slice(0, 10) : null
+  const periodStart = getPeriodStart(period, now)
+  const periodStartIso = periodStart
+    ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-${String(periodStart.getDate()).padStart(2, '0')}`
+    : null
 
-  const previousPeriod = computePreviousPeriod(period, periodStart)
+  const previousPeriod = getPreviousPeriod(period, periodStart, now)
 
   const periodWhereDate = periodStartIso ? sql`AND date >= ${periodStartIso}` : sql``
 
@@ -334,36 +332,6 @@ function TrendChip({ trend }: { trend: Trend }) {
       {trend.label}
     </span>
   )
-}
-
-interface PreviousPeriod {
-  startIso: string
-  endIso: string
-  startDate: Date
-  endDate: Date
-}
-
-function computePreviousPeriod(period: Period, periodStart: Date | null): PreviousPeriod | null {
-  if (!periodStart || period === 'lifetime') return null
-  const now = new Date()
-  let prevStart: Date
-  let prevEnd: Date
-  if (period === 'day') {
-    prevEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    prevStart = new Date(prevEnd.getTime() - 24 * 60 * 60 * 1000)
-  } else if (period === 'week') {
-    prevEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
-  } else {
-    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    prevEnd = new Date(now.getFullYear(), now.getMonth(), 1)
-  }
-  return {
-    startIso: prevStart.toISOString().slice(0, 10),
-    endIso: prevEnd.toISOString().slice(0, 10),
-    startDate: prevStart,
-    endDate: prevEnd,
-  }
 }
 
 function computeTrend(current: number, previous: number | null): Trend {

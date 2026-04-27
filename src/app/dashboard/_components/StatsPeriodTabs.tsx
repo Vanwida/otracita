@@ -1,13 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-
-const PERIODS = [
-  { key: 'day', label: 'Hoy' },
-  { key: 'week', label: 'Semana' },
-  { key: 'month', label: 'Mes' },
-  { key: 'lifetime', label: 'Total' },
-] as const
+import { PERIOD_OPTIONS } from '@/lib/dashboard/period'
 
 export default function StatsPeriodTabs() {
   const router = useRouter()
@@ -23,7 +17,7 @@ export default function StatsPeriodTabs() {
 
   return (
     <div className="flex items-center gap-1 bg-overlay border border-line rounded-lg p-1">
-      {PERIODS.map(p => (
+      {PERIOD_OPTIONS.map(p => (
         <button
           key={p.key}
           onClick={() => set(p.key)}

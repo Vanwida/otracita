@@ -34,6 +34,12 @@ import PendingClosureList, { type PendingClosureBooking } from './_components/Pe
 import TodayMiniAgenda, { type MiniBooking } from './_components/TodayMiniAgenda'
 import { hoursForDate } from '@/lib/availability'
 import { computeOccupancy } from '@/lib/dashboard/occupancy'
+import {
+  type Period,
+  resolvePeriod,
+  getPeriodStart,
+  getPreviousPeriod,
+} from '@/lib/dashboard/period'
 
 // -----------------------------------------------------------------------------
 // /dashboard — Inicio.
@@ -59,12 +65,9 @@ interface PageProps {
   searchParams: Promise<{ period?: string; welcome?: string }>
 }
 
-const PERIODS = ['day', 'week', 'month', 'lifetime'] as const
-type Period = (typeof PERIODS)[number]
-
 export default async function DashboardOverview({ searchParams }: PageProps) {
-  const { period: rawPeriod = 'lifetime', welcome } = await searchParams
-  const period: Period = (PERIODS as readonly string[]).includes(rawPeriod) ? (rawPeriod as Period) : 'lifetime'
+  const { period: rawPeriod, welcome } = await searchParams
+  const period: Period = resolvePeriod(rawPeriod, 'lifetime')
   const showWelcome = welcome === '1'
   const session = await auth.api.getSession({ headers: await headers() })
 
@@ -75,17 +78,12 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
 
   const isPending = client.status === 'pending'
 
-  // Periodo → date range para queries.
+  // Periodo → date range para queries (centralizado en lib/dashboard/period).
   const now = new Date()
-  let periodStart: Date | null = null
-  if (period === 'day') {
-    periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  } else if (period === 'week') {
-    periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  } else if (period === 'month') {
-    periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  }
-  const periodStartIso = periodStart ? periodStart.toISOString().slice(0, 10) : null
+  const periodStart = getPeriodStart(period, now)
+  const periodStartIso = periodStart
+    ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-${String(periodStart.getDate()).padStart(2, '0')}`
+    : null
 
   // Today / yesterday / day-before-yesterday string (Madrid timezone).
   // El rango de "citas por cerrar" cubre los últimos 2 días — el barbero
@@ -113,7 +111,7 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
   //   - week → 7 días anteriores a periodStart
   //   - month → mes pasado completo
   //   - lifetime → no hay tendencia (mostramos KPI sin flecha)
-  const previousPeriod = computePreviousPeriod(period, periodStart)
+  const previousPeriod = getPreviousPeriod(period, periodStart, now)
 
   const periodWhereDate = periodStartIso
     ? sql`AND ${bookings.date} >= ${periodStartIso}`
@@ -556,39 +554,6 @@ function NextBookingBadge({
       </div>
     </Link>
   )
-}
-
-interface PreviousPeriod {
-  startIso: string  // YYYY-MM-DD
-  endIso: string    // YYYY-MM-DD (exclusive)
-  startDate: Date
-  endDate: Date
-}
-
-function computePreviousPeriod(period: Period, periodStart: Date | null): PreviousPeriod | null {
-  if (!periodStart || period === 'lifetime') return null
-  const now = new Date()
-  let prevStart: Date
-  let prevEnd: Date
-  if (period === 'day') {
-    // Ayer 00:00 → hoy 00:00 (excl)
-    prevEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    prevStart = new Date(prevEnd.getTime() - 24 * 60 * 60 * 1000)
-  } else if (period === 'week') {
-    // 14 días atrás → 7 días atrás
-    prevEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
-  } else {
-    // month: mes pasado completo
-    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    prevEnd = new Date(now.getFullYear(), now.getMonth(), 1)
-  }
-  return {
-    startIso: prevStart.toISOString().slice(0, 10),
-    endIso: prevEnd.toISOString().slice(0, 10),
-    startDate: prevStart,
-    endDate: prevEnd,
-  }
 }
 
 function computeTrend(current: number, previous: number | null): Trend {
