@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, UserX, AlertCircle, Loader2 } from 'lucide-react'
+import PaymentMethodPrompt, { type CashPaymentMethod } from './PaymentMethodPrompt'
 
 // -----------------------------------------------------------------------------
 // PendingClosureList — citas confirmadas de días pasados sin cerrar.
@@ -37,9 +38,11 @@ interface Props {
   bookings: PendingClosureBooking[]
   todayStr: string // YYYY-MM-DD
   yesterdayStr: string // YYYY-MM-DD
+  /** Cuando true, al "Completada" pedimos método de pago para alimentar caja. */
+  cashRegisterEnabled?: boolean
 }
 
-export default function PendingClosureList({ bookings, todayStr, yesterdayStr }: Props) {
+export default function PendingClosureList({ bookings, todayStr, yesterdayStr, cashRegisterEnabled = false }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   // Tracks ids being processed para mostrar spinner sin bloquear el resto.
@@ -48,18 +51,22 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr }:
   // del server este state se reinicia con la nueva lista.
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(null)
+  // Para el modal de método cuando hay caja activa.
+  const [pendingClosureBooking, setPendingClosureBooking] = useState<PendingClosureBooking | null>(null)
 
   const visible = bookings.filter((b) => !removedIds.has(b.id))
   if (visible.length === 0) return null
 
-  async function markCompleted(b: PendingClosureBooking) {
+  async function patchComplete(b: PendingClosureBooking, method: CashPaymentMethod | null) {
     setBusyId(b.id)
     setErrorId(null)
     try {
       const res = await fetch(`/api/bookings/${b.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' }),
+        body: JSON.stringify(
+          method ? { status: 'completed', paymentMethod: method } : { status: 'completed' },
+        ),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -71,11 +78,20 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr }:
         next.add(b.id)
         return next
       })
+      setPendingClosureBooking(null)
       startTransition(() => router.refresh())
     } catch {
       setErrorId({ id: b.id, message: 'Error de red' })
     } finally {
       setBusyId(null)
+    }
+  }
+
+  function markCompleted(b: PendingClosureBooking) {
+    if (cashRegisterEnabled) {
+      setPendingClosureBooking(b)
+    } else {
+      void patchComplete(b, null)
     }
   }
 
@@ -124,6 +140,18 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr }:
       <p className="text-xs text-ink-3 mb-3 leading-relaxed">
         Marca si vinieron o no. Al completar se emite la factura con servicio + productos vendidos.
       </p>
+
+      <PaymentMethodPrompt
+        open={pendingClosureBooking !== null}
+        onClose={() => setPendingClosureBooking(null)}
+        onPick={(m) => pendingClosureBooking && void patchComplete(pendingClosureBooking, m)}
+        subtitle={
+          pendingClosureBooking
+            ? `${pendingClosureBooking.service} · ${pendingClosureBooking.customerName ?? pendingClosureBooking.customerPhone}`
+            : undefined
+        }
+        pending={busyId !== null && busyId === pendingClosureBooking?.id}
+      />
 
       <ul className="space-y-2">
         {visible.map((b) => {

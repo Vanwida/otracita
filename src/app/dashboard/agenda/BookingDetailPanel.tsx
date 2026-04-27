@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
+import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -19,6 +20,9 @@ interface Props {
    * between "activa cobros" CTA and the real payment link generator.
    */
   stripeConnectStatus: 'none' | 'pending' | 'active' | 'restricted' | string;
+  /** Cuando true, al completar se pide método de pago (cash/card/online) y
+   *  se alimenta el cuadre del día. Sin esto, comportamiento legacy. */
+  cashRegisterEnabled?: boolean;
 }
 
 interface PaymentSnapshot {
@@ -41,7 +45,7 @@ interface PaymentLinkData {
 const MIN_AMOUNT_EUROS = 0.5;
 const MAX_AMOUNT_EUROS = 5000;
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -168,25 +172,43 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   }
 
   // Cierra la cita: dispara la auto-facturación (servicio + productos
-  // vendidos durante la cita) en el servidor. Si el tenant no tiene
-  // facturación activa, simplemente marca status='completed' sin emitir.
-  async function markCompleted() {
+  // vendidos durante la cita) en el servidor. Si el tenant tiene caja
+  // activa, primero pedimos el método de pago (modal); si no, completamos
+  // directo sin método.
+  const [methodPromptOpen, setMethodPromptOpen] = useState(false);
+  const [methodPending, setMethodPending] = useState(false);
+
+  async function markCompletedWithMethod(method: CashPaymentMethod | null) {
     if (!booking) return;
     setError(null);
+    setMethodPending(true);
     try {
       const res = await fetch(`/api/bookings/${booking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' }),
+        body: JSON.stringify(
+          method ? { status: 'completed', paymentMethod: method } : { status: 'completed' },
+        ),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(body.error || 'No se pudo cerrar la cita');
         return;
       }
+      setMethodPromptOpen(false);
       startTransition(() => router.refresh());
     } catch {
       setError('Error de red');
+    } finally {
+      setMethodPending(false);
+    }
+  }
+
+  function markCompleted() {
+    if (cashRegisterEnabled) {
+      setMethodPromptOpen(true);
+    } else {
+      void markCompletedWithMethod(null);
     }
   }
 
@@ -713,6 +735,16 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           barberName={booking.barber ?? null}
           onClose={() => setProductSaleOpen(false)}
           onCreated={() => setProductSalesCount((n) => n + 1)}
+        />
+      )}
+
+      {booking && (
+        <PaymentMethodPrompt
+          open={methodPromptOpen}
+          onClose={() => setMethodPromptOpen(false)}
+          onPick={(m) => void markCompletedWithMethod(m)}
+          subtitle={`${booking.service} · ${booking.customerName ?? booking.customerPhone}`}
+          pending={methodPending}
         />
       )}
     </AnimatePresence>

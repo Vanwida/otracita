@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { bookings, products, productSales } from '@/db/schema'
 import { and, eq, sql } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { recordMovementInBackground } from '@/lib/cash/record-movement'
 
 // -----------------------------------------------------------------------------
 // POST /api/products/sales — registra una venta de producto.
@@ -125,6 +126,20 @@ export async function POST(req: Request) {
       paymentMethod,
     })
     .returning()
+
+  // Cash movement enlazado a la venta. No-op si el tenant no tiene
+  // cashRegisterEnabled o si no hay sesión activa — la venta queda
+  // registrada igual en product_sales.payment_method para histórico.
+  if (client.cashRegisterEnabled) {
+    recordMovementInBackground({
+      clientId: client.id,
+      referenceType: 'product_sale',
+      referenceId: sale.id,
+      method: paymentMethod as 'cash' | 'card' | 'online',
+      amountCents: totalCents,
+      createdByEmail: access.user.email,
+    })
+  }
 
   return Response.json({ sale }, { status: 201 })
 }

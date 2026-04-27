@@ -42,6 +42,7 @@ export default async function CalendarPage() {
       hours={hours}
       stripeConnectStatus={client.stripeConnectStatus}
       promosEnabled={client.promosEnabled}
+      cashRegisterEnabled={client.cashRegisterEnabled}
     />
   );
 }

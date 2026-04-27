@@ -366,6 +366,7 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
         bookings={pendingClosure}
         todayStr={todayStr}
         yesterdayStr={yesterdayStr}
+        cashRegisterEnabled={client.cashRegisterEnabled}
       />
 
       <AttentionPanel alerts={alerts} />

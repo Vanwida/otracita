@@ -10,6 +10,7 @@ import {
   shouldAutoInvoiceBooking,
   tryAutoInvoiceForCompletedBooking,
 } from '@/lib/invoicing'
+import { recordMovementInBackground } from '@/lib/cash/record-movement'
 
 // -----------------------------------------------------------------------------
 // /api/bookings/[id] — PATCH para acciones del dashboard sobre una reserva.
@@ -56,6 +57,7 @@ export async function PATCH(
     status?: unknown
     notify?: unknown
     notifyMessage?: unknown
+    paymentMethod?: unknown
   }
   try {
     body = await req.json()
@@ -66,6 +68,12 @@ export async function PATCH(
   const patch: Record<string, unknown> = { updatedAt: new Date() }
 
   // ── Cancel / Complete ────────────────────────────────────────────────
+  // `paymentMethod` solo se persiste cuando se transiciona a 'completed'
+  // y el tenant tiene caja efectivo activa. En cualquier otro caso lo
+  // ignoramos silenciosamente (defensa en profundidad: aunque la UI no
+  // lo envíe, blindamos el endpoint).
+  let paymentMethodToRecord: 'cash' | 'card' | 'online' | null = null
+
   if ('status' in body) {
     if (body.status !== 'cancelled' && body.status !== 'completed') {
       return Response.json(
@@ -82,6 +90,19 @@ export async function PATCH(
           { error: 'Solo se pueden completar reservas confirmadas.' },
           { status: 400 },
         )
+      }
+
+      // Si la caja efectivo está activa Y el caller envió paymentMethod,
+      // lo guardamos en bookings.payment_method y disparamos
+      // cash_movement enlazado en background. Si el método es inválido o
+      // falta, completamos sin método (legacy/manual reconcile).
+      if (
+        access.client.cashRegisterEnabled &&
+        typeof body.paymentMethod === 'string' &&
+        ['cash', 'card', 'online'].includes(body.paymentMethod)
+      ) {
+        paymentMethodToRecord = body.paymentMethod as 'cash' | 'card' | 'online'
+        patch.paymentMethod = paymentMethodToRecord
       }
     }
     patch.status = body.status
@@ -170,6 +191,26 @@ export async function PATCH(
     access.client.invoicingEnabled
   ) {
     tryAutoInvoiceForCompletedBooking(updated.id)
+  }
+
+  // ── Cash movement enlazado al booking completado ─────────────────────
+  // Si el barbero eligió método de pago y hay sesión de caja abierta,
+  // alimentamos el cuadre del día. bookings.price está en EUROS (foot-gun
+  // del schema) — convertir a céntimos antes.
+  if (
+    patch.status === 'completed' &&
+    paymentMethodToRecord &&
+    updated?.price != null &&
+    updated.price > 0
+  ) {
+    recordMovementInBackground({
+      clientId: access.client.id,
+      referenceType: 'booking',
+      referenceId: updated.id,
+      method: paymentMethodToRecord,
+      amountCents: Math.round(updated.price * 100),
+      createdByEmail: access.user.email,
+    })
   }
 
   // ── Aviso opcional por WhatsApp (solo al cancelar) ──────────────────
