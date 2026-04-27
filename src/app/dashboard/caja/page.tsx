@@ -25,6 +25,7 @@ import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 import ConnectSettings from '../_components/ConnectSettings'
 import InvoicingSettings from '../_components/InvoicingSettings'
 import CashRegisterPanel from '../_components/CashRegisterPanel'
+import CashRegisterToggle from '../_components/CashRegisterToggle'
 import BarberBreakdown from './BarberBreakdown'
 import {
   type Period,
@@ -207,6 +208,12 @@ export default async function CajaPage({ searchParams }: PageProps) {
           los KPIs globales de arriba). Usa el mismo periodStartIso. */}
       <section className="mb-8">
         <BarberBreakdown clientId={client.id} periodStartIso={periodStartIso} />
+      </section>
+
+      {/* Toggle control de caja — opt-in. Pegado al BarberBreakdown porque
+          es la "configuración de la operativa diaria". */}
+      <section className="mb-8">
+        <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
       </section>
 
       {/* Cobros online (Stripe Connect) */}
