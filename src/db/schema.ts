@@ -107,6 +107,12 @@ export const clients = pgTable('clients', {
   // huecos" en /dashboard/agenda. El barbero declara que sus clientes han
   // consentido recibir comunicaciones de marketing al activarlo.
   promosEnabled: boolean('promos_enabled').default(false).notNull(),
+  // Caja efectivo — opt-in. Cuando true, el barbero puede abrir/cerrar
+  // sesión de caja en /dashboard/caja, y al marcar una cita como completada
+  // se le pide método de pago (cash/card/online) para alimentar el cuadre
+  // del día. Pensado para locales con efectivo y/o datáfono físico que
+  // necesitan conciliar al final del día. Sin esto activo, nada cambia.
+  cashRegisterEnabled: boolean('cash_register_enabled').default(false).notNull(),
   // Scheduling standards (Booksy/Treatwell conventions)
   // minLeadTimeMinutes: how far in advance a customer can book. Prevents
   //   "book in 2 minutes" scenarios where the barber wouldn't even see it.
@@ -317,6 +323,11 @@ export const bookings = pgTable('bookings', {
   // been sent for this booking. Prevents duplicate sends when the cron runs
   // every 10 minutes. Null = not sent yet (or barbershop has tipsEnabled=false).
   followupSentAt: timestamp('followup_sent_at', { withTimezone: true }),
+  // Método de cobro — registrado al marcar la cita como `completed` cuando
+  // el cliente tiene caja efectivo activa (cashRegisterEnabled). Null para
+  // bookings legacy, futuros, o tenants sin caja activa. Alimenta el cuadre
+  // diario en /dashboard/caja: cash, card (datáfono), online (Stripe).
+  paymentMethod: text('payment_method'),
   cancelledAt: timestamp('cancelled_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -711,6 +722,90 @@ export const invoiceItems = pgTable('invoice_items', {
   totalCents: integer('total_cents').notNull(),                            // = unit * qty, IVA incluido
   productSaleId: uuid('product_sale_id').references(() => productSales.id),
   displayOrder: integer('display_order').default(0).notNull(),             // 0 = servicio primero
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// -----------------------------------------------------------------------------
+// cash_sessions — sesión de caja diaria del local.
+//
+// Una sesión por barbería en cada momento (UNIQUE partial index garantiza
+// que no haya dos abiertas a la vez para el mismo cliente). Se abre por la
+// mañana con el saldo inicial de cambio (`opening_cents`) y se cierra al
+// final del día.
+//
+// Cierre: el barbero cuenta físicamente el cajón (`closing_cents_counted`)
+// y, si tiene datáfono, el total que dice el TPV físico
+// (`card_terminal_counted_cents`). El sistema calcula los `_expected`
+// sumando los movimientos del día filtrados por método. El descuadre =
+// counted - expected (puede ser negativo si falta dinero).
+//
+// `closing_cents_expected` y `card_terminal_expected_cents` se snapshot-ean
+// en el cierre para tener histórico inmutable aunque luego se editen
+// movimientos (que NO se debería pero por si acaso).
+// -----------------------------------------------------------------------------
+export const cashSessions = pgTable('cash_sessions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+
+  // Apertura
+  openingCents: integer('opening_cents').notNull(),
+  openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow().notNull(),
+  openedByEmail: text('opened_by_email').notNull(),
+
+  // Cierre — null mientras la sesión sigue abierta
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  closedByEmail: text('closed_by_email'),
+
+  // Efectivo
+  closingCentsExpected: integer('closing_cents_expected'),                 // = opening + cash_in - cash_out
+  closingCentsCounted: integer('closing_cents_counted'),                   // contado por el barbero
+  cashDescuadreCents: integer('cash_descuadre_cents'),                     // counted - expected (puede ser <0)
+
+  // Datáfono (tarjeta) — opcional. Si el local no tiene TPV físico, queda null.
+  cardTerminalExpectedCents: integer('card_terminal_expected_cents'),      // = SUM movimientos card del día
+  cardTerminalCountedCents: integer('card_terminal_counted_cents'),        // total que muestra el TPV físico
+  cardDescuadreCents: integer('card_descuadre_cents'),                     // counted - expected
+
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// -----------------------------------------------------------------------------
+// cash_movements — todos los apuntes que afectan al cuadre del día.
+//
+// Cada movimiento pertenece a UNA sesión abierta. Tipos:
+//   - 'booking'      → cobro de un servicio completado (ref booking)
+//   - 'product_sale' → venta de producto (ref product_sale)
+//   - 'tip_cash'     → propina en efectivo registrada manualmente
+//   - 'expense'      → gasto pagado en cash (proveedor, café, etc.)
+//   - 'withdrawal'   → retirada de cash (al banco, a bolsillo)
+//   - 'deposit'      → ingreso manual (cambio adicional)
+//   - 'adjustment'   → ajuste manual de cuadre (raro, traza)
+//
+// `amount_cents` es SIEMPRE positivo. La dirección la marca `kind`:
+// los expense/withdrawal restan; el resto suman. Esto se calcula en
+// `src/lib/cash/compute.ts` (puro, testeado).
+//
+// `method` discrimina la columna del cuadre afectada (cash/card/online).
+// Movimientos con method='card' u 'online' NO afectan al efectivo en cajón
+// pero sí al cuadre del datáfono / Stripe report.
+// -----------------------------------------------------------------------------
+export const cashMovements = pgTable('cash_movements', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  sessionId: uuid('session_id').notNull().references(() => cashSessions.id, { onDelete: 'cascade' }),
+
+  kind: text('kind').notNull(),                                            // ver enum arriba
+  method: text('method').notNull(),                                        // 'cash' | 'card' | 'online'
+  amountCents: integer('amount_cents').notNull(),                          // siempre > 0
+
+  // Referencia opcional al booking/sale que originó el movimiento (para
+  // auditoría inversa: "¿de qué venta vino este cash de 25€?").
+  referenceType: text('reference_type'),                                   // 'booking' | 'product_sale' | null
+  referenceId: uuid('reference_id'),
+
+  notes: text('notes'),
+  createdByEmail: text('created_by_email'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
