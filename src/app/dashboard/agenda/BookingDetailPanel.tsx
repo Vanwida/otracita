@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
@@ -56,8 +56,15 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const [description, setDescription] = useState<string>('');
 
   const isNoShow = booking?.status === 'no_show';
+  const isCompleted = booking?.status === 'completed';
+  // Solo se completa una cita confirmada (no no-show, no completed, no cancelled).
+  const canMarkCompleted = booking?.status === 'confirmed';
   const canMarkNoShow = booking?.status === 'confirmed' || booking?.status === 'no_show';
   const canCancel = booking?.status === 'confirmed' || booking?.status === 'no_show';
+  // Ventas de producto solo durante la cita activa: tras completar, la
+  // factura ya se ha emitido con los productos vendidos hasta ese momento
+  // y nuevas ventas no podrían incluirse sin rectificativa.
+  const canSellProduct = booking?.status === 'confirmed';
   const [cancelOpen, setCancelOpen] = useState(false);
   const [productSaleOpen, setProductSaleOpen] = useState(false);
   // Cuántas ventas de producto hay registradas en este booking, para mostrar
@@ -152,6 +159,29 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(body.error || 'No se pudo actualizar');
+        return;
+      }
+      startTransition(() => router.refresh());
+    } catch {
+      setError('Error de red');
+    }
+  }
+
+  // Cierra la cita: dispara la auto-facturación (servicio + productos
+  // vendidos durante la cita) en el servidor. Si el tenant no tiene
+  // facturación activa, simplemente marca status='completed' sin emitir.
+  async function markCompleted() {
+    if (!booking) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || 'No se pudo cerrar la cita');
         return;
       }
       startTransition(() => router.refresh());
@@ -403,6 +433,46 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
+              {/* Marcar como completada — acción principal cuando la cita ha
+                  terminado. Dispara auto-facturación en el servidor: la
+                  factura incluye el servicio + productos vendidos durante
+                  la cita (las ventas con invoiced_at IS NULL). Si la
+                  facturación no está activa, simplemente marca el estado.
+                  Solo se ofrece para citas en estado `confirmed`. */}
+              {canMarkCompleted && (
+                <div className="pt-2 border-t border-line space-y-2">
+                  <button
+                    type="button"
+                    onClick={markCompleted}
+                    disabled={pending}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Marcar como completada
+                  </button>
+                  <p className="text-[11px] text-ink-3 leading-relaxed">
+                    Cierra la cita cuando termine. Si tienes facturación activa, se emitirá factura automáticamente con los productos vendidos.
+                  </p>
+                  {error && <p className="text-xs text-danger">{error}</p>}
+                </div>
+              )}
+
+              {/* Cita ya completada — confirmación visual + recordatorio de
+                  qué se hizo. No hay acciones disponibles aquí (la factura
+                  se rectifica desde /dashboard/caja). */}
+              {isCompleted && (
+                <div className="pt-2 border-t border-line">
+                  <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-1">
+                    <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
+                      <CheckCircle2 className="h-4 w-4" /> Cita completada
+                    </p>
+                    <p className="text-[11px] text-ink-3 leading-relaxed">
+                      Si necesitas anular o ajustar la factura, hazlo desde Caja con una rectificativa.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* No-show toggle — works for all booking sources (bot, Booksy,
                   walk-in). Marking no-show also voids the associated invoice
                   in the background (API-side), so the barber only needs one
@@ -458,8 +528,11 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
               {/* Productos vendidos — botón para añadir venta de producto al
                   cobrar el corte (champú, ceras, etc.). La venta se atribuye
                   automáticamente al barbero del booking → alimenta la columna
-                  Upsells del desglose por barbero en /dashboard/caja. */}
-              {(booking.status === 'confirmed' || booking.status === 'completed') && (
+                  Upsells del desglose por barbero en /dashboard/caja.
+                  Solo durante `confirmed` — al completar la factura ya se
+                  emite con los productos hasta ese momento, y nuevas ventas
+                  necesitarían una rectificativa para incluirse. */}
+              {canSellProduct && (
                 <div className="pt-2 border-t border-line space-y-2">
                   <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
                     Productos
