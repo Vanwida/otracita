@@ -30,6 +30,7 @@ import StatsPeriodTabs from './_components/StatsPeriodTabs'
 import WelcomeBanner from './_components/WelcomeBanner'
 import BotActivationStatus from './_components/BotActivationStatus'
 import AttentionPanel, { type AttentionAlert } from './_components/AttentionPanel'
+import PendingClosureList, { type PendingClosureBooking } from './_components/PendingClosureList'
 import TodayMiniAgenda, { type MiniBooking } from './_components/TodayMiniAgenda'
 import { hoursForDate } from '@/lib/availability'
 import { computeOccupancy } from '@/lib/dashboard/occupancy'
@@ -86,9 +87,13 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
   }
   const periodStartIso = periodStart ? periodStart.toISOString().slice(0, 10) : null
 
-  // Today / yesterday string (Madrid timezone).
+  // Today / yesterday / day-before-yesterday string (Madrid timezone).
+  // El rango de "citas por cerrar" cubre los últimos 2 días — el barbero
+  // suele cerrar al día siguiente como muy tarde; pasados 3 días el cron
+  // de safety net las cierra automáticamente como completed.
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
   const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const dayBeforeYesterdayStr = new Date(Date.now() - 2 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
 
   // Hora actual HH:MM en Madrid — para no marcar huecos pasados.
   const nowTime = new Date().toLocaleTimeString('en-GB', {
@@ -191,21 +196,35 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
     .orderBy(asc(bookings.date), asc(bookings.time))
     .limit(1)
 
-  // ─── Bookings de hoy + ayer (para mini-agenda y alertas) ─────────────────
-  const todayAndYesterday = await db
+  // ─── Bookings: anteayer + ayer + hoy ──────────────────────────────────
+  // Una sola query cubre mini-agenda (hoy) y citas pendientes de cerrar
+  // (ayer + anteayer en estado 'confirmed').
+  const recentBookings = await db
     .select()
     .from(bookings)
     .where(
       and(
         eq(bookings.clientId, client.id),
-        gte(bookings.date, yesterdayStr),
+        gte(bookings.date, dayBeforeYesterdayStr),
         lt(bookings.date, sql`(${todayStr}::date + interval '1 day')::text`),
       ),
     )
-  const yesterdayConfirmed = todayAndYesterday.filter(
-    (b) => b.date === yesterdayStr && b.status === 'confirmed',
-  )
-  const todayBookings: MiniBooking[] = todayAndYesterday
+
+  // Citas confirmadas de los últimos 2 días → lista accionable inline.
+  const pendingClosure: PendingClosureBooking[] = recentBookings
+    .filter((b) => b.status === 'confirmed' && (b.date === yesterdayStr || b.date === dayBeforeYesterdayStr))
+    .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
+    .map((b) => ({
+      id: b.id,
+      date: b.date,
+      time: b.time,
+      customerName: b.customerName,
+      customerPhone: b.customerPhone,
+      service: b.service,
+      barber: b.barber,
+    }))
+
+  const todayBookings: MiniBooking[] = recentBookings
     .filter((b) => b.date === todayStr)
     .map((b) => ({
       id: b.id,
@@ -223,19 +242,10 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
   const shopHoursToday = hoursForDate(todayStr, shopHoursMap)
 
   // ─── Construir alertas accionables ───────────────────────────────────────
+  // Las citas pendientes de cerrar tienen su propio panel inline accionable
+  // (PendingClosureList) — NO van aquí. AttentionPanel queda para alertas
+  // que requieren navegar a otro sitio (token Meta, promos, etc).
   const alerts: AttentionAlert[] = []
-
-  // Reservas de ayer status='confirmed' sin marcar (no completed ni no_show).
-  if (yesterdayConfirmed.length > 0) {
-    alerts.push({
-      id: 'yesterday-unmarked',
-      tone: 'warn',
-      title: `${yesterdayConfirmed.length} ${yesterdayConfirmed.length === 1 ? 'reserva de ayer sin marcar' : 'reservas de ayer sin marcar'}`,
-      description: 'Marca si vinieron o fueron no-shows para que las stats salgan bien.',
-      cta: { label: 'Ir a agenda', href: '/dashboard/agenda' },
-      icon: 'alert',
-    })
-  }
 
   // Token Meta a punto de expirar (< 7 días).
   if (client.metaTokenExpiresAt) {
@@ -351,6 +361,14 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
           <ActivationTracker client={client} />
         </>
       )}
+
+      {/* Citas por cerrar — accionable inline, prioridad sobre AttentionPanel
+          porque es la primera acción del día (cerrar lo de ayer). */}
+      <PendingClosureList
+        bookings={pendingClosure}
+        todayStr={todayStr}
+        yesterdayStr={yesterdayStr}
+      />
 
       <AttentionPanel alerts={alerts} />
 
