@@ -1,113 +1,53 @@
 import { db } from '@/db';
-import { clients, bookings, invoices } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { clients, bookings, invoices, invoiceItems, productSales } from '@/db/schema';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { notifyAlex } from '@/lib/notify-alex';
 import { chainRegistroAlta, getEmisorNif } from '@/lib/verifactu/chain';
 import { buildQrUrl, type VerifactuEnv } from '@/lib/verifactu/qr';
 import { formatFechaExpedicion, centsToDecimal } from '@/lib/verifactu/format';
 import type { TipoFactura } from '@/lib/verifactu/hash';
+import {
+  TICKET_MAX_CENTS,
+  monthRangeInclusive,
+  generateInvoiceNumber,
+  calculateAmounts,
+  determineInvoiceType,
+  looksLikeValidNif,
+  buildLineItem,
+  aggregateLineAmounts,
+  composeServiceName,
+  type InvoiceAmounts,
+  type InvoiceType,
+  type InvoiceLineKind,
+  type InvoiceLineDraft,
+  type InvoiceLineComputed,
+} from '@/lib/invoicing-math';
+
+// Re-exports — call-sites históricos de `@/lib/invoicing` siguen
+// funcionando sin cambiar imports.
+export {
+  TICKET_MAX_CENTS,
+  monthRangeInclusive,
+  generateInvoiceNumber,
+  calculateAmounts,
+  determineInvoiceType,
+  looksLikeValidNif,
+  buildLineItem,
+  aggregateLineAmounts,
+  composeServiceName,
+};
+export type { InvoiceAmounts, InvoiceType, InvoiceLineKind, InvoiceLineDraft, InvoiceLineComputed };
 
 // -----------------------------------------------------------------------------
-// Invoicing helper — tickets/facturas the barbershop emits to its own
-// customers. This is the feature we ship to compete with Booksy: automatic
-// fiscal docs on every confirmed booking with a price.
+// Invoicing helpers (con I/O) — tickets/facturas que la barbería emite a sus
+// propios clientes. Las funciones puras de cálculo viven en
+// `./invoicing-math.ts` (importadas + re-exportadas arriba para compat).
 //
-// Convention: in Spain the "price" on a service already includes IVA (retail
-// all-in pricing), so we reverse-calculate the base imponible. All numbers
-// stored in integer cents to avoid float drift — UI formats to euros.
+// Auto-facturación: se dispara cuando el booking pasa a `completed`
+// (botón en agenda o cron de safety net). La factura combina el servicio
+// del booking con productos vendidos durante la cita en una sola fila de
+// `invoices` + N filas en `invoice_items`.
 // -----------------------------------------------------------------------------
-
-/** Width to zero-pad the sequential number to. 4 => "0001", "0042", "1337". */
-const INVOICE_NUMBER_PAD = 4;
-
-/**
- * Maximum total (in cents) for a ticket simplificado (B2C) without NIF.
- * Real Decreto 1619/2012 art. 4: operations above this threshold MUST be
- * emitted as a factura completa with the buyer's NIF and address.
- * 40 000 cents = 400,00 €.
- */
-export const TICKET_MAX_CENTS = 40000;
-
-/**
- * Parse `YYYY-MM` into a half-open date range `[start, endExclusive)` where
- * both boundaries are `YYYY-MM-DD` strings. The end is the first day of the
- * *next* month — use with a strict-less-than filter (`lt`) so day 1 of the
- * following month is NOT included. Using `lte` with an inclusive end leaks
- * the following month's first day into "this month"'s totals.
- *
- * Returns null for malformed input.
- */
-export function monthRangeInclusive(
-  month: string,
-): { start: string; endExclusive: string } | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(month);
-  if (!match) return null;
-  const year = parseInt(match[1], 10);
-  const m = parseInt(match[2], 10) - 1;
-  if (m < 0 || m > 11) return null;
-  const start = new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10);
-  const endExclusive = new Date(Date.UTC(year, m + 1, 1)).toISOString().slice(0, 10);
-  return { start, endExclusive };
-}
-
-/** A ticket simplificado (B2C) when the customer has no NIF, else a factura (B2B). */
-export type InvoiceType = 'ticket' | 'invoice';
-
-/**
- * Build an invoice number from the client's configured prefix and the next
- * sequence counter. Pure — caller decides when/how to increment the counter.
- *
- *  prefix="FAC-2026-", next=7  => "FAC-2026-0007"
- *  prefix="",          next=7  => "0007"
- */
-export function generateInvoiceNumber(input: {
-  invoiceNumberPrefix: string;
-  invoiceNumberNext: number;
-}): string {
-  const padded = String(input.invoiceNumberNext).padStart(INVOICE_NUMBER_PAD, '0');
-  return `${input.invoiceNumberPrefix ?? ''}${padded}`;
-}
-
-export interface InvoiceAmounts {
-  subtotalCents: number;
-  ivaAmountCents: number;
-  totalCents: number;
-}
-
-/**
- * Given a price in EUROS (as stored on `bookings.price`) and an IVA rate
- * percentage, return the Spanish breakdown in CENTS. The input price is
- * interpreted as VAT-inclusive (the retail convention).
- *
- * Math:
- *   total    = round(price * 100)
- *   subtotal = round(total / (1 + iva/100))
- *   ivaAmt   = total - subtotal     // absorbs rounding so total is exact
- */
-export function calculateAmounts(
-  priceInEuros: number,
-  ivaRate: number,
-): InvoiceAmounts {
-  const totalCents = Math.round(priceInEuros * 100);
-  const subtotalCents = Math.round(totalCents / (1 + ivaRate / 100));
-  const ivaAmountCents = totalCents - subtotalCents;
-  return { subtotalCents, ivaAmountCents, totalCents };
-}
-
-/** Ticket if no NIF provided, factura when we have a fiscal identifier. */
-export function determineInvoiceType(customerNif: string | null | undefined): InvoiceType {
-  return customerNif && customerNif.trim().length > 0 ? 'invoice' : 'ticket';
-}
-
-/**
- * Very light Spanish NIF/CIF shape check — 8 chars, starts with digit or
- * letter, middle 7 digits, ends with digit or letter. Intentionally lenient:
- * we warn, we don't block. Real checksum validation is out of scope for MVP.
- */
-const NIF_SHAPE = /^[0-9A-Z][0-9]{7}[0-9A-Z]$/i;
-export function looksLikeValidNif(value: string): boolean {
-  return NIF_SHAPE.test(value.trim());
-}
 
 type BookingRow = typeof bookings.$inferSelect;
 type ClientRow = typeof clients.$inferSelect;
@@ -147,15 +87,26 @@ function hasCompleteFiscalEmisor(
 /**
  * Generate (or fetch existing) invoice row from a booking id.
  *
- * Safe to call multiple times — idempotent on (clientId, bookingId): if a
- * row already exists for the booking, returns it.
+ * Composición de la factura:
+ *   1. Línea de SERVICIO (precio del booking, IVA incluido) — siempre.
+ *   2. Líneas de PRODUCTOS vendidos en este booking que aún no estén
+ *      facturados (`product_sales.invoiced_at IS NULL`). Tras emitir,
+ *      se estampa `invoiced_at = now()` en cada venta para evitar duplicados
+ *      si el booking se reabre o un cron reintenta.
  *
- * Atomically increments `clients.invoice_number_next` so concurrent calls
- * never collide on the generated number (the UNIQUE constraint on
- * (clientId, number) is the ultimate guard).
+ * Safe to call multiple times — idempotente sobre (clientId, bookingId):
+ * si ya existe factura para el booking, devolvemos la existente sin tocar
+ * `product_sales` (las ventas posteriores tras facturar quedan sin
+ * facturar, por diseño — el barbero las cobra en otro flujo).
  *
- * Returns null if the booking does not exist, has no price, or the client
- * has invoicing disabled. Callers should treat null as "no-op, skip silently".
+ * Atomically increments `clients.invoice_number_next` para evitar colisión
+ * de número bajo concurrencia (UNIQUE (clientId, number) es el guardián
+ * último).
+ *
+ * Returns null si: booking no existe, `price == null` y no hay productos
+ * tampoco, status='cancelled', el tenant no tiene invoicing habilitado, o
+ * el bloque fiscal del emisor está incompleto. Callers tratan null como
+ * "no-op, skip silently".
  */
 export async function generateInvoiceFromBooking(
   bookingId: string,
@@ -166,7 +117,6 @@ export async function generateInvoiceFromBooking(
     .where(eq(bookings.id, bookingId));
 
   if (!booking) return null;
-  if (booking.price == null) return null;
   if (booking.status === 'cancelled') return null;
 
   // Idempotency: does an invoice already exist for this booking?
@@ -196,48 +146,112 @@ export async function generateInvoiceFromBooking(
     return null;
   }
 
+  // ── Construir líneas: servicio + productos pendientes de facturar ─────
+  const lines: InvoiceLineComputed[] = [];
+
+  if (booking.price != null && booking.price > 0) {
+    lines.push(
+      buildLineItem(
+        {
+          kind: 'service',
+          name: booking.service,
+          quantity: 1,
+          unitPriceCents: Math.round(booking.price * 100),
+        },
+        client.ivaRate,
+      ),
+    );
+  }
+
+  const pendingSales = await db
+    .select()
+    .from(productSales)
+    .where(
+      and(
+        eq(productSales.bookingId, bookingId),
+        eq(productSales.clientId, client.id),
+        isNull(productSales.invoicedAt),
+      ),
+    );
+
+  // Cargar nombres de productos en una query (evita N+1).
+  const productNameById = new Map<string, string>();
+  if (pendingSales.length > 0) {
+    const { products } = await import('@/db/schema');
+    const productIds = Array.from(new Set(pendingSales.map((s) => s.productId)));
+    const productRows = await db
+      .select({ id: products.id, name: products.name })
+      .from(products)
+      .where(
+        and(
+          eq(products.clientId, client.id),
+          sql`${products.id} = ANY(${productIds})`,
+        ),
+      );
+    for (const p of productRows) productNameById.set(p.id, p.name);
+  }
+
+  for (const sale of pendingSales) {
+    lines.push(
+      buildLineItem(
+        {
+          kind: 'product',
+          name: productNameById.get(sale.productId) ?? 'Producto',
+          quantity: sale.quantity,
+          unitPriceCents: sale.unitPriceCents,
+          productSaleId: sale.id,
+        },
+        client.ivaRate,
+      ),
+    );
+  }
+
+  // Si no hay nada que facturar (booking sin precio + sin productos),
+  // no emitimos factura — devolvemos null silencioso. Esto puede ocurrir
+  // con bookings legacy que se importaron sin precio.
+  if (lines.length === 0) return null;
+
+  const amounts = aggregateLineAmounts(lines);
+
   // Ticket max — Real Decreto 1619/2012 art. 4: amounts above 400€ require a
-  // full factura with the buyer's NIF. Bookings don't capture NIF yet, so
-  // any high-value booking must fall through to the manual path. Alert Alex
-  // so the barber can emit the correct doc manually from the dashboard.
-  const guardAmounts = calculateAmounts(booking.price, client.ivaRate);
-  if (guardAmounts.totalCents > TICKET_MAX_CENTS) {
+  // full factura con el NIF del cliente. Bookings no capturan NIF aún, así
+  // que cualquier importe alto debe ir a la vía manual. Avisamos a Alex
+  // para que el barbero emita el documento correcto desde el dashboard.
+  if (amounts.totalCents > TICKET_MAX_CENTS) {
     console.error(
       '[invoicing] refusing to auto-invoice — booking exceeds TICKET_MAX_CENTS without NIF',
-      { clientId: client.id, bookingId, totalCents: guardAmounts.totalCents },
+      { clientId: client.id, bookingId, totalCents: amounts.totalCents },
     );
-    // Fire-and-forget WhatsApp — never block the booking path on notify.
     notifyAlex(
       `⚠️ Booking ${bookingId} excede 400€ sin NIF del cliente. Emite factura manualmente con NIF desde Dashboard → Facturación → Nueva factura.`,
     ).catch((err) => console.error('[invoicing] notifyAlex failed:', err));
     return null;
   }
 
-  // Atomically reserve the next number. `UPDATE ... RETURNING` on the client
-  // row guarantees we get a unique sequence value per call, even under
-  // concurrent generation (two parallel webhooks cannot get the same next).
+  const invoiceType = determineInvoiceType(null); // customer NIF not captured on booking yet — always ticket for now
+  const issueDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Compose the snapshot serviceName legible — concatenamos nombres para
+  // que la columna legacy siga siendo descriptiva en exports/agregaciones
+  // que aún no leen invoice_items (libro PDF, CSV, XLSX).
+  const composedServiceName = composeServiceName(lines);
+
+  // Atomically reserve the next number — pre-increment lookup pattern.
   const [reserved] = await db
     .update(clients)
     .set({ invoiceNumberNext: sql`${clients.invoiceNumberNext} + 1` })
     .where(eq(clients.id, client.id))
     .returning({
-      reservedNumber: clients.invoiceNumberNext, // this is the post-increment value
+      reservedNumber: clients.invoiceNumberNext,
       prefix: clients.invoiceNumberPrefix,
     });
 
-  // Post-increment value is (actual + 1). We wanted the pre-increment value
-  // for the number, so subtract one.
   const reservedNumber = (reserved?.reservedNumber ?? 1) - 1;
   const prefix = reserved?.prefix ?? '';
   const number = generateInvoiceNumber({
     invoiceNumberPrefix: prefix,
     invoiceNumberNext: reservedNumber,
   });
-
-  const amounts = guardAmounts;
-  const invoiceType = determineInvoiceType(null); // customer NIF not captured on booking yet — always ticket for now
-
-  const issueDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
   const [inserted] = await db
     .insert(invoices)
@@ -250,7 +264,7 @@ export async function generateInvoiceFromBooking(
       customerPhone: booking.customerPhone,
       customerNif: null,
       customerAddress: null,
-      serviceName: booking.service,
+      serviceName: composedServiceName,
       barberName: booking.barber ?? null,
       subtotalCents: amounts.subtotalCents,
       ivaRate: client.ivaRate,
@@ -262,7 +276,13 @@ export async function generateInvoiceFromBooking(
     })
     .returning({ id: invoices.id, number: invoices.number });
 
-  // Sellado VeriFactu (hash + QR) tras la emisión. Best-effort, no tumba
+  // Persistir items + marcar ventas como facturadas. Si esto falla tras el
+  // INSERT de invoices, la factura queda emitida sin items — recoverable
+  // ejecutando un re-build manual; preferible a no emitir nada (ya tenemos
+  // número fiscal asignado y debe seguir el correlativo).
+  await persistInvoiceItemsAndMarkSales(inserted.id, lines);
+
+  // Sellado VeriFactu (hash + QR) tras la emisión. Best-effort: no tumba
   // el flujo si falla — el estado queda 'error' para reintentar.
   await sealInvoiceVerifactu(
     client.id,
@@ -281,9 +301,56 @@ export async function generateInvoiceFromBooking(
   };
 }
 
-/** Tag on a booking row cast — isolates the check so callers don't duplicate logic. */
-export function shouldAutoInvoiceBooking(booking: Pick<BookingRow, 'status' | 'price'>): boolean {
-  return booking.status === 'confirmed' && booking.price != null;
+/**
+ * Inserta items en la factura y marca las ventas de producto enlazadas
+ * como facturadas. Llamada inmediatamente después de insertar la fila
+ * de `invoices` — no debe usarse aislada.
+ */
+async function persistInvoiceItemsAndMarkSales(
+  invoiceId: string,
+  lines: InvoiceLineComputed[],
+): Promise<void> {
+  const itemRows = lines.map((line, idx) => ({
+    invoiceId,
+    kind: line.kind,
+    name: line.name,
+    quantity: line.quantity,
+    unitPriceCents: line.unitPriceCents,
+    subtotalCents: line.subtotalCents,
+    ivaAmountCents: line.ivaAmountCents,
+    totalCents: line.totalCents,
+    productSaleId: line.productSaleId ?? null,
+    displayOrder: idx,
+  }));
+
+  if (itemRows.length > 0) {
+    await db.insert(invoiceItems).values(itemRows);
+  }
+
+  // Marcar ventas como facturadas (idempotencia futura).
+  const saleIds = lines
+    .map((l) => l.productSaleId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (saleIds.length > 0) {
+    await db
+      .update(productSales)
+      .set({ invoicedAt: new Date() })
+      .where(sql`${productSales.id} = ANY(${saleIds})`);
+  }
+}
+
+/**
+ * Tag on a booking row cast — isolates the check so callers don't duplicate logic.
+ *
+ * Gate cambiado de `confirmed` a `completed`: ahora la factura se emite
+ * cuando el barbero cierra la cita (manualmente desde agenda o vía cron
+ * de safety net). Esto permite incluir productos vendidos durante la cita
+ * en la misma factura.
+ *
+ * `price` puede ser null si el booking se cobra solo con productos.
+ */
+export function shouldAutoInvoiceBooking(booking: Pick<BookingRow, 'status'>): boolean {
+  return booking.status === 'completed';
 }
 
 // -----------------------------------------------------------------------------
@@ -410,6 +477,21 @@ export async function createRectificativa(
       rectificationMotivo: input.motivo,
     })
     .returning({ id: invoices.id, number: invoices.number })
+
+  // Item único reflejando los nuevos importes (sustitución, no diferencia).
+  // Mantenemos el formato de "TODA factura tiene items".
+  await persistInvoiceItemsAndMarkSales(inserted.id, [
+    {
+      kind: 'service',
+      name: original.serviceName,
+      quantity: 1,
+      unitPriceCents: input.newTotalCents,
+      productSaleId: null,
+      totalCents: input.newTotalCents,
+      subtotalCents: input.newSubtotalCents,
+      ivaAmountCents: input.newIvaAmountCents,
+    },
+  ])
 
   // 4. Marcar la original como "rectified" (soft-link; no se modifica nada
   //    que entre en el hash original — status no entra en el hash).
@@ -672,6 +754,22 @@ export async function generateManualInvoice(
     })
     .returning({ id: invoices.id, number: invoices.number });
 
+  // Item único — facturación manual (walk-in) hoy es siempre 1 línea de
+  // servicio. Mantenemos consistencia: TODA factura nueva tiene items, así
+  // PDF/UI/exports tienen un solo path.
+  await persistInvoiceItemsAndMarkSales(inserted.id, [
+    {
+      kind: 'service',
+      name: input.serviceName.trim(),
+      quantity: 1,
+      unitPriceCents: amounts.totalCents,
+      productSaleId: null,
+      totalCents: amounts.totalCents,
+      subtotalCents: amounts.subtotalCents,
+      ivaAmountCents: amounts.ivaAmountCents,
+    },
+  ]);
+
   // Sellado VeriFactu también en facturación manual (walk-ins).
   await sealInvoiceVerifactu(
     client.id,
@@ -691,11 +789,18 @@ export async function generateManualInvoice(
 }
 
 /**
- * Fire-and-forget variant for use in API route handlers — never throws,
- * never blocks. Logs failures to the server console so they surface in
- * Vercel logs without breaking booking creation.
+ * Fire-and-forget variant — se llama justo después de marcar el booking
+ * como `completed` (botón en agenda o cron de safety net). Nunca lanza,
+ * nunca bloquea. Failures van al log del servidor para auditarlos en
+ * Vercel sin romper el flujo de cierre.
+ *
+ * IMPORTANT: el caller debe haber actualizado YA `bookings.status='completed'`
+ * antes de llamar — internamente `generateInvoiceFromBooking` no comprueba
+ * el status (acepta cualquier no-cancelled), porque queremos permitir
+ * re-emisión manual desde el admin si algo falla. La gate de "solo facturar
+ * cuando completed" la hacen los call-sites usando `shouldAutoInvoiceBooking`.
  */
-export function tryAutoInvoiceInBackground(bookingId: string): void {
+export function tryAutoInvoiceForCompletedBooking(bookingId: string): void {
   generateInvoiceFromBooking(bookingId).catch((err) => {
     console.error('[invoicing] auto-invoice failed for booking', bookingId, err);
   });

@@ -10,10 +10,7 @@ import {
   type CriticalField,
 } from '@/lib/booksy-email-llm';
 import { notifyAlex } from '@/lib/notify-alex';
-import {
-  tryAutoInvoiceInBackground,
-  tryVoidInvoicesInBackground,
-} from '@/lib/invoicing';
+import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 
 interface PostmarkInboundPayload {
   To?: string;
@@ -361,11 +358,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (finalData && status !== 'partial' && status !== 'failed') {
       try {
         bookingId = await applyBookingFromData(client.id, finalData, rawSnippet);
-        // Auto-invoice when the tenant has it enabled. Safe on 'modified'
-        // events too — `generateInvoiceFromBooking` is idempotent.
-        if (bookingId && client.invoicingEnabled && finalData.type !== 'cancelled') {
-          tryAutoInvoiceInBackground(bookingId);
-        }
+        // Auto-facturación: NO se dispara desde el sync de Booksy. La factura
+        // se emite cuando el booking pasa a `completed` (cierre manual desde
+        // agenda o cron de safety net), igual que en el resto de fuentes
+        // (bot, voice, dashboard). Ver `tryAutoInvoiceForCompletedBooking`
+        // en `src/lib/invoicing.ts`.
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : String(err);
         console.error('[email-inbound] applyBookingFromData failed:', err);

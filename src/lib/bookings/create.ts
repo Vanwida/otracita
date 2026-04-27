@@ -3,7 +3,6 @@ import { barbers as barbersTable, bookings, clients, customers } from '@/db/sche
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
 import type { BarberConfig } from '@/lib/whatsapp/config';
-import { shouldAutoInvoiceBooking, tryAutoInvoiceInBackground } from '@/lib/invoicing';
 
 // -----------------------------------------------------------------------------
 // Shared booking creation pipeline.
@@ -319,10 +318,11 @@ export async function createBooking(
     console.error('[createBooking] customer upsert failed:', err);
   }
 
-  // --- Auto-invoice (fire-and-forget) --------------------------------------
-  if (created && shouldAutoInvoiceBooking(created) && client.invoicingEnabled) {
-    tryAutoInvoiceInBackground(created.id);
-  }
+  // Auto-facturación: NO se dispara aquí. La factura se emite cuando el
+  // barbero marca el booking como `completed` (botón en agenda) o el cron
+  // de safety net cierra bookings olvidados pasados 3 días. Esto permite
+  // incluir productos vendidos durante la cita en la misma factura.
+  // Ver `tryAutoInvoiceForCompletedBooking` en `src/lib/invoicing.ts`.
 
   // --- Push notification (fire-and-forget) ---------------------------------
   // If this phone belongs to an app user with a subscription for THIS
