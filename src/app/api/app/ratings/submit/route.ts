@@ -115,10 +115,49 @@ function digitsOnly(p: string | null | undefined): string {
 }
 
 function bookingEndsAt(date: string, time: string, duration: number): Date {
-  // date: YYYY-MM-DD, time: HH:MM en zona Madrid. Construimos un timestamp
-  // local sin timezone para preservar el sentido "hora del barbero".
+  // date: YYYY-MM-DD, time: HH:MM, ambos en wall clock de Madrid (Europe/Madrid).
+  //
+  // ⚠️ FOOT-GUN: `new Date(y, mo, d, h, m)` interpreta los args en la TZ del
+  // servidor. En Vercel = UTC → la "hora 17:00 Madrid" se trataba como
+  // 17:00 UTC (19:00 Madrid) y todo se desplazaba 1-2h al futuro.
+  //
+  // Solución: convertir wall clock de Madrid → instante UTC correctamente
+  // teniendo en cuenta DST (CET = UTC+1, CEST = UTC+2) usando Intl.
+  return new Date(madridWallClockToUtcMs(date, time) + duration * 60_000)
+}
+
+/**
+ * Convierte un wall clock "YYYY-MM-DD HH:MM" expresado en Europe/Madrid a
+ * timestamp UTC en milisegundos. Maneja DST correctamente.
+ *
+ * Truco: tomamos los args como si fueran UTC, preguntamos a Intl qué hora
+ * "se ve" en Madrid en ese instante, y la diferencia es el offset que hay
+ * que aplicar al revés.
+ */
+function madridWallClockToUtcMs(date: string, time: string): number {
   const [h, m] = time.split(':').map(Number)
   const [y, mo, d] = date.split('-').map(Number)
-  const ms = new Date(y, (mo ?? 1) - 1, d ?? 1, h ?? 0, m ?? 0, 0, 0).getTime()
-  return new Date(ms + duration * 60_000)
+  const naiveUtc = Date.UTC(y, (mo ?? 1) - 1, d ?? 1, h ?? 0, m ?? 0)
+
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  const parts = fmt.formatToParts(new Date(naiveUtc))
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0)
+  const madridSees = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour') % 24,
+    get('minute'),
+  )
+  // offset = horas que Madrid va por delante de UTC en esa fecha (positivo).
+  const offsetMs = madridSees - naiveUtc
+  return naiveUtc - offsetMs
 }
