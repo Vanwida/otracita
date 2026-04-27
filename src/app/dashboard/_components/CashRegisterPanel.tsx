@@ -364,6 +364,21 @@ function OpenCashModal({
         setError(body.error || 'No se pudo abrir la caja')
         return
       }
+      // Si /open hizo backfill de citas/ventas previas a la apertura,
+      // aprovechamos el response para informarlo en consola — la UI
+      // se refresca al volver al panel y muestra los movimientos.
+      const data = await res.json().catch(() => null)
+      if (data?.backfilled) {
+        const { bookings: nb, productSales: nps } = data.backfilled as {
+          bookings: number
+          productSales: number
+        }
+        if (nb + nps > 0) {
+          console.info(
+            `[caja] Backfill: ${nb} bookings + ${nps} ventas importados al cuadre del día.`,
+          )
+        }
+      }
       onOpened()
       onClose()
     } catch {
