@@ -5,6 +5,7 @@ import { sendWhatsAppButtons } from '@/lib/whatsapp/sender';
 import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
 import { dispatchUserNotification } from '@/lib/notifications/dispatch';
+import { tryAutoInvoiceForCompletedBooking } from '@/lib/invoicing';
 
 type Lang = 'es' | 'en';
 
@@ -108,26 +109,62 @@ export async function GET(request: Request) {
   }
 
   // ────────────────────────────────────────────────────────────────────────
-  // Daily lifecycle sweep — mark yesterday's confirmed bookings as
-  // `completed` and decrement the customer's no-show counter by 1 (floor 0).
-  // This is how we reward reliable clients: after each successful visit
-  // their no-show history decays naturally without the barber doing
-  // anything manual. "Perdonar" (noShows -> 0) is still available in the UI
-  // for one-shot forgiveness.
+  // Lifecycle safety net — bookings olvidados sin cerrar pasados 3 días.
   //
-  // Rule: any booking with date < today AND status = 'confirmed' is
-  // assumed completed. If the customer actually didn't show, the barber
-  // should have marked it no-show beforehand — the BookingDetailPanel has
-  // that button. We don't try to guess past the 24h mark.
+  // El flujo principal de cierre es manual: el barbero marca completed
+  // desde /dashboard (panel "Citas por cerrar") o desde el detalle de la
+  // cita en agenda. Este cron es solo red de seguridad para cuando se
+  // olvidan — pasados 3 días asumimos que la cita se completó (si fue
+  // no-show debería haberse marcado a tiempo).
+  //
+  // Margen de 3 días (no 1) → el barbero tiene tiempo real de cerrar
+  // manualmente desde Inicio sin que el sistema le haga el trabajo
+  // silenciosamente. Esto es importante porque al completar una cita
+  // se DISPARA LA AUTO-FACTURACIÓN — si el cron lo hace prematuramente,
+  // el barbero pierde la oportunidad de añadir productos vendidos antes
+  // de que se emita el ticket.
+  //
+  // Acciones por cada booking que cerramos:
+  //   1. UPDATE bookings.status = 'completed'
+  //   2. Decrementar noShows del customer (min 0) — recompensa por
+  //      cliente fiable que no falló esta cita
+  //   3. Disparar tryAutoInvoiceForCompletedBooking (incluye productos
+  //      vendidos durante la cita) — si invoicingEnabled
+  //
+  // Importante: el LOOKUP de clients para invoicingEnabled se cachea por
+  // clientId para evitar N queries en una barbería con muchos bookings.
   // ────────────────────────────────────────────────────────────────────────
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const SAFETY_NET_DAYS = 3;
+  const safetyCutoff = new Date(Date.now() - SAFETY_NET_DAYS * 86400000)
+    .toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+
   let completedCount = 0;
   let decrementedCount = 0;
+  let autoInvoicedCount = 0;
   try {
     const toClose = await db
-      .select({ id: bookings.id, clientId: bookings.clientId, customerPhone: bookings.customerPhone })
+      .select({
+        id: bookings.id,
+        clientId: bookings.clientId,
+        customerPhone: bookings.customerPhone,
+      })
       .from(bookings)
-      .where(and(lt(bookings.date, today), eq(bookings.status, 'confirmed')));
+      .where(and(lt(bookings.date, safetyCutoff), eq(bookings.status, 'confirmed')));
+
+    // Cache de invoicingEnabled por clientId para no hacer N queries.
+    const invoicingEnabledByClient = new Map<string, boolean>();
+    async function isInvoicingEnabled(clientId: string): Promise<boolean> {
+      if (invoicingEnabledByClient.has(clientId)) {
+        return invoicingEnabledByClient.get(clientId)!;
+      }
+      const [row] = await db
+        .select({ enabled: clients.invoicingEnabled })
+        .from(clients)
+        .where(eq(clients.id, clientId));
+      const enabled = !!row?.enabled;
+      invoicingEnabledByClient.set(clientId, enabled);
+      return enabled;
+    }
 
     for (const row of toClose) {
       await db
@@ -148,6 +185,12 @@ export async function GET(request: Request) {
         )
         .returning({ id: customers.id });
       if (upd.length > 0) decrementedCount++;
+
+      // Auto-facturar si el tenant tiene invoicing activo.
+      if (await isInvoicingEnabled(row.clientId)) {
+        tryAutoInvoiceForCompletedBooking(row.id);
+        autoInvoicedCount++;
+      }
     }
   } catch (err) {
     console.error('[cron/reminders] lifecycle sweep failed:', err);
@@ -159,5 +202,7 @@ export async function GET(request: Request) {
     date: tomorrowStr,
     bookingsCompleted: completedCount,
     noShowsDecremented: decrementedCount,
+    autoInvoiced: autoInvoicedCount,
+    safetyNetDays: SAFETY_NET_DAYS,
   });
 }
