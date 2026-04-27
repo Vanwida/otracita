@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Banknote,
+  Check,
   CreditCard,
   Globe,
   Lock,
@@ -420,6 +421,18 @@ function CloseCashModal({
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Tras cierre exitoso pasamos a "success" — mostramos resumen + botón
+  // descarga de PDF + opción de salir. Hasta que el usuario cierre el
+  // modal explícitamente, el panel padre no refresca (no perdemos el id).
+  const [closed, setClosed] = useState<null | {
+    sessionId: string
+    cashExpected: number
+    cashCounted: number
+    cashDescuadre: number | null
+    cardExpected: number
+    cardCounted: number | null
+    cardDescuadre: number | null
+  }>(null)
 
   // Sugerimos los expected en los inputs al abrir el modal.
   useEffect(() => {
@@ -428,6 +441,7 @@ function CloseCashModal({
       setCardCounted('')
       setNotes('')
       setError(null)
+      setClosed(null)
     }
   }, [open, expected.cashExpectedCents])
 
@@ -466,13 +480,85 @@ function CloseCashModal({
         setError(body.error || 'No se pudo cerrar la caja')
         return
       }
-      onClosed()
-      onClose()
+      const data = (await res.json()) as {
+        session: { id: string }
+        summary: {
+          cashExpectedCents: number
+          cashCountedCents: number
+          cashDescuadreCents: number | null
+          cardExpectedCents: number
+          cardCountedCents: number | null
+          cardDescuadreCents: number | null
+        }
+      }
+      setClosed({
+        sessionId: data.session.id,
+        cashExpected: data.summary.cashExpectedCents,
+        cashCounted: data.summary.cashCountedCents,
+        cashDescuadre: data.summary.cashDescuadreCents,
+        cardExpected: data.summary.cardExpectedCents,
+        cardCounted: data.summary.cardCountedCents,
+        cardDescuadre: data.summary.cardDescuadreCents,
+      })
     } catch {
       setError('Error de red')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function finish() {
+    onClosed()
+    onClose()
+  }
+
+  // Pantalla de éxito tras el cierre — resumen + descarga PDF.
+  if (closed) {
+    return (
+      <ModalShell open={open} onClose={finish} title="Caja cerrada">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-success/30 bg-success/10 p-3">
+            <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
+              <Check className="h-4 w-4" /> Cierre registrado
+            </p>
+            <p className="text-[11px] text-ink-3 mt-0.5">
+              Guarda el reporte para tu archivo o pásaselo al gestor si hay descuadre.
+            </p>
+          </div>
+
+          <ClosedSummaryRow
+            label="Efectivo"
+            expectedCents={closed.cashExpected}
+            countedCents={closed.cashCounted}
+            descuadreCents={closed.cashDescuadre}
+          />
+          <ClosedSummaryRow
+            label="Tarjeta (datáfono)"
+            expectedCents={closed.cardExpected}
+            countedCents={closed.cardCounted}
+            descuadreCents={closed.cardDescuadre}
+          />
+
+          <a
+            href={`/api/cash/sessions/${closed.sessionId}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+          >
+            <Receipt className="h-4 w-4" />
+            Descargar reporte PDF
+          </a>
+
+          <button
+            type="button"
+            onClick={finish}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface hover:border-line-strong px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors"
+          >
+            Hecho
+          </button>
+        </div>
+      </ModalShell>
+    )
   }
 
   return (
@@ -564,6 +650,49 @@ function CloseCashModal({
         </button>
       </div>
     </ModalShell>
+  )
+}
+
+function ClosedSummaryRow({
+  label,
+  expectedCents,
+  countedCents,
+  descuadreCents,
+}: {
+  label: string
+  expectedCents: number
+  countedCents: number | null
+  descuadreCents: number | null
+}) {
+  const tone =
+    descuadreCents === null
+      ? 'text-ink-3'
+      : descuadreCents === 0
+      ? 'text-success'
+      : 'text-warning'
+  const descuadreLabel =
+    descuadreCents === null
+      ? '—'
+      : descuadreCents === 0
+      ? 'Cuadra'
+      : `${descuadreCents > 0 ? '+' : ''}${(descuadreCents / 100).toFixed(2)} €`
+  return (
+    <div className="rounded-xl border border-line bg-overlay/40 p-3 grid grid-cols-3 gap-2 text-xs">
+      <div>
+        <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">{label}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-[10px] text-ink-3">Esperado</p>
+        <p className="tabular-nums text-ink">{(expectedCents / 100).toFixed(2)} €</p>
+      </div>
+      <div className="text-right">
+        <p className="text-[10px] text-ink-3">Contado</p>
+        <p className="tabular-nums text-ink">
+          {countedCents === null ? '—' : `${(countedCents / 100).toFixed(2)} €`}
+        </p>
+        <p className={`tabular-nums text-[11px] mt-0.5 font-semibold ${tone}`}>{descuadreLabel}</p>
+      </div>
+    </div>
   )
 }
 
