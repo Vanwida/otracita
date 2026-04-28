@@ -114,15 +114,16 @@ export const clients = pgTable('clients', {
   // del día. Pensado para locales con efectivo y/o datáfono físico que
   // necesitan conciliar al final del día. Sin esto activo, nada cambia.
   cashRegisterEnabled: boolean('cash_register_enabled').default(false).notNull(),
-  // Integración SumUp — el barbero conecta su cuenta SumUp via OAuth para
-  // que cada cobro con datáfono físico se registre automáticamente como
-  // cash_movement en su cuadre del día. Tokens guardados aquí, polling
-  // cada 10 min via cron usando `last_polled_at` como cursor.
+  // Integración SumUp — el barbero conecta su cuenta SumUp via OAuth +
+  // parea su Reader físico. Cobros se inician desde otracita via Cloud
+  // API; SumUp llama a return_url cuando termina y cash_movement se
+  // crea al instante (push, no polling).
   sumupAccessToken: text('sumup_access_token'),
   sumupRefreshToken: text('sumup_refresh_token'),
   sumupMerchantCode: text('sumup_merchant_code'),
   sumupTokenExpiresAt: timestamp('sumup_token_expires_at', { withTimezone: true }),
-  sumupLastPolledAt: timestamp('sumup_last_polled_at', { withTimezone: true }),
+  sumupReaderId: text('sumup_reader_id'),                // Reader pareado para iniciar checkouts
+  sumupReaderName: text('sumup_reader_name'),            // nombre legible para UI
   // Scheduling standards (Booksy/Treatwell conventions)
   // minLeadTimeMinutes: how far in advance a customer can book. Prevents
   //   "book in 2 minutes" scenarios where the barber wouldn't even see it.

@@ -23,7 +23,8 @@ export async function POST(req: Request) {
       sumupRefreshToken: null,
       sumupMerchantCode: null,
       sumupTokenExpiresAt: null,
-      sumupLastPolledAt: null,
+      sumupReaderId: null,
+      sumupReaderName: null,
     })
     .where(eq(clients.id, access.client.id))
 

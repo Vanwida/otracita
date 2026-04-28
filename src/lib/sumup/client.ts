@@ -1,36 +1,40 @@
 // -----------------------------------------------------------------------------
 // SumUp REST API client — wrapper finito de los endpoints que usamos.
 //
-// Convenciones:
-//   - Todas las funciones devuelven Promise<T> con shapes tipados a lo que
-//     SumUp devuelve. Si la API devuelve algo distinto (cambio de versión,
-//     401, etc), throw con mensaje legible.
-//   - Auth via Bearer token. Para producción multi-merchant cada client tiene
-//     su propio access_token (de OAuth); para POC interno usamos la sk_test
-//     desde env.
-//   - Sin sandbox URL separada — SumUp usa la misma api.sumup.com con keys
-//     diferenciadas (sk_test_ vs sk_live_).
+// Endpoints cubiertos:
+//   · GET  /v0.1/me                                     → merchant_code
+//   · GET  /v0.1/merchants/{code}/readers               → listar Readers
+//   · POST /v0.1/merchants/{code}/readers/{rid}/checkout → iniciar cobro
+//                                                          (resultado via return_url)
+//   · POST /token  (refresh_token grant)                → renovar access_token
+//
+// Auth: Bearer access_token (de OAuth flow del barbero).
 // -----------------------------------------------------------------------------
 
 const SUMUP_BASE = 'https://api.sumup.com'
 
-export interface SumupTransaction {
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
+export interface SumupReader {
   id: string
-  transaction_code: string
-  amount: number              // EUROS (no cents) según docs
-  currency: string
-  timestamp: string           // ISO 8601
-  status: 'SUCCESSFUL' | 'CANCELLED' | 'FAILED' | 'REFUNDED' | 'CHARGE_BACK'
-  payment_type: 'POS' | 'ECOM' | 'RECURRING' | 'BITCOIN' | 'DIRECT_DEBIT' | string
-  product_summary?: string
-  payout_date?: string
-  refunded_amount?: number
-  installments_count?: number
-  card_type?: string
+  name: string
+  status: 'unknown' | 'paired' | 'expired' | 'unpaired' | string
+  device: { identifier?: string; model?: string }
+  meta?: Record<string, unknown>
 }
 
-export interface SumupTransactionsListResponse {
-  items: SumupTransaction[]
+export interface SumupReadersListResponse {
+  items: SumupReader[]
+}
+
+export interface SumupCheckoutResponse {
+  data: {
+    /** ID interno del checkout que SumUp acaba de crear. Lo usamos para
+     *  correlacionar el callback (return_url) con el cobro original. */
+    client_transaction_id: string
+  }
 }
 
 export interface SumupMeResponse {
@@ -46,6 +50,14 @@ export interface SumupMeResponse {
   }
 }
 
+export interface SumupOauthTokens {
+  access_token: string
+  refresh_token: string
+  expires_in: number          // seconds
+  token_type: 'Bearer'
+  scope: string
+}
+
 export class SumupApiError extends Error {
   constructor(
     public status: number,
@@ -56,6 +68,10 @@ export class SumupApiError extends Error {
     this.name = 'SumupApiError'
   }
 }
+
+// -----------------------------------------------------------------------------
+// Internal helper
+// -----------------------------------------------------------------------------
 
 async function request<T>(path: string, token: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${SUMUP_BASE}${path}`, {
@@ -74,61 +90,74 @@ async function request<T>(path: string, token: string, init?: RequestInit): Prom
   return (await res.json()) as T
 }
 
-/** GET /v0.1/me — devuelve merchant_code y datos del perfil. */
+// -----------------------------------------------------------------------------
+// Endpoints
+// -----------------------------------------------------------------------------
+
+/** GET /v0.1/me — devuelve merchant_code del access_token. */
 export function getMe(token: string): Promise<SumupMeResponse> {
   return request<SumupMeResponse>('/v0.1/me', token)
 }
 
+/** GET /v0.1/merchants/{code}/readers — listado de Readers físicos del merchant. */
+export function listReaders(token: string, merchantCode: string): Promise<SumupReadersListResponse> {
+  return request<SumupReadersListResponse>(`/v0.1/merchants/${merchantCode}/readers`, token)
+}
+
+interface CreateReaderCheckoutInput {
+  /** Importe en céntimos. Lo convertimos a "minor unit" en el body. */
+  amountCents: number
+  currency: string                    // 'EUR'
+  /** URL pública absoluta a la que SumUp llamará con el resultado. */
+  returnUrl: string
+  /** Identificador externo nuestro para correlacionar (ej: bookingId). */
+  description?: string
+  /** Affiliate key (header obligatorio para Cloud API). */
+  affiliateKey: string
+}
+
 /**
- * GET /v2.1/merchants/{code}/transactions/history
+ * POST /v0.1/merchants/{code}/readers/{rid}/checkout
  *
- * Filtros aplicados:
- *  · changes_since: cursor para polling incremental (last_polled_at)
- *  · statuses=SUCCESSFUL,REFUNDED — ignoramos CANCELLED/FAILED
- *  · order=ascending para procesar cronológicamente
- *
- * Paginación: SumUp usa cursor `newest_ref`/`oldest_ref`. En el POC traemos
- * `limit=100` que es suficiente para 10 min de polling. Si una barbería
- * supera 100 transactions/10min necesitaremos paginar.
+ * Inicia un cobro en el Reader físico del merchant. SumUp devuelve un
+ * `client_transaction_id` síncronamente; el resultado del pago llega después
+ * via webhook al `return_url`. El Reader pita y muestra "acerca tarjeta".
  */
-export function listTransactionsSince(
+export async function createReaderCheckout(
   token: string,
   merchantCode: string,
-  changesSinceIso: string | null,
-  limit = 100,
-): Promise<SumupTransactionsListResponse> {
-  const params = new URLSearchParams({
-    limit: String(limit),
-    order: 'ascending',
-  })
-  if (changesSinceIso) params.set('changes_since', changesSinceIso)
-  // statuses[] repetido es la forma de pasar array según docs SumUp
-  params.append('statuses[]', 'SUCCESSFUL')
-  params.append('statuses[]', 'REFUNDED')
-
-  return request<SumupTransactionsListResponse>(
-    `/v2.1/merchants/${merchantCode}/transactions/history?${params.toString()}`,
-    token,
+  readerId: string,
+  input: CreateReaderCheckoutInput,
+): Promise<SumupCheckoutResponse> {
+  const body = {
+    total_amount: {
+      value: input.amountCents,                            // SumUp espera minor unit
+      currency: input.currency,
+      minor_unit: 2,
+    },
+    return_url: input.returnUrl,
+    description: input.description,
+  }
+  const res = await fetch(
+    `${SUMUP_BASE}/v0.1/merchants/${merchantCode}/readers/${readerId}/checkout`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-Affiliate-Key': input.affiliateKey,
+      },
+      body: JSON.stringify(body),
+    },
   )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new SumupApiError(res.status, `SumUp checkout ${res.status}: ${text.slice(0, 300)}`, text)
+  }
+  return (await res.json()) as SumupCheckoutResponse
 }
 
-// -----------------------------------------------------------------------------
-// OAuth helpers — stub para Commit 2. Aquí las firmas para que el polling
-// las pueda usar en C3 sin esperar a C2.
-// -----------------------------------------------------------------------------
-
-export interface SumupOauthTokens {
-  access_token: string
-  refresh_token: string
-  expires_in: number          // seconds
-  token_type: 'Bearer'
-  scope: string
-}
-
-/**
- * Refresca el access_token usando un refresh_token. SumUp requiere
- * client_id + client_secret en el body para refresh.
- */
+/** POST /token — refresca access_token con el refresh_token. */
 export async function refreshAccessToken(
   refreshToken: string,
   clientId: string,
@@ -149,4 +178,34 @@ export async function refreshAccessToken(
     throw new SumupApiError(res.status, `SumUp token refresh failed: ${body.slice(0, 300)}`, body)
   }
   return (await res.json()) as SumupOauthTokens
+}
+
+/**
+ * Wrapper que asegura un access_token válido para `clientId`. Si está
+ * expirado o por expirar (margen 60s), lo refresca y persiste el nuevo en
+ * `clients` antes de devolverlo. Caller usa el token devuelto sin
+ * preocuparse de la expiración.
+ */
+export async function ensureValidAccessToken(args: {
+  clientId: string
+  accessToken: string
+  refreshToken: string
+  expiresAt: Date | null
+  oauthClientId: string
+  oauthClientSecret: string
+  /** Función para persistir tokens nuevos. Inyectada para evitar
+   *  dependencia circular con db en este módulo puro. */
+  persist: (next: { accessToken: string; refreshToken: string; expiresAt: Date }) => Promise<void>
+}): Promise<string> {
+  const needsRefresh = !args.expiresAt || args.expiresAt.getTime() - Date.now() < 60_000
+  if (!needsRefresh) return args.accessToken
+
+  const fresh = await refreshAccessToken(args.refreshToken, args.oauthClientId, args.oauthClientSecret)
+  const expiresAt = new Date(Date.now() + fresh.expires_in * 1000)
+  await args.persist({
+    accessToken: fresh.access_token,
+    refreshToken: fresh.refresh_token,
+    expiresAt,
+  })
+  return fresh.access_token
 }

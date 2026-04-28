@@ -224,6 +224,8 @@ export default async function CajaPage({ searchParams }: PageProps) {
           <SumupConnect
             initialConnected={!!client.sumupAccessToken && !!client.sumupMerchantCode}
             initialMerchantCode={client.sumupMerchantCode}
+            initialReaderId={client.sumupReaderId}
+            initialReaderName={client.sumupReaderName}
           />
         </section>
       )}

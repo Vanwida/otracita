@@ -68,7 +68,6 @@ export async function GET(req: Request) {
       sumupRefreshToken: tokens.refreshToken,
       sumupTokenExpiresAt: tokens.expiresAt,
       sumupMerchantCode: merchantCode,
-      sumupLastPolledAt: null, // primer poll desde la conexión arrastrará todo
     })
     .where(eq(clients.id, clientId))
 
