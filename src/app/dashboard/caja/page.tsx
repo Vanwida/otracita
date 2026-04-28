@@ -27,6 +27,7 @@ import InvoicingSettings from '../_components/InvoicingSettings'
 import CashRegisterPanel from '../_components/CashRegisterPanel'
 import CashRegisterToggle from '../_components/CashRegisterToggle'
 import SumupConnect from '../_components/SumupConnect'
+import MobileAppConnect from '../_components/MobileAppConnect'
 import BarberBreakdown from './BarberBreakdown'
 import {
   type Period,
@@ -227,6 +228,15 @@ export default async function CajaPage({ searchParams }: PageProps) {
             initialReaderId={client.sumupReaderId}
             initialReaderName={client.sumupReaderName}
           />
+        </section>
+      )}
+
+      {/* App móvil "otracita Cobros" — emparejamiento por PIN. Solo si caja
+          activa Y SumUp ya conectado (la app móvil necesita los tokens
+          OAuth del barbero para llamar a SumUp Tap to Pay). */}
+      {client.cashRegisterEnabled && client.sumupAccessToken && (
+        <section className="mb-8">
+          <MobileAppConnect />
         </section>
       )}
 

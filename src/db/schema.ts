@@ -849,3 +849,47 @@ export const sumupPendingTransactions = pgTable('sumup_pending_transactions', {
   importedAt: timestamp('imported_at', { withTimezone: true }),            // null hasta que se mueve a cash_movements
 });
 
+// -----------------------------------------------------------------------------
+// mobile_pins — PINs efímeros para emparejar la app móvil "otracita Cobros".
+//
+// Flow:
+//   1. Barbero entra en /dashboard/caja desde la PWA → "Conectar app móvil"
+//   2. Generamos un PIN de 6 dígitos atado a su client_id, vence en 10 min
+//   3. Barbero escribe el PIN en la app móvil
+//   4. App llama /api/app/mobile/pin/redeem con el PIN
+//   5. Si válido + no caducado + no usado → emitimos session_token long-lived
+//      en mobile_sessions y marcamos el PIN como redeemed_at
+//
+// El PIN se almacena hasheado (no en claro) — si se filtra la DB no se puede
+// usar. Lo verificamos con timingSafeEqual.
+// -----------------------------------------------------------------------------
+export const mobilePins = pgTable('mobile_pins', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  pinHash: text('pin_hash').notNull(),                                     // sha-256 del PIN en claro
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  redeemedAt: timestamp('redeemed_at', { withTimezone: true }),            // null hasta canjeo
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  createdByEmail: text('created_by_email'),
+});
+
+// -----------------------------------------------------------------------------
+// mobile_sessions — tokens long-lived para la app móvil del barbero.
+//
+// Diferencia con Better Auth (dashboard): esto es para la app nativa, NO usa
+// cookies. Token opaco se guarda en Keychain del iPhone. Al hacer requests
+// va en header `Authorization: Bearer <token>`.
+//
+// Token se genera con crypto.randomBytes(32).toString('hex'). Se guarda
+// hasheado en `token_hash`. Cada request lo compara con timingSafeEqual.
+// -----------------------------------------------------------------------------
+export const mobileSessions = pgTable('mobile_sessions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  tokenHash: text('token_hash').notNull().unique(),
+  deviceLabel: text('device_label'),                                       // "iPhone 14 Pro de Reni"
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),              // null = sesión activa
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
