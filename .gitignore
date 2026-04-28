@@ -34,6 +34,13 @@ yarn-error.log*
 .env*
 !.env.example
 
+# OAuth credentials JSON descargados de SumUp / otros proveedores —
+# contienen secrets. Mueve los datos a .env.local y borra el archivo.
+otracita-web.json
+*-credentials.json
+*-oauth.json
+sumup-*.json
+
 # vercel
 .vercel
 
