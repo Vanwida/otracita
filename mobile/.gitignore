@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.env
+.env.local
+.DS_Store
+
+# Capacitor — el folder ios/ se genera con `npx cap add ios`. Lo
+# COMMITEAMOS al repo para que Xcode tenga el proyecto, pero ignoramos
+# los artefactos derivados.
+ios/App/Pods/
+ios/App/build/
+ios/App/Podfile.lock
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Android (cuando llegue)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Safe areas iOS — el header se pega al notch sin overlap. */
+:root {
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  color: #2A1D14;
+  background: #FAF7F2;
+  overscroll-behavior: none;
+}
+
+/* Tap targets accesibles. */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input {
+  font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
