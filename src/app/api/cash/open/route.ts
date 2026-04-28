@@ -103,7 +103,7 @@ export async function POST(req: Request) {
 async function backfillTodayMovements(
   clientId: string,
   sessionId: string,
-): Promise<{ bookings: number; productSales: number }> {
+): Promise<{ bookings: number; productSales: number; sumup: number }> {
   // Today en Madrid (YYYY-MM-DD) — bookings.date guarda string en este
   // formato. Usamos ::date casts en SQL crudo porque el join contra
   // cash_movements es inverso.
@@ -163,9 +163,42 @@ async function backfillTodayMovements(
     RETURNING id
   `)
 
+  // 3. Backfill SumUp pending transactions del día (ventas con datáfono
+  //    procesadas mientras no había sesión de caja abierta). Marcamos las
+  //    pending como imported_at = now() para no re-importar. UNIQUE en
+  //    sumup_transaction_id de cash_movements bloquea duplicados aunque
+  //    falle el flag.
+  const insertedSumup = await db.execute(sql`
+    WITH inserted AS (
+      INSERT INTO cash_movements
+        (client_id, session_id, kind, method, amount_cents, sumup_transaction_id, notes, created_at)
+      SELECT
+        ${clientId}::uuid,
+        ${sessionId}::uuid,
+        CASE WHEN spt.status = 'REFUNDED' THEN 'refund' ELSE 'booking' END,
+        'card',
+        spt.amount_cents,
+        spt.sumup_transaction_id,
+        'Importado al abrir caja desde SumUp pending.',
+        spt.transaction_timestamp
+      FROM sumup_pending_transactions spt
+      WHERE spt.client_id = ${clientId}
+        AND spt.imported_at IS NULL
+        AND (spt.transaction_timestamp AT TIME ZONE 'Europe/Madrid')::date = ${todayMadrid}::date
+        AND spt.currency = 'EUR'
+      ON CONFLICT (sumup_transaction_id) DO NOTHING
+      RETURNING sumup_transaction_id
+    )
+    UPDATE sumup_pending_transactions
+    SET imported_at = now()
+    WHERE sumup_transaction_id IN (SELECT sumup_transaction_id FROM inserted)
+    RETURNING id
+  `)
+
   // drizzle execute con sql crudo devuelve { rows } — usamos rows.length.
   const bookingsCount = (insertedBookings as unknown as { rows: unknown[] }).rows?.length ?? 0
   const salesCount = (insertedSales as unknown as { rows: unknown[] }).rows?.length ?? 0
+  const sumupCount = (insertedSumup as unknown as { rows: unknown[] }).rows?.length ?? 0
 
-  return { bookings: bookingsCount, productSales: salesCount }
+  return { bookings: bookingsCount, productSales: salesCount, sumup: sumupCount }
 }
