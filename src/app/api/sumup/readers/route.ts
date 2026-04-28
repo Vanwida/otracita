@@ -2,7 +2,7 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
-import { listReaders, ensureValidAccessToken } from '@/lib/sumup/client'
+import { listReaders, ensureValidAccessToken, SumupApiError } from '@/lib/sumup/client'
 import { getOauthEnv } from '@/lib/sumup/oauth'
 
 // -----------------------------------------------------------------------------
@@ -63,6 +63,19 @@ export async function GET(req: Request) {
       })),
     })
   } catch (err) {
+    // 403 con "Insufficient scopes" indica que el token actual del barbero
+    // se emitió antes de que añadiéramos `readers.read` / `terminals.read`
+    // a los scopes. Devolvemos un código semántico para que la UI muestre
+    // "Reconecta SumUp" en vez de un error genérico.
+    if (err instanceof SumupApiError && err.status === 403) {
+      const bodyText = typeof err.body === 'string' ? err.body : JSON.stringify(err.body ?? {})
+      if (bodyText.includes('Insufficient scopes') || bodyText.includes('readers.read')) {
+        return Response.json(
+          { error: 'reconnect_required', detail: 'Tu conexión SumUp es de antes de añadir el listado de Readers. Desconecta y vuelve a conectar.' },
+          { status: 409 },
+        )
+      }
+    }
     console.error('[sumup/readers] failed:', err)
     return Response.json({ error: 'No se pudo obtener la lista de Readers' }, { status: 502 })
   }

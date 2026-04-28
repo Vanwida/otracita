@@ -56,6 +56,16 @@ export default function SumupConnect({
     setLoadingReaders(true)
     fetch('/api/sumup/readers')
       .then(async (r) => {
+        if (r.status === 409) {
+          // Token tiene scopes obsoletos — el barbero conectó antes de que
+          // añadiéramos los scopes nuevos. Mensaje específico.
+          const body = (await r.json().catch(() => ({}))) as { detail?: string }
+          setError(
+            body.detail ??
+              'Tu conexión SumUp necesita refrescarse. Pulsa "Desconectar" y conecta de nuevo.',
+          )
+          return null
+        }
         if (!r.ok) {
           setError('No se pudo cargar la lista de Readers')
           return null
@@ -127,8 +137,8 @@ export default function SumupConnect({
               </h2>
               <p className="text-xs text-ink-3 mt-0.5">
                 {initialConnected
-                  ? 'Conectado — los cobros con tarjeta se importan al cuadre cada 10 min.'
-                  : 'Conecta tu SumUp para que cada cobro con datáfono entre solo en tu caja.'}
+                  ? 'Conectado — cobras desde otracita y el datáfono procesa al instante.'
+                  : 'Conecta tu SumUp para cobrar con tu datáfono directamente desde otracita.'}
               </p>
             </div>
             {initialConnected ? (

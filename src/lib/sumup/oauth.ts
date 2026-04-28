@@ -9,15 +9,33 @@
 //   SUMUP_OAUTH_REDIRECT_URI   — debe coincidir EXACTO con el registrado en SumUp
 //                                ej: https://otracita.es/api/sumup/oauth/callback
 //
-// Scopes aplicados:
-//   transactions.history       — leer histórico (default, no requiere review)
-//   user.profile_readonly      — leer merchant_code via /me (default)
+// Scopes aplicados (todos los necesarios para nuestro use case Cloud API):
+//   transactions.history     — leer histórico (default, no review)
+//   user.profile_readonly    — leer merchant_code via /me (default, no review)
+//   readers.read             — listar Readers físicos del merchant
+//   terminals.read           — info de terminal asociada al Reader
+//   payments                 — crear checkouts en Cloud API (requiere review
+//                              manual de SumUp; sin esto el botón "Cobrar"
+//                              fallará con 403). Pídelo igual: SumUp lo
+//                              aprueba en general en horas/días para apps
+//                              POS legítimas.
+//
+// IMPORTANTE: si cambias scopes, los barberos YA conectados con el set
+// anterior tendrán tokens con scopes obsoletos. El backend devolverá 403
+// "Insufficient scopes" en endpoints que necesiten los nuevos. Solución:
+// el barbero pulsa "Desconectar" y "Conectar SumUp" otra vez para emitir
+// un token nuevo con los scopes actuales.
 // -----------------------------------------------------------------------------
 
 const SUMUP_BASE = 'https://api.sumup.com'
 
-/** Scopes que pedimos. Todos `default=true` según docs → no requieren manual review. */
-const SCOPES = ['transactions.history', 'user.profile_readonly'].join(' ')
+const SCOPES = [
+  'transactions.history',
+  'user.profile_readonly',
+  'readers.read',
+  'terminals.read',
+  'payments',
+].join(' ')
 
 export function getOauthEnv(): {
   clientId: string
