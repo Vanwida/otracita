@@ -114,6 +114,15 @@ export const clients = pgTable('clients', {
   // del día. Pensado para locales con efectivo y/o datáfono físico que
   // necesitan conciliar al final del día. Sin esto activo, nada cambia.
   cashRegisterEnabled: boolean('cash_register_enabled').default(false).notNull(),
+  // Integración SumUp — el barbero conecta su cuenta SumUp via OAuth para
+  // que cada cobro con datáfono físico se registre automáticamente como
+  // cash_movement en su cuadre del día. Tokens guardados aquí, polling
+  // cada 10 min via cron usando `last_polled_at` como cursor.
+  sumupAccessToken: text('sumup_access_token'),
+  sumupRefreshToken: text('sumup_refresh_token'),
+  sumupMerchantCode: text('sumup_merchant_code'),
+  sumupTokenExpiresAt: timestamp('sumup_token_expires_at', { withTimezone: true }),
+  sumupLastPolledAt: timestamp('sumup_last_polled_at', { withTimezone: true }),
   // Scheduling standards (Booksy/Treatwell conventions)
   // minLeadTimeMinutes: how far in advance a customer can book. Prevents
   //   "book in 2 minutes" scenarios where the barber wouldn't even see it.
@@ -805,8 +814,37 @@ export const cashMovements = pgTable('cash_movements', {
   referenceType: text('reference_type'),                                   // 'booking' | 'product_sale' | null
   referenceId: uuid('reference_id'),
 
+  // Idempotencia para SumUp polling: si el polling trae una transaction
+  // que ya está en la tabla (mismo id), lo salta. UNIQUE garantiza que
+  // ningún movement manual + polling pueda duplicarse para la misma
+  // transaction física del datáfono.
+  sumupTransactionId: text('sumup_transaction_id').unique(),
+
   notes: text('notes'),
   createdByEmail: text('created_by_email'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// -----------------------------------------------------------------------------
+// sumup_pending_transactions — buffer para transactions de SumUp recibidas
+// cuando NO hay sesión de caja abierta. Se importan al cuadre cuando el
+// barbero abre caja (igual que el backfill actual de bookings).
+//
+// Pattern: el polling cron NUNCA pierde transactions. Si hay sesión abierta
+// las inserta directo en cash_movements; si no, aquí. Al abrir caja se
+// drenan TODAS las pending del día y se mueven a cash_movements.
+// -----------------------------------------------------------------------------
+export const sumupPendingTransactions = pgTable('sumup_pending_transactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  sumupTransactionId: text('sumup_transaction_id').unique().notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  currency: text('currency').default('EUR').notNull(),
+  status: text('status').notNull(),                                        // SUCCESSFUL | REFUNDED | etc
+  paymentType: text('payment_type'),                                       // POS | ECOM | ...
+  transactionTimestamp: timestamp('transaction_timestamp', { withTimezone: true }).notNull(),
+  rawPayload: jsonb('raw_payload'),                                        // backup completo para debug
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  importedAt: timestamp('imported_at', { withTimezone: true }),            // null hasta que se mueve a cash_movements
 });
 
