@@ -26,6 +26,7 @@ import ConnectSettings from '../_components/ConnectSettings'
 import InvoicingSettings from '../_components/InvoicingSettings'
 import CashRegisterPanel from '../_components/CashRegisterPanel'
 import CashRegisterToggle from '../_components/CashRegisterToggle'
+import SumupConnect from '../_components/SumupConnect'
 import BarberBreakdown from './BarberBreakdown'
 import {
   type Period,
@@ -215,6 +216,17 @@ export default async function CajaPage({ searchParams }: PageProps) {
       <section className="mb-8">
         <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
       </section>
+
+      {/* Conexión SumUp — solo visible si caja está activa, porque sin caja
+          no hay cuadre al que alimentar. */}
+      {client.cashRegisterEnabled && (
+        <section className="mb-8">
+          <SumupConnect
+            initialConnected={!!client.sumupAccessToken && !!client.sumupMerchantCode}
+            initialMerchantCode={client.sumupMerchantCode}
+          />
+        </section>
+      )}
 
       {/* Cobros online (Stripe Connect) */}
       <section className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
