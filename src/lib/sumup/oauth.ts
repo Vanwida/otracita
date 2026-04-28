@@ -9,16 +9,21 @@
 //   SUMUP_OAUTH_REDIRECT_URI   — debe coincidir EXACTO con el registrado en SumUp
 //                                ej: https://otracita.es/api/sumup/oauth/callback
 //
-// Scopes aplicados (todos los necesarios para nuestro use case Cloud API):
+// Scopes aplicados (orden de aprobación con SumUp):
 //   transactions.history     — leer histórico (default, no review)
 //   user.profile_readonly    — leer merchant_code via /me (default, no review)
 //   readers.read             — listar Readers físicos del merchant
 //   terminals.read           — info de terminal asociada al Reader
-//   payments                 — crear checkouts en Cloud API (requiere review
-//                              manual de SumUp; sin esto el botón "Cobrar"
-//                              fallará con 403). Pídelo igual: SumUp lo
-//                              aprueba en general en horas/días para apps
-//                              POS legítimas.
+//
+// SCOPE PENDIENTE DE APROBACIÓN POR SUMUP:
+//   payments                 — crear checkouts en Cloud API
+//                              SumUp rechaza el OAuth authorize entero
+//                              ("Unknown Error") si lo solicitamos sin
+//                              haberlo aprobado antes. Hay que mailear
+//                              a integration@sumup.com con el client_id
+//                              y caso de uso. Cuando aprueben, añadirlo
+//                              de vuelta a SCOPES y los barberos
+//                              reconectan.
 //
 // IMPORTANTE: si cambias scopes, los barberos YA conectados con el set
 // anterior tendrán tokens con scopes obsoletos. El backend devolverá 403
@@ -34,7 +39,7 @@ const SCOPES = [
   'user.profile_readonly',
   'readers.read',
   'terminals.read',
-  'payments',
+  // 'payments' — añadir cuando SumUp lo apruebe para la OAuth App "otracita-web"
 ].join(' ')
 
 export function getOauthEnv(): {
