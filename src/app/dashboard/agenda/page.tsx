@@ -43,6 +43,9 @@ export default async function CalendarPage() {
       stripeConnectStatus={client.stripeConnectStatus}
       promosEnabled={client.promosEnabled}
       cashRegisterEnabled={client.cashRegisterEnabled}
+      sumupReaderConnected={
+        !!client.sumupAccessToken && !!client.sumupMerchantCode && !!client.sumupReaderId
+      }
     />
   );
 }

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
+import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -23,6 +24,10 @@ interface Props {
   /** Cuando true, al completar se pide método de pago (cash/card/online) y
    *  se alimenta el cuadre del día. Sin esto, comportamiento legacy. */
   cashRegisterEnabled?: boolean;
+  /** Cuando true, el barbero tiene SumUp conectado y un Reader pareado.
+   *  Al pulsar "Marcar completada" lanzamos cobro en el datáfono en vez
+   *  del modal manual cash/card/online. */
+  sumupReaderConnected?: boolean;
 }
 
 interface PaymentSnapshot {
@@ -45,7 +50,7 @@ interface PaymentLinkData {
 const MIN_AMOUNT_EUROS = 0.5;
 const MAX_AMOUNT_EUROS = 5000;
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -177,6 +182,9 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   // directo sin método.
   const [methodPromptOpen, setMethodPromptOpen] = useState(false);
   const [methodPending, setMethodPending] = useState(false);
+  // SumUp Cloud API: si el barbero tiene Reader pareado, al "Marcar completada"
+  // abrimos el prompt de cobro instantáneo en vez del selector manual.
+  const [sumupPromptOpen, setSumupPromptOpen] = useState(false);
 
   async function markCompletedWithMethod(method: CashPaymentMethod | null) {
     if (!booking) return;
@@ -205,10 +213,16 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   }
 
   function markCompleted() {
-    if (cashRegisterEnabled) {
-      setMethodPromptOpen(true);
-    } else {
+    if (!cashRegisterEnabled) {
       void markCompletedWithMethod(null);
+      return;
+    }
+    // Con SumUp Reader pareado y price > 0 → flujo instantáneo Cloud API.
+    // Sin Reader o sin price → modal manual cash/card/online.
+    if (sumupReaderConnected && booking?.price && booking.price > 0) {
+      setSumupPromptOpen(true);
+    } else {
+      setMethodPromptOpen(true);
     }
   }
 
@@ -745,6 +759,25 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           onPick={(m) => void markCompletedWithMethod(m)}
           subtitle={`${booking.service} · ${booking.customerName ?? booking.customerPhone}`}
           pending={methodPending}
+        />
+      )}
+
+      {booking && booking.price != null && booking.price > 0 && (
+        <SumupCheckoutPrompt
+          open={sumupPromptOpen}
+          bookingId={booking.id}
+          amountCents={Math.round(booking.price * 100)}
+          subtitle={`${booking.service} · ${booking.customerName ?? booking.customerPhone}`}
+          onClose={() => setSumupPromptOpen(false)}
+          onSettled={() => {
+            // Callback de SumUp ya cerró el booking + cash_movement.
+            // Refrescamos parent para verlo.
+            startTransition(() => router.refresh());
+          }}
+          onFallback={() => {
+            // Si SumUp falla, abrimos el modal manual cash/card/online.
+            setMethodPromptOpen(true);
+          }}
         />
       )}
     </AnimatePresence>

@@ -1,6 +1,17 @@
 import { db } from '@/db'
-import { cashSessions, cashMovements, sumupPendingTransactions, bookings } from '@/db/schema'
+import {
+  cashSessions,
+  cashMovements,
+  sumupPendingTransactions,
+  bookings,
+  clients,
+} from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
+import {
+  shouldAutoInvoiceBooking,
+  tryAutoInvoiceForCompletedBooking,
+} from '@/lib/invoicing'
+import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 
 // -----------------------------------------------------------------------------
 // POST /api/sumup/checkout/return  (también GET por si SumUp pega una redirección)
@@ -131,6 +142,45 @@ async function handle(req: Request): Promise<Response> {
     referenceId: validatedBookingId,
     notes: `SumUp ${typeof body.transaction_code === 'string' ? body.transaction_code : txId}`,
   })
+
+  // ── Cobro exitoso ligado a booking → cerrar la cita en cadena ─────────
+  // El barbero pulsó "Cobrar con SumUp" → la cita debe pasar a 'completed'
+  // automáticamente con todo lo que conlleva (factura + review push).
+  // Solo si:
+  //   · status SUCCESSFUL (REFUNDED no marca completed, es un revert)
+  //   · había bookingId en la query (callback con contexto de booking)
+  //   · el booking sigue en 'confirmed' (idempotencia: no rehacer si
+  //     ya estaba cerrado por otro path)
+  if (status === 'SUCCESSFUL' && validatedBookingId) {
+    const [booking] = await db
+      .select()
+      .from(bookings)
+      .where(eq(bookings.id, validatedBookingId))
+
+    if (booking && booking.status === 'confirmed') {
+      await db
+        .update(bookings)
+        .set({ status: 'completed', paymentMethod: 'card' })
+        .where(eq(bookings.id, validatedBookingId))
+
+      // Cargar cliente para condicionar invoice + review (ratingsEnabled,
+      // invoicingEnabled). Una sola query suficiente.
+      const [clientRow] = await db
+        .select()
+        .from(clients)
+        .where(eq(clients.id, clientId))
+
+      if (clientRow) {
+        const updatedBooking = { ...booking, status: 'completed' as const, paymentMethod: 'card' as const }
+        if (shouldAutoInvoiceBooking(updatedBooking) && clientRow.invoicingEnabled) {
+          tryAutoInvoiceForCompletedBooking(validatedBookingId)
+        }
+        if (clientRow.ratingsEnabled) {
+          tryRatingFollowupForCompletedBooking(validatedBookingId)
+        }
+      }
+    }
+  }
 
   return Response.json({ ok: true })
 }

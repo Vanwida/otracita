@@ -220,6 +220,7 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
       customerPhone: b.customerPhone,
       service: b.service,
       barber: b.barber,
+      price: b.price,
     }))
 
   const todayBookings: MiniBooking[] = recentBookings
@@ -367,6 +368,9 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
         todayStr={todayStr}
         yesterdayStr={yesterdayStr}
         cashRegisterEnabled={client.cashRegisterEnabled}
+        sumupReaderConnected={
+          !!client.sumupAccessToken && !!client.sumupMerchantCode && !!client.sumupReaderId
+        }
       />
 
       <AttentionPanel alerts={alerts} />

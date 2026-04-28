@@ -40,9 +40,12 @@ interface Props {
   /** Cuando true, al "Marcar completada" se pide método de pago para
    *  alimentar el cuadre de caja. */
   cashRegisterEnabled?: boolean;
+  /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal
+   *  manual cash/card/online. */
+  sumupReaderConnected?: boolean;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -273,6 +276,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         onClose={() => setSelectedBooking(null)}
         stripeConnectStatus={stripeConnectStatus}
         cashRegisterEnabled={cashRegisterEnabled}
+        sumupReaderConnected={sumupReaderConnected}
       />
 
       {/* Promos modal — solo se renderiza si está activado en /dashboard/app */}

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, UserX, AlertCircle, Loader2 } from 'lucide-react'
 import PaymentMethodPrompt, { type CashPaymentMethod } from './PaymentMethodPrompt'
+import SumupCheckoutPrompt from './SumupCheckoutPrompt'
 
 // -----------------------------------------------------------------------------
 // PendingClosureList — citas confirmadas de días pasados sin cerrar.
@@ -32,6 +33,8 @@ export interface PendingClosureBooking {
   customerPhone: string
   service: string
   barber: string | null
+  /** Precio en EUROS (foot-gun del schema). Null si la cita no tiene precio. */
+  price: number | null
 }
 
 interface Props {
@@ -40,9 +43,11 @@ interface Props {
   yesterdayStr: string // YYYY-MM-DD
   /** Cuando true, al "Completada" pedimos método de pago para alimentar caja. */
   cashRegisterEnabled?: boolean
+  /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal manual. */
+  sumupReaderConnected?: boolean
 }
 
-export default function PendingClosureList({ bookings, todayStr, yesterdayStr, cashRegisterEnabled = false }: Props) {
+export default function PendingClosureList({ bookings, todayStr, yesterdayStr, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   // Tracks ids being processed para mostrar spinner sin bloquear el resto.
@@ -53,6 +58,8 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(null)
   // Para el modal de método cuando hay caja activa.
   const [pendingClosureBooking, setPendingClosureBooking] = useState<PendingClosureBooking | null>(null)
+  // Para el modal SumUp Cloud API cuando está pareado y la cita tiene precio.
+  const [sumupBooking, setSumupBooking] = useState<PendingClosureBooking | null>(null)
 
   const visible = bookings.filter((b) => !removedIds.has(b.id))
   if (visible.length === 0) return null
@@ -88,10 +95,14 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
   }
 
   function markCompleted(b: PendingClosureBooking) {
-    if (cashRegisterEnabled) {
-      setPendingClosureBooking(b)
-    } else {
+    if (!cashRegisterEnabled) {
       void patchComplete(b, null)
+      return
+    }
+    if (sumupReaderConnected && b.price && b.price > 0) {
+      setSumupBooking(b)
+    } else {
+      setPendingClosureBooking(b)
     }
   }
 
@@ -152,6 +163,31 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
         }
         pending={busyId !== null && busyId === pendingClosureBooking?.id}
       />
+
+      {sumupBooking && sumupBooking.price != null && sumupBooking.price > 0 && (
+        <SumupCheckoutPrompt
+          open={sumupBooking !== null}
+          bookingId={sumupBooking.id}
+          amountCents={Math.round(sumupBooking.price * 100)}
+          subtitle={`${sumupBooking.service} · ${sumupBooking.customerName ?? sumupBooking.customerPhone}`}
+          onClose={() => setSumupBooking(null)}
+          onSettled={() => {
+            // Callback de SumUp ya cerró el booking. Quitamos optimistic + refresh.
+            const id = sumupBooking.id
+            setRemovedIds((prev) => {
+              const next = new Set(prev)
+              next.add(id)
+              return next
+            })
+            startTransition(() => router.refresh())
+          }}
+          onFallback={() => {
+            // Fallback al modal manual cash/card/online si SumUp falla.
+            setPendingClosureBooking(sumupBooking)
+            setSumupBooking(null)
+          }}
+        />
+      )}
 
       <ul className="space-y-2">
         {visible.map((b) => {
