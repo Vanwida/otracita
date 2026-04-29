@@ -1,57 +1,61 @@
 import { registerPlugin } from '@capacitor/core'
 
 // -----------------------------------------------------------------------------
-// SumUp Tap to Pay bridge — interfaz al plugin nativo iOS.
+// SumUp Tap to Pay bridge — interfaz al plugin nativo iOS
+// (`mobile/ios/App/App/SumupTapToPayPlugin.swift`).
 //
-// El plugin NATIVO (Swift) NO está implementado aún en este commit. Se
-// añadirá en `mobile/ios/App/App/SumupTapToPayPlugin.swift` cuando Alex
-// genere el proyecto iOS con `npx cap add ios`.
+// Flujo típico:
+//   1) Usuario hace login en otracita Cobros (PIN → backend devuelve
+//      access token OAuth de SumUp del barbero) y la app llama
+//      `loginWithToken`.
+//   2) Antes del primer cobro, la app llama `isAvailable()`. Si
+//      `activated === false` llama `activate()` para vincular la cuenta
+//      SumUp con el Apple ID.
+//   3) En cada cobro: `checkout({ amount, title, foreignTransactionId })`.
 //
-// El plugin debe implementar 3 métodos:
-//   · `isAvailable()` → check de Tap to Pay disponible (iPhone XS+, iOS 16.4+,
-//                       cuenta SumUp activada para Tap to Pay)
-//   · `activate()`    → activación inicial (Apple ID + cuenta SumUp link)
-//   · `checkout(...)` → procesar un cobro
-//
-// Internamente usa el SumUp iOS SDK (CocoaPods o SPM):
-//   pod 'SumUpSDK' (o Swift Package Manager)
+// El SumUpSDK nativo se inicializa en AppDelegate.swift con el Affiliate
+// Key de la app `otracita-web`. El JS NO pasa API keys — solo el access
+// token OAuth del barbero (que el backend obtiene vía /api/app/mobile/sumup/credentials).
 // -----------------------------------------------------------------------------
 
 export interface SumupTapToPayPlugin {
-  /** Comprueba disponibilidad del Tap to Pay para esta cuenta + dispositivo. */
-  isAvailable(): Promise<{ available: boolean; reason?: string }>
+  /** Inicia sesión SumUp con un access token OAuth obtenido por el backend. */
+  loginWithToken(options: { accessToken: string }): Promise<{ success: boolean }>
 
-  /** Trigger de la activación de Apple Tap to Pay (link Apple ID con SumUp). */
-  activate(options: { accessToken: string }): Promise<{ activated: boolean }>
+  /** Cierra sesión SumUp local en el dispositivo. */
+  logout(): Promise<{ success: boolean }>
 
-  /** Procesa un cobro contactless. */
+  /** ¿Hay una sesión SumUp activa en el SDK nativo? */
+  isLoggedIn(): Promise<{ loggedIn: boolean }>
+
+  /**
+   * Comprueba si Tap to Pay está disponible para esta cuenta + dispositivo.
+   * `activated` indica si el Apple ID está enlazado con la cuenta SumUp.
+   */
+  isAvailable(): Promise<{ available: boolean; activated: boolean }>
+
+  /** Activa Tap to Pay vinculando Apple ID con la cuenta SumUp loggeada. */
+  activate(): Promise<{ activated: boolean }>
+
+  /** Procesa un cobro contactless con Tap to Pay on iPhone. */
   checkout(options: {
-    accessToken: string
-    affiliateKey: string
     amount: number          // EUROS (no cents)
-    currency: 'EUR'
+    currency?: 'EUR'
     title: string           // título mostrado en la UI nativa de Apple
-    foreignTransactionId?: string  // nuestro UUID para correlacionar
+    foreignTransactionId?: string  // nuestro UUID para correlacionar con backend
   }): Promise<{
     success: boolean
     transactionCode?: string
-    sumupTransactionId?: string
     additionalInfo?: string
   }>
 }
 
 // `registerPlugin` devuelve un proxy que hace bridge a Swift. En web (dev)
-// devuelve un mock — los métodos lanzan "not implemented" si los llamas
-// fuera de iOS nativo.
+// los métodos lanzan "not implemented" si se llaman fuera de iOS nativo.
 export const SumupTapToPay = registerPlugin<SumupTapToPayPlugin>('SumupTapToPay')
 
-/**
- * Helper para detectar si estamos en iOS nativo (vs web dev).
- * Útil para decidir qué UI mostrar.
- */
+/** Helper para detectar si estamos en iOS nativo (vs web dev). */
 export function isNativeIos(): boolean {
-  // En Capacitor 6, window.Capacitor.isNativePlatform() devuelve true cuando
-  // corre dentro del binario nativo.
   return typeof window !== 'undefined' &&
     Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.())
 }

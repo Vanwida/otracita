@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <!-- otracita Cobros splash — cream canvas, espresso "oc" monogram + terracotta dot, "Cobros" subtitle. -->
+  <rect width="2732" height="2732" fill="#FAF7F2"/>
+  <g transform="translate(1366, 1230)">
+    <text x="0" y="0"
+          font-family="Fraunces, Georgia, 'Times New Roman', serif"
+          font-size="520"
+          font-weight="600"
+          fill="#2A1D14"
+          letter-spacing="-40"
+          text-anchor="middle">oc</text>
+    <circle cx="270" cy="-145" r="32" fill="#C9653C"/>
+  </g>
+  <text x="1366" y="1500"
+        font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+        font-size="62"
+        font-weight="500"
+        fill="#6B5D4F"
+        letter-spacing="6"
+        text-anchor="middle">otracita · Cobros</text>
+</svg>

@@ -1,0 +1,29 @@
+require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+
+# Tap to Pay on iPhone requires iOS 16.4+. Set deployment target to 16.0
+# (the SumUp SDK supports 14+ but we gate Tap to Pay at runtime via
+# `checkTapToPayAvailability`).
+platform :ios, '16.0'
+use_frameworks!
+
+# workaround to avoid Xcode caching of Pods that requires
+# Product -> Clean Build Folder after new Cordova plugins installed
+# Requires CocoaPods 1.6 or newer
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
+  pod 'CapacitorStatusBar', :path => '../../node_modules/@capacitor/status-bar'
+end
+
+target 'App' do
+  capacitor_pods
+  # SumUp iOS SDK — Tap to Pay on iPhone + card reader fallback.
+  pod 'SumUpSDK', '~> 7.0'
+end
+
+post_install do |installer|
+  assertDeploymentTarget(installer)
+end

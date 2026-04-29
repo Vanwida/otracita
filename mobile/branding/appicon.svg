@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- otracita Cobros app icon — terracotta plate, cream "oc" monogram with dot tittle. -->
+  <rect width="1024" height="1024" fill="#C9653C"/>
+  <text x="512" y="700"
+        font-family="Fraunces, Georgia, 'Times New Roman', serif"
+        font-size="700"
+        font-weight="600"
+        fill="#FAF7F2"
+        letter-spacing="-50"
+        text-anchor="middle">oc</text>
+  <circle cx="780" cy="475" r="42" fill="#FAF7F2"/>
+</svg>
