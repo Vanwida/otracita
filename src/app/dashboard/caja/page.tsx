@@ -153,6 +153,9 @@ export default async function CajaPage({ searchParams }: PageProps) {
 
   return (
     <div className="px-4 md:px-8 lg:px-12 max-w-4xl mx-auto pb-16">
+      {/* max-w-4xl es la baseline compartida con /rendimiento. /dashboard
+          (home) queda max-w-3xl por elección editorial — el masthead
+          Fraunces respira mejor en una columna más estrecha. */}
       {/* Header — volver + título + period tabs */}
       <header className="pt-10 lg:pt-14 pb-8 border-b border-line">
         <Link
@@ -337,7 +340,7 @@ function FacturadoHero({
           className="font-display font-semibold text-ink tabular-nums leading-[1] tracking-[-0.02em]"
           style={{ fontSize: 'clamp(2.75rem, 8vw, 5rem)' }}
         >
-          {showAmount ? formatEuros(Math.round(amount)) : '—'}
+          {showAmount ? formatEuros(amount) : '—'}
         </p>
         {showAmount && showTrend && (
           <span className={`inline-flex items-center gap-1 text-sm font-semibold ${trendColor}`}>

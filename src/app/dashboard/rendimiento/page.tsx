@@ -126,7 +126,7 @@ export default async function RendimientoPage({ searchParams }: PageProps) {
     : null
 
   return (
-    <div className="p-4 md:p-6 lg:p-10 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 lg:p-10 max-w-4xl mx-auto">
       <Link
         href="/dashboard"
         className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-6 transition-colors"
@@ -141,7 +141,7 @@ export default async function RendimientoPage({ searchParams }: PageProps) {
             Tu negocio
           </h1>
           <p className="text-sm text-ink-2 mt-1">
-            Visitas, ocupación y reputación. Sin importes; el € vive en Caja.
+            Visitas, ocupación y reputación.
           </p>
         </div>
         <Suspense>

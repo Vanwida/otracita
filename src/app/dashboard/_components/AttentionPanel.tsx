@@ -66,7 +66,7 @@ function AlertRow({ alert }: { alert: AttentionAlert }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-ink">{alert.title}</p>
         {alert.description && (
-          <p className="text-xs text-ink-3 mt-0.5">{alert.description}</p>
+          <p className="text-xs text-ink-2 mt-0.5">{alert.description}</p>
         )}
       </div>
       {alert.cta && (

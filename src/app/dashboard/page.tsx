@@ -14,6 +14,7 @@ import {
 } from '@/db/schema'
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import AttentionPanel, { type AttentionAlert } from './_components/AttentionPanel'
+import HomeIntroCard from './_components/HomeIntroCard'
 import PendingClosureList, { type PendingClosureBooking } from './_components/PendingClosureList'
 import { computeHomeState, type HomeState } from '@/lib/dashboard/home-state'
 import { pluralizeEs, formatEuros } from '@/lib/i18n/plural-es'
@@ -191,6 +192,9 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
         )}
       </header>
 
+      {/* Intro card — primera visita, dismissable, jamás vuelve. */}
+      <HomeIntroCard />
+
       {/* AttentionPanel — solo si hay alertas reales */}
       {alerts.length > 0 && (
         <div className="mt-6">
@@ -221,7 +225,7 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
         <span className={`uppercase tracking-wider font-semibold ${
           client.status === 'active' ? 'text-success' : client.status === 'pending' ? 'text-warning' : 'text-ink-2'
         }`}>
-          {client.status}
+          {clientStatusLabel(client.status)}
         </span>
         {subscription && (
           <>
@@ -614,5 +618,18 @@ function formatHumanDuration(minutes: number): string {
   const m = minutes % 60
   if (m === 0) return pluralizeEs(h, 'hora', 'horas')
   return `${h} h ${m} min`
+}
+
+function clientStatusLabel(status: string): string {
+  switch (status) {
+    case 'active':
+      return 'Activo'
+    case 'pending':
+      return 'Pendiente'
+    case 'inactive':
+      return 'Inactivo'
+    default:
+      return status
+  }
 }
 

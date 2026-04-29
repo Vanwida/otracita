@@ -95,7 +95,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     if (booking) {
       setAmountEuros(booking.price != null ? String(booking.price) : '');
       const customer = booking.customerName || booking.customerPhone;
-      setDescription(`${booking.service} — ${customer}`);
+      setDescription(`${booking.service} · ${customer}`);
     } else {
       setAmountEuros('');
       setDescription('');
@@ -539,7 +539,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
                       <CheckCircle2 className="h-4 w-4" /> Cita completada
                     </p>
-                    <p className="text-[11px] text-ink-3 leading-relaxed">
+                    <p className="text-xs text-ink-2 leading-relaxed">
                       Si necesitas anular o ajustar la factura, hazlo desde Caja con una rectificativa.
                     </p>
                   </div>
@@ -708,7 +708,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
                       {hasPendingLink && (
                         <div className="space-y-3">
-                          <p className="text-[11px] text-ink-3 leading-relaxed">
+                          <p className="text-xs text-ink-2 leading-relaxed">
                             Pide al cliente que escanee con la cámara de su móvil. Se actualizará solo cuando pague.
                           </p>
 
@@ -724,7 +724,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                               />
                             </div>
                           ) : (
-                            <div className="flex items-center justify-center rounded-xl border border-line bg-overlay p-5 text-xs text-ink-3">
+                            <div className="flex items-center justify-center rounded-xl border border-line bg-overlay p-5 text-xs text-ink-2">
                               QR no disponible en este dispositivo. Comparte el link manualmente.
                             </div>
                           )}
@@ -945,7 +945,7 @@ function CancelBookingModal({
                 disabled={submitting}
                 className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none resize-none"
               />
-              <p className="text-[11px] text-ink-3 text-right">{message.length}/400</p>
+              <p className="text-xs text-ink-2 text-right tabular-nums">{message.length}/400</p>
             </div>
           )}
 

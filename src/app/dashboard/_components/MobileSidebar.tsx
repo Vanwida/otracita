@@ -49,7 +49,7 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-ink/30 lg:hidden"
+          className="fixed inset-0 z-50 bg-[var(--color-scrim-light)] lg:hidden"
           onClick={() => setOpen(false)}
         />
       )}
