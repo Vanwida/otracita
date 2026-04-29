@@ -8,7 +8,6 @@ import { bookings, clients, invoices, productSales, tips } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
-  Wallet,
   Receipt,
   Heart,
   CalendarCheck,
@@ -16,7 +15,6 @@ import {
   TrendingDown,
   Minus,
   ChevronRight,
-  FileText,
   ChevronLeft,
   ShoppingBag,
 } from 'lucide-react'
@@ -28,31 +26,37 @@ import CashRegisterPanel from '../_components/CashRegisterPanel'
 import CashRegisterToggle from '../_components/CashRegisterToggle'
 import SumupConnect from '../_components/SumupConnect'
 import MobileAppConnect from '../_components/MobileAppConnect'
+import KpiCard, { computeTrend, type Trend } from '../_components/KpiCard'
 import BarberBreakdown from './BarberBreakdown'
 import {
   type Period,
   resolvePeriod,
   getPeriodStart,
   getPreviousPeriod,
+  PERIOD_OPTIONS,
 } from '@/lib/dashboard/period'
+import { formatEuros, pluralizeEs } from '@/lib/i18n/plural-es'
 
 // -----------------------------------------------------------------------------
 // /dashboard/caja — panel financiero del barbero.
 //
-// Por qué existe esta sección (mover de /clientes y /negocio):
-//   · Antes los KPIs financieros vivían en /dashboard/clientes — pero son
-//     métricas DEL NEGOCIO, no DE clientes. Mal alocado.
-//   · Cobros (Stripe Connect) vivía en /dashboard/negocio → tab Cobros — su
-//     sitio natural es Caja, junto al resto de lo monetario.
-//   · Datos fiscales vivirán también aquí (commit 4 — refactor InvoicingSettings
-//     a self-contained con su propio API endpoint).
+// Estructura post-distill:
+//   1. Header (volver + título Caja + period tabs alineados a la derecha)
+//   2. CashRegisterPanel — "ahora": cuadre del día (solo si activado)
+//   3. FacturadoHero — total facturado del periodo, número Fraunces grande
+//   4. KPI strip secundario (4 cards) — Servicios / Ticket medio / Productos / Propinas
+//   5. BarberBreakdown — desglose por barbero
+//   6. "Ajustes de cobro" — toggle caja, SumUp, app móvil, Stripe, fiscal,
+//      facturas. Subsecciones separadas por hairlines, sin nested cards. La
+//      jerarquía visual se demota porque son configs raras vez tocadas, no
+//      la operativa diaria.
 //
 // Privacidad: la pantalla del barbero suele ser visible a clientes en
 // mostrador. Caja es de ENTRADA EXPLÍCITA (click en menú), nunca aparece
 // por defecto. El Inicio tampoco muestra cifras monetarias.
 //
-// KPIs con tabs Hoy / Semana / Mes / Año / Total + comparativa vs periodo
-// anterior cuando aplica.
+// bookings.price está en EUROS (foot-gun documentado en CLAUDE.md). Los
+// tips, productSales e invoices viven en céntimos.
 // -----------------------------------------------------------------------------
 
 interface PageProps {
@@ -69,7 +73,6 @@ export default async function CajaPage({ searchParams }: PageProps) {
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  // Periodo actual y anterior — centralizado en lib/dashboard/period.
   const now = new Date()
   const periodStart = getPeriodStart(period, now)
   const periodStartIso = periodStart
@@ -77,11 +80,9 @@ export default async function CajaPage({ searchParams }: PageProps) {
     : null
 
   const previousPeriod = getPreviousPeriod(period, periodStart, now)
-
   const periodWhereDate = periodStartIso ? sql`AND date >= ${periodStartIso}` : sql``
 
   // ─── KPIs principales ────────────────────────────────────────────────────
-  // bookings.price está en EUROS (foot-gun documentado en CLAUDE.md).
   const [kpiRow] = (await db.execute(sql`
     SELECT
       (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
@@ -108,7 +109,6 @@ export default async function CajaPage({ searchParams }: PageProps) {
   const upsellsCount = Number(kpiRow?.upsells_count ?? 0)
   const ticketMedio = completedCount > 0 ? billedEur / completedCount : 0
 
-  // KPIs del periodo anterior (para flechas tendencia).
   let billedPrev: number | null = null
   let completedPrev: number | null = null
   let tipsPrevEur: number | null = null
@@ -148,175 +148,255 @@ export default async function CajaPage({ searchParams }: PageProps) {
   const invoiceCountThisMonth = Number(invoiceCountRow?.thisMonth ?? 0)
   const hasEmittedInvoices = Number(invoiceCountRow?.total ?? 0) > 0
 
+  const periodLabel = PERIOD_OPTIONS.find((p) => p.key === period)?.label.toLowerCase() ?? period
+  const billedTrend = computeTrend(billedEur, billedPrev)
+
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto">
-      <header className="mb-6">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-          <Wallet className="h-7 w-7 text-brand" />
-          Caja
-        </h1>
-        <p className="text-ink-2">Tu dinero: facturado, propinas, cobros online y datos fiscales.</p>
-      </header>
-
-      {/* Caja del día — solo si el tenant lo tiene activado. Encima de los
-          KPIs porque es la operativa diaria, no histórica. */}
-      {client.cashRegisterEnabled && <CashRegisterPanel />}
-
-      {/* KPIs principales con tabs por periodo */}
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">Ingresos</h2>
+    <div className="px-4 md:px-8 lg:px-12 max-w-4xl mx-auto pb-16">
+      {/* Header — volver + título + period tabs */}
+      <header className="pt-10 lg:pt-14 pb-8 border-b border-line">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-6 transition-colors"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Volver al inicio
+        </Link>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-tight">
+            Caja
+          </h1>
           <Suspense>
             <StatsPeriodTabs />
           </Suspense>
         </div>
+      </header>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <Kpi
-            icon={Wallet}
-            label="Facturado"
-            value={billedEur > 0 ? `${billedEur.toFixed(0)} €` : '—'}
-            trend={computeTrend(billedEur, billedPrev)}
-          />
-          <Kpi
-            icon={Receipt}
-            label="Ticket medio"
-            value={completedCount > 0 ? `${ticketMedio.toFixed(2)} €` : '—'}
-            hint={completedCount > 0 ? `${completedCount} servicios` : undefined}
-          />
-          <Kpi
-            icon={CalendarCheck}
-            label="Servicios"
-            value={completedCount.toLocaleString('es-ES')}
-            trend={computeTrend(completedCount, completedPrev)}
-          />
-          <Kpi
-            icon={ShoppingBag}
-            label="Productos"
-            value={upsellsEur > 0 ? `${upsellsEur.toFixed(2)} €` : '—'}
-            hint={upsellsCount > 0 ? `${upsellsCount} ${upsellsCount === 1 ? 'venta' : 'ventas'}` : undefined}
-          />
-          <Kpi
-            icon={Heart}
-            label="Propinas"
-            value={tipsEur > 0 ? `${tipsEur.toFixed(2)} €` : '—'}
-            trend={computeTrend(tipsEur, tipsPrevEur)}
-          />
-        </div>
+      {/* Cuadre del día — solo si activado. La operativa AHORA va arriba. */}
+      {client.cashRegisterEnabled && (
+        <section className="mt-8">
+          <CashRegisterPanel />
+        </section>
+      )}
+
+      {/* Hero: Facturado del periodo en Fraunces grande */}
+      <section className="mt-12 lg:mt-16">
+        <FacturadoHero
+          amount={billedEur}
+          periodLabel={periodLabel}
+          trend={billedTrend}
+        />
       </section>
 
-      {/* Desglose por barbero — solo se renderiza si hay ≥2 barberos activos.
-          BarberBreakdown devuelve null si <2 (con 1 barbero es redundante con
-          los KPIs globales de arriba). Usa el mismo periodStartIso. */}
-      <section className="mb-8">
+      {/* KPI strip secundario — 4 stats menores */}
+      <section className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard
+          icon={Receipt}
+          label="Ticket medio"
+          value={completedCount > 0 ? formatEuros(ticketMedio) : '—'}
+          hint={completedCount > 0 ? pluralizeEs(completedCount, 'servicio', 'servicios') : undefined}
+        />
+        <KpiCard
+          icon={CalendarCheck}
+          label="Servicios"
+          value={completedCount.toLocaleString('es-ES')}
+          trend={computeTrend(completedCount, completedPrev)}
+        />
+        <KpiCard
+          icon={ShoppingBag}
+          label="Productos"
+          value={upsellsEur > 0 ? formatEuros(upsellsEur) : '—'}
+          hint={
+            upsellsCount > 0
+              ? pluralizeEs(upsellsCount, 'venta', 'ventas')
+              : undefined
+          }
+        />
+        <KpiCard
+          icon={Heart}
+          label="Propinas"
+          value={tipsEur > 0 ? formatEuros(tipsEur) : '—'}
+          trend={computeTrend(tipsEur, tipsPrevEur)}
+        />
+      </section>
+
+      {/* Desglose por barbero — solo se renderiza si hay ≥2 barberos activos. */}
+      <section className="mt-12">
         <BarberBreakdown clientId={client.id} periodStartIso={periodStartIso} />
       </section>
 
-      {/* Toggle control de caja — opt-in. Pegado al BarberBreakdown porque
-          es la "configuración de la operativa diaria". */}
-      <section className="mb-8">
-        <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
-      </section>
+      {/* Ajustes — sección demotada visualmente. Subsecciones con hairline,
+          sin cards anidadas. El barbero las toca rara vez; cuando entra a
+          /caja a las 21:10 quiere cerrar caja, no configurar. */}
+      <section className="mt-16 pt-10 border-t border-line">
+        <h2 className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 mb-1">
+          Ajustes de cobro
+        </h2>
+        <p className="text-sm text-ink-2 mb-8">
+          Caja efectivo, datáfono, cobros online y datos fiscales.
+        </p>
 
-      {/* Conexión SumUp — solo visible si caja está activa, porque sin caja
-          no hay cuadre al que alimentar. */}
-      {client.cashRegisterEnabled && (
-        <section className="mb-8">
-          <SumupConnect
-            initialConnected={!!client.sumupAccessToken && !!client.sumupMerchantCode}
-            initialMerchantCode={client.sumupMerchantCode}
-            initialReaderId={client.sumupReaderId}
-            initialReaderName={client.sumupReaderName}
+        <div className="space-y-10">
+          <div>
+            <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
+          </div>
+
+          {client.cashRegisterEnabled && (
+            <div className="border-t border-line pt-10">
+              <SumupConnect
+                initialConnected={!!client.sumupAccessToken && !!client.sumupMerchantCode}
+                initialMerchantCode={client.sumupMerchantCode}
+                initialReaderId={client.sumupReaderId}
+                initialReaderName={client.sumupReaderName}
+              />
+            </div>
+          )}
+
+          {client.cashRegisterEnabled && client.sumupAccessToken && (
+            <div className="border-t border-line pt-10">
+              <MobileAppConnect />
+            </div>
+          )}
+
+          <div className="border-t border-line pt-10">
+            <ConnectSettings
+              initial={{
+                status: client.stripeConnectStatus,
+                accountId: client.stripeConnectAccountId,
+                activatedAt: client.stripeConnectActivatedAt
+                  ? client.stripeConnectActivatedAt.toISOString()
+                  : null,
+              }}
+            />
+          </div>
+
+          <div className="border-t border-line pt-10">
+            <InvoicingSettings
+              initial={{
+                invoicingEnabled: client.invoicingEnabled,
+                fiscalName: client.fiscalName || '',
+                fiscalNif: client.fiscalNif || '',
+                fiscalAddress: client.fiscalAddress || '',
+                fiscalCity: client.fiscalCity || '',
+                fiscalPostalCode: client.fiscalPostalCode || '',
+                ivaRate: client.ivaRate,
+                invoiceNumberPrefix: client.invoiceNumberPrefix,
+                invoiceNumberNext: client.invoiceNumberNext,
+                hasEmittedInvoices,
+              }}
+            />
+          </div>
+
+          <FacturasEmittedRow
+            invoicingEnabled={client.invoicingEnabled}
+            invoiceCountThisMonth={invoiceCountThisMonth}
+            invoiceNumberPrefix={client.invoiceNumberPrefix}
+            invoiceNumberNext={client.invoiceNumberNext}
           />
-        </section>
-      )}
-
-      {/* App móvil "otracita Cobros" — emparejamiento por PIN. Solo si caja
-          activa Y SumUp ya conectado (la app móvil necesita los tokens
-          OAuth del barbero para llamar a SumUp Tap to Pay). */}
-      {client.cashRegisterEnabled && client.sumupAccessToken && (
-        <section className="mb-8">
-          <MobileAppConnect />
-        </section>
-      )}
-
-      {/* Cobros online (Stripe Connect) */}
-      <section className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
-        <ConnectSettings
-          initial={{
-            status: client.stripeConnectStatus,
-            accountId: client.stripeConnectAccountId,
-            activatedAt: client.stripeConnectActivatedAt
-              ? client.stripeConnectActivatedAt.toISOString()
-              : null,
-          }}
-        />
-      </section>
-
-      {/* Datos fiscales — InvoicingSettings self-contained (commit 4): toggle
-          emisión + datos fiscales + numeración. Save via /api/invoicing/config. */}
-      <section className="mb-8 bg-surface border border-line rounded-2xl p-5 md:p-6">
-        <InvoicingSettings
-          initial={{
-            invoicingEnabled: client.invoicingEnabled,
-            fiscalName: client.fiscalName || '',
-            fiscalNif: client.fiscalNif || '',
-            fiscalAddress: client.fiscalAddress || '',
-            fiscalCity: client.fiscalCity || '',
-            fiscalPostalCode: client.fiscalPostalCode || '',
-            ivaRate: client.ivaRate,
-            invoiceNumberPrefix: client.invoiceNumberPrefix,
-            invoiceNumberNext: client.invoiceNumberNext,
-            hasEmittedInvoices,
-          }}
-        />
-      </section>
-
-      {/* Facturas emitidas — link al detalle */}
-      <section className="mb-8 bg-surface border border-line rounded-2xl p-5">
-        <div className="flex items-start gap-3 flex-wrap">
-          <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-brand-softer text-brand-strong">
-            <FileText className="h-5 w-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-ink">Facturas emitidas</h3>
-            <p className="text-sm text-ink-2 mt-1">
-              {client.invoicingEnabled ? (
-                <>
-                  {invoiceCountThisMonth} {invoiceCountThisMonth === 1 ? 'factura' : 'facturas'} este mes ·{' '}
-                  Próximo número: <span className="font-mono">{client.invoiceNumberPrefix}{client.invoiceNumberNext}</span>
-                </>
-              ) : (
-                'Facturación desactivada. Actívala desde Datos fiscales.'
-              )}
-            </p>
-          </div>
-          <Link
-            href="/dashboard/facturas"
-            className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:text-brand-strong"
-          >
-            Ver facturas
-            <ChevronRight className="h-4 w-4" />
-          </Link>
         </div>
       </section>
+    </div>
+  )
+}
 
-      <div className="pt-4 border-t border-line">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-1 text-xs text-ink-3 hover:text-ink transition-colors"
+// ─────────────────────────────────────────────────────────────────────────────
+// FacturadoHero — protagonista de la página: número grande + tendencia.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FacturadoHero({
+  amount,
+  periodLabel,
+  trend,
+}: {
+  amount: number
+  periodLabel: string
+  trend: Trend
+}) {
+  const TrendIcon =
+    trend.direction === 'up'
+      ? TrendingUp
+      : trend.direction === 'down'
+      ? TrendingDown
+      : Minus
+  const trendColor =
+    trend.direction === 'up'
+      ? 'text-success'
+      : trend.direction === 'down'
+      ? 'text-danger'
+      : 'text-ink-2'
+  const showTrend = trend.direction !== 'none'
+  const showAmount = amount > 0
+
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 mb-2">
+        Facturado · {periodLabel}
+      </p>
+      <div className="flex items-baseline gap-4 flex-wrap">
+        <p
+          className="font-display font-semibold text-ink tabular-nums leading-[1] tracking-[-0.02em]"
+          style={{ fontSize: 'clamp(2.75rem, 8vw, 5rem)' }}
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Volver al inicio
-        </Link>
+          {showAmount ? formatEuros(Math.round(amount)) : '—'}
+        </p>
+        {showAmount && showTrend && (
+          <span className={`inline-flex items-center gap-1 text-sm font-semibold ${trendColor}`}>
+            <TrendIcon className="h-4 w-4" aria-hidden="true" />
+            {trend.label}
+            {trend.direction !== 'flat' && (
+              <span className="text-ink-2 font-medium ml-1">vs anterior</span>
+            )}
+          </span>
+        )}
       </div>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-componentes + helpers
+// FacturasEmittedRow — fila inline para el link a facturas, sin card.
 // ─────────────────────────────────────────────────────────────────────────────
+
+function FacturasEmittedRow({
+  invoicingEnabled,
+  invoiceCountThisMonth,
+  invoiceNumberPrefix,
+  invoiceNumberNext,
+}: {
+  invoicingEnabled: boolean
+  invoiceCountThisMonth: number
+  invoiceNumberPrefix: string
+  invoiceNumberNext: number
+}) {
+  return (
+    <div className="border-t border-line pt-10 flex items-start gap-4 flex-wrap">
+      <div className="flex-1 min-w-0">
+        <h3 className="font-semibold text-ink mb-1">Facturas emitidas</h3>
+        <p className="text-sm text-ink-2">
+          {invoicingEnabled ? (
+            <>
+              {pluralizeEs(invoiceCountThisMonth, 'factura', 'facturas')} este mes. Próximo número:{' '}
+              <span className="font-mono">
+                {invoiceNumberPrefix}
+                {invoiceNumberNext}
+              </span>
+              .
+            </>
+          ) : (
+            'Facturación desactivada. Actívala desde Datos fiscales.'
+          )}
+        </p>
+      </div>
+      <Link
+        href="/dashboard/facturas"
+        className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:text-brand-strong transition-colors min-h-[40px]"
+      >
+        Ver facturas
+        <ChevronRight className="h-4 w-4" aria-hidden="true" />
+      </Link>
+    </div>
+  )
+}
 
 interface KpiRow {
   billed_eur: number | string
@@ -324,61 +404,4 @@ interface KpiRow {
   tips_cents: number | string
   upsells_cents: number | string
   upsells_count: number
-}
-
-interface Trend {
-  direction: 'up' | 'down' | 'flat' | 'none'
-  label: string
-}
-
-function Kpi({
-  icon: Icon,
-  label,
-  value,
-  trend,
-  hint,
-}: {
-  icon: typeof Wallet
-  label: string
-  value: string
-  trend?: Trend
-  hint?: string
-}) {
-  return (
-    <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon className="h-3.5 w-3.5 text-ink-3" />
-        <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{label}</p>
-      </div>
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
-        {trend && trend.direction !== 'none' && <TrendChip trend={trend} />}
-      </div>
-      {hint && <p className="text-[10px] text-ink-3 mt-1">{hint}</p>}
-    </div>
-  )
-}
-
-function TrendChip({ trend }: { trend: Trend }) {
-  const Icon = trend.direction === 'up' ? TrendingUp : trend.direction === 'down' ? TrendingDown : Minus
-  const color = trend.direction === 'up' ? 'text-success' : trend.direction === 'down' ? 'text-danger' : 'text-ink-3'
-  return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${color}`}>
-      <Icon className="h-3 w-3" />
-      {trend.label}
-    </span>
-  )
-}
-
-function computeTrend(current: number, previous: number | null): Trend {
-  if (previous === null) return { direction: 'none', label: '' }
-  if (previous === 0 && current === 0) return { direction: 'flat', label: '=' }
-  if (previous === 0) return { direction: 'up', label: 'nuevo' }
-  const pct = Math.round(((current - previous) / previous) * 100)
-  if (pct === 0) return { direction: 'flat', label: '=' }
-  const sign = pct > 0 ? '+' : '−'
-  return {
-    direction: pct > 0 ? 'up' : 'down',
-    label: `${sign}${Math.abs(pct)}%`,
-  }
 }
