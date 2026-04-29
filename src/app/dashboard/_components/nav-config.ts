@@ -58,6 +58,7 @@ const HUB_PREFIXES = [
   '/dashboard/ayuda',
   '/dashboard/resenas',
   '/dashboard/marketing',
+  '/dashboard/rendimiento',
 ];
 
 export function isNavItemActive(itemHref: string, pathname: string): boolean {

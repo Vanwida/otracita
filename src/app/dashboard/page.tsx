@@ -1,74 +1,50 @@
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
+import { ArrowRight, CheckCircle2, Clock } from 'lucide-react'
+import { auth } from '@/lib/auth/server'
 import { db } from '@/db'
 import {
   bookings,
   clients,
-  customers,
-  ratings,
+  tips,
   subscriptions,
 } from '@/db/schema'
-import { and, asc, eq, gte, lt, sql } from 'drizzle-orm'
-import {
-  CheckCircle2,
-  CreditCard,
-  Clock,
-  Wrench,
-  ArrowRight,
-  CalendarCheck,
-  UserPlus,
-  Star,
-  Activity,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-} from 'lucide-react'
-import { Suspense } from 'react'
-import { auth } from '@/lib/auth/server'
-import StatsPeriodTabs from './_components/StatsPeriodTabs'
-import WelcomeBanner from './_components/WelcomeBanner'
-import BotActivationStatus from './_components/BotActivationStatus'
+import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import AttentionPanel, { type AttentionAlert } from './_components/AttentionPanel'
 import PendingClosureList, { type PendingClosureBooking } from './_components/PendingClosureList'
-import TodayMiniAgenda, { type MiniBooking } from './_components/TodayMiniAgenda'
-import { hoursForDate } from '@/lib/availability'
-import { computeOccupancy } from '@/lib/dashboard/occupancy'
-import {
-  type Period,
-  resolvePeriod,
-  getPeriodStart,
-  getPreviousPeriod,
-} from '@/lib/dashboard/period'
+import { computeHomeState, type HomeState } from '@/lib/dashboard/home-state'
+import { pluralizeEs, formatEuros } from '@/lib/i18n/plural-es'
+import type { WeeklyHours } from '@/lib/availability'
 
 // -----------------------------------------------------------------------------
-// /dashboard — Inicio.
+// /dashboard — Home, rediseñada como **portada de periódico**.
 //
-// Privacidad: la pantalla del barbero suele estar visible para clientes en
-// mostrador. NO mostramos cifras monetarias aquí. Facturación, propinas y
-// ticket medio viven en /dashboard/clientes y /dashboard/facturas (donde
-// el barbero entra explícitamente).
+// Una pregunta, una respuesta. La home no es un panel de KPIs ni un workspace;
+// el barbero vive en /agenda. Aquí solo viene a leer "qué toca ahora".
 //
 // Estructura:
-//   1. Saludo + fecha + chip "Próxima cita: en X min"
-//   2. BotActivationStatus
-//   3. WelcomeBanner condicional (?welcome=1)
-//   4. ActivationTracker condicional (isPending)
-//   5. AttentionPanel — alertas accionables (solo si hay)
-//   6. KPIs no-sensibles: Visitas, Clientes nuevos, % Ocupación, Nota media
-//      Cada KPI con flecha tendencia vs periodo anterior cuando aplica.
-//   7. TodayMiniAgenda — citas de hoy con huecos visibles
-//   8. Plan/suscripción al final
+//   Band A — Dateline (fecha + nombre del negocio)
+//   AttentionPanel condicional (token Meta a punto de caducar, etc.)
+//   Band B — Masthead: una frase Fraunces en terracota + soporte + link
+//   Band C — Secundario condicional (lista, recap o ActivationTracker)
+//
+// Las KPIs (visitas, clientes nuevos, ocupación, nota media) viven en
+// /dashboard/rendimiento. La privacidad de cifras durante la jornada se
+// preserva: aquí solo enseñamos € en estado "done" (después de cierre).
+//
+// State machine en src/lib/dashboard/home-state.ts. El page solo decide copy
+// + layout; los hechos los computa la lib.
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string; welcome?: string }>
+  searchParams: Promise<{ welcome?: string }>
 }
 
 export default async function DashboardOverview({ searchParams }: PageProps) {
-  const { period: rawPeriod, welcome } = await searchParams
-  const period: Period = resolvePeriod(rawPeriod, 'lifetime')
-  const showWelcome = welcome === '1'
+  await searchParams // currently no params consumed; reserved
   const session = await auth.api.getSession({ headers: await headers() })
 
   if (!session?.user) redirect('/login')
@@ -76,127 +52,24 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  const isPending = client.status === 'pending'
-
-  // Periodo → date range para queries (centralizado en lib/dashboard/period).
   const now = new Date()
-  const periodStart = getPeriodStart(period, now)
-  const periodStartIso = periodStart
-    ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-${String(periodStart.getDate()).padStart(2, '0')}`
-    : null
-
-  // Today / yesterday / day-before-yesterday string (Madrid timezone).
-  // El rango de "citas por cerrar" cubre los últimos 2 días — el barbero
-  // suele cerrar al día siguiente como muy tarde; pasados 3 días el cron
-  // de safety net las cierra automáticamente como completed.
-  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
-  const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
-  const dayBeforeYesterdayStr = new Date(Date.now() - 2 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
-
-  // Hora actual HH:MM en Madrid — para no marcar huecos pasados.
-  const nowTime = new Date().toLocaleTimeString('en-GB', {
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', {
+    timeZone: 'Europe/Madrid',
+  })
+  const dayBeforeYesterdayStr = new Date(Date.now() - 2 * 86400000).toLocaleDateString('en-CA', {
+    timeZone: 'Europe/Madrid',
+  })
+  const nowTime = now.toLocaleTimeString('en-GB', {
     timeZone: 'Europe/Madrid',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   })
 
-  // ─── KPIs del negocio (sobre el periodo + el periodo anterior para tendencia) ─
-  // Privacidad: NO incluimos importe facturado aquí — la pantalla del barbero
-  // suele estar visible al cliente. Para € ir a /dashboard/clientes o
-  // /dashboard/facturas que requieren navegación explícita.
-  //
-  // Para tendencia comparamos contra el periodo "anterior" del mismo tamaño:
-  //   - day → ayer
-  //   - week → 7 días anteriores a periodStart
-  //   - month → mes pasado completo
-  //   - lifetime → no hay tendencia (mostramos KPI sin flecha)
-  const previousPeriod = getPreviousPeriod(period, periodStart, now)
-
-  const periodWhereDate = periodStartIso
-    ? sql`AND ${bookings.date} >= ${periodStartIso}`
-    : sql``
-  const periodWhereCreated = periodStart
-    ? sql`AND ${customers.createdAt} >= ${periodStart}`
-    : sql``
-  const periodWhereRating = periodStart
-    ? sql`AND ${ratings.createdAt} >= ${periodStart}`
-    : sql``
-
-  const [kpiRow] = (await db.execute(sql`
-    SELECT
-      (SELECT COUNT(*) FROM ${bookings}
-        WHERE client_id = ${client.id}
-        AND status IN ('confirmed', 'completed')
-        ${periodWhereDate})::int AS visits_count,
-      (SELECT COUNT(*) FROM ${customers}
-        WHERE client_id = ${client.id}
-        ${periodWhereCreated})::int AS new_customers,
-      (SELECT AVG(${ratings.rating})::float FROM ${ratings}
-        WHERE client_id = ${client.id}
-        ${periodWhereRating}) AS avg_rating
-  `).then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? [{} as KpiRow]
-
-  const visitsCount = Number(kpiRow?.visits_count ?? 0)
-  const newCustomers = Number(kpiRow?.new_customers ?? 0)
-  const avgRating = kpiRow?.avg_rating !== null && kpiRow?.avg_rating !== undefined ? Number(kpiRow.avg_rating) : null
-
-  // KPIs del periodo anterior — solo si tenemos un previousPeriod definido
-  // (lifetime → null → todas las tendencias quedan null).
-  let visitsPrev: number | null = null
-  let newCustomersPrev: number | null = null
-  if (previousPeriod) {
-    const [prevRow] = (await db.execute(sql`
-      SELECT
-        (SELECT COUNT(*) FROM ${bookings}
-          WHERE client_id = ${client.id}
-          AND status IN ('confirmed', 'completed')
-          AND date >= ${previousPeriod.startIso} AND date < ${periodStartIso ?? previousPeriod.endIso}
-        )::int AS visits_count,
-        (SELECT COUNT(*) FROM ${customers}
-          WHERE client_id = ${client.id}
-          AND created_at >= ${previousPeriod.startDate} AND created_at < ${periodStart ?? previousPeriod.endDate}
-        )::int AS new_customers
-    `).then((r) => (r as unknown as { rows: { visits_count: number; new_customers: number }[] }).rows)) ?? []
-    visitsPrev = prevRow ? Number(prevRow.visits_count) : null
-    newCustomersPrev = prevRow ? Number(prevRow.new_customers) : null
-  }
-
-  // % Ocupación — solo tiene sentido para periodos acotados (no lifetime).
-  // Coste: O(días × barberos), aceptable hasta 31 días.
-  const occupancy = periodStart
-    ? await computeOccupancy({
-        clientId: client.id,
-        rangeStart: periodStartIso!,
-        rangeEnd: todayStr,
-        nowTime,
-      })
-    : null
-
-  // Próxima cita confirmada (en futuro) — para el badge de cabecera.
-  const [nextBooking] = await db
-    .select({
-      id: bookings.id,
-      date: bookings.date,
-      time: bookings.time,
-      service: bookings.service,
-      barber: bookings.barber,
-      customerName: bookings.customerName,
-    })
-    .from(bookings)
-    .where(
-      and(
-        eq(bookings.clientId, client.id),
-        eq(bookings.status, 'confirmed'),
-        sql`(${bookings.date} || ' ' || ${bookings.time})::timestamp >= now() AT TIME ZONE 'Europe/Madrid'`,
-      ),
-    )
-    .orderBy(asc(bookings.date), asc(bookings.time))
-    .limit(1)
-
-  // ─── Bookings: anteayer + ayer + hoy ──────────────────────────────────
-  // Una sola query cubre mini-agenda (hoy) y citas pendientes de cerrar
-  // (ayer + anteayer en estado 'confirmed').
+  // Citas relevantes: anteayer + ayer + hoy. Hoy alimenta el state machine;
+  // ayer + anteayer alimentan PendingClosureList cuando estamos en
+  // 'closingPending'.
   const recentBookings = await db
     .select()
     .from(bookings)
@@ -208,9 +81,13 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
       ),
     )
 
-  // Citas confirmadas de los últimos 2 días → lista accionable inline.
+  const todayBookings = recentBookings.filter((b) => b.date === todayStr)
   const pendingClosure: PendingClosureBooking[] = recentBookings
-    .filter((b) => b.status === 'confirmed' && (b.date === yesterdayStr || b.date === dayBeforeYesterdayStr))
+    .filter(
+      (b) =>
+        b.status === 'confirmed' &&
+        (b.date === yesterdayStr || b.date === dayBeforeYesterdayStr),
+    )
     .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
     .map((b) => ({
       id: b.id,
@@ -223,30 +100,55 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
       price: b.price,
     }))
 
-  const todayBookings: MiniBooking[] = recentBookings
-    .filter((b) => b.date === todayStr)
-    .map((b) => ({
+  // Revenue + tips de hoy — solo se mostrará en estado 'done' (después de
+  // cierre, no durante la jornada).
+  const [revenueRow] = await db
+    .select({ total: sql<number>`COALESCE(SUM(${bookings.price}), 0)` })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, client.id),
+        eq(bookings.date, todayStr),
+        eq(bookings.status, 'completed'),
+      ),
+    )
+  const revenueToday = Number(revenueRow?.total ?? 0)
+
+  const [tipsRow] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(tips)
+    .where(
+      and(
+        eq(tips.clientId, client.id),
+        eq(tips.status, 'paid'),
+        sql`${tips.createdAt}::date = ${todayStr}::date`,
+      ),
+    )
+  const tipsToday = Number(tipsRow?.count ?? 0)
+
+  // Compute the home state.
+  const state: HomeState = computeHomeState({
+    clientStatus: client.status,
+    shopHours: (client.chatbotHours as WeeklyHours | null) ?? null,
+    blockedDates: (client.blockedDates as string[] | null) ?? [],
+    todayStr,
+    nowTime,
+    todayBookings: todayBookings.map((b) => ({
       id: b.id,
       time: b.time,
-      duration: b.duration,
       customerName: b.customerName,
-      customerPhone: b.customerPhone,
       service: b.service,
       barber: b.barber,
       status: b.status,
-    }))
+    })),
+    revenueToday,
+    tipsToday,
+    pendingClosuresCount: pendingClosure.length,
+  })
 
-  // Horario shop hoy.
-  const shopHoursMap = (client.chatbotHours as Record<string, string> | null) ?? null
-  const shopHoursToday = hoursForDate(todayStr, shopHoursMap)
-
-  // ─── Construir alertas accionables ───────────────────────────────────────
-  // Las citas pendientes de cerrar tienen su propio panel inline accionable
-  // (PendingClosureList) — NO van aquí. AttentionPanel queda para alertas
-  // que requieren navegar a otro sitio (token Meta, promos, etc).
+  // Alertas reales (token Meta, promos con huecos, etc). Independiente del
+  // state machine — pueden coexistir con cualquier titular.
   const alerts: AttentionAlert[] = []
-
-  // Token Meta a punto de expirar (< 7 días).
   if (client.metaTokenExpiresAt) {
     const daysToExpiry = Math.floor(
       (client.metaTokenExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
@@ -255,8 +157,8 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
       alerts.push({
         id: 'meta-token-expiring',
         tone: 'danger',
-        title: `Token de WhatsApp expira en ${daysToExpiry} ${daysToExpiry === 1 ? 'día' : 'días'}`,
-        description: 'Si caduca, el bot dejará de responder. Renueva el token desde Meta Business.',
+        title: `Token de WhatsApp caduca en ${pluralizeEs(daysToExpiry, 'día', 'días')}`,
+        description: 'Si caduca, el bot deja de responder. Renueva el token desde Meta Business.',
         icon: 'key',
       })
     } else if (daysToExpiry < 0) {
@@ -270,181 +172,68 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
     }
   }
 
-  // Promos contextuales activas + huecos hoy detectables → CTA.
-  // Heurística simple: si hay >= 2 huecos detectables en la mini-agenda Y promos
-  // están activas, sugerir llenarlos. La detección real vive en /promos/preview;
-  // aquí solo miramos si el barbero tiene huecos relevantes hoy.
-  if (client.promosEnabled && shopHoursToday) {
-    const gapsToday = countSignificantGaps(
-      todayBookings.filter((b) => b.status !== 'cancelled'),
-      shopHoursToday,
-      nowTime,
-    )
-    if (gapsToday >= 2) {
-      alerts.push({
-        id: 'fill-gaps-today',
-        tone: 'info',
-        title: `Tienes ${gapsToday} huecos hoy`,
-        description: 'Manda una promo a tus clientes habituales para llenarlos.',
-        cta: { label: 'Llenar huecos', href: '/dashboard/agenda' },
-        icon: 'megaphone',
-      })
-    }
-  }
-
-  // ─── Suscripción (info al final) ─────────────────────────────────────────
   const [subscription] = await db
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.clientId, client.id))
 
   return (
-    <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
-      {/* Header con próxima cita destacada */}
-      <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-ink mb-1">
-            Hola, <span className="text-brand">{client.businessName || session.user.email!.split('@')[0]}</span>
-          </h1>
-          <p className="text-sm text-ink-3">{formatTodayLong()}</p>
-        </div>
-        {nextBooking && (
-          <NextBookingBadge
-            date={nextBooking.date}
-            time={nextBooking.time}
-            customerName={nextBooking.customerName}
-            service={nextBooking.service}
-            barber={nextBooking.barber}
-            todayStr={todayStr}
-            nowTime={nowTime}
-          />
+    <div className="px-4 md:px-8 lg:px-12 max-w-3xl mx-auto pb-16">
+      {/* Band A — Dateline */}
+      <header className="pt-10 lg:pt-16 pb-6 flex items-center justify-between gap-4 border-b border-line">
+        <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 tabular-nums">
+          {formatDateline(now)}
+        </p>
+        {client.businessName && (
+          <p className="text-sm text-ink-2 truncate max-w-[40%]" title={client.businessName}>
+            {client.businessName}
+          </p>
         )}
       </header>
 
-      {showWelcome && (
-        <WelcomeBanner
-          businessName={client.businessName}
-          publicSlug={client.publicSlug}
-          invoicingEnabled={client.invoicingEnabled}
-        />
+      {/* AttentionPanel — solo si hay alertas reales */}
+      {alerts.length > 0 && (
+        <div className="mt-6">
+          <AttentionPanel alerts={alerts} />
+        </div>
       )}
 
-      <BotActivationStatus
-        whatsappPhoneNumberId={client.whatsappPhoneNumberId}
-        whatsappAccessToken={client.whatsappAccessToken}
-        metaWebhookVerifiedAt={client.metaWebhookVerifiedAt}
-        publicSlug={client.publicSlug}
-        publicEnabled={client.publicEnabled}
-      />
+      {/* Band B — Masthead */}
+      <Masthead state={state} />
 
-      {isPending && (
-        <>
-          <div className="mb-6 bg-brand-softer border border-brand/30 rounded-2xl p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
-              <Wrench className="h-5 w-5 text-brand" />
-            </div>
-            <div className="flex-1">
-              <p className="text-ink font-semibold text-base md:text-lg mb-1">Termina de configurar tu negocio</p>
-              <p className="text-ink-2 text-sm leading-relaxed max-w-2xl">
-                Añade tus servicios, horarios y conecta tu calendario para que el bot empiece a agendar citas automáticamente.
-              </p>
-            </div>
-            <Link
-              href="/dashboard/setup"
-              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
-            >
-              Termina tu configuración
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <ActivationTracker client={client} />
-        </>
-      )}
-
-      {/* Citas por cerrar — accionable inline, prioridad sobre AttentionPanel
-          porque es la primera acción del día (cerrar lo de ayer). */}
-      <PendingClosureList
-        bookings={pendingClosure}
+      {/* Band C — Secundario por estado */}
+      <SecondaryBand
+        state={state}
+        pendingClosure={pendingClosure}
         todayStr={todayStr}
         yesterdayStr={yesterdayStr}
-        cashRegisterEnabled={client.cashRegisterEnabled}
-        sumupReaderConnected={
-          !!client.sumupAccessToken && !!client.sumupMerchantCode && !!client.sumupReaderId
-        }
+        cashRegisterEnabled={Boolean(client.cashRegisterEnabled)}
+        sumupReaderConnected={Boolean(
+          client.sumupAccessToken && client.sumupMerchantCode && client.sumupReaderId,
+        )}
+        clientForActivation={client}
       />
 
-      <AttentionPanel alerts={alerts} />
-
-      {/* KPIs del negocio */}
-      <section className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">Tu negocio</h2>
-          <Suspense>
-            <StatsPeriodTabs />
-          </Suspense>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi
-            icon={CalendarCheck}
-            label="Visitas"
-            value={visitsCount.toLocaleString('es-ES')}
-            trend={computeTrend(visitsCount, visitsPrev)}
-          />
-          <Kpi
-            icon={UserPlus}
-            label="Clientes nuevos"
-            value={newCustomers.toLocaleString('es-ES')}
-            trend={computeTrend(newCustomers, newCustomersPrev)}
-          />
-          <Kpi
-            icon={Activity}
-            label="Ocupación"
-            value={occupancy ? `${occupancy.pct}%` : '—'}
-            hint={occupancy && occupancy.availableMinutes > 0
-              ? `${Math.round(occupancy.availableMinutes / 60 - occupancy.bookedMinutes / 60)}h libres`
-              : period === 'lifetime' ? 'Elige un periodo' : undefined}
-          />
-          <Kpi
-            icon={Star}
-            label="Nota media"
-            value={avgRating !== null ? `${avgRating.toFixed(1)} / 5` : '—'}
-          />
-        </div>
-      </section>
-
-      {/* Hoy mini-agenda con huecos */}
-      <section className="mb-6">
-        <TodayMiniAgenda
-          bookings={todayBookings}
-          shopHours={shopHoursToday}
-          nowTime={nowTime}
-        />
-      </section>
-
-      {/* Plan/suscripción al final */}
-      <footer className="border-t border-line pt-4 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-ink-3">
-          <CreditCard className="h-3.5 w-3.5" />
-          <span>Plan</span>
-          <span className="uppercase font-medium text-ink-2">{client.plan}</span>
-        </div>
+      {/* Footer — plan + suscripción, siempre discreto */}
+      <footer className="mt-16 pt-6 border-t border-line flex items-center gap-3 flex-wrap text-xs text-ink-2">
+        <span className="uppercase tracking-wider font-semibold">{client.plan}</span>
         <span className="text-line-strong">·</span>
-        <span className={`text-xs uppercase font-medium ${
-          client.status === 'active' ? 'text-success' : client.status === 'pending' ? 'text-warning' : 'text-ink-3'
+        <span className={`uppercase tracking-wider font-semibold ${
+          client.status === 'active' ? 'text-success' : client.status === 'pending' ? 'text-warning' : 'text-ink-2'
         }`}>
           {client.status}
         </span>
         {subscription && (
           <>
             <span className="text-line-strong">·</span>
-            <span className="text-xs text-ink-3">
-              {(subscription.amount / 100).toFixed(2)} €/mes
+            <span className="tabular-nums">
+              {(subscription.amount / 100).toFixed(2).replace('.', ',')} €/mes
             </span>
           </>
         )}
         <Link
           href="/dashboard/mi-plan"
-          className="ml-auto text-xs text-brand hover:text-brand-strong transition-colors"
+          className="ml-auto text-brand hover:text-brand-strong transition-colors"
         >
           Gestionar suscripción →
         </Link>
@@ -454,187 +243,261 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-componentes + helpers
+// Masthead — la pieza de portada. Una frase Fraunces en terracota + soporte
+// + link tracked-uppercase. Sin iconos, sin cards, sin chrome.
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface KpiRow {
-  visits_count: number
-  new_customers: number
-  avg_rating: number | null
-}
-
-interface Trend {
-  /** Direccion: up = mejor, down = peor, flat = igual, none = sin tendencia. */
-  direction: 'up' | 'down' | 'flat' | 'none'
-  /** Texto a mostrar, tipo "+12%" o "−5%" o "=". */
-  label: string
-}
-
-function Kpi({
-  icon: Icon,
-  label,
-  value,
-  trend,
-  hint,
-}: {
-  icon: typeof CalendarCheck
-  label: string
-  value: string
-  trend?: Trend
-  hint?: string
-}) {
+function Masthead({ state }: { state: HomeState }) {
+  const content = renderState(state)
   return (
-    <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon className="h-3.5 w-3.5 text-ink-3" />
-        <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{label}</p>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
-        {trend && trend.direction !== 'none' && (
-          <TrendChip trend={trend} />
-        )}
-      </div>
-      {hint && <p className="text-[10px] text-ink-3 mt-1">{hint}</p>}
-    </div>
+    <section className="pt-12 lg:pt-20 pb-12 lg:pb-20">
+      <h1
+        className="font-display font-semibold text-brand leading-[1.05] tracking-[-0.02em]"
+        style={{ fontSize: 'clamp(2rem, 6vw, 4rem)' }}
+      >
+        {content.lead}
+      </h1>
+      {content.supporting && (
+        <p className="mt-6 lg:mt-8 text-base lg:text-lg text-ink-2 leading-relaxed max-w-prose">
+          {content.supporting}
+        </p>
+      )}
+      {content.link && (
+        <Link
+          href={content.link.href}
+          className="mt-8 lg:mt-10 inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-brand hover:text-brand-strong transition-colors"
+        >
+          {content.link.label}
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      )}
+    </section>
   )
 }
 
-function TrendChip({ trend }: { trend: Trend }) {
-  const Icon = trend.direction === 'up' ? TrendingUp : trend.direction === 'down' ? TrendingDown : Minus
-  const color = trend.direction === 'up' ? 'text-success' : trend.direction === 'down' ? 'text-danger' : 'text-ink-3'
-  return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${color}`}>
-      <Icon className="h-3 w-3" />
-      {trend.label}
-    </span>
-  )
+interface MastheadContent {
+  lead: string
+  supporting: string | null
+  link: { label: string; href: string } | null
 }
 
-function NextBookingBadge({
-  date,
-  time,
-  customerName,
-  service,
-  barber,
-  todayStr,
-  nowTime,
-}: {
-  date: string
-  time: string
-  customerName: string | null
-  service: string
-  barber: string | null
+function renderState(state: HomeState): MastheadContent {
+  switch (state.kind) {
+    case 'pendingActivation':
+      return {
+        lead: 'Tu bot se está activando.',
+        supporting:
+          'Termina la configuración. Cuando esté lista, el bot empieza a responder a tus clientes.',
+        link: { label: 'Continuar activación', href: '/dashboard/setup' },
+      }
+
+    case 'preOpening': {
+      const minutes = minutesBetween(currentMadridTime(), state.openTime)
+      const tail = state.firstBookingTime
+        ? `La primera cita es de ${state.firstBookingCustomer ?? 'tu cliente'} a las ${state.firstBookingTime}.`
+        : `Hoy no tienes citas todavía.`
+      const totalLine =
+        state.totalToday > 0
+          ? ` ${pluralizeEs(state.totalToday, 'cita hoy', 'citas hoy')}.`
+          : ''
+      return {
+        lead:
+          minutes > 0
+            ? `Abres en ${minutes < 60 ? `${minutes} min` : formatHumanDuration(minutes)}.`
+            : `Abres ahora.`,
+        supporting: tail + totalLine,
+        link: { label: 'Ver agenda', href: '/dashboard/agenda' },
+      }
+    }
+
+    case 'nextImminent': {
+      const customer = state.booking.customerName ?? 'tu cliente'
+      const when = state.minutesUntil <= 0 ? 'ahora' : `en ${state.minutesUntil} min`
+      return {
+        lead: `${customer} ${when}.`,
+        supporting: `${state.booking.service}${state.booking.barber ? ` con ${state.booking.barber}` : ''}.`,
+        link: { label: 'Ver cita', href: '/dashboard/agenda' },
+      }
+    }
+
+    case 'midShiftGap': {
+      if (!state.nextBookingTime) {
+        return {
+          lead: 'No quedan más citas hoy.',
+          supporting: 'Buen momento para descansar o cerrar antes.',
+          link: { label: 'Ver agenda', href: '/dashboard/agenda' },
+        }
+      }
+      return {
+        lead: `Hueco hasta las ${state.nextBookingTime}.`,
+        supporting:
+          state.restOfDay.length > 1
+            ? `Después: ${pluralizeEs(state.restOfDay.length, 'cita más', 'citas más')} hoy.`
+            : 'Una cita más hoy.',
+        link: { label: 'Llenar huecos', href: '/dashboard/agenda' },
+      }
+    }
+
+    case 'closingPending':
+      return {
+        lead: `Te ${pluralizeEs(state.pendingCount, 'falta', 'faltan')} ${state.pendingCount} ${state.pendingCount === 1 ? 'cierre' : 'cierres'}.`,
+        supporting:
+          state.closedCount > 0
+            ? `Cerraste ${state.closedCount} de ${state.totalToday + state.pendingCount}. Menos de un minuto.`
+            : 'Marca quién vino y quién no.',
+        link: null,
+      }
+
+    case 'done': {
+      if (state.shopClosedAllDay) {
+        return {
+          lead: 'Hoy está cerrado.',
+          supporting: state.nextOpen
+            ? `Abres ${state.nextOpen.weekday} a las ${state.nextOpen.time}.`
+            : 'Disfruta el día.',
+          link: null,
+        }
+      }
+      const moneyLine = state.revenueToday > 0 ? `${formatEuros(state.revenueToday)} hoy. ` : ''
+      const bookingsLine =
+        state.bookingsToday > 0
+          ? pluralizeEs(state.bookingsToday, 'cita', 'citas')
+          : 'Sin citas hoy'
+      const tipsLine = state.tipsToday > 0 ? `, ${pluralizeEs(state.tipsToday, 'propina', 'propinas')}` : ''
+      const nextOpenLine = state.nextOpen
+        ? ` Abres ${state.nextOpen.weekday} a las ${state.nextOpen.time}.`
+        : ''
+      return {
+        lead: 'Has terminado.',
+        supporting: `${moneyLine}${bookingsLine}${tipsLine}.${nextOpenLine}`,
+        link: state.revenueToday > 0 ? { label: 'Ver caja', href: '/dashboard/caja' } : null,
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SecondaryBand — bajo el masthead, separado por una línea fina. Solo
+// renderiza algo si el estado lo pide. Tipografía pura, sin cards.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SecondaryBandProps {
+  state: HomeState
+  pendingClosure: PendingClosureBooking[]
   todayStr: string
-  nowTime: string
-}) {
-  // Texto temporal: si es hoy, "En X min" o "Ahora"; si mañana, "Mañana HH:MM"; sino, fecha relativa.
-  let when: string
-  if (date === todayStr) {
-    const [bH, bM] = time.split(':').map(Number)
-    const [nH, nM] = nowTime.split(':').map(Number)
-    const diffMin = bH * 60 + bM - (nH * 60 + nM)
-    if (diffMin <= 0) when = 'Ahora'
-    else if (diffMin < 60) when = `En ${diffMin} min`
-    else when = `Hoy ${time}`
-  } else {
-    const d = new Date(`${date}T00:00:00`)
-    const today = new Date(`${todayStr}T00:00:00`)
-    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    if (diffDays === 1) when = `Mañana ${time}`
-    else when = `${new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)} · ${time}`
+  yesterdayStr: string
+  cashRegisterEnabled: boolean
+  sumupReaderConnected: boolean
+  clientForActivation: {
+    businessName: string | null
+    phone: string | null
+    chatbotServices: unknown
+    whatsappPhoneNumberId: string | null
+    booksyInboundEmail: string | null
+    status: string
+  }
+}
+
+function SecondaryBand({
+  state,
+  pendingClosure,
+  todayStr,
+  yesterdayStr,
+  cashRegisterEnabled,
+  sumupReaderConnected,
+  clientForActivation,
+}: SecondaryBandProps) {
+  if (state.kind === 'pendingActivation') {
+    return (
+      <section className="border-t border-line pt-10">
+        <ActivationSteps client={clientForActivation} />
+      </section>
+    )
   }
 
-  const subtitle = `${customerName || '—'} · ${service}${barber ? ` con ${barber}` : ''}`
+  if (state.kind === 'closingPending') {
+    return (
+      <section className="border-t border-line pt-10">
+        <PendingClosureList
+          bookings={pendingClosure}
+          todayStr={todayStr}
+          yesterdayStr={yesterdayStr}
+          cashRegisterEnabled={cashRegisterEnabled}
+          sumupReaderConnected={sumupReaderConnected}
+        />
+      </section>
+    )
+  }
 
+  if (state.kind === 'nextImminent' && state.followUps.length > 0) {
+    return (
+      <section className="border-t border-line pt-10">
+        <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 mb-4">
+          Después
+        </p>
+        <ul className="space-y-3">
+          {state.followUps.map((b) => (
+            <BookingRow key={b.id} time={b.time} customer={b.customerName} service={b.service} />
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  if (state.kind === 'midShiftGap' && state.restOfDay.length > 0) {
+    return (
+      <section className="border-t border-line pt-10">
+        <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 mb-4">
+          Resto del día
+        </p>
+        <ul className="space-y-3">
+          {state.restOfDay.map((b) => (
+            <BookingRow key={b.id} time={b.time} customer={b.customerName} service={b.service} />
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  return null
+}
+
+function BookingRow({
+  time,
+  customer,
+  service,
+}: {
+  time: string
+  customer: string | null
+  service: string
+}) {
   return (
-    <Link
-      href="/dashboard/agenda"
-      className="inline-flex items-center gap-3 rounded-xl border border-brand/30 bg-brand-softer px-4 py-2.5 text-left hover:border-brand transition-colors max-w-sm"
-    >
-      <Clock className="h-4 w-4 text-brand-strong shrink-0" />
-      <div className="min-w-0">
-        <p className="text-xs font-semibold uppercase tracking-widest text-brand-strong">Próxima cita · {when}</p>
-        <p className="text-sm text-ink truncate">{subtitle}</p>
-      </div>
-    </Link>
+    <li className="flex items-baseline gap-4 text-base">
+      <span className="text-brand tabular-nums font-semibold w-14 shrink-0">{time}</span>
+      <span className="text-ink truncate">
+        {customer || 'Sin nombre'} <span className="text-ink-2">· {service}</span>
+      </span>
+    </li>
   )
 }
 
-function computeTrend(current: number, previous: number | null): Trend {
-  if (previous === null) return { direction: 'none', label: '' }
-  if (previous === 0 && current === 0) return { direction: 'flat', label: '=' }
-  if (previous === 0) return { direction: 'up', label: 'nuevo' }
-  const pct = Math.round(((current - previous) / previous) * 100)
-  if (pct === 0) return { direction: 'flat', label: '=' }
-  const sign = pct > 0 ? '+' : '−'
-  return {
-    direction: pct > 0 ? 'up' : 'down',
-    label: `${sign}${Math.abs(pct)}%`,
+// ─────────────────────────────────────────────────────────────────────────────
+// ActivationSteps — render plano (numerado) de la activación cuando estamos
+// en 'pendingActivation'. Sustituye al ActivationTracker anterior con cards.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ActivationSteps({
+  client,
+}: {
+  client: SecondaryBandProps['clientForActivation']
+}) {
+  function isServicesFilled(services: unknown): boolean {
+    if (services == null) return false
+    if (Array.isArray(services)) return services.length > 0
+    if (typeof services === 'object') return Object.keys(services as object).length > 0
+    return false
   }
-}
 
-function formatTodayLong(): string {
-  const dt = new Date()
-  const formatted = new Intl.DateTimeFormat('es-ES', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'Europe/Madrid',
-  }).format(dt)
-  // Capitalize first letter ("domingo" → "Domingo").
-  return formatted.charAt(0).toUpperCase() + formatted.slice(1)
-}
-
-function countSignificantGaps(
-  list: MiniBooking[],
-  shopHours: { start: string; end: string },
-  nowTime: string,
-): number {
-  const MIN_GAP = 30
-  const parseMin = (hhmm: string) => {
-    const [h, m] = hhmm.split(':').map(Number)
-    return h * 60 + m
-  }
-  const sorted = [...list].sort((a, b) => a.time.localeCompare(b.time))
-  const openMin = Math.max(parseMin(shopHours.start), parseMin(nowTime))
-  const closeMin = parseMin(shopHours.end)
-
-  let cursor = openMin
-  let gaps = 0
-  for (const b of sorted) {
-    const bStart = parseMin(b.time)
-    const bEnd = bStart + b.duration
-    if (bStart - cursor >= MIN_GAP) gaps++
-    cursor = Math.max(cursor, bEnd)
-  }
-  if (closeMin - cursor >= MIN_GAP) gaps++
-  return gaps
-}
-
-// -----------------------------------------------------------------------------
-// Activation tracker — shown while client.status === 'pending'.
-// (Lógica idéntica a la versión anterior — mantenido para no romper el
-// flujo de barberías nuevas.)
-// -----------------------------------------------------------------------------
-
-type ClientForTracker = {
-  businessName: string | null
-  phone: string | null
-  chatbotServices: unknown
-  whatsappPhoneNumberId: string | null
-  booksyInboundEmail: string | null
-  status: string
-}
-
-function isServicesFilled(services: unknown): boolean {
-  if (services == null) return false
-  if (Array.isArray(services)) return services.length > 0
-  if (typeof services === 'object') return Object.keys(services as object).length > 0
-  return false
-}
-
-function ActivationTracker({ client }: { client: ClientForTracker }) {
   const businessDataDone = Boolean(
     client.businessName && client.phone && isServicesFilled(client.chatbotServices),
   )
@@ -642,7 +505,7 @@ function ActivationTracker({ client }: { client: ClientForTracker }) {
   const booksyDone = Boolean(client.booksyInboundEmail)
   const botActive = client.status === 'active'
 
-  const opsPendingSubtitle = 'Nuestro equipo lo activa en 24h · Te avisaremos por WhatsApp cuando esté listo.'
+  const opsPendingSubtitle = 'Lo activa nuestro equipo en 24h. Te avisaremos por WhatsApp.'
 
   const steps: Array<{ title: string; subtitle: string; done: boolean }> = [
     { title: 'Pago recibido', subtitle: 'Tu suscripción está activa.', done: true },
@@ -650,57 +513,106 @@ function ActivationTracker({ client }: { client: ClientForTracker }) {
       title: 'Datos del negocio',
       subtitle: businessDataDone
         ? 'Nombre, teléfono y servicios completados.'
-        : 'Añade el nombre, teléfono y servicios en la configuración.',
+        : 'Añade nombre, teléfono y servicios en la configuración.',
       done: businessDataDone,
     },
     {
-      title: 'WhatsApp Business conectado',
-      subtitle: whatsappDone ? 'Tu número de WhatsApp Business está conectado al bot.' : opsPendingSubtitle,
+      title: 'WhatsApp Business',
+      subtitle: whatsappDone
+        ? 'Tu número está conectado al bot.'
+        : opsPendingSubtitle,
       done: whatsappDone,
     },
     {
       title: 'Booksy sincronizado',
-      subtitle: booksyDone ? 'Los emails de Booksy se sincronizan con tu agenda.' : opsPendingSubtitle,
+      subtitle: booksyDone
+        ? 'Los emails de Booksy se sincronizan con tu agenda.'
+        : opsPendingSubtitle,
       done: booksyDone,
     },
     {
       title: 'Bot activo',
       subtitle: botActive
         ? 'El bot está respondiendo a tus clientes 24/7.'
-        : 'Se activa automáticamente cuando los pasos anteriores estén listos.',
+        : 'Se activa cuando los pasos anteriores están listos.',
       done: botActive,
     },
   ]
 
   return (
-    <div className="mb-6 bg-surface border border-line rounded-2xl p-5 md:p-6">
-      <h2 className="font-display text-2xl md:text-3xl font-semibold text-ink mb-1">Activando tu bot</h2>
-      <p className="text-sm text-ink-2 mb-5">
-        Así va la activación de tu cuenta. Los pasos que dependen de nuestro equipo los hacemos por ti.
-      </p>
-      <ol className="space-y-3">
-        {steps.map((step, idx) => (
-          <li
-            key={step.title}
-            className="flex items-start gap-3 rounded-xl border border-line bg-canvas/60 p-3 md:p-4"
-          >
-            <div className="shrink-0 mt-0.5">
-              {step.done ? (
-                <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
-              ) : (
-                <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
-              )}
-              <span className="sr-only">{step.done ? 'Completado' : 'Pendiente'}</span>
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm md:text-base font-semibold text-ink">
-                {idx + 1}. {step.title}
-              </p>
-              <p className="text-xs md:text-sm text-ink-2 mt-0.5 leading-relaxed">{step.subtitle}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
+    <ol className="space-y-5">
+      {steps.map((step, idx) => (
+        <li key={step.title} className="flex items-start gap-4">
+          <div className="shrink-0 mt-0.5">
+            {step.done ? (
+              <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+            ) : (
+              <Clock className="h-5 w-5 text-ink-2" aria-hidden="true" />
+            )}
+            <span className="sr-only">{step.done ? 'Completado' : 'Pendiente'}</span>
+          </div>
+          <div className="min-w-0">
+            <p className="text-base font-semibold text-ink">
+              <span className="text-ink-2 mr-2 tabular-nums font-medium">{idx + 1}.</span>
+              {step.title}
+            </p>
+            <p className="text-sm text-ink-2 mt-1 leading-relaxed">{step.subtitle}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WEEKDAY_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const MONTH_ES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+]
+
+function formatDateline(date: Date): string {
+  // Formato: "MARTES · 5 DE MAYO".
+  const madrid = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }))
+  const weekday = WEEKDAY_ES[madrid.getDay()].toUpperCase()
+  const day = madrid.getDate()
+  const month = MONTH_ES[madrid.getMonth()].toUpperCase()
+  return `${weekday} · ${day} DE ${month}`
+}
+
+function currentMadridTime(): string {
+  return new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+function minutesBetween(fromHHMM: string, toHHMM: string): number {
+  const [fH, fM] = fromHHMM.split(':').map(Number)
+  const [tH, tM] = toHHMM.split(':').map(Number)
+  return tH * 60 + tM - (fH * 60 + fM)
+}
+
+function formatHumanDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (m === 0) return pluralizeEs(h, 'hora', 'horas')
+  return `${h} h ${m} min`
+}
+
