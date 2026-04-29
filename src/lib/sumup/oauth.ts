@@ -9,21 +9,17 @@
 //   SUMUP_OAUTH_REDIRECT_URI   — debe coincidir EXACTO con el registrado en SumUp
 //                                ej: https://otracita.es/api/sumup/oauth/callback
 //
-// Scopes aplicados (orden de aprobación con SumUp):
-//   transactions.history     — leer histórico (default, no review)
-//   user.profile_readonly    — leer merchant_code via /me (default, no review)
-//   readers.read             — listar Readers físicos del merchant
-//   terminals.read           — info de terminal asociada al Reader
+// Scopes aplicados (todos self-service, no requieren aprobación manual):
+//   transactions.history  — leer histórico de transacciones
+//   user.profile_readonly — leer merchant_code via /me
+//   readers.read          — listar Readers físicos del merchant
+//   readers.write         — crear checkout en Reader (POST /readers/{id}/checkout)
+//   terminals.read        — info de terminal asociada al Reader
 //
-// SCOPE PENDIENTE DE APROBACIÓN POR SUMUP:
-//   payments                 — crear checkouts en Cloud API
-//                              SumUp rechaza el OAuth authorize entero
-//                              ("Unknown Error") si lo solicitamos sin
-//                              haberlo aprobado antes. Hay que mailear
-//                              a integration@sumup.com con el client_id
-//                              y caso de uso. Cuando aprueben, añadirlo
-//                              de vuelta a SCOPES y los barberos
-//                              reconectan.
+// NOTA sobre el scope `payments`: ese es para *Online Payments* (links de pago
+// web vía /checkouts) y SÍ requiere aprobación manual de SumUp por email.
+// Nosotros NO lo necesitamos — usamos Reader físico (Cloud API), que va con
+// `readers.write`. No mailear a SumUp por esto.
 //
 // IMPORTANTE: si cambias scopes, los barberos YA conectados con el set
 // anterior tendrán tokens con scopes obsoletos. El backend devolverá 403
@@ -38,8 +34,8 @@ const SCOPES = [
   'transactions.history',
   'user.profile_readonly',
   'readers.read',
+  'readers.write',
   'terminals.read',
-  // 'payments' — añadir cuando SumUp lo apruebe para la OAuth App "otracita-web"
 ].join(' ')
 
 export function getOauthEnv(): {
