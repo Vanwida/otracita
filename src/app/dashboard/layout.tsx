@@ -7,6 +7,7 @@ import Link from "next/link"
 import { LogOut, Shield } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import { ConfirmDialogHost } from "./_components/ConfirmDialog"
+import { UndoToastHost } from "./_components/UndoToast"
 import SidebarToggle from "./_components/SidebarToggle"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
 import MobileMoreTrigger from "@/app/dashboard/_components/MobileMoreTrigger"
@@ -129,6 +130,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       <DashboardChatWidget />
       <ConfirmDialogHost />
+      <UndoToastHost />
 
       {/* Mobile Bottom Nav — los 4 ítems del menú principal + "Más" para
           acceder al drawer (sesión, cerrar sesión, panel admin si aplica). */}

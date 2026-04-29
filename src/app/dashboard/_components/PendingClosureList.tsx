@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle2, UserX, AlertCircle, Loader2 } from 'lucide-react'
 import PaymentMethodPrompt, { type CashPaymentMethod } from './PaymentMethodPrompt'
 import SumupCheckoutPrompt from './SumupCheckoutPrompt'
+import { pushUndoToast } from './UndoToast'
 
 // -----------------------------------------------------------------------------
 // PendingClosureList — citas confirmadas de días pasados sin cerrar.
@@ -23,6 +24,20 @@ import SumupCheckoutPrompt from './SumupCheckoutPrompt'
 // Tras cada acción, hacemos optimistic remove de la fila local + router.refresh
 // en background para que la lista del servidor se mantenga sincronizada
 // con KPIs y AttentionPanel.
+//
+// Ventana de deshacer (5s) — añadida por /impeccable harden:
+//   · Path simple "Completada" (sin caja efectivo) → la PATCH se programa
+//     para dentro de 5s. La fila desaparece optimista; si el barbero
+//     pulsa "Deshacer" en el toast, la PATCH nunca se llama y la fila
+//     vuelve. Si cierra el navegador antes de 5s, la acción se pierde —
+//     el cron safety-net (3d) la cierra automáticamente.
+//   · Path "No vino" → la POST se llama inmediatamente (servidor anula la
+//     factura, suma no-show al contador). Toast ofrece deshacer vía
+//     /api/bookings/undo-no-show, que revierte status, restaura factura y
+//     resta no-show del cliente.
+//   · Caja efectivo (modal) y SumUp (datáfono) → sin ventana de deshacer.
+//     El barbero ya hizo input deliberado (eligió método o cobró tarjeta);
+//     un undo aquí descuadraria caja o reembolsaría una tarjeta real.
 // -----------------------------------------------------------------------------
 
 export interface PendingClosureBooking {
@@ -47,24 +62,45 @@ interface Props {
   sumupReaderConnected?: boolean
 }
 
-export default function PendingClosureList({ bookings, todayStr, yesterdayStr, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
+export default function PendingClosureList({
+  bookings,
+  todayStr,
+  yesterdayStr,
+  cashRegisterEnabled = false,
+  sumupReaderConnected = false,
+}: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
-  // Tracks ids being processed para mostrar spinner sin bloquear el resto.
   const [busyId, setBusyId] = useState<string | null>(null)
-  // Filas que ya hemos resuelto en este render (optimistic). Tras refresh
-  // del server este state se reinicia con la nueva lista.
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(null)
-  // Para el modal de método cuando hay caja activa.
   const [pendingClosureBooking, setPendingClosureBooking] = useState<PendingClosureBooking | null>(null)
-  // Para el modal SumUp Cloud API cuando está pareado y la cita tiene precio.
   const [sumupBooking, setSumupBooking] = useState<PendingClosureBooking | null>(null)
 
   const visible = bookings.filter((b) => !removedIds.has(b.id))
   if (visible.length === 0) return null
 
-  async function patchComplete(b: PendingClosureBooking, method: CashPaymentMethod | null) {
+  function removeOptimistic(id: string) {
+    setRemovedIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }
+
+  function restoreOptimistic(id: string) {
+    setRemovedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  async function patchComplete(
+    b: PendingClosureBooking,
+    method: CashPaymentMethod | null,
+    opts: { skipOptimisticRemove?: boolean } = {},
+  ) {
     setBusyId(b.id)
     setErrorId(null)
     try {
@@ -76,19 +112,23 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
         ),
       })
       if (!res.ok) {
+        if (opts.skipOptimisticRemove) {
+          // El toast ya quitó la fila optimista. Restaurar para que el
+          // barbero vea el error y pueda reintentar.
+          restoreOptimistic(b.id)
+        }
         const body = await res.json().catch(() => ({}))
-        setErrorId({ id: b.id, message: body.error || 'No se pudo cerrar.' })
+        setErrorId({ id: b.id, message: body.error || 'No se ha podido cerrar la cita. Vuelve a intentarlo.' })
         return
       }
-      setRemovedIds((prev) => {
-        const next = new Set(prev)
-        next.add(b.id)
-        return next
-      })
+      if (!opts.skipOptimisticRemove) {
+        removeOptimistic(b.id)
+      }
       setPendingClosureBooking(null)
       startTransition(() => router.refresh())
     } catch {
-      setErrorId({ id: b.id, message: 'Error de red' })
+      if (opts.skipOptimisticRemove) restoreOptimistic(b.id)
+      setErrorId({ id: b.id, message: 'Sin conexión. Revisa tu wifi e inténtalo otra vez.' })
     } finally {
       setBusyId(null)
     }
@@ -96,7 +136,13 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
 
   function markCompleted(b: PendingClosureBooking) {
     if (!cashRegisterEnabled) {
-      void patchComplete(b, null)
+      // Path simple: optimistic remove + commit en 5s vía toast.
+      removeOptimistic(b.id)
+      pushUndoToast({
+        message: 'Cita cerrada',
+        onCommit: () => patchComplete(b, null, { skipOptimisticRemove: true }),
+        onUndo: () => restoreOptimistic(b.id),
+      })
       return
     }
     if (sumupReaderConnected && b.price && b.price > 0) {
@@ -109,6 +155,7 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
   async function markNoShow(b: PendingClosureBooking) {
     setBusyId(b.id)
     setErrorId(null)
+    removeOptimistic(b.id)
     try {
       const res = await fetch('/api/bookings/no-show', {
         method: 'POST',
@@ -116,18 +163,30 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
         body: JSON.stringify({ bookingId: b.id }),
       })
       if (!res.ok) {
+        restoreOptimistic(b.id)
         const body = await res.json().catch(() => ({}))
-        setErrorId({ id: b.id, message: body.error || 'No se pudo marcar como no-show.' })
+        setErrorId({ id: b.id, message: body.error || 'No se ha podido marcar. Vuelve a intentarlo.' })
         return
       }
-      setRemovedIds((prev) => {
-        const next = new Set(prev)
-        next.add(b.id)
-        return next
+      pushUndoToast({
+        message: 'Marcado como no vino',
+        onUndo: async () => {
+          restoreOptimistic(b.id)
+          try {
+            await fetch('/api/bookings/undo-no-show', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ bookingId: b.id }),
+            })
+          } finally {
+            startTransition(() => router.refresh())
+          }
+        },
       })
       startTransition(() => router.refresh())
     } catch {
-      setErrorId({ id: b.id, message: 'Error de red' })
+      restoreOptimistic(b.id)
+      setErrorId({ id: b.id, message: 'Sin conexión. Revisa tu wifi e inténtalo otra vez.' })
     } finally {
       setBusyId(null)
     }
@@ -136,20 +195,19 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
   function dayLabel(date: string): string {
     if (date === yesterdayStr) return 'Ayer'
     if (date === todayStr) return 'Hoy'
-    // Anteayer (rango de la query) — calculamos diff para etiquetar.
     return 'Anteayer'
   }
 
   return (
-    <section className="mb-6 bg-warning/5 border border-warning/30 rounded-2xl p-5 md:p-6">
+    <section className="mb-6 bg-surface border border-line rounded-2xl p-5 md:p-6">
       <div className="flex items-center gap-2 mb-1">
-        <AlertCircle className="h-4 w-4 text-warning" />
-        <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">
+        <AlertCircle className="h-4 w-4 text-ink-2" aria-hidden="true" />
+        <h2 className="text-xs font-semibold text-ink uppercase tracking-[0.18em]">
           Citas por cerrar
         </h2>
       </div>
-      <p className="text-xs text-ink-3 mb-3 leading-relaxed">
-        Marca si vinieron o no. Al completar se emite la factura con servicio + productos vendidos.
+      <p className="text-xs text-ink-2 mb-4 leading-relaxed">
+        Marca quién vino y quién no. Tienes 5 segundos para deshacer cada acción.
       </p>
 
       <PaymentMethodPrompt
@@ -158,7 +216,7 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
         onPick={(m) => pendingClosureBooking && void patchComplete(pendingClosureBooking, m)}
         subtitle={
           pendingClosureBooking
-            ? `${pendingClosureBooking.service} · ${pendingClosureBooking.customerName ?? pendingClosureBooking.customerPhone}`
+            ? `${pendingClosureBooking.service}. ${pendingClosureBooking.customerName ?? pendingClosureBooking.customerPhone}`
             : undefined
         }
         pending={busyId !== null && busyId === pendingClosureBooking?.id}
@@ -169,20 +227,14 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
           open={sumupBooking !== null}
           bookingId={sumupBooking.id}
           amountCents={Math.round(sumupBooking.price * 100)}
-          subtitle={`${sumupBooking.service} · ${sumupBooking.customerName ?? sumupBooking.customerPhone}`}
+          subtitle={`${sumupBooking.service}. ${sumupBooking.customerName ?? sumupBooking.customerPhone}`}
           onClose={() => setSumupBooking(null)}
           onSettled={() => {
-            // Callback de SumUp ya cerró el booking. Quitamos optimistic + refresh.
             const id = sumupBooking.id
-            setRemovedIds((prev) => {
-              const next = new Set(prev)
-              next.add(id)
-              return next
-            })
+            removeOptimistic(id)
             startTransition(() => router.refresh())
           }}
           onFallback={() => {
-            // Fallback al modal manual cash/card/online si SumUp falla.
             setPendingClosureBooking(sumupBooking)
             setSumupBooking(null)
           }}
@@ -198,14 +250,14 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
           return (
             <li
               key={b.id}
-              className="rounded-xl bg-surface border border-line p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
+              className="rounded-xl bg-canvas border border-line p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ink truncate">
-                  <span className="text-ink-3 font-normal mr-1.5">{dayLabel(b.date)} · {b.time}</span>
+                  <span className="text-ink-2 font-normal mr-1.5">{dayLabel(b.date)} · {b.time}</span>
                   {customerLine}
                 </p>
-                <p className="text-xs text-ink-3 truncate">
+                <p className="text-xs text-ink-2 truncate">
                   {b.service}
                   {barberLine}
                 </p>
@@ -216,18 +268,22 @@ export default function PendingClosureList({ bookings, todayStr, yesterdayStr, c
                   type="button"
                   onClick={() => markCompleted(b)}
                   disabled={isBusy}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-1.5 text-xs font-semibold text-brand-ink transition-colors disabled:opacity-60 disabled:cursor-wait"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-2 text-xs font-semibold text-brand-ink transition-colors disabled:opacity-60 disabled:cursor-wait min-h-[40px]"
                 >
-                  {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {isBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
                   Completada
                 </button>
                 <button
                   type="button"
                   onClick={() => markNoShow(b)}
                   disabled={isBusy}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface hover:border-danger hover:text-danger px-3 py-1.5 text-xs font-semibold text-ink-2 transition-colors disabled:opacity-60 disabled:cursor-wait"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface hover:border-danger hover:text-danger px-3 py-2 text-xs font-semibold text-ink-2 transition-colors disabled:opacity-60 disabled:cursor-wait min-h-[40px]"
                 >
-                  <UserX className="h-3.5 w-3.5" />
+                  <UserX className="h-3.5 w-3.5" aria-hidden="true" />
                   No vino
                 </button>
               </div>

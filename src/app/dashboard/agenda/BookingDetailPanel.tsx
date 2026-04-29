@@ -5,6 +5,7 @@ import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIco
 import AddProductSaleModal from './AddProductSaleModal';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
+import { pushUndoToast } from '../_components/UndoToast';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -158,7 +159,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   async function toggleNoShow() {
     if (!booking) return;
     setError(null);
-    const endpoint = isNoShow ? '/api/bookings/undo-no-show' : '/api/bookings/no-show';
+    const wasNoShow = isNoShow;
+    const endpoint = wasNoShow ? '/api/bookings/undo-no-show' : '/api/bookings/no-show';
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -167,12 +169,32 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.error || 'No se pudo actualizar');
+        setError(body.error || 'No se ha podido actualizar. Vuelve a intentarlo.');
         return;
+      }
+      // Solo ofrecemos toast de undo cuando se ACABA de marcar como no-show
+      // (confirmed → no_show). En la dirección inversa (Deshacer no-show) el
+      // botón ya es la acción de undo y no tiene sentido apilar otra ventana.
+      if (!wasNoShow) {
+        const bookingId = booking.id;
+        pushUndoToast({
+          message: 'Marcado como no vino',
+          onUndo: async () => {
+            try {
+              await fetch('/api/bookings/undo-no-show', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId }),
+              });
+            } finally {
+              startTransition(() => router.refresh());
+            }
+          },
+        });
       }
       startTransition(() => router.refresh());
     } catch {
-      setError('Error de red');
+      setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.');
     }
   }
 
@@ -200,13 +222,13 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.error || 'No se pudo cerrar la cita');
+        setError(body.error || 'No se ha podido cerrar la cita. Vuelve a intentarlo.');
         return;
       }
       setMethodPromptOpen(false);
       startTransition(() => router.refresh());
     } catch {
-      setError('Error de red');
+      setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.');
     } finally {
       setMethodPending(false);
     }
@@ -214,11 +236,35 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
   function markCompleted() {
     if (!cashRegisterEnabled) {
-      void markCompletedWithMethod(null);
+      // Path simple: cerramos el panel optimista y programamos la PATCH para
+      // dentro de 5s vía toast. Si el barbero pulsa "Deshacer", la PATCH
+      // nunca dispara y al re-abrir la cita en agenda sigue confirmada.
+      // Si cierra el navegador antes de 5s, el cron safety-net (3d) la
+      // cierra automáticamente.
+      if (!booking) return;
+      const bookingId = booking.id;
+      onClose();
+      pushUndoToast({
+        message: 'Cita cerrada',
+        onCommit: async () => {
+          try {
+            await fetch(`/api/bookings/${bookingId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'completed' }),
+            });
+          } finally {
+            startTransition(() => router.refresh());
+          }
+        },
+      });
       return;
     }
     // Con SumUp Reader pareado y price > 0 → flujo instantáneo Cloud API.
     // Sin Reader o sin price → modal manual cash/card/online.
+    // Ambos paths involucran input deliberado del barbero (selección de
+    // método o cobro real con tarjeta), así que NO añadimos ventana de
+    // deshacer — un undo aquí descuadraria caja o reembolsaría el datáfono.
     if (sumupReaderConnected && booking?.price && booking.price > 0) {
       setSumupPromptOpen(true);
     } else {
@@ -299,21 +345,19 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const sourceLabel = (source: string) =>
     source === 'booksy' ? 'Booksy' : 'WhatsApp Bot';
 
-  const sourceBadgeClass = (source: string) =>
-    source === 'booksy'
-      ? 'bg-success/15 text-success'
-      : 'bg-brand-softer text-brand';
-
-  const statusBadge = (status: string) => {
+  // Tono inline (no pill) para el status. 'confirmed' se mezcla con el
+  // metadata muteado; 'no_show' / 'cancelled' / 'completed' añaden un
+  // toque de color para que el estado sea legible sin sobrecargar.
+  const statusToneClass = (status: string): string => {
     switch (status) {
-      case 'confirmed':
-        return 'bg-overlay text-ink-2';
       case 'no_show':
-        return 'bg-warning/15 text-warning';
+        return 'text-danger font-semibold';
       case 'completed':
-        return 'bg-success/15 text-success';
+        return 'text-success font-semibold';
+      case 'cancelled':
+        return 'text-ink-3';
       default:
-        return 'bg-overlay text-ink-2';
+        return 'text-ink-2';
     }
   };
 
@@ -322,7 +366,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       case 'confirmed':
         return 'Confirmada';
       case 'no_show':
-        return 'No Show';
+        return 'No vino';
       case 'completed':
         return 'Completada';
       case 'cancelled':
@@ -346,7 +390,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/20 lg:hidden"
+            className="fixed inset-0 z-40 bg-[var(--color-scrim-light)] lg:hidden"
           />
 
           <motion.div
@@ -354,65 +398,58 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             initial={{ x: 320 }}
             animate={{ x: 0 }}
             exit={{ x: 320 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
             className="fixed right-0 top-0 z-50 h-full w-80 bg-surface border-l border-line flex flex-col shadow-xl"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-line">
-              <span className="text-sm font-semibold text-ink">Detalle de Reserva</span>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-line">
+              <span className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2">
+                Reserva
+              </span>
               <button
+                type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors"
+                aria-label="Cerrar detalle"
+                className="inline-flex items-center justify-center h-11 w-11 -mr-3 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Booksy read-only notice */}
-              {booking.source === 'booksy' && (
-                <div className="bg-canvas border border-line rounded-lg px-3 py-2 text-xs text-ink-2">
-                  Esta reserva viene de Booksy (solo lectura)
-                </div>
-              )}
-
-              {/* Badges */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider ${sourceBadgeClass(booking.source)}`}
-                >
-                  {sourceLabel(booking.source)}
-                </span>
-                <span
-                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider ${statusBadge(booking.status)}`}
-                >
-                  {statusLabel(booking.status)}
-                </span>
-              </div>
-
-              {/* Customer */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
-                  Cliente
-                </p>
-                {booking.customerName && (
-                  <p className="text-sm font-medium text-ink">{booking.customerName}</p>
-                )}
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-ink-2">{booking.customerPhone}</p>
+              {/* Customer — el cliente es el dato más importante del panel.
+                  Sube al top con peso visual; source y status quedan como
+                  metadata muteada debajo (no pills, solo tipografía). */}
+              <div className="space-y-2">
+                <h2 className="text-xl font-semibold text-ink leading-tight break-words">
+                  {booking.customerName?.trim() || 'Sin nombre'}
+                </h2>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm text-ink-2 tabular-nums">{booking.customerPhone}</p>
                   <button
+                    type="button"
                     onClick={copyPhone}
-                    className="p-1 rounded hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors"
-                    title="Copiar teléfono"
+                    aria-label="Copiar teléfono"
+                    className="inline-flex items-center justify-center h-8 w-8 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                   >
                     {copied ? (
-                      <Check className="h-3.5 w-3.5 text-success" />
+                      <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />
                     ) : (
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
                   </button>
                 </div>
+                <p className="text-xs text-ink-2">
+                  {sourceLabel(booking.source)}
+                  {' · '}
+                  <span className={statusToneClass(booking.status)}>
+                    {statusLabel(booking.status)}
+                  </span>
+                  {booking.source === 'booksy' && (
+                    <span className="text-ink-3"> · solo lectura</span>
+                  )}
+                </p>
               </div>
 
               {/* Divider */}
@@ -420,7 +457,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
               {/* Service */}
               <div className="space-y-1">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                   Servicio
                 </p>
                 <p className="text-sm font-medium text-ink">{booking.service}</p>
@@ -429,7 +466,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
               {/* Barber */}
               {booking.barber && (
                 <div className="space-y-1">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                     Barbero
                   </p>
                   <p className="text-sm font-medium text-ink-2">{booking.barber}</p>
@@ -441,7 +478,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
               {/* Date */}
               <div className="space-y-1">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                   Fecha
                 </p>
                 <p className="text-sm text-ink-2 capitalize">{formatDate(booking.date)}</p>
@@ -449,7 +486,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
               {/* Time */}
               <div className="space-y-1">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                   Hora
                 </p>
                 <p className="text-sm text-ink-2">
@@ -462,7 +499,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
               {/* Price */}
               {booking.price !== null && (
                 <div className="space-y-1">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                     Precio
                   </p>
                   <p className="text-sm font-semibold text-brand">{booking.price} €</p>
@@ -486,8 +523,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     <CheckCircle2 className="h-4 w-4" />
                     Marcar como completada
                   </button>
-                  <p className="text-[11px] text-ink-3 leading-relaxed">
-                    Cierra la cita cuando termine. Si tienes facturación activa, se emitirá factura automáticamente con los productos vendidos.
+                  <p className="text-xs text-ink-2 leading-relaxed">
+                    Tienes 5 segundos para deshacer el cierre.
                   </p>
                   {error && <p className="text-xs text-danger">{error}</p>}
                 </div>
@@ -515,7 +552,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   click here to keep both booking and fiscal state consistent. */}
               {canMarkNoShow && (
                 <div className="pt-2 border-t border-line space-y-2">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                     ¿El cliente se presentó?
                   </p>
                   {isNoShow ? (
@@ -526,7 +563,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                       className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-surface border border-line hover:border-brand hover:text-brand px-4 py-2.5 text-sm font-semibold text-ink transition-colors disabled:opacity-60"
                     >
                       <Undo2 className="h-4 w-4" />
-                      Deshacer no-show
+                      Sí vino
                     </button>
                   ) : (
                     <button
@@ -536,11 +573,11 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                       className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-danger/10 border border-danger/30 hover:bg-danger/15 px-4 py-2.5 text-sm font-semibold text-danger transition-colors disabled:opacity-60"
                     >
                       <UserX className="h-4 w-4" />
-                      Marcar no-show
+                      No vino
                     </button>
                   )}
-                  <p className="text-[11px] text-ink-3 leading-relaxed">
-                    Por defecto asumimos que se presentó. Marca no-show solo si no vino — se anulará la factura automáticamente.
+                  <p className="text-xs text-ink-2 leading-relaxed">
+                    Marca solo si el cliente no se presentó. Tienes 5 segundos para deshacer.
                   </p>
                   {error && <p className="text-xs text-danger">{error}</p>}
                 </div>
@@ -570,7 +607,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   necesitarían una rectificativa para incluirse. */}
               {canSellProduct && (
                 <div className="pt-2 border-t border-line space-y-2">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                     Productos
                   </p>
                   <button
@@ -596,7 +633,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     B) Connect active     -> amount + description + QR flow. */}
               {canCharge && (
                 <div className="pt-2 border-t border-line space-y-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                     Cobrar online
                   </p>
 
@@ -847,7 +884,7 @@ function CancelBookingModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--color-scrim-strong)] backdrop-blur-sm p-4"
       onClick={() => !submitting && onClose()}
       role="dialog"
       aria-modal="true"
