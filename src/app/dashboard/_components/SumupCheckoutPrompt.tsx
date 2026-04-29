@@ -156,7 +156,7 @@ export default function SumupCheckoutPrompt({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
       onClick={() => {
         if (state.kind === 'awaiting' || state.kind === 'starting') return
         onClose()
@@ -263,7 +263,7 @@ export default function SumupCheckoutPrompt({
                   <AlertCircle className="h-4 w-4" /> Tiempo agotado
                 </p>
                 <p className="text-xs text-ink-3 mt-1">
-                  El cobro tardó más de lo esperado. Es posible que se haya completado igualmente — refresca la caja para ver. Si no aparece, puedes marcar manualmente o reintentar.
+                  El cobro tardó más de lo esperado. Es posible que se haya completado igualmente: refresca la caja para ver. Si no aparece, puedes marcar manualmente o reintentar.
                 </p>
               </div>
               <button

@@ -39,10 +39,10 @@ interface Props {
 const NIF_SHAPE = /^[0-9A-Z][0-9]{7}[0-9A-Z]$/i
 
 const IVA_OPTIONS = [
-  { value: 21, label: '21% — general' },
-  { value: 10, label: '10% — reducido' },
-  { value: 4, label: '4% — superreducido' },
-  { value: 0, label: '0% — exento' },
+  { value: 21, label: '21% (general)' },
+  { value: 10, label: '10% (reducido)' },
+  { value: 4, label: '4% (superreducido)' },
+  { value: 0, label: '0% (exento)' },
 ]
 
 const PREVIEW_PAD = 4
@@ -270,7 +270,7 @@ export default function InvoicingSettings({ initial }: Props) {
         />
         {initial.hasEmittedInvoices ? (
           <p className="text-xs text-ink-3">
-            Bloqueado porque ya se han emitido facturas — cambiarlo rompería la continuidad legal.
+            Bloqueado porque ya se han emitido facturas. Cambiarlo rompería la continuidad legal.
           </p>
         ) : (
           <p className="text-xs text-ink-3">

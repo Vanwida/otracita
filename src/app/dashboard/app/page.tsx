@@ -62,14 +62,14 @@ export default async function AppPage() {
         </h1>
         <p className="text-ink-2 text-sm max-w-2xl">
           La app de tu barbería en el móvil de tus clientes. Instalable desde Safari y Chrome (sin App Store),
-          con tu logo, tus colores y tu nombre. Usa el mismo motor que tu agenda y tu WhatsApp — no hay nada
+          con tu logo, tus colores y tu nombre. Usa el mismo motor que tu agenda y tu WhatsApp: no hay nada
           que mantener en paralelo.
         </p>
       </div>
 
       {!readyForApp && (
         <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm text-ink-2">
-          Tu app no está publicada todavía — activa el toggle &ldquo;App publicada&rdquo; abajo y guarda.
+          Tu app no está publicada todavía. Activa el toggle &ldquo;App publicada&rdquo; abajo y guarda.
         </div>
       )}
 
@@ -162,7 +162,7 @@ export default async function AppPage() {
         <ul className="mt-3 space-y-1.5 text-sm text-ink-2">
           <li>• <strong>Confirmación</strong> de cada reserva al instante.</li>
           <li>• <strong>Recordatorio</strong> el día antes de la cita (junto con el WhatsApp).</li>
-          <li>• <strong>Promos</strong> si tienes huecos libres (v2 — próximamente).</li>
+          <li>• <strong>Promos</strong> si tienes huecos libres (v2, próximamente).</li>
         </ul>
         <p className="mt-3 text-xs text-ink-3">
           Activado automáticamente para todos tus clientes que instalen la app. Nada que configurar.

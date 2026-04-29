@@ -111,7 +111,7 @@ export default function PublicPageSettings({ initial }: Props) {
           Identidad de tu app
         </h2>
         <p className="text-sm text-ink-2 mt-1">
-          Logo, colores, descripción y redes — todo lo que ve el cliente al abrir
+          Logo, colores, descripción y redes. Todo lo que ve el cliente al abrir
           tu app o escanear el QR. Mismo motor que tu agenda y tu WhatsApp.
         </p>
       </div>
@@ -250,7 +250,7 @@ export default function PublicPageSettings({ initial }: Props) {
               <span className="font-mono text-xs text-ink">{brandColor}</span>
               <p className="text-xs text-ink-3">
                 Pinta CTAs, servicio seleccionado, hora elegida, badges. Elige un color
-                vibrante que represente tu marca — rojo, amarillo, verde, dorado, el que sea.
+                vibrante que represente tu marca: rojo, amarillo, verde, dorado, el que sea.
               </p>
             </div>
             {/* Preview del accent contra ambos temas */}
@@ -456,7 +456,7 @@ function ImageUpload({
           </span>
         )}
         {uploading && (
-          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+          <div className="absolute inset-0 bg-[var(--color-scrim-light)] flex items-center justify-center">
             <Loader2 className="h-5 w-5 text-white animate-spin" />
           </div>
         )}

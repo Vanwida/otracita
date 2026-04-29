@@ -137,7 +137,7 @@ export default function SumupConnect({
               </h2>
               <p className="text-xs text-ink-3 mt-0.5">
                 {initialConnected
-                  ? 'Conectado — cobras desde otracita y el datáfono procesa al instante.'
+                  ? 'Conectado. Cobras desde otracita y el datáfono procesa al instante.'
                   : 'Conecta tu SumUp para cobrar con tu datáfono directamente desde otracita.'}
               </p>
             </div>
@@ -216,7 +216,7 @@ export default function SumupConnect({
           )}
           {flashError && (
             <p className="mt-3 text-xs text-danger inline-flex items-center gap-1">
-              <AlertCircle className="h-3 w-3" /> Error al conectar{flashReason ? ` — ${flashReason}` : ''}
+              <AlertCircle className="h-3 w-3" /> Error al conectar{flashReason ? `: ${flashReason}` : ''}
             </p>
           )}
           {error && <p className="mt-3 text-xs text-danger">{error}</p>}

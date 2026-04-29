@@ -68,7 +68,7 @@ export default function CashRegisterToggle({ initialEnabled }: Props) {
               </h2>
               <p className="text-xs text-ink-3 mt-0.5">
                 {enabled
-                  ? 'Activo — abre y cierra caja con cuadre de efectivo y datáfono.'
+                  ? 'Activo. Abre y cierra caja con cuadre de efectivo y datáfono.'
                   : 'Apertura/cierre del día con efectivo y datáfono.'}
               </p>
             </div>

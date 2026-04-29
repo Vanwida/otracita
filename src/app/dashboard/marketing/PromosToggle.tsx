@@ -81,7 +81,7 @@ export default function PromosToggle({ initialEnabled }: Props) {
           {enabled && (
             <ul className="mt-3 space-y-1 text-xs text-ink-2">
               <li>• Solo se notifica a clientes con ≥3 visitas en últimos 90 días.</li>
-              <li>• Máx 1 promo / cliente / 7 días — no se satura a nadie.</li>
+              <li>• Máx 1 promo / cliente / 7 días, no se satura a nadie.</li>
               <li>• Push si tienen la app instalada, WhatsApp si no.</li>
               <li>• Tú aplicas el descuento manualmente al cobrar.</li>
             </ul>

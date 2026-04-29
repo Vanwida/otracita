@@ -310,7 +310,7 @@ function ModalShell({
 }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4" onClick={onClose}>
       <div
         className="bg-surface border border-line rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -620,7 +620,7 @@ function CloseCashModal({
 
         <div>
           <label className="text-[11px] font-medium text-ink-2">
-            Total datáfono / TPV (€) <span className="text-ink-3">— opcional</span>
+            Total datáfono / TPV (€) <span className="text-ink-3">(opcional)</span>
           </label>
           <input
             type="number"

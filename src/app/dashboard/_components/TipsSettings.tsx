@@ -100,7 +100,7 @@ export default function TipsSettings({ initial }: Props) {
           <p className="text-sm text-ink-2 mt-1">
             30 min después de cada corte, el bot pregunta al cliente qué tal ha ido y, si
             quiere, le ofrece dejar propina por tarjeta. Tú recibes ambas cosas: la valoración
-            (anónima para el cliente) y la propina al 100 % — sin comisión de otracita.
+            (anónima para el cliente) y la propina al 100 %, sin comisión de otracita.
           </p>
         </div>
         <label className="inline-flex items-center gap-2 shrink-0 cursor-pointer">
@@ -119,8 +119,8 @@ export default function TipsSettings({ initial }: Props) {
         <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-ink-2 flex items-start gap-2">
           <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
           <span>
-            Para recibir propinas por tarjeta, primero activa "Cobros online" arriba. Es el
-            mismo Stripe — una sola verificación cubre ambas cosas.
+            Para recibir propinas por tarjeta, primero activa &ldquo;Cobros online&rdquo; arriba. Es el
+            mismo Stripe: una sola verificación cubre ambas cosas.
           </span>
         </div>
       )}

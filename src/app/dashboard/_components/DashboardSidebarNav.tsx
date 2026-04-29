@@ -51,12 +51,12 @@ export default function DashboardSidebarNav({ variant }: Props) {
           <Link
             key={href}
             href={href}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 transition-colors ${
-              active ? 'text-ink' : 'text-ink-3 hover:text-ink'
+            className={`flex flex-col items-center justify-center gap-1 min-h-[48px] px-3 py-1.5 transition-colors ${
+              active ? 'text-ink' : 'text-ink-2 hover:text-ink'
             }`}
           >
-            <Icon className="h-5 w-5" />
-            <span className="text-[10px] font-medium">{label}</span>
+            <Icon className="h-5 w-5" aria-hidden="true" />
+            <span className="text-[11px] font-medium leading-none">{label}</span>
           </Link>
         )
       })}

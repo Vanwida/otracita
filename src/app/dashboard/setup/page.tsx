@@ -576,10 +576,10 @@ export default function SetupPage() {
                 Facturación
               </h2>
               <p className="text-sm text-ink-2 mt-1">
-                Emite tickets o facturas automáticas con cada cita confirmada —
+                Emite tickets o facturas automáticas con cada cita confirmada,
                 con numeración legal, cálculo de IVA y cumpliendo{" "}
                 <strong>VeriFactu</strong> (obligatorio desde julio 2027).
-                Opcional — puedes activarlo después.
+                Opcional: puedes activarlo después.
               </p>
             </div>
 
@@ -607,8 +607,8 @@ export default function SetupPage() {
                 <div className="bg-warning/5 border border-warning/20 rounded-lg p-3 text-xs text-ink-2 flex items-start gap-2">
                   <Shield className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                   <span>
-                    Datos obligatorios según Real Decreto 1619/2012 art. 6 —
-                    todos deben estar para emitir facturas legalmente.
+                    Datos obligatorios según Real Decreto 1619/2012 art. 6.
+                    Todos deben estar para emitir facturas legalmente.
                   </span>
                 </div>
 
@@ -705,13 +705,13 @@ export default function SetupPage() {
             <ReviewSection title="Facturación" icon={Receipt}>
               {invoicingEnabled ? (
                 <>
-                  <ReviewItem label="Estado" value="Activada — VeriFactu" />
+                  <ReviewItem label="Estado" value="Activada (VeriFactu)" />
                   <ReviewItem label="Razón social" value={fiscalName} />
                   <ReviewItem label="NIF" value={fiscalNif} />
                   <ReviewItem label="IVA" value={`${ivaRate}%`} />
                 </>
               ) : (
-                <ReviewItem label="Estado" value="Desactivada — puedes activarla después" />
+                <ReviewItem label="Estado" value="Desactivada (puedes activarla después)" />
               )}
             </ReviewSection>
 

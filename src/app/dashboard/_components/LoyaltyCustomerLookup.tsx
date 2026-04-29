@@ -299,7 +299,7 @@ function LoadedView({
                   <span className="text-ink-2">{reasonLabel(row.reason)}</span>
                   {row.note && (
                     <span className="text-ink-3 text-xs ml-2 italic truncate">
-                      — {row.note}
+                      · {row.note}
                     </span>
                   )}
                   <div className="text-xs text-ink-3">{formatDate(row.createdAt)}</div>
@@ -356,7 +356,7 @@ function StampsCanje({
           className="mt-3 rounded-lg bg-brand hover:bg-brand-strong text-brand-ink px-4 py-2 text-sm font-semibold disabled:opacity-60 inline-flex items-center gap-2"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-          Canjear — <RewardLabel reward={progress.reward} />
+          Canjear: <RewardLabel reward={progress.reward} />
         </button>
       )}
     </div>
@@ -395,7 +395,7 @@ function PointsCanje({
           >
             <span className="text-sm">
               <RewardLabel reward={t.reward} />{' '}
-              <span className="text-ink-3">— {t.pointsCost} pts</span>
+              <span className="text-ink-3">· {t.pointsCost} pts</span>
             </span>
             <button
               type="button"

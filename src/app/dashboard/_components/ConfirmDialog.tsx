@@ -121,7 +121,7 @@ export function ConfirmDialogHost() {
 
   const content = (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_120ms_ease-out]"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[var(--color-scrim-strong)] backdrop-blur-sm animate-[fadeIn_120ms_ease-out]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"

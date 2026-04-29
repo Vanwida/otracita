@@ -218,8 +218,8 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
               <h3 className="text-sm font-semibold text-ink">Granularidad de los huecos</h3>
               <p className="text-xs text-ink-2 mt-1 mb-3">
                 Cada cuántos minutos ofrecemos un posible inicio de cita. 15 min
-                (recomendado) rellena micro-huecos y maximiza conversión —
-                nunca ofreceremos un slot que no quepa entero.
+                (recomendado) rellena micro-huecos y maximiza conversión.
+                Nunca ofreceremos un slot que no quepa entero.
               </p>
               <div className="grid grid-cols-3 gap-2 max-w-md">
                 {([15, 30, 45] as const).map((m) => (

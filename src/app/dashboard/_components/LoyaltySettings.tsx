@@ -124,7 +124,7 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
             active={mode === 'stamps'}
             onSelect={() => setMode('stamps')}
             title="Tarjeta de sellos"
-            hint='"Al 10º corte, uno gratis" — 1 visita = 1 sello'
+            hint='"Al 10º corte, uno gratis". 1 visita = 1 sello.'
           />
           <ModeCard
             active={mode === 'points'}

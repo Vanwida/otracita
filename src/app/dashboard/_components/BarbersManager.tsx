@@ -515,7 +515,7 @@ function ReassignModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-[var(--color-scrim-strong)] backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-xl bg-surface rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-start gap-3 p-5 border-b border-line">
           <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
@@ -725,7 +725,7 @@ function BarberPhotoUpload({
           <User className="h-8 w-8 text-ink-3" />
         )}
         {uploading && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+          <div className="absolute inset-0 bg-[var(--color-scrim)] flex items-center justify-center">
             <Loader2 className="h-5 w-5 text-white animate-spin" />
           </div>
         )}

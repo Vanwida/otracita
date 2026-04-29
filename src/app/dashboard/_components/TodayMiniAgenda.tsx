@@ -164,7 +164,7 @@ function BookingRow({ booking }: { booking: MiniBooking }) {
         <span className="shrink-0 text-[10px] uppercase tracking-widest text-success font-semibold">Hecha</span>
       )}
       {isNoShow && (
-        <span className="shrink-0 text-[10px] uppercase tracking-widest text-danger font-semibold">No-show</span>
+        <span className="shrink-0 text-[10px] uppercase tracking-widest text-danger font-semibold">No vino</span>
       )}
     </li>
   )

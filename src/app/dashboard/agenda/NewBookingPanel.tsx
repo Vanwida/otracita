@@ -126,7 +126,7 @@ export default function NewBookingPanel({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/20 lg:hidden"
+            className="fixed inset-0 z-40 bg-[var(--color-scrim-light)] lg:hidden"
           />
 
           <motion.div

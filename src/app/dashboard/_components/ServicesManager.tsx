@@ -98,7 +98,7 @@ export default function ServicesManager({ initial }: Props) {
 
       <p className="text-xs text-ink-3">
         Marca con <Star className="h-3 w-3 inline-block -mt-0.5" /> hasta {MAX_FEATURED} servicios
-        destacados — son los que el cliente verá primero en tu página pública
+        destacados. Son los que el cliente verá primero en tu página pública
         ({featuredCount}/{MAX_FEATURED} activos).
       </p>
 
@@ -117,7 +117,7 @@ export default function ServicesManager({ initial }: Props) {
               <textarea
                 value={editDraft.description || ''}
                 onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))}
-                placeholder="Descripción (opcional) — ej. Corte clásico a máquina y tijera, acabado con toalla caliente."
+                placeholder="Descripción (opcional). Ej.: Corte clásico a máquina y tijera, acabado con toalla caliente."
                 rows={2}
                 maxLength={240}
                 className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none resize-none"
@@ -176,7 +176,7 @@ export default function ServicesManager({ initial }: Props) {
                   svc.featured
                     ? 'Quitar destacado'
                     : featuredCount >= MAX_FEATURED
-                    ? `Ya tienes ${MAX_FEATURED} destacados — quita uno para activar este`
+                    ? `Ya tienes ${MAX_FEATURED} destacados. Quita uno para activar este.`
                     : 'Marcar como destacado'
                 }
                 disabled={!svc.featured && featuredCount >= MAX_FEATURED}

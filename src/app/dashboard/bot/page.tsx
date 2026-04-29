@@ -180,7 +180,7 @@ export default async function BotPage() {
         <Card icon={Bell} title="Recordatorio día antes" pending>
           <p className="text-sm text-ink-2 mb-3">
             El bot envía un WhatsApp el día antes de cada cita confirmada. Personaliza el
-            texto si quieres — placeholders: <code className="text-xs bg-overlay px-1 rounded">{'{name}'}</code>,{' '}
+            texto si quieres. Placeholders: <code className="text-xs bg-overlay px-1 rounded">{'{name}'}</code>,{' '}
             <code className="text-xs bg-overlay px-1 rounded">{'{service}'}</code>,{' '}
             <code className="text-xs bg-overlay px-1 rounded">{'{time}'}</code>,{' '}
             <code className="text-xs bg-overlay px-1 rounded">{'{barber}'}</code>
@@ -200,7 +200,7 @@ export default async function BotPage() {
             Cuando un cliente te da <strong>5 estrellas</strong> en el follow-up del WhatsApp,
             el bot le invita a dejarte reseña en Google con este enlace.
             <span className="block mt-1 text-ink-3">
-              Solo en valoraciones de 5★ — un 4★ puede esconder feedback tibio que no queremos amplificar.
+              Solo en valoraciones de 5★. Un 4★ puede esconder feedback tibio que no queremos amplificar.
             </span>
           </p>
           <input

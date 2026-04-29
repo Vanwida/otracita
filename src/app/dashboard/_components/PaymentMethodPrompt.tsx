@@ -39,7 +39,7 @@ export default function PaymentMethodPrompt({ open, onClose, onPick, subtitle, p
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
       onClick={() => !pending && onClose()}
     >
       <div

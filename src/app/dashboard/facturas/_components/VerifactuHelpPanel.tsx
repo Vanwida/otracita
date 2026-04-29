@@ -24,13 +24,7 @@ export default function VerifactuHelpPanel() {
   return (
     <section className="mt-6 bg-surface border border-line rounded-2xl overflow-hidden">
       {/* ─── Hero ────────────────────────────────────────────────────── */}
-      <div
-        className="relative px-5 md:px-7 py-5 md:py-6"
-        style={{
-          background:
-            'linear-gradient(135deg, rgba(201,101,60,0.06) 0%, rgba(94,139,107,0.06) 100%)',
-        }}
-      >
+      <div className="relative px-5 md:px-7 py-5 md:py-6 bg-brand-softer/40">
         <div className="flex items-start gap-3">
           <div className="h-10 w-10 rounded-xl bg-brand-softer border border-brand/20 flex items-center justify-center shrink-0">
             <Shield className="h-5 w-5 text-brand" />
@@ -41,7 +35,7 @@ export default function VerifactuHelpPanel() {
             </h2>
             <p className="text-sm text-ink-2 mt-1 max-w-2xl leading-relaxed">
               otracita es un sistema de facturación compatible con <strong>VeriFactu</strong>{' '}
-              (RD 1007/2023) — la normativa anti-fraude que todos los autónomos tendrán
+              (RD 1007/2023), la normativa anti-fraude que todos los autónomos tendrán
               que adoptar antes del <strong>1 de julio de 2027</strong>. Tú ya lo cumples
               desde hoy.
             </p>
@@ -101,7 +95,7 @@ export default function VerifactuHelpPanel() {
               verificarla escaneando el QR.
             </StateRow>
             <StateRow status="pending">
-              Aún no enviada a Hacienda. Normal en los primeros segundos tras emitir —
+              Aún no enviada a Hacienda. Normal en los primeros segundos tras emitir;
               el envío se procesa automáticamente.
             </StateRow>
             <StateRow status="accepted_with_errors">
@@ -114,7 +108,7 @@ export default function VerifactuHelpPanel() {
             </StateRow>
             <StateRow status="error">
               Fallo técnico (red, mantenimiento Hacienda). Reintentamos solos con
-              espera progresiva — no tienes que hacer nada.
+              espera progresiva. No tienes que hacer nada.
             </StateRow>
             <StateRow status={null}>
               Factura emitida antes de activar VeriFactu. Sigue siendo legal bajo la

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Bot, Clock, Copy, ExternalLink } from 'lucide-react'
+import { Bot, Check, Clock, Copy, ExternalLink } from 'lucide-react'
 import BotStatusCopyButton from './BotStatusCopyButton'
 
 // -----------------------------------------------------------------------------
@@ -66,8 +66,8 @@ export default function BotActivationStatus({
             </span>
           </div>
           <p className="text-sm text-ink-2 mt-1 leading-relaxed">
-            Estamos conectando tu número con Meta WhatsApp — trámite técnico que
-            hacemos nosotros. Te escribimos cuando el bot pueda atender a tus
+            Estamos conectando tu número con Meta WhatsApp. Es un trámite técnico
+            que hacemos nosotros. Te avisamos cuando el bot pueda atender a tus
             clientes (normalmente 24-48h).
           </p>
         </div>
@@ -80,7 +80,7 @@ export default function BotActivationStatus({
         </p>
         <ul className="space-y-1.5 text-sm text-ink-2">
           <li className="flex items-start gap-2">
-            <span className="text-success shrink-0">✓</span>
+            <Check className="h-4 w-4 text-success shrink-0 mt-0.5" aria-hidden="true" />
             <span>
               Compartir tu link público para que los clientes reserven desde la web
               {publicUrl && (
@@ -91,11 +91,11 @@ export default function BotActivationStatus({
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-success shrink-0">✓</span>
+            <Check className="h-4 w-4 text-success shrink-0 mt-0.5" aria-hidden="true" />
             <span>Gestionar tu agenda desde el dashboard</span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-success shrink-0">✓</span>
+            <Check className="h-4 w-4 text-success shrink-0 mt-0.5" aria-hidden="true" />
             <span>Emitir facturas y tickets automáticos</span>
           </li>
         </ul>

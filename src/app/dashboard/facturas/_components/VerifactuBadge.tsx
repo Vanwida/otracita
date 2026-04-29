@@ -47,7 +47,7 @@ function styleFor(status: VerifactuStatus): Style {
         label: 'Registrada',
         bgClass: 'bg-success/10 border border-success/25',
         textClass: 'text-success',
-        title: 'Registrada en Hacienda — el QR es verificable por el cliente',
+        title: 'Registrada en Hacienda. El QR es verificable por el cliente.',
       }
     case 'accepted_with_errors':
       return {

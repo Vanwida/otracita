@@ -48,7 +48,7 @@ export default async function FidelidadPage() {
           Tarjeta de fidelización
         </h1>
         <p className="text-ink-2">
-          Premia a tus clientes recurrentes. Tú eliges las reglas — al décimo
+          Premia a tus clientes recurrentes. Tú eliges las reglas: al décimo
           corte, puntos por euro gastado, lo que funcione en tu barbería.
         </p>
       </div>

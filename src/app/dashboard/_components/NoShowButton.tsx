@@ -45,7 +45,7 @@ export default function NoShowButton({ bookingId, initiallyMarked = false }: { b
         onClick={() => setState('confirm')}
         className="text-xs font-medium text-ink-2 hover:text-danger border border-line hover:border-danger/30 rounded-lg px-3 py-1.5 transition-colors"
       >
-        No Show
+        No vino
       </button>
     )
   }
