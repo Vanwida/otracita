@@ -124,3 +124,13 @@ export function recordCheckout(input: RecordCheckoutInput): Promise<RecordChecko
 export function logout(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>('/api/app/mobile/logout', { method: 'POST' })
 }
+
+export interface SumupCredentialsResponse {
+  accessToken: string
+  affiliateKey: string
+  merchantCode: string
+}
+
+export function getSumupCredentials(): Promise<SumupCredentialsResponse> {
+  return request<SumupCredentialsResponse>('/api/app/mobile/sumup/credentials')
+}

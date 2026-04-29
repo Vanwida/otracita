@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
-import { recordCheckout, ApiError } from '../lib/api'
+import {
+  recordCheckout,
+  getSumupCredentials,
+  ApiError,
+} from '../lib/api'
 import { SumupTapToPay, isNativeIos } from '../lib/sumup-bridge'
 
 // -----------------------------------------------------------------------------
 // Checkout — pantalla full-screen del cobro Tap to Pay.
 //
-// Flow:
-//   1. Recibe en location.state: amountCents, bookingId?, subtitle?
-//   2. Llama al SDK nativo (SumupTapToPay.checkout)
-//   3. SDK procesa Tap to Pay (UI nativa de Apple aparece)
-//   4. SDK devuelve resultado → llamamos /api/app/mobile/checkout/record
-//   5. Mostramos pantalla de éxito o error
+// Flujo (iOS nativo):
+//   1. Pide al backend el access token OAuth de SumUp del barbero.
+//   2. SumupTapToPay.loginWithToken(accessToken) si no había sesión SumUp.
+//   3. SumupTapToPay.isAvailable() — si !available, error legible.
+//                                     si !activated → activate() (Apple ID
+//                                     se enlaza con la cuenta SumUp).
+//   4. SumupTapToPay.checkout({ amount, title, foreignTransactionId }) →
+//      Apple muestra la UI nativa de Tap to Pay y procesa el cobro.
+//   5. Si success → POST /api/app/mobile/checkout/record con el
+//      transactionCode para cerrar booking + caja + factura.
 //
-// En web (dev sin iOS nativo) → mock que simula éxito tras 3s para
-// poder probar UI sin Xcode.
+// En web (dev) → mock que simula éxito tras 3s.
 // -----------------------------------------------------------------------------
 
 interface CheckoutState {
@@ -28,9 +35,6 @@ type Phase =
   | { kind: 'awaiting' }
   | { kind: 'success'; amountCents: number }
   | { kind: 'error'; message: string }
-
-const ACCESS_TOKEN_REQUIRED_MSG =
-  'Esta versión necesita acceder al token SumUp del backend para Tap to Pay. Configura el plugin nativo y vuelve a intentar.'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
@@ -52,7 +56,7 @@ export function CheckoutPage() {
 
   async function runCheckout(s: CheckoutState) {
     try {
-      // En dev web, simulamos éxito tras 3s para iterar UI sin Xcode.
+      // Dev mock — sin iOS nativo simulamos éxito tras 3s para iterar UI.
       if (!isNativeIos()) {
         await new Promise((r) => setTimeout(r, 3000))
         const fakeTxId = `web-${Date.now()}`
@@ -68,37 +72,67 @@ export function CheckoutPage() {
         return
       }
 
-      // En iOS nativo: el plugin necesita el access_token de SumUp + affiliate
-      // key. Esos valores los expone el backend via endpoint dedicado (futuro
-      // /api/app/mobile/sumup/checkout-credentials que devuelve token+affKey
-      // por sesión móvil). Por ahora marcamos esto como TODO claro.
-      setPhase({ kind: 'error', message: ACCESS_TOKEN_REQUIRED_MSG })
+      // iOS nativo — flujo real.
+      // 1) Obtener access token SumUp (refrescado en backend si caducó).
+      const creds = await getSumupCredentials()
 
-      // Pseudocódigo de la integración real (a completar cuando esté el plugin):
-      //
-      // const creds = await getSumupCheckoutCredentials() // backend
-      // const result = await SumupTapToPay.checkout({
-      //   accessToken: creds.accessToken,
-      //   affiliateKey: creds.affiliateKey,
-      //   amount: s.amountCents / 100,
-      //   currency: 'EUR',
-      //   title: s.subtitle ?? 'otracita',
-      //   foreignTransactionId: crypto.randomUUID(),
-      // })
-      // if (!result.success) {
-      //   setPhase({ kind: 'error', message: result.additionalInfo ?? 'El cobro falló' })
-      //   return
-      // }
-      // await recordCheckout({
-      //   sumupTransactionId: result.sumupTransactionId!,
-      //   status: 'SUCCESSFUL',
-      //   amountCents: s.amountCents,
-      //   bookingId: s.bookingId,
-      //   reference: result.transactionCode,
-      // })
-      void SumupTapToPay // silencia unused import en el dev mock
+      // 2) Login en SDK SumUp si todavía no había sesión.
+      const { loggedIn } = await SumupTapToPay.isLoggedIn()
+      if (!loggedIn) {
+        const login = await SumupTapToPay.loginWithToken({ accessToken: creds.accessToken })
+        if (!login.success) {
+          setPhase({ kind: 'error', message: 'No se pudo iniciar sesión en SumUp.' })
+          return
+        }
+      }
+
+      // 3) Comprobar disponibilidad de Tap to Pay y activar si falta.
+      const availability = await SumupTapToPay.isAvailable()
+      if (!availability.available) {
+        setPhase({
+          kind: 'error',
+          message:
+            'Tap to Pay no está disponible en este iPhone o cuenta SumUp. Necesitas iPhone XS o superior con iOS 16.4+ y una cuenta SumUp con Tap to Pay habilitado.',
+        })
+        return
+      }
+      if (!availability.activated) {
+        const act = await SumupTapToPay.activate()
+        if (!act.activated) {
+          setPhase({ kind: 'error', message: 'Activación de Tap to Pay cancelada.' })
+          return
+        }
+      }
+
+      // 4) Procesar el cobro.
+      const foreignId = crypto.randomUUID()
+      const result = await SumupTapToPay.checkout({
+        amount: s.amountCents / 100,
+        currency: 'EUR',
+        title: s.subtitle ?? 'otracita',
+        foreignTransactionId: foreignId,
+      })
+
+      if (!result.success) {
+        setPhase({
+          kind: 'error',
+          message: result.additionalInfo ?? 'El cobro no se completó.',
+        })
+        return
+      }
+
+      // 5) Registrar el cobro en backend (booking → completed, caja, factura).
+      await recordCheckout({
+        sumupTransactionId: result.transactionCode ?? foreignId,
+        status: 'SUCCESSFUL',
+        amountCents: s.amountCents,
+        bookingId: s.bookingId,
+        reference: result.transactionCode,
+      })
+      setPhase({ kind: 'success', amountCents: s.amountCents })
+      setTimeout(() => navigate('/', { replace: true }), 2500)
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Error inesperado'
+      const msg = err instanceof ApiError ? err.message : 'Error inesperado en el cobro.'
       setPhase({ kind: 'error', message: msg })
     }
   }
