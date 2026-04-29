@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
-import { Inter, Fraunces } from "next/font/google";
+import { IBM_Plex_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
+// IBM Plex Sans → body / labels / data. Cubre castellano (latin-ext) y
+// trae tabular-nums por defecto. Sustituye a Inter para evitar el aire
+// "Vercel template" que comentaba PRODUCT.md.
+const plex = IBM_Plex_Sans({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-sans",
 });
 
 const fraunces = Fraunces({
@@ -53,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${inter.variable} ${fraunces.variable} scroll-smooth`}
+      className={`${plex.variable} ${fraunces.variable} scroll-smooth`}
     >
       <body className="bg-[var(--color-canvas)] text-[var(--color-ink)] antialiased selection:bg-[var(--color-brand)]/20 selection:text-[var(--color-brand-strong)]">
         {children}

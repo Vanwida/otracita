@@ -55,7 +55,28 @@
 
   /* ─── Typography ─── */
   --font-display: var(--font-fraunces), Georgia, serif;
-  --font-body:    var(--font-inter), system-ui, sans-serif;
+  --font-body:    var(--font-sans), system-ui, sans-serif;
+
+  /* ─── Scrim (modal/panel backdrops) ─── */
+  /* PRODUCT.md / DESIGN.md: las sombras del sistema son cálidas (espresso-
+   * tinted), no negras puras. Estos tokens reemplazan a bg-black/* en todos
+   * los modales y drawers. Tres opacidades para drawer ligero (20%),
+   * modal estándar (40%) y modal full-blur (60%). */
+  --color-scrim:        rgba(42, 29, 20, 0.40);
+  --color-scrim-light:  rgba(42, 29, 20, 0.20);
+  --color-scrim-strong: rgba(42, 29, 20, 0.60);
+}
+
+/* Foco accesible global. PRODUCT.md compromete WCAG AAA donde sea posible:
+ * "Foco visible siempre. Outline 2px, no `outline:none` jamás." Esta regla
+ * garantiza que cualquier elemento interactivo tiene un ring de 2px sobre
+ * brand al recibir foco vía teclado, sin necesidad de declararlo
+ * elemento-por-elemento. Los componentes que necesiten override pueden
+ * usar :focus-visible:outline-none. */
+*:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: inherit;
 }
 
 html {
