@@ -34,7 +34,16 @@ export const clients = pgTable('clients', {
   googleCalendarConnected: boolean('google_calendar_connected').default(false),
   // Status
   status: text('status').notNull().default('pending'), // pending, onboarding, active, paused, cancelled
-  plan: text('plan').notNull().default('chatbot'), // chatbot, ads, full
+  plan: text('plan').notNull().default('chatbot'), // LEGACY chatbot/ads/full — kept for compat, prefer `tier` below
+  // New tier system per PRODUCT.md (Solo gratis / Pro 49€ / Estudio 99€).
+  // Backfill rule: chatbot→pro, full→estudio, anything else→solo.
+  // `solo` is the default for new signups (free tier, no Stripe).
+  tier: text('tier').notNull().default('solo'), // solo | pro | estudio
+  // null when on `solo` (no Stripe). monthly | annual otherwise.
+  billingInterval: text('billing_interval'), // monthly | annual | null
+  // Trial window. Set on Pro signup (14 días). null on Solo y Estudio.
+  trialStartedAt: timestamp('trial_started_at', { withTimezone: true }),
+  trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
   // Stripe (platform subscription — what the barber pays otracita)
   stripeCustomerId: text('stripe_customer_id'),
   stripeSubscriptionId: text('stripe_subscription_id'),
@@ -253,10 +262,15 @@ export const subscriptions = pgTable('subscriptions', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id').references(() => clients.id).notNull(),
   stripeSubscriptionId: text('stripe_subscription_id').notNull(),
-  plan: text('plan').notNull(), // chatbot, ads, full
+  plan: text('plan').notNull(), // LEGACY chatbot/ads/full
+  // Mirrors clients.tier — useful for historical record (a client could have
+  // upgraded/downgraded over time).
+  tier: text('tier'), // solo | pro | estudio
+  billingInterval: text('billing_interval'), // monthly | annual
   amount: integer('amount').notNull(), // in cents
   currency: text('currency').default('eur'),
   status: text('status').notNull(), // active, past_due, cancelled, trialing
+  trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
   currentPeriodStart: timestamp('current_period_start'),
   currentPeriodEnd: timestamp('current_period_end'),
   cancelledAt: timestamp('cancelled_at'),
@@ -358,7 +372,20 @@ export const waitlist = pgTable('waitlist', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-// Leads from the website (people who submit the contact form but haven't paid yet)
+// Leads — pipeline de barberías a las que ofrecer otracita. Se llenan por
+// tres vías: formulario público de la web (`/api/leads`), entrada manual
+// desde el admin (`/admin/leads/nuevo`), o referrals importados a mano.
+//
+// `notes` es un cuaderno libre del admin: lo que se habló por teléfono,
+// objeciones, contexto. Se acumula, no se sobreescribe convencionalmente
+// (el admin puede prepender la fecha cada vez que añade).
+//
+// `nextActionAt` programa el próximo follow-up. Cuando vence (o está hoy)
+// aparece como alerta en /admin home y como badge rojo en el sidebar.
+//
+// `convertedToClientId` cierra el loop: si el lead acaba pagando o se le
+// crea cuenta manual, se enlaza al row de `clients`. Trazabilidad completa
+// del funnel sin perder el contexto original (mensaje, fuente, fechas).
 export const leads = pgTable('leads', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
@@ -366,9 +393,34 @@ export const leads = pgTable('leads', {
   phone: text('phone').notNull(),
   email: text('email'),
   message: text('message'),
-  source: text('source').default('website'), // website, whatsapp, referral
-  status: text('status').default('new'), // new, contacted, converted, lost
+  source: text('source').default('website'),                                 // website | whatsapp | referral | manual | instagram | other
+  status: text('status').default('new'),                                     // new | contacted | converted | lost
+  notes: text('notes'),                                                      // cuaderno libre del admin
+  nextActionAt: timestamp('next_action_at', { withTimezone: true }),         // próximo follow-up programado
+  convertedToClientId: uuid('converted_to_client_id').references(() => clients.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Audit log — traza de toda acción operativa que un admin ejecuta desde el
+// panel. La pregunta operativa habitual es "¿quién pausó al cliente X y
+// cuándo?". Sin esta tabla, la respuesta vive en logs aplicación que
+// caducan. Con ella, queda en DB para siempre.
+//
+// `intent` matchea el `intent` string que cada server action ya usa para
+// rutar — así pasamos el mismo identificador al log sin reinventar enums.
+// `targetType + targetId` apunta al objeto afectado (`client:<uuid>`,
+// `lead:<uuid>`). `summary` es texto humano corto para mostrar.
+// `metadata` admite jsonb si la acción merece guardar antes/después.
+export const adminActions = pgTable('admin_actions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  adminEmail: text('admin_email').notNull(),
+  intent: text('intent').notNull(),
+  targetType: text('target_type').notNull(),                                 // 'client' | 'lead' | 'invoice' | 'system'
+  targetId: text('target_id'),
+  summary: text('summary').notNull(),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Observability log for every Booksy inbound email parsed by /api/email/inbound.
@@ -890,6 +942,61 @@ export const mobileSessions = pgTable('mobile_sessions', {
   deviceLabel: text('device_label'),                                       // "iPhone 14 Pro de Reni"
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),              // null = sesión activa
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// -----------------------------------------------------------------------------
+// Finanzas — módulo Pro+ de control financiero.
+//
+// Tres tablas independientes que alimentan /dashboard/finanzas:
+//   - expenses: gastos variables diarios (proveedor, café, producto puntual).
+//   - fixed_costs: costes recurrentes mensuales (alquiler, Spotify, gestor).
+//   - owner_withdrawals: retiradas de caja a bolsillo del dueño (autónomo).
+//
+// Todos los importes en cents. El summary del módulo cruza estas tablas con
+// bookings.price (que está en EUROS, ×100 para normalizar) para calcular
+// beneficio bruto, IVA a pagar e IRPF estimado.
+// -----------------------------------------------------------------------------
+
+export const expenses = pgTable('expenses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  date: date('date').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  category: text('category').notNull().default('otro'),  // productos|suministros|publicidad|personal|nomina|otro
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const fixedCosts = pgTable('fixed_costs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  name: text('name').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  category: text('category').notNull().default('otro'),
+  activeFrom: date('active_from').notNull(),
+  active: boolean('active').default(true).notNull(),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const ownerWithdrawals = pgTable('owner_withdrawals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  date: date('date').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Ingresos manuales: efectivo, propinas, ventas de producto o cualquier ingreso
+// que el barbero quiere reflejar en sus cuentas pero que no pasa por bookings.
+export const manualIncomes = pgTable('manual_incomes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  date: date('date').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

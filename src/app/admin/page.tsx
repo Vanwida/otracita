@@ -1,250 +1,424 @@
-import { db } from "@/db"
-import { clients, leads, subscriptions, analytics } from "@/db/schema"
-import { eq, sql, count, sum } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
-import { Users, CreditCard, MessageCircle, Activity } from "lucide-react"
+export const dynamic = 'force-dynamic';
+
+import Link from 'next/link';
+import { db } from '@/db';
+import {
+  clients,
+  subscriptions,
+  analytics,
+  invoices,
+  leads,
+  bookings,
+  emailParseLog,
+} from '@/db/schema';
+import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import {
+  Users,
+  CreditCard,
+  MessageCircle,
+  TrendingUp,
+  ArrowRight,
+} from 'lucide-react';
+import {
+  PageHeader,
+  Section,
+  KpiCard,
+  KpiGrid,
+  AlertCard,
+  formatEur,
+} from './_components/AdminUI';
+
+/**
+ * Admin overview — el "command center". El objetivo de esta página NO es ser
+ * un dump de tablas, es responder a la pregunta "¿qué tengo que hacer hoy?".
+ *
+ * Top: bloque de alertas accionables (algo se rompió, algo caduca pronto).
+ * Centro: KPIs reales del negocio.
+ * Abajo: shortcuts grandes a cada subsección.
+ *
+ * Tablas (clientes, leads) tienen sus propias páginas — aquí no se duplican.
+ */
+
+const TOKEN_EXPIRY_DAYS = 7;
+const TRIAL_EXPIRY_DAYS = 7;
 
 export default async function AdminOverview() {
-  // Summary stats
-  const [totalClientsResult] = await db.select({ count: count() }).from(clients)
-  const [activeClientsResult] = await db.select({ count: count() }).from(clients).where(eq(clients.status, 'active'))
-  const [mrrResult] = await db.select({ total: sum(subscriptions.amount) }).from(subscriptions).where(eq(subscriptions.status, 'active'))
-  const [messagesResult] = await db.select({ total: sql<number>`coalesce(sum(${analytics.messagesReplied}), 0)` }).from(analytics)
+  const now = new Date();
+  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const tokenSoon = new Date(now);
+  tokenSoon.setDate(tokenSoon.getDate() + TOKEN_EXPIRY_DAYS);
+  const trialSoon = new Date(now);
+  trialSoon.setDate(trialSoon.getDate() + TRIAL_EXPIRY_DAYS);
+  const parserSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const totalClients = totalClientsResult?.count || 0
-  const activeClients = activeClientsResult?.count || 0
-  const mrr = Number(mrrResult?.total || 0) / 100 // cents to euros
-  const totalMessagesHandled = Number(messagesResult?.total || 0)
+  const [
+    activeClientsAgg,
+    onboardingCount,
+    mrrAgg,
+    msg24hAgg,
+    bookings24hCount,
+    pastDueCount,
+    trialsExpiringCount,
+    tokensExpiringCount,
+    parserFailures24h,
+    verifactuFailing,
+    newLeadsCount,
+    todayBookingsCount,
+  ] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        active: sql<number>`count(*) filter (where ${clients.status} = 'active')::int`,
+      })
+      .from(clients)
+      .then((r) => r[0] ?? { total: 0, active: 0 }),
 
-  // All clients with subscription info
-  const allClients = await db.select().from(clients).orderBy(clients.createdAt)
-  const allSubs = await db.select().from(subscriptions)
-  const allLeads = await db.select().from(leads).orderBy(leads.createdAt)
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(clients)
+      .where(eq(clients.status, 'pending'))
+      .then((r) => r[0]?.c ?? 0),
 
-  // Map subscriptions by clientId for quick lookup
-  const subsByClient = new Map<string, typeof allSubs[0]>()
-  for (const sub of allSubs) {
-    if (sub.status === 'active' || !subsByClient.has(sub.clientId)) {
-      subsByClient.set(sub.clientId, sub)
-    }
+    db
+      .select({
+        amount: sql<number>`coalesce(sum(${subscriptions.amount}), 0)::int`,
+      })
+      .from(subscriptions)
+      .where(eq(subscriptions.status, 'active'))
+      .then((r) => r[0]?.amount ?? 0),
+
+    db
+      .select({
+        received: sql<number>`coalesce(sum(${analytics.messagesReceived}), 0)::int`,
+        replied: sql<number>`coalesce(sum(${analytics.messagesReplied}), 0)::int`,
+      })
+      .from(analytics)
+      .where(gte(analytics.date, last24h))
+      .then((r) => r[0] ?? { received: 0, replied: 0 }),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(bookings)
+      .where(gte(bookings.createdAt, last24h))
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(subscriptions)
+      .where(eq(subscriptions.status, 'past_due'))
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(clients)
+      .where(
+        and(
+          isNotNull(clients.trialEndsAt),
+          gte(clients.trialEndsAt, now),
+          lte(clients.trialEndsAt, trialSoon),
+        ),
+      )
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(clients)
+      .where(
+        and(
+          eq(clients.status, 'active'),
+          isNotNull(clients.whatsappAccessToken),
+          isNotNull(clients.metaTokenExpiresAt),
+          lte(clients.metaTokenExpiresAt, tokenSoon),
+        ),
+      )
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(emailParseLog)
+      .where(
+        and(
+          gte(emailParseLog.receivedAt, parserSince),
+          inArray(emailParseLog.status, ['partial', 'failed', 'unmatched_client']),
+        ),
+      )
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(invoices)
+      .where(inArray(invoices.verifactuStatus, ['pending', 'rejected', 'accepted_with_errors', 'error']))
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(leads)
+      .where(eq(leads.status, 'new'))
+      .then((r) => r[0]?.c ?? 0),
+
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.date, now.toISOString().slice(0, 10)),
+          inArray(bookings.status, ['confirmed', 'completed']),
+        ),
+      )
+      .then((r) => r[0]?.c ?? 0),
+  ]);
+
+  // Leads con próxima acción vencida (o hoy) — alerta separada de "newLeads"
+  // porque son cosas distintas: new = falta primer contacto; due = follow-up
+  // ya programado que toca ejecutar.
+  const leadsDueCount = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(leads)
+    .where(and(isNotNull(leads.nextActionAt), lte(leads.nextActionAt, now)))
+    .then((r) => r[0]?.c ?? 0);
+
+  const mrrMonthlyCents = mrrAgg; // raw bruto — el normalizado vive en /billing
+  const replyRate = msg24hAgg.received === 0 ? null : msg24hAgg.replied / msg24hAgg.received;
+
+  // Alerts ordered by gravity. Empty alerts list = todo en verde.
+  const alerts: Array<{
+    tone: 'danger' | 'warning' | 'success';
+    title: string;
+    description: string;
+    href: string;
+    cta: string;
+  }> = [];
+
+  if (verifactuFailing > 0) {
+    alerts.push({
+      tone: 'danger',
+      title: `${verifactuFailing} factura${verifactuFailing === 1 ? '' : 's'} fuera de la cadena AEAT`,
+      description:
+        'Cada factura sin aceptar es una sanción potencial. Compliance VeriFactu no admite retraso.',
+      href: '/admin/verifactu',
+      cta: 'Ver VeriFactu',
+    });
   }
-
-  // Server action to update client status
-  async function updateClientStatus(formData: FormData) {
-    "use server"
-    const clientId = formData.get("clientId") as string
-    const newStatus = formData.get("newStatus") as string
-    if (!clientId || !newStatus) return
-
-    const updateData: Record<string, unknown> = { status: newStatus, updatedAt: new Date() }
-    if (newStatus === 'active') {
-      updateData.onboardedAt = new Date()
-    }
-
-    await db.update(clients).set(updateData).where(eq(clients.id, clientId))
-    revalidatePath("/admin")
+  if (pastDueCount > 0) {
+    alerts.push({
+      tone: 'danger',
+      title: `${pastDueCount} cobro${pastDueCount === 1 ? '' : 's'} en past_due`,
+      description: 'Stripe no consigue cobrar — contacta al barbero antes de que cancele Stripe la sub.',
+      href: '/admin/billing',
+      cta: 'Ver billing',
+    });
   }
-
-  const statusOptions = ['pending', 'onboarding', 'active', 'paused', 'cancelled']
+  if (tokensExpiringCount > 0) {
+    alerts.push({
+      tone: 'warning',
+      title: `${tokensExpiringCount} token Meta caduca${tokensExpiringCount === 1 ? '' : 'n'} esta semana`,
+      description: 'Rota el access token en Meta Business antes de que el bot deje de responder.',
+      href: '/admin/bot',
+      cta: 'Ver bot',
+    });
+  }
+  if (trialsExpiringCount > 0) {
+    alerts.push({
+      tone: 'warning',
+      title: `${trialsExpiringCount} trial${trialsExpiringCount === 1 ? '' : 's'} acaba${trialsExpiringCount === 1 ? '' : 'n'} en 7 días`,
+      description: 'Comprueba que tienen tarjeta guardada — son ingresos a punto de entrar (o de irse).',
+      href: '/admin/billing',
+      cta: 'Ver billing',
+    });
+  }
+  if (parserFailures24h > 0) {
+    alerts.push({
+      tone: 'warning',
+      title: `${parserFailures24h} fallo${parserFailures24h === 1 ? '' : 's'} del parser en 24h`,
+      description: 'Emails Booksy que no se han parseado bien. Cliente con doble-booking potencial.',
+      href: '/admin/email-health',
+      cta: 'Ver parser',
+    });
+  }
+  if (onboardingCount > 0) {
+    alerts.push({
+      tone: 'warning',
+      title: `${onboardingCount} cliente${onboardingCount === 1 ? '' : 's'} esperando onboarding`,
+      description: 'Pagaron pero todavía no están operativos. Completar setup Meta + Booksy.',
+      href: '/admin/onboarding',
+      cta: 'Ver onboarding',
+    });
+  }
+  if (leadsDueCount > 0) {
+    alerts.push({
+      tone: 'warning',
+      title: `${leadsDueCount} lead${leadsDueCount === 1 ? '' : 's'} con acción pendiente`,
+      description: 'Programaste un follow-up para hoy o antes — toca llamar / escribir.',
+      href: '/admin/leads?status=due',
+      cta: 'Ver pendientes',
+    });
+  }
+  if (newLeadsCount > 0) {
+    alerts.push({
+      tone: 'success',
+      title: `${newLeadsCount} lead${newLeadsCount === 1 ? '' : 's'} sin contactar`,
+      description: 'Leads que entraron por la web o referral. Cuanto antes los contactes, mejor conversión.',
+      href: '/admin/leads',
+      cta: 'Ver leads',
+    });
+  }
 
   return (
     <div className="p-8 md:p-12 max-w-7xl mx-auto relative z-10">
-      <div className="mb-12">
-        <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight mb-3 text-ink">
-          Panel de Control General
-        </h1>
-        <p className="text-ink-2 text-lg tracking-wide">
-          Administra todos los <span className="text-brand font-semibold">clientes activos</span> del SaaS y los leads entrantes.
-        </p>
-      </div>
+      <PageHeader
+        title="Inicio"
+        subtitle={
+          <span>
+            Comando otracita —{' '}
+            <span className="text-brand font-semibold">{activeClientsAgg.active}</span> activas de{' '}
+            <span className="text-brand font-semibold">{activeClientsAgg.total}</span> registradas.
+          </span>
+        }
+      />
 
-      {/* Summary Stats */}
-      <StatGrid>
-        <StatCard icon={<Users size={120} />} label="Total Clientes" value={totalClients.toString()} />
-        <StatCard icon={<Activity size={120} />} label="Clientes Activos" value={activeClients.toString()} />
-        <StatCard icon={<CreditCard size={120} />} label="MRR" value={`${mrr.toFixed(2)} EUR`} />
-        <StatCard
-          icon={<MessageCircle size={120} />}
-          label="Mensajes Gestionados"
-          value={totalMessagesHandled.toLocaleString('es-ES')}
-        />
-      </StatGrid>
+      {/* Acción hoy */}
+      <Section
+        title="Acción hoy"
+        description={alerts.length === 0 ? undefined : `${alerts.length} cosa${alerts.length === 1 ? '' : 's'} pidiendo atención.`}
+      >
+        {alerts.length === 0 ? (
+          <AlertCard
+            tone="success"
+            title="Todo en orden."
+            description="No hay alertas activas. Tokens al día, billing limpio, parser sano, cadena AEAT íntegra."
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {alerts.map((a) => (
+              <AlertCard key={a.title} {...a} />
+            ))}
+          </div>
+        )}
+      </Section>
 
-      {/* Clients Table */}
-      <div className="mb-16">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-ink-3 mb-5">
-          Clientes Registrados ({allClients.length})
-        </h2>
-        <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
-          <table className="min-w-full text-left text-sm text-ink-2">
-            <thead className="border-b border-line bg-overlay uppercase tracking-wider text-xs">
-              <tr>
-                <th className="px-6 py-4 font-bold text-ink-3">Negocio</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Dueño</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Email</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Teléfono</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Plan</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Suscripción</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Estado</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Creado</th>
-                <th className="px-6 py-4 font-bold text-ink-3 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {allClients.map((client) => {
-                const sub = subsByClient.get(client.id)
-                return (
-                  <tr key={client.id} className="hover:bg-overlay/50 transition-colors group">
-                    <td className="px-6 py-5 font-semibold text-ink">{client.businessName}</td>
-                    <td className="px-6 py-5 text-ink-2 font-medium">{client.ownerName}</td>
-                    <td className="px-6 py-5 text-xs text-ink-3">{client.email}</td>
-                    <td className="px-6 py-5 text-xs text-ink-3">{client.phone || '-'}</td>
-                    <td className="px-6 py-5 uppercase text-xs font-bold tracking-widest text-brand">{client.plan}</td>
-                    <td className="px-6 py-5 text-xs font-medium">
-                      {sub ? (
-                        <span className="text-success">{(sub.amount / 100).toFixed(2)} EUR/{sub.status}</span>
-                      ) : (
-                        <span className="text-ink-3">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-5">
-                      <StatusBadge status={client.status} />
-                    </td>
-                    <td className="px-6 py-5 text-xs text-ink-3">
-                      {client.createdAt ? new Date(client.createdAt).toLocaleDateString('es-ES') : '-'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <form action={updateClientStatus} className="flex items-center justify-center gap-3">
-                        <input type="hidden" name="clientId" value={client.id} />
-                        <select
-                          name="newStatus"
-                          defaultValue={client.status}
-                          className="rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors cursor-pointer"
-                        >
-                          {statusOptions.map(s => (
-                            <option key={s} value={s}>{s.toUpperCase()}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="submit"
-                          className="rounded-xl bg-brand text-brand-ink px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-brand-strong transition-colors"
-                        >
-                          Ok
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                )
-              })}
-              {allClients.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-ink-3 font-medium tracking-wider">
-                    No hay clientes registrados en el sistema.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* KPIs */}
+      <Section title="Métricas del negocio">
+        <KpiGrid cols={4}>
+          <KpiCard
+            icon={<Users size={120} />}
+            label="Clientes activos"
+            value={activeClientsAgg.active.toLocaleString('es-ES')}
+            sub={`${activeClientsAgg.total} totales`}
+          />
+          <KpiCard
+            icon={<CreditCard size={120} />}
+            label="MRR bruto"
+            value={formatEur(mrrMonthlyCents)}
+            tone="brand"
+            sub="suscripciones activas"
+          />
+          <KpiCard
+            icon={<MessageCircle size={120} />}
+            label="Mensajes 24h"
+            value={msg24hAgg.received.toLocaleString('es-ES')}
+            sub={
+              replyRate === null
+                ? 'sin tráfico aún'
+                : `reply rate ${(replyRate * 100).toFixed(0)}%`
+            }
+          />
+          <KpiCard
+            icon={<TrendingUp size={120} />}
+            label="Reservas 24h"
+            value={bookings24hCount.toLocaleString('es-ES')}
+            sub={`${todayBookingsCount} hoy en calendario`}
+          />
+        </KpiGrid>
+      </Section>
+
+      {/* Shortcuts grandes */}
+      <Section title="Ir a">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Shortcut
+            href="/admin/clients"
+            title="Clientes"
+            description="Búsqueda + filtros, métricas por tenant, edición individual."
+          />
+          <Shortcut
+            href="/admin/onboarding"
+            title="Onboarding"
+            description="Checklist de cada cliente pendiente. Activar cuando esté todo verde."
+            badge={onboardingCount > 0 ? onboardingCount : undefined}
+          />
+          <Shortcut
+            href="/admin/leads"
+            title="Leads"
+            description="Pipeline web + cold outreach. Nuevo lead, notas, próxima acción."
+            badge={newLeadsCount + leadsDueCount > 0 ? newLeadsCount + leadsDueCount : undefined}
+          />
+          <Shortcut
+            href="/admin/buscar"
+            title="Buscar"
+            description="Cross-entidad: teléfono, email, nº de factura, nombre…"
+          />
+          <Shortcut
+            href="/admin/billing"
+            title="Billing"
+            description="MRR, trials por vencer, past_due, churn, Stripe Connect."
+          />
+          <Shortcut
+            href="/admin/verifactu"
+            title="VeriFactu"
+            description="Compliance AEAT cross-tenant. Cadena, errores, eventos."
+            badge={verifactuFailing > 0 ? verifactuFailing : undefined}
+          />
+          <Shortcut
+            href="/admin/bot"
+            title="Bot WhatsApp"
+            description="Tokens Meta/SumUp, conversaciones stuck, volumen."
+            badge={tokensExpiringCount > 0 ? tokensExpiringCount : undefined}
+          />
+          <Shortcut
+            href="/admin/email-health"
+            title="Parser Booksy"
+            description="Tasa éxito, fallos recientes, reprocesar con LLM."
+            badge={parserFailures24h > 0 ? parserFailures24h : undefined}
+          />
+          <Shortcut
+            href="/admin/system"
+            title="Infraestructura"
+            description="Webhooks Stripe, push, sesiones móvil, tamaño de tablas."
+          />
         </div>
-      </div>
-
-      {/* Leads Table */}
-      <div>
-        <h2 className="text-sm font-bold uppercase tracking-widest text-ink-3 mb-5">
-          Leads Recientes ({allLeads.length})
-        </h2>
-        <div className="overflow-hidden rounded-2xl border border-line bg-surface">
-          <table className="min-w-full text-left text-sm text-ink-2">
-            <thead className="border-b border-line bg-overlay uppercase tracking-wider text-xs">
-              <tr>
-                <th className="px-6 py-4 font-bold text-ink-3">Nombre</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Negocio</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Teléfono</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Email</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Fuente</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Estado</th>
-                <th className="px-6 py-4 font-bold text-ink-3">Fecha</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {allLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-overlay/50 transition-colors">
-                  <td className="px-6 py-5 font-semibold text-ink">{lead.name || "Anónimo"}</td>
-                  <td className="px-6 py-5 text-ink-2 font-medium">{lead.businessName || "-"}</td>
-                  <td className="px-6 py-5 text-xs text-ink-3 font-mono tracking-wide">{lead.phone}</td>
-                  <td className="px-6 py-5 text-xs text-ink-3">{lead.email || "-"}</td>
-                  <td className="px-6 py-5 text-xs font-bold tracking-widest uppercase text-brand">{lead.source}</td>
-                  <td className="px-6 py-5">
-                    <StatusBadge status={lead.status || 'new'} />
-                  </td>
-                  <td className="px-6 py-5 text-xs text-ink-3">
-                    {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('es-ES') : '-'}
-                  </td>
-                </tr>
-              ))}
-              {allLeads.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-ink-3 font-medium tracking-wider">
-                    No hay leads detectados.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </Section>
     </div>
-  )
+  );
 }
 
-function StatGrid({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-16">
-      {children}
-    </div>
-  )
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
+function Shortcut({
+  href,
+  title,
+  description,
+  badge,
 }: {
-  icon: React.ReactNode
-  label: string
-  value: string
+  href: string;
+  title: string;
+  description: string;
+  badge?: number;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-line bg-surface p-6 transition-colors hover:border-brand">
-      <div className="absolute -right-4 -top-4 text-brand-softer pointer-events-none">{icon}</div>
-      <p className="relative z-10 text-xs font-bold uppercase tracking-widest text-ink-3 mb-3">{label}</p>
-      <span className="relative z-10 block font-display text-4xl md:text-5xl font-semibold text-ink">
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const normalizedStatus = status.toLowerCase()
-
-  const styles: Record<string, string> = {
-    active: 'bg-success/10 border-success/30 text-success',
-    pending: 'bg-warning/10 border-warning/30 text-warning',
-    onboarding: 'bg-brand-softer border-brand/30 text-brand-strong',
-    paused: 'bg-overlay border-line-strong text-ink-2',
-    cancelled: 'bg-danger/10 border-danger/30 text-danger',
-    new: 'bg-brand-softer border-brand/30 text-brand-strong',
-    contacted: 'bg-gold-soft border-gold/40 text-brand-strong',
-    converted: 'bg-success/10 border-success/30 text-success',
-    lost: 'bg-overlay border-line-strong text-ink-3',
-  }
-
-  const activeStyle = styles[normalizedStatus] || 'bg-overlay border-line-strong text-ink-2'
-
-  return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${activeStyle}`}>
-      {status}
-    </span>
-  )
+    <Link
+      href={href}
+      className="group flex flex-col gap-2 rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-brand hover:bg-canvas"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display text-lg font-semibold text-ink group-hover:text-brand transition-colors">
+          {title}
+        </h3>
+        {badge && badge > 0 ? (
+          <span className="inline-flex min-w-[1.5rem] h-6 items-center justify-center rounded-full bg-danger/10 border border-danger/30 px-2 text-xs font-bold text-danger">
+            {badge > 99 ? '99+' : badge}
+          </span>
+        ) : (
+          <ArrowRight className="h-4 w-4 text-ink-3 group-hover:text-brand transition-colors" />
+        )}
+      </div>
+      <p className="text-sm text-ink-2 leading-relaxed">{description}</p>
+    </Link>
+  );
 }

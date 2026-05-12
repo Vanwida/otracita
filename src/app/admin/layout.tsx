@@ -1,26 +1,32 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-import { auth } from "@/lib/auth/server"
-import { headers } from "next/headers"
-import { redirect } from "next/navigation"
-import Link from "next/link"
-import { Users, LayoutDashboard, LogOut, FileText, Activity, CheckSquare } from "lucide-react"
-import { Monogram } from "@/components/brand"
-import { isAdminUser } from "@/lib/auth/admin"
+import { auth } from '@/lib/auth/server';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { LogOut } from 'lucide-react';
+import { Monogram } from '@/components/brand';
+import { isAdminUser } from '@/lib/auth/admin';
+import { AdminSidebarNav } from './_components/AdminSidebarNav';
+import { getAdminNavBadges } from '@/lib/admin/nav-badges';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user) {
-    redirect("/login")
+    redirect('/login');
   }
 
   // Admin check — single source of truth in `@/lib/auth/admin`. Do NOT inline
   // the rule here again; drift between copies is what produced the original
   // `email.includes('aistudios')` bypass path.
   if (!isAdminUser(session)) {
-    redirect("/dashboard")
+    redirect('/dashboard');
   }
+
+  // Counts that drive the red badges in the sidebar. Single query batch so
+  // the layout cost is bounded as we add more badge sources.
+  const badges = await getAdminNavBadges();
 
   return (
     <div className="relative flex h-screen bg-canvas text-ink overflow-hidden">
@@ -39,59 +45,26 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </Link>
 
-        <nav className="flex-1 space-y-1.5">
-          <Link
-            href="/admin"
-            className="relative flex items-center gap-3 rounded-xl bg-brand-softer border-l-2 border-brand px-3 py-2.5 text-sm font-medium text-ink transition-colors"
-          >
-            <LayoutDashboard className="h-4 w-4 text-brand" />
-            Control Panel
-          </Link>
-          <Link
-            href="/admin/onboarding"
-            className="flex items-center gap-3 rounded-xl border-l-2 border-transparent px-3 py-2.5 text-sm font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-ink"
-          >
-            <CheckSquare className="h-4 w-4" />
-            Onboarding
-          </Link>
-          <Link
-            href="/admin/clients"
-            className="flex items-center gap-3 rounded-xl border-l-2 border-transparent px-3 py-2.5 text-sm font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-ink"
-          >
-            <Users className="h-4 w-4" />
-            Clientes
-          </Link>
-          <Link
-            href="/admin/leads"
-            className="flex items-center gap-3 rounded-xl border-l-2 border-transparent px-3 py-2.5 text-sm font-medium text-ink-3 opacity-60 cursor-not-allowed"
-          >
-            <FileText className="h-4 w-4" />
-            Leads Web
-          </Link>
-          <Link
-            href="/admin/email-health"
-            className="flex items-center gap-3 rounded-xl border-l-2 border-transparent px-3 py-2.5 text-sm font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-ink"
-          >
-            <Activity className="h-4 w-4" />
-            Salud parser
-          </Link>
-        </nav>
+        <AdminSidebarNav badges={badges} />
 
         <div className="border-t border-sidebar-line pt-6 mt-6">
           <div className="flex items-center gap-3 mb-4 rounded-xl bg-surface border border-line p-3">
             <div className="h-8 w-8 rounded-full bg-brand-softer border border-line text-brand flex items-center justify-center font-bold">
               {session.user.email?.charAt(0).toUpperCase()}
             </div>
-            <div className="truncate text-xs text-ink-2 overflow-hidden font-medium" title={session.user.email || ""}>
+            <div
+              className="truncate text-xs text-ink-2 overflow-hidden font-medium"
+              title={session.user.email || ''}
+            >
               {session.user.email}
             </div>
           </div>
           <form
             action={async () => {
-              "use server"
-              const { headers: getHeaders } = await import("next/headers")
-              await auth.api.signOut({ headers: await getHeaders() })
-              redirect("/login")
+              'use server';
+              const { headers: getHeaders } = await import('next/headers');
+              await auth.api.signOut({ headers: await getHeaders() });
+              redirect('/login');
             }}
           >
             <button
@@ -106,9 +79,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </aside>
 
       {/* Main Content */}
-      <main className="relative z-10 flex-1 overflow-y-auto w-full h-full">
-        {children}
-      </main>
+      <main className="relative z-10 flex-1 overflow-y-auto w-full h-full">{children}</main>
     </div>
-  )
+  );
 }

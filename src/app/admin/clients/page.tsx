@@ -2,7 +2,7 @@ import Link from "next/link"
 import { db } from "@/db"
 import { clients, subscriptions, analytics, invoices } from "@/db/schema"
 import { eq, sql, desc, and, or, ilike } from "drizzle-orm"
-import { ArrowRight, Search, Users } from "lucide-react"
+import { ArrowRight, Search, Users, Plus } from "lucide-react"
 
 // -----------------------------------------------------------------------------
 // /admin/clients — master list of ALL tenants (paying + pending + paused +
@@ -126,13 +126,30 @@ export default async function AdminClientsPage({
   return (
     <div className="p-8 md:p-12 max-w-7xl mx-auto relative z-10">
       {/* Header */}
-      <div className="mb-10">
-        <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight mb-3 text-ink">
-          Clientes
-        </h1>
-        <p className="text-ink-2 text-lg tracking-wide">
-          Todos los clientes del SaaS · <span className="text-brand font-semibold">{rows.length}</span> mostrados · MRR <span className="text-brand font-semibold">{(mrrCents / 100).toFixed(2)} €</span>
-        </p>
+      <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight mb-3 text-ink">
+            Clientes
+          </h1>
+          <p className="text-ink-2 text-lg tracking-wide">
+            Todos los clientes del SaaS · <span className="text-brand font-semibold">{rows.length}</span> mostrados · MRR <span className="text-brand font-semibold">{(mrrCents / 100).toFixed(2)} €</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <a
+            href="/api/admin/export/clients.csv"
+            className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors hover:border-brand hover:text-brand"
+          >
+            Export CSV
+          </a>
+          <Link
+            href="/admin/clients/nuevo"
+            className="inline-flex items-center gap-2 rounded-xl bg-brand text-brand-ink px-4 py-2.5 text-sm font-bold uppercase tracking-wider transition-colors hover:bg-brand-strong"
+          >
+            <Plus className="h-4 w-4" />
+            Nuevo cliente
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
