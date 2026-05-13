@@ -20,23 +20,24 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "otracita — Que no se te escape otra cita",
+  title: "otracita · Tu barbería en una app",
   description:
-    "La recepcionista de IA que contesta por WhatsApp cuando tú estás cortando, cierra reservas solo, y las sincroniza con tu Booksy. Sin permanencia.",
+    "Agenda, bot de WhatsApp, TPV, factura VeriFactu y fidelidad en una sola app. Pagas mes a mes, sin permanencia, sin comisión por reserva.",
   keywords: [
-    "chatbot whatsapp",
-    "reservas booksy",
-    "asistente virtual",
-    "agendar citas",
-    "barbería reservas",
-    "peluquería citas",
-    "IA para negocios",
+    "agenda barbería",
+    "software barbería",
+    "VeriFactu barbería",
+    "facturación barbería",
+    "TPV barbería",
+    "Tap to Pay iPhone barbería",
+    "WhatsApp reservas",
+    "recepcionista IA barbería",
   ],
-  authors: [{ name: "AI Studios" }],
+  authors: [{ name: "otracita" }],
   openGraph: {
-    title: "otracita — Que no se te escape otra cita",
+    title: "otracita · Tu barbería en una app",
     description:
-      "La recepcionista de IA que contesta por WhatsApp y sincroniza tu Booksy. Sin permanencia.",
+      "Cinco herramientas en una. Reservas, agenda, cobro, factura VeriFactu y fidelidad.",
     url: "https://otracita.es",
     siteName: "otracita",
     locale: "es_ES",
@@ -44,8 +45,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "otracita — Que no se te escape otra cita",
-    description: "Automatiza tus reservas por WhatsApp con IA.",
+    title: "otracita · Tu barbería en una app",
+    description:
+      "Cinco herramientas en una. Pagas mes a mes, sin permanencia.",
   },
 };
 
@@ -59,6 +61,18 @@ export default function RootLayout({
       lang="es"
       className={`${plex.variable} ${fraunces.variable} scroll-smooth`}
     >
+      <head>
+        {/* Boska (display) + General Sans (body) servidos por Fontshare. Solo
+         * los usa la landing y otras superficies brand-register; el dashboard
+         * sigue con IBM Plex Sans + Fraunces. La carga es liviana y permite
+         * que ambos sistemas convivan sin migrar todo en este sprint. */}
+        <link rel="preconnect" href="https://api.fontshare.com" crossOrigin="" />
+        <link rel="preconnect" href="https://cdn.fontshare.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://api.fontshare.com/v2/css?f[]=boska@500,600,700,500i,600i,700i&f[]=general-sans@400,500,600,700&display=swap"
+        />
+      </head>
       <body className="bg-[var(--color-canvas)] text-[var(--color-ink)] antialiased selection:bg-[var(--color-brand)]/20 selection:text-[var(--color-brand-strong)]">
         {children}
       </body>

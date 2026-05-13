@@ -54,8 +54,24 @@
   --color-today-tint:    oklch(0.96 0.03 50);    /* warm cream — today column */
 
   /* ─── Typography ─── */
+  /* Dashboard / product surfaces: Fraunces + IBM Plex Sans (cargadas via
+   * next/font/google en layout.tsx). */
   --font-display: var(--font-fraunces), Georgia, serif;
   --font-body:    var(--font-sans), system-ui, sans-serif;
+  /* Brand surfaces (landing, marketing): Boska + General Sans (cargadas via
+   * Fontshare CDN en layout.tsx <head>). Voz editorial-italiana + sans neutro
+   * 100% free comercial. Divergencia temporal con dashboard, ver brief landing. */
+  --font-display-brand: "Boska", Georgia, "Times New Roman", serif;
+  --font-body-brand:    "General Sans", system-ui, -apple-system, sans-serif;
+
+  /* ─── Drench surfaces (landing) ─── */
+  /* Espresso profundo para folds drenched. Más oscuro que --color-ink (texto
+   * cuerpo) porque cuando una sección entera carga el color, necesita más
+   * profundidad para que el cream encima cante. */
+  --color-espresso:      #1A120B;
+  --color-espresso-2:    #3A2A1E;
+  --color-cream-high:    #FAF7F2;
+  --color-cream-on-dark: #F4E3D4;
 
   /* ─── Scrim (modal/panel backdrops) ─── */
   /* PRODUCT.md / DESIGN.md: las sombras del sistema son cálidas (espresso-
@@ -89,11 +105,31 @@ body {
   font-family: var(--font-body);
 }
 
-/* Serif display for branded headings / hero */
+/* Serif display for branded headings / hero (dashboard surfaces) */
 .font-display {
   font-family: var(--font-display);
   font-optical-sizing: auto;
   letter-spacing: -0.02em;
+}
+
+/* Brand-register typography (landing, marketing). Boska (italian-classical
+ * serif) carga la voz editorial; General Sans hace el body neutro con
+ * tabular-nums para precios. */
+.font-brand-display {
+  font-family: var(--font-display-brand);
+  font-feature-settings: "ss01", "kern";
+  letter-spacing: -0.025em;
+}
+
+.font-brand-body {
+  font-family: var(--font-body-brand);
+  font-feature-settings: "kern", "tnum" off;
+}
+
+.font-brand-num {
+  font-family: var(--font-body-brand);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* Utilities */
@@ -117,15 +153,44 @@ body {
     @apply hover:border-[var(--color-brand)] hover:shadow-[0_8px_30px_rgba(201,101,60,0.08)];
   }
 
-  /* Primary CTA button */
+  /* ──────── Button system ──────────────────────────────────────────────────
+     Cuatro intents (primary / secondary / ghost) y un modificador de tamaño
+     (-sm). Todos: rounded-xl, min-h-[44px] (AAA tap target), inline-flex con
+     gap para iconos, semibold para legibilidad sobre fondo de marca.
+
+     Antes coexistían 5 paddings y 4 radii en bg-brand inline. Si necesitas
+     un botón que no encaja, añade una clase nueva aquí, no inline.
+     ──────────────────────────────────────────────────────────────────────── */
   .btn-primary {
-    @apply bg-[var(--color-brand)] text-[var(--color-brand-ink)] font-medium px-5 py-3 rounded-xl
-           hover:bg-[var(--color-brand-strong)] transition-colors duration-200;
+    @apply inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-3
+           rounded-xl font-semibold text-sm
+           bg-[var(--color-brand)] text-[var(--color-brand-ink)]
+           hover:bg-[var(--color-brand-strong)]
+           disabled:opacity-60 disabled:cursor-not-allowed
+           transition-colors duration-200;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-3
+           rounded-xl font-semibold text-sm
+           bg-[var(--color-surface)] text-[var(--color-ink)]
+           border border-[var(--color-line)]
+           hover:border-[var(--color-line-strong)] hover:bg-[var(--color-overlay)]
+           disabled:opacity-60 disabled:cursor-not-allowed
+           transition-colors duration-200;
   }
   .btn-ghost {
-    @apply bg-transparent text-[var(--color-ink)] font-medium px-5 py-3 rounded-xl
-           border border-[var(--color-line)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]
+    @apply inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5
+           rounded-xl font-medium text-sm
+           bg-transparent text-[var(--color-ink-2)]
+           hover:text-[var(--color-ink)] hover:bg-[var(--color-overlay)]
+           disabled:opacity-60 disabled:cursor-not-allowed
            transition-colors duration-200;
+  }
+  /* Modificador: combínalo con btn-primary/secondary/ghost para hacer el
+     botón compacto (inline, listas, toolbars). Tap target queda en 36px —
+     usar solo cuando NO sea acción crítica con cliente delante. */
+  .btn-sm {
+    @apply min-h-[36px] px-3 py-1.5 text-xs;
   }
 }
 
@@ -151,6 +216,85 @@ body {
 }
 .animate-gentle-rise {
   animation: gentle-rise 0.6s ease-out forwards;
+}
+
+/* Marquee (logo strip / "5 herramientas" loop). Pausa en hover y respeta
+ * prefers-reduced-motion para usuarios sensibles al movimiento. */
+@keyframes marquee-x {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee-x 28s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Live indicators del hero: "En curso" pulse, typing dots del bot, "Cobrado"
+ * dot verde. Subtle, comunican vida sin distraer. */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.86); }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.25; }
+  30%           { opacity: 1; }
+}
+.typing-dot {
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+.typing-dot-1 { animation-delay: 0s; }
+.typing-dot-2 { animation-delay: 0.18s; }
+.typing-dot-3 { animation-delay: 0.36s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-gentle-rise,
+  .pulse-dot,
+  .typing-dot {
+    animation: none;
+  }
+}
+
+/* Drench utility: aplica palette completo al fold (background + text + border
+ * defaults). Las secciones de la landing usan estas clases para el "cada fold
+ * su mundo" de la spec. */
+.drench-terracota {
+  background-color: var(--color-brand);
+  color: var(--color-cream-high);
+}
+.drench-terracota ::selection {
+  background-color: var(--color-cream-on-dark);
+  color: var(--color-brand-strong);
+}
+
+.drench-espresso {
+  background-color: var(--color-espresso);
+  color: var(--color-cream-high);
+}
+.drench-espresso ::selection {
+  background-color: var(--color-brand);
+  color: var(--color-cream-high);
+}
+
+.drench-cream {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+.drench-overlay {
+  background-color: var(--color-overlay);
+  color: var(--color-ink);
+}
+
+/* Hairline divider on dark drench (cream stroke at 12% opacity). */
+.divider-on-dark {
+  border-color: rgba(244, 227, 212, 0.14);
 }
 
 /* Dashboard sidebar collapse — controlled by SidebarToggle client component.

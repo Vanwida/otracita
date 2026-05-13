@@ -1,6 +1,6 @@
 ---
 name: otracita
-description: Plataforma SaaS para barberías españolas — paleta cream/terracota/espresso, voz castellana, premium por contención.
+description: Plataforma SaaS para barberías operando en España — paleta cream/terracota/espresso workwear-coded, voz castellana, rebelde principled (Patagonia, Carhartt WIP, Liquid Death).
 colors:
   brand: "#C9653C"
   brand-strong: "#A34F2C"
@@ -108,25 +108,28 @@ components:
     padding: "4px 10px"
 ---
 
-## 1. Overview: La barbería de barrio modernizada
+## 1. Overview: Workwear, no luxury
 
-otracita viste la paleta de una barbería castellana de toda la vida —espresso recién hecho, cuero envejecido, una pared cream con la luz de la tarde— y la traduce a software con la contención de una marca de lujo silencioso (Aimé Leon Dore, Loro Piana). El resultado es una herramienta que se siente artesanal sin ser nostálgica, premium sin gritar, y radicalmente española sin caer en cliché.
+otracita viste la paleta de una barbería de barrio (espresso recién hecho, cuero envejecido, una pared cream con la luz de la tarde) y la traduce a software con la honestidad del workwear: **Carhartt WIP, Patagonia, Liquid Death**. Cream + terracota + espresso, sí, pero el peso visual va hacia tipografía industrial honesta y etiquetas de utilidad, no hacia italic-fineza editorial. La marca es **rebelde principled** (Patagonia, no Liquid Death-con-tacos): la autoridad viene del oficio, no del shock.
+
+> Cambio de lane (2026-04-29): el sistema arrancó con framing Aimé Leon Dore / Loro Piana ("luxury silencioso"). Esa voz era demasiado fina para la audiencia real. Ahora reservamos contención visual para la PWA pública white-label (`/b/[slug]`); las superficies otracita-branded usan el lane workwear. Ver PRODUCT.md → Brand Personality.
 
 **Reglas que vertebran todo el sistema:**
 
 - **Light mode siempre por defecto.** El dark mode es opcional, jamás impuesto. Default-dark es un *tell* de template AI y daña a usuarios mayores con vista cansada.
-- **Una decisión primaria por vista.** Cada pantalla tiene UNA cosa que el barbero puede hacer, no cinco compitiendo. El resto sigue.
-- **Whitespace es el material principal.** El lujo aquí es lo que NO está. Antes de añadir un elemento, comprobar si quitar otros tres mejora.
-- **Tipografía cuenta la historia.** Fraunces (serif) marca los momentos de marca/editorial; sans neutra hace el trabajo de mesa. La transición entre ambos es dónde vive la personalidad.
+- **Una decisión primaria por vista.** Cada pantalla tiene UNA cosa que el barbero puede hacer, no cinco compitiendo.
+- **Whitespace y peso tipográfico cargan voz.** El sistema es honest workwear: heavy sans, etiquetas de utilidad, tabular nums. Antes de añadir un elemento, comprobar si quitar tres mejora.
+- **Tipografía cuenta la historia.** Boska (serif italian-classical) en landing como brand-flag; General Sans / IBM Plex Sans en producto. Migración pendiente a sans más industrial-coded (GT America, Söhne, Druk para poster moments) si el lane workwear gana fuerza.
 - **Contraste duro.** Compromiso WCAG AAA donde sea posible. El barbero atiende con dedos sucios, el cliente final puede ser mayor, la pantalla del iPhone está al sol del escaparate. No negociamos legibilidad.
+- **Audiencia inclusiva por geografía, no por nacionalidad.** El producto es para cualquier persona que regenta una barbería en España (española, venezolana, peruana, dominicana, catalana, marroquí). El copy nunca asume españolidad como identidad. Ver PRODUCT.md → Users.
 
 **Tres superficies, una identidad:**
 
 | Surface | Brand identity | Notas |
 |---|---|---|
-| `otracita.es` (landing) | otracita-branded, modo editorial | Hero serif gigante, paleta brand explícita, voz audaz |
-| `dashboard` + app móvil "Cobros" | otracita-branded, modo tool | Mismas tokens pero más densidad y eficiencia |
-| `/b/[slug]` (PWA pública) | **white-label de la barbería** | El cliente final NO ve "otracita". La paleta puede sobrescribirse por la barbería; tipografía y layout heredan |
+| `otracita.es` (landing) | otracita-branded, lane workwear-rebel | Hero gigante, voz directa, drench por sección, copy castellano sin tacos |
+| `dashboard` + app móvil "Cobros" | otracita-branded, modo tool denso | Mismos tokens, más densidad, etiquetas de utilidad |
+| `/b/[slug]` (PWA pública) | **white-label de la barbería** | El cliente final NO ve "otracita". Aquí sí aplica contención visual y voz neutra |
 
 ## 2. Colors: Cream, Terracota & Espresso
 

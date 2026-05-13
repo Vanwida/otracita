@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>otracita · GTM orgánico</title>
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=boska@400,500,700,1i,4i,5i,7i&f[]=general-sans@400,500,600,700&f[]=jetbrains-mono@400,500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-brand:         #C9653C;
+      --color-brand-strong:  #A34F2C;
+      --color-brand-soft:    #E8C4A8;
+      --color-brand-softer:  #F4E3D4;
+      --color-canvas:        #F7F3EE;
+      --color-surface:       #FFFFFF;
+      --color-overlay:       #F0EBE3;
+      --color-line:          #E8DDD0;
+      --color-line-strong:   #C9BBAA;
+      --color-ink:           #2A1D14;
+      --color-ink-2:         #6B5D4F;
+      --color-ink-3:         #9C8F7E;
+      --color-cream-high:    #FAF7F2;
+      --color-cream-on-dark: #F4E3D4;
+      --color-espresso:      #1A120B;
+      --color-espresso-2:    #3A2A1E;
+      --color-success:       #5E8B6B;
+      --color-gold:          #D4A574;
+      --color-gold-soft:     #EDD9BF;
+
+      --font-display: "Boska", Georgia, "Times New Roman", serif;
+      --font-body:    "General Sans", system-ui, -apple-system, sans-serif;
+      --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+      --rule: 1px solid var(--color-line);
+      --rule-strong: 1px solid var(--color-line-strong);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      background: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    .container       { max-width: 1240px; margin: 0 auto; padding: 0 48px; }
+    .container--narrow { max-width: 900px; padding: 0 32px; }
+    @media (max-width: 720px) {
+      .container, .container--narrow { padding: 0 24px; }
+    }
+
+    section { padding: 128px 0; position: relative; }
+    section.compact { padding: 96px 0; }
+    @media (max-width: 720px) {
+      section { padding: 80px 0; }
+      section.compact { padding: 64px 0; }
+    }
+
+    .drench-cream    { background: var(--color-canvas);  color: var(--color-ink); }
+    .drench-overlay  { background: var(--color-overlay); color: var(--color-ink); }
+    .drench-terracota{ background: var(--color-brand);   color: var(--color-cream-high); }
+    .drench-espresso { background: var(--color-espresso); color: var(--color-cream-high); }
+    .drench-surface  { background: var(--color-surface); color: var(--color-ink); }
+
+    h1, h2, .display {
+      font-family: var(--font-display);
+      font-weight: 500;
+      letter-spacing: -0.035em;
+      line-height: 0.96;
+    }
+    h1 { font-size: clamp(72px, 14vw, 200px); }
+    h2 { font-size: clamp(40px, 7vw, 100px); line-height: 1; }
+    em, .italic { font-style: italic; }
+
+    .lead {
+      font-size: clamp(18px, 1.6vw, 22px);
+      line-height: 1.55;
+      color: var(--color-ink-2);
+      max-width: 60ch;
+    }
+    .drench-terracota .lead,
+    .drench-espresso  .lead { color: var(--color-cream-on-dark); }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--color-ink-2);
+    }
+    .drench-terracota .eyebrow,
+    .drench-espresso  .eyebrow { color: var(--color-cream-on-dark); opacity: 0.7; }
+
+    /* ─── Section header ─── */
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(60px, auto) 1fr;
+      gap: 32px;
+      align-items: baseline;
+      padding-bottom: 32px;
+      border-bottom: var(--rule);
+      margin-bottom: 64px;
+    }
+    .drench-terracota .section-head,
+    .drench-espresso  .section-head { border-bottom-color: rgba(244,227,212,.18); }
+    .section-head__num {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: clamp(44px, 6vw, 80px);
+      line-height: 1;
+      color: var(--color-brand);
+      letter-spacing: -0.02em;
+    }
+    .drench-terracota .section-head__num { color: var(--color-cream-on-dark); opacity: 0.85; }
+    .drench-espresso  .section-head__num { color: var(--color-gold); }
+    .section-head__meta { display: flex; flex-direction: column; gap: 6px; }
+    .section-head__kicker {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: var(--color-ink-2);
+    }
+    .drench-terracota .section-head__kicker,
+    .drench-espresso  .section-head__kicker { color: var(--color-cream-on-dark); opacity: 0.7; }
+    @media (max-width: 720px) {
+      .section-head { grid-template-columns: 1fr; gap: 16px; }
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      padding-top: 64px;
+      padding-bottom: 144px;
+      min-height: 88vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .hero__topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 32px;
+      border-bottom: var(--rule);
+    }
+    .hero__brand { font-family: var(--font-display); font-style: italic; font-size: 22px; letter-spacing: -0.02em; }
+    .hero__edition { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-ink-2); }
+    .hero__inner { flex: 1; display: grid; align-content: center; padding-top: 96px; }
+    .hero__title {
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: clamp(96px, 18vw, 260px);
+      line-height: 0.88;
+      letter-spacing: -0.045em;
+    }
+    .hero__title em { font-weight: 400; color: var(--color-brand); }
+    .hero__sub {
+      margin-top: 48px;
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: clamp(24px, 3vw, 40px);
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: var(--color-ink-2);
+      max-width: 26ch;
+    }
+    .hero__footnote {
+      margin-top: auto;
+      padding-top: 64px;
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--color-ink-3);
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    /* ─── Editorial table ─── */
+    .e-table-wrap { margin-top: 48px; border-top: var(--rule-strong); border-bottom: var(--rule-strong); }
+    .drench-terracota .e-table-wrap,
+    .drench-espresso  .e-table-wrap { border-color: rgba(244,227,212,.28); }
+    .e-table { width: 100%; border-collapse: collapse; }
+    .e-table th, .e-table td { padding: 20px 16px; text-align: left; border-bottom: var(--rule); vertical-align: baseline; }
+    .drench-terracota .e-table th,
+    .drench-terracota .e-table td,
+    .drench-espresso  .e-table th,
+    .drench-espresso  .e-table td { border-bottom-color: rgba(244,227,212,.16); }
+    .e-table tr:last-child th,
+    .e-table tr:last-child td { border-bottom: none; }
+    .e-table th {
+      font-family: var(--font-mono);
+      font-weight: 500;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      color: var(--color-ink-3);
+      padding-top: 18px;
+      padding-bottom: 14px;
+    }
+    .drench-terracota .e-table th,
+    .drench-espresso  .e-table th { color: var(--color-cream-on-dark); opacity: 0.6; }
+    .e-table td { font-size: 17px; line-height: 1.45; }
+    .e-table td.label { font-family: var(--font-display); font-style: italic; font-size: 20px; letter-spacing: -0.015em; }
+    .e-table td.bold { font-family: var(--font-display); font-weight: 500; color: var(--color-brand); font-size: 22px; }
+    .drench-espresso .e-table td.bold { color: var(--color-gold); }
+    .e-table td.muted { font-size: 15px; color: var(--color-ink-2); }
+    .drench-terracota .e-table td.muted,
+    .drench-espresso  .e-table td.muted { color: var(--color-cream-on-dark); opacity: 0.78; }
+    .e-table td.mono { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.04em; }
+
+    /* ─── Note ─── */
+    .note {
+      margin-top: 56px;
+      padding: 28px 32px;
+      border-left: 2px solid var(--color-brand);
+      background: rgba(201,101,60,.06);
+      max-width: 760px;
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: clamp(18px, 1.8vw, 24px);
+      line-height: 1.45;
+      letter-spacing: -0.015em;
+    }
+    .drench-terracota .note { background: rgba(255,255,255,.08); border-left-color: var(--color-cream-on-dark); }
+    .drench-espresso  .note { background: rgba(244,227,212,.06); border-left-color: var(--color-gold); }
+    .note strong { font-style: normal; font-family: var(--font-body); font-weight: 600; font-size: 0.9em; }
+
+    /* ─── Numbered list ─── */
+    .e-list { list-style: none; counter-reset: elist; border-top: var(--rule-strong); margin-top: 48px; }
+    .drench-terracota .e-list,
+    .drench-espresso  .e-list { border-top-color: rgba(244,227,212,.28); }
+    .e-list li {
+      counter-increment: elist;
+      padding: 28px 0;
+      border-bottom: var(--rule);
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 24px;
+      align-items: baseline;
+      font-size: 18px;
+      line-height: 1.5;
+    }
+    .drench-terracota .e-list li,
+    .drench-espresso  .e-list li { border-bottom-color: rgba(244,227,212,.16); }
+    .e-list li::before {
+      content: counter(elist, decimal-leading-zero);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      color: var(--color-brand);
+    }
+    .drench-terracota .e-list li::before { color: var(--color-cream-on-dark); }
+    .drench-espresso  .e-list li::before { color: var(--color-gold); }
+    .e-list li strong {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 500;
+      font-size: 21px;
+      letter-spacing: -0.015em;
+      display: block;
+      margin-bottom: 4px;
+    }
+    @media (max-width: 720px) {
+      .e-list li { grid-template-columns: 40px 1fr; gap: 16px; font-size: 16px; }
+    }
+
+    /* ─── Stats row ─── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: var(--rule-strong);
+      border-bottom: var(--rule-strong);
+      margin: 56px 0;
+    }
+    @media (max-width: 720px) { .stats-row { grid-template-columns: 1fr; } }
+    .stat { padding: 36px 24px; border-right: var(--rule); display: flex; flex-direction: column; gap: 12px; }
+    .stat:last-child { border-right: none; }
+    @media (max-width: 720px) { .stat { border-right: none; border-bottom: var(--rule); } .stat:last-child { border-bottom: none; } }
+    .stat__num {
+      font-family: var(--font-display);
+      font-size: clamp(48px, 6vw, 80px);
+      line-height: 0.92;
+      letter-spacing: -0.04em;
+      font-weight: 500;
+    }
+    .stat__num em { color: var(--color-brand); font-weight: 400; }
+    .stat__label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-ink-2); }
+
+    /* ─── Channel cards ─── */
+    .channels-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      margin-top: 48px;
+      background: var(--color-line);
+    }
+    @media (max-width: 720px) { .channels-grid { grid-template-columns: 1fr; } }
+    .channel-card {
+      background: var(--color-surface);
+      padding: 40px 32px;
+    }
+    .channel-card__num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-ink-3);
+      margin-bottom: 16px;
+    }
+    .channel-card__title {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: clamp(28px, 3vw, 40px);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      color: var(--color-brand);
+      margin-bottom: 12px;
+    }
+    .channel-card__tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      background: var(--color-brand-softer);
+      color: var(--color-ink-2);
+      border-radius: 9999px;
+      margin-bottom: 20px;
+    }
+    .channel-card p { font-size: 16px; line-height: 1.55; color: var(--color-ink-2); }
+
+    /* ─── Script block ─── */
+    .script {
+      margin-top: 32px;
+      padding: 24px 28px;
+      background: var(--color-overlay);
+      border-left: 3px solid var(--color-brand);
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: clamp(16px, 1.6vw, 20px);
+      line-height: 1.5;
+      letter-spacing: -0.01em;
+      color: var(--color-ink);
+    }
+    .drench-espresso .script { background: rgba(244,227,212,.08); border-left-color: var(--color-gold); color: var(--color-cream-high); }
+    .script cite { display: block; margin-top: 12px; font-style: normal; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-ink-3); }
+    .drench-espresso .script cite { color: var(--color-cream-on-dark); opacity: 0.6; }
+
+    /* ─── Two-col layout ─── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; margin-top: 48px; }
+    @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; gap: 40px; } }
+
+    /* ─── Subhead ─── */
+    .subhead {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: clamp(24px, 3vw, 36px);
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      color: var(--color-brand);
+      margin-bottom: 20px;
+    }
+    .drench-terracota .subhead { color: var(--color-cream-high); }
+    .drench-espresso  .subhead { color: var(--color-gold); }
+
+    /* ─── Pullquote ─── */
+    .pullquote {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 400;
+      font-size: clamp(32px, 5vw, 72px);
+      line-height: 1.05;
+      letter-spacing: -0.025em;
+      max-width: 18ch;
+      margin: 72px 0 0;
+    }
+
+    /* ─── Footer ─── */
+    footer { padding: 48px 0; border-top: var(--rule); background: var(--color-canvas); color: var(--color-ink-3); }
+    .footer-grid { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; gap: 24px; flex-wrap: wrap; }
+
+    /* ─── Animations ─── */
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-rise { animation: rise 0.9s cubic-bezier(.16,1,.3,1) both; }
+    .delay-1 { animation-delay: 0.12s; }
+    .delay-2 { animation-delay: 0.24s; }
+    .delay-3 { animation-delay: 0.36s; }
+    @media (prefers-reduced-motion: reduce) { .animate-rise { animation: none; } html { scroll-behavior: auto; } }
+
+    ::selection { background: var(--color-brand); color: var(--color-cream-high); }
+    .drench-terracota ::selection { background: var(--color-cream-high); color: var(--color-brand-strong); }
+    .drench-espresso  ::selection { background: var(--color-gold); color: var(--color-espresso); }
+    ::-webkit-scrollbar { width: 10px; }
+    ::-webkit-scrollbar-track { background: var(--color-canvas); }
+    ::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--color-brand); }
+  </style>
+</head>
+<body>
+
+  <!-- HERO -->
+  <section class="drench-cream hero">
+    <div class="container">
+      <div class="hero__topbar animate-rise">
+        <span class="hero__brand">otracita</span>
+        <span class="hero__edition">GTM orgánico · 2026</span>
+      </div>
+      <div class="hero__inner">
+        <h1 class="hero__title animate-rise delay-1">
+          A<br>
+          <em>vender.</em>
+        </h1>
+        <p class="hero__sub animate-rise delay-2">
+          De cero clientes a 150.<br>Sin gastar un euro en ads.
+        </p>
+      </div>
+      <div class="hero__footnote animate-rise delay-3">
+        <span>Alex &amp; Reni</span>
+        <span>9 secciones</span>
+        <span>Todo lo que necesitáis para arrancar</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- I · MERCADO REAL -->
+  <section class="drench-overlay">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>I</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">01 · Mercado</span>
+          <h2>No estáis solos.<br><em>Pero podéis ganar.</em></h2>
+        </div>
+      </div>
+
+      <p class="lead">Hay competencia. Cuanto antes la conozcáis, mejor. Estos son los que ya operan en España.</p>
+
+      <div class="e-table-wrap">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th style="width:20%;">Producto</th>
+              <th style="width:28%;">Qué hacen</th>
+              <th style="width:20%;">Precio</th>
+              <th>Punto débil</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="label"><em>Booksy</em></td>
+              <td>Marketplace + agenda</td>
+              <td class="mono">~€30/mes + por barbero</td>
+              <td class="muted">Pone anuncios de la competencia en tu perfil. Tus clientes no son tuyos.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Fresha</em></td>
+              <td>Marketplace + agenda</td>
+              <td class="mono">20% comisión cliente nuevo + 2,19% por cobro</td>
+              <td class="muted">El 20% de cada cliente nuevo que te trae se lo quedan ellos.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Treatwell</em></td>
+              <td>Marketplace + reservas</td>
+              <td class="mono">Comisión por reserva</td>
+              <td class="muted">Modelo marketplace idéntico. Tu marca queda enterrada.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Eskedula</em></td>
+              <td>Reservas sin marketplace</td>
+              <td class="mono">No público</td>
+              <td class="muted">Sin bot WhatsApp ni voz IA. VeriFactu, sí.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Marai</em></td>
+              <td>Bot WhatsApp NLU + agenda</td>
+              <td class="mono">No público</td>
+              <td class="muted">Solo el bot. Sin TPV ni VeriFactu integrados.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>EasyWeek</em></td>
+              <td>All-in-one europeo</td>
+              <td class="mono">Desde €8/mes</td>
+              <td class="muted">Alemán. Sin VeriFactu. Sin castellano de barrio. Sin voz IA.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <strong>El hueco real de otracita:</strong> VeriFactu de fábrica (nadie lo usa aún como claim), voz IA en castellano nativo, y la única que suena a barbero hablando con otro barbero — no a SaaS europeo traducido.
+      </div>
+    </div>
+  </section>
+
+
+  <!-- II · FASE 0 -->
+  <section class="drench-cream">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>II</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">02 · Fase 0 · Semanas 1–2</span>
+          <h2>Antes de hablar<br><em>con nadie.</em></h2>
+        </div>
+      </div>
+
+      <p class="lead">Sin esto Reni no puede vender. No saltar esta fase.</p>
+
+      <ul class="e-list">
+        <li>
+          <span>
+            <strong>Cuenta demo funcional</strong>
+            Una barbería de mentira en el producto — "Barbería Reni" o similar — con citas reales, bot activo, caja con datos y una factura VeriFactu generada. Reni muestra esto en su iPhone en cada conversación. Sin demo en mano, la conversación muere.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Precio fundador</strong>
+            Pro a <strong>€29/mes para siempre</strong> para los primeros 30 clientes (vs €49 normal). Fecha límite: 1 de agosto. Crea urgencia real y recompensa a los early adopters. En cliente 31, sube al precio normal.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Loom de 3 minutos</strong>
+            Grabación de pantalla del producto: bot WhatsApp → agenda → caja → factura VeriFactu. Reni lo manda por WhatsApp cuando no puede estar en persona. Graba uno, lo usa para siempre.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>WhatsApp Business de otracita</strong>
+            Número limpio, logo de perfil, descripción con enlace al landing. Para soporte y outreach. Separado del producto.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Feedback de Reni → fixes críticos</strong>
+            Reni usa el producto una semana entera. Lista todo lo que rompería la venta. Alex lo arregla. No se puede vender algo que el co-fundador no usaría.
+          </span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+
+  <!-- III · OUTREACH DIRECTO -->
+  <section class="drench-terracota">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>III</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">03 · Canal 1 · El motor principal</span>
+          <h2>Outreach<br><em>directo.</em></h2>
+        </div>
+      </div>
+
+      <p class="lead">Reni es barbero. Eso vale más que cualquier anuncio. Puede entrar a una barbería y hablar de tú a tú con una autoridad que ningún comercial externo tiene.</p>
+
+      <div class="e-table-wrap" style="margin-top: 48px;">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th style="width:22%;">Sub-canal</th>
+              <th style="width:18%;">Cuándo</th>
+              <th>Cómo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="label"><em>Red caliente</em></td>
+              <td class="mono">Semana 3</td>
+              <td>Los barberos que Reni ya conoce. Llamada de 5 minutos, no pitch. "¿Me das 15 minutos para enseñarte algo?" Objetivo: 5 demos → 2–3 trials.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Grupos WA barberos</em></td>
+              <td class="mono">Semana 3</td>
+              <td>Reni ya está en grupos de WhatsApp de barberos. Mensaje natural, no spam. Que pidan el Loom — no mandar link de venta directamente.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Walk-in Barcelona</em></td>
+              <td class="mono">Semana 7+</td>
+              <td>Entrar a barberías del barrio. No a vender — a preguntar: "¿Usáis Booksy?" Si sí, abrir con los €20% de Fresha. Mostrar demo en iPhone.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Instagram DM</em></td>
+              <td class="mono">Semana 5+</td>
+              <td>Barberías con muchas fotos pero sin booking link, o con Booksy. DM manual, no masivo. Si responden → Loom → demo.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="two-col" style="margin-top: 64px;">
+        <div>
+          <p class="subhead">El pitch que abre puertas</p>
+          <div class="script">
+            "¿Usáis Fresha? ¿Sabéis que se quedan el 20% de cada cliente nuevo que os trae?"
+            <cite>Apertura con coste real — el barbero hace las cuentas</cite>
+          </div>
+          <div class="script" style="margin-top: 16px;">
+            "En julio 2027 es obligatorio VeriFactu. Multas hasta 50K€. ¿Vuestro software lo cubre?"
+            <cite>Apertura con urgencia regulatoria — muy pocos lo saben</cite>
+          </div>
+        </div>
+        <div>
+          <p class="subhead">El cierre</p>
+          <div class="script">
+            "14 días gratis, lo conectáis en 20 minutos. Si en dos semanas no veis diferencia, lo canceláis sin problema. Y si entráis este mes, os quedáis en €29/mes para siempre."
+            <cite>Precio fundador + sin fricción = conversión</cite>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- IV · INSTAGRAM -->
+  <section class="drench-cream">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>IV</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">04 · Canal 2</span>
+          <h2>Instagram.<br><em>Credibilidad.</em></h2>
+        </div>
+      </div>
+
+      <p class="lead">No es el canal de ventas. Es el canal de credibilidad. Cuando Reni hace un DM, el barbero busca @otracita. Si hay contenido bueno, la venta se cierra sola.</p>
+
+      <div class="stats-row">
+        <div class="stat">
+          <p class="stat__num">3<em>×</em></p>
+          <p class="stat__label">Posts por semana mínimo</p>
+        </div>
+        <div class="stat">
+          <p class="stat__num"><em>Reels</em></p>
+          <p class="stat__label">Formato principal · Mayor alcance orgánico</p>
+        </div>
+        <div class="stat">
+          <p class="stat__num">5</p>
+          <p class="stat__label">Pilares de contenido</p>
+        </div>
+      </div>
+
+      <div class="e-table-wrap">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th style="width:24%;">Pilar</th>
+              <th style="width:18%;">Formato</th>
+              <th>Ejemplo concreto</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="label"><em>Demo del producto</em></td>
+              <td class="mono">Reel</td>
+              <td>Reni graba en iPhone cómo el bot de WhatsApp confirma una cita en tiempo real. Voz suya. Auténtico.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>El argumento del dinero</em></td>
+              <td class="mono">Reel / carrusel</td>
+              <td>"Fresha: 20% de cada cliente nuevo. otracita: 0%." Datos secos. Que el barbero haga las cuentas.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>VeriFactu explicado</em></td>
+              <td class="mono">Carrusel</td>
+              <td>"En julio 2027 tu software tiene que cumplir VeriFactu. ¿El tuyo lo hace?" Nadie está haciendo este contenido para barberías.</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Voz de barbero</em></td>
+              <td class="mono">Reel / Story</td>
+              <td>Reni hablando a cámara. Sin guión. Lo que piensa de Booksy, de montar esto. El barbero tiene que pensar "este es uno de los míos".</td>
+            </tr>
+            <tr>
+              <td class="label"><em>Social proof</em></td>
+              <td class="mono">Story / Reel</td>
+              <td>Desde el cliente 1: screenshot del bot en acción, testimonial en video. Pedir siempre antes de que se enfríe.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <strong>TikTok también.</strong> Los barbers más jóvenes están más ahí que en Instagram. Mismos Reels, mismo contenido. El alcance orgánico en cuentas nuevas es mucho mayor en TikTok que en Instagram hoy.
+      </div>
+    </div>
+  </section>
+
+
+  <!-- V · EMBAJADORES Y AFILIADOS -->
+  <section class="drench-overlay">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>V</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">05 · Canal 3</span>
+          <h2>Embajadores<br><em>y afiliados.</em></h2>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <p class="subhead">Embajadores</p>
+          <p style="font-size:17px; line-height:1.55; color:var(--color-ink-2); margin-bottom:24px;">5–10 barberos con audiencia en Instagram o TikTok. Micro-influencers (5K–50K seguidores) convierten mejor que los grandes.</p>
+
+          <div class="e-table-wrap" style="margin-top:0;">
+            <table class="e-table">
+              <thead><tr><th>Lo que reciben</th><th>Lo que aportan</th></tr></thead>
+              <tbody>
+                <tr><td>Pro gratis 3 meses</td><td>Contenido orgánico si les gusta</td></tr>
+                <tr><td>Mención en web como "Barbero fundador"</td><td>Presentaciones a su red</td></tr>
+                <tr><td>€20 por cliente que entre con su código</td><td>Feedback de producto real</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="script" style="margin-top:24px;">
+            "Oye, somos dos barberos montando el software que siempre quisimos tener. Pro gratis 3 meses si lo pruebas y nos das feedback. Sin obligación de publicar nada."
+            <cite>Primero que lo usen. Si les gusta, el contenido sale solo.</cite>
+          </div>
+
+          <p style="margin-top:20px; font-size:15px; color:var(--color-ink-2);"><strong style="font-weight:600;">Target en Barcelona:</strong> buscar en Instagram con hashtag #barberiabcn y #7starbarberbcn — este último tiene 106K seguidores, es el embajador premium a perseguir.</p>
+        </div>
+
+        <div>
+          <p class="subhead">Programa de afiliados</p>
+          <p style="font-size:17px; line-height:1.55; color:var(--color-ink-2); margin-bottom:24px;">Cualquier barbero que refiera a otro recibe <strong style="font-weight:600;">€20</strong> cuando el referido pague el primer mes.</p>
+          <p style="font-size:17px; line-height:1.55; color:var(--color-ink-2); margin-bottom:24px;">No hace falta sistema técnico ahora. Un campo en el onboarding "¿quién te recomendó?" + transferencia manual al referidor. Cuando haya 20+ afiliados activos, entonces se automatiza.</p>
+
+          <div class="note" style="margin-top:24px;">
+            <strong>El momento del referido:</strong> Cuando alguien pague el primer mes, inmediatamente: "¿Conoces a algún otro barbero al que le pueda interesar?" Sistemático, siempre, sin excepción.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- VI · SEO Y CONTENIDO -->
+  <section class="drench-espresso">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>VI</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">06 · Canal 4 · Motor a largo plazo</span>
+          <h2>SEO.<br><em>Planta ahora.</em></h2>
+        </div>
+      </div>
+
+      <p class="lead">Resultado en 6–12 meses. Planta las semillas hoy y generan leads automáticos para siempre.</p>
+
+      <div class="e-table-wrap">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th style="width:32%;">URL</th>
+              <th style="width:32%;">Keyword objetivo</th>
+              <th>Por qué</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">/alternativa-booksy</td>
+              <td class="mono">alternativa a booksy barbería</td>
+              <td class="muted">Alta intención. Quien busca esto ya quiere cambiar.</td>
+            </tr>
+            <tr>
+              <td class="mono">/alternativa-fresha</td>
+              <td class="mono">alternativa a fresha</td>
+              <td class="muted">La comisión del 20% convierte muy bien.</td>
+            </tr>
+            <tr>
+              <td class="mono">/verifactu-barberias</td>
+              <td class="mono">verifactu barbería software</td>
+              <td class="muted">Nadie lo ha escrito específico para barberías. Campo abierto.</td>
+            </tr>
+            <tr>
+              <td class="mono">/software-barberia</td>
+              <td class="mono">software barbería españa 2026</td>
+              <td class="muted">Landing principal SEO. Captura intención genérica.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <strong>El post más urgente:</strong> "VeriFactu para barberías: todo lo que necesitas saber y por qué tu software actual probablemente no cumple." Deadline julio 2027, multas hasta €50K, nadie lo sabe. Publica este mes, rankea en 6 meses, genera leads gratis para siempre.
+      </div>
+
+      <p class="pullquote">
+        Primero en el<br>
+        <em>campo.</em>
+      </p>
+    </div>
+  </section>
+
+
+  <!-- VII · PIPELINE NOTION -->
+  <section class="drench-cream">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>VII</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">07 · Organización interna</span>
+          <h2>El pipeline.<br><em>Notion.</em></h2>
+        </div>
+      </div>
+
+      <p class="lead">Dos boards. Nada más. Reni actualiza después de cada conversación. Lunes 30 min de sync.</p>
+
+      <div class="e-table-wrap">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th>Board 1 · Pipeline de ventas</th>
+              <th>Columnas</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-size:17px;">Prospecto → Demo hecha → Trial activo → Paid → Descartado</td>
+              <td class="muted">Nombre + contacto · Fecha + notas · Fecha inicio + tier · Fecha + precio · Motivo</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="e-table-wrap">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th>Board 2 · Backlog Instagram</th>
+              <th>Campos por tarjeta</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-size:17px;">Lista de ideas de contenido pendientes</td>
+              <td class="muted">Título · Formato (Reel/carrusel/Story) · Responsable · Estado (idea/en producción/publicado)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="e-table-wrap" style="margin-top:48px;">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th colspan="2">Orden del día fijo — lunes 30 min</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="width:8%;">01</td>
+              <td>Pipeline: ¿qué movimientos hubo? ¿quién está en trial?</td>
+            </tr>
+            <tr>
+              <td class="mono">02</td>
+              <td>Instagram: ¿qué se publica esta semana?</td>
+            </tr>
+            <tr>
+              <td class="mono">03</td>
+              <td>Blockers: ¿qué necesita Reni del producto para vender mejor?</td>
+            </tr>
+            <tr>
+              <td class="mono">04</td>
+              <td>Decisiones pendientes: máximo 2.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- VIII · CALENDARIO 60 DÍAS -->
+  <section class="drench-overlay">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-head__num"><em>VIII</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">08 · Calendario</span>
+          <h2>Los primeros<br><em>60 días.</em></h2>
+        </div>
+      </div>
+
+      <div class="e-table-wrap">
+        <table class="e-table">
+          <thead>
+            <tr>
+              <th style="width:18%;">Semana</th>
+              <th style="width:22%;">Foco</th>
+              <th>Output concreto</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">1–2</td>
+              <td class="label"><em>Preparar</em></td>
+              <td>Demo funcional + Loom 3 min + precio fundador activo + Instagram creado con primeras 3 fotos.</td>
+            </tr>
+            <tr>
+              <td class="mono">3–4</td>
+              <td class="label"><em>Red caliente</em></td>
+              <td>5 demos con contactos de Reni. Objetivo: 2–3 trials iniciados.</td>
+            </tr>
+            <tr>
+              <td class="mono">5–6</td>
+              <td class="label"><em>Primeros pagos</em></td>
+              <td>Convertir trials a paid. 3–5 clientes. Pedir testimonial en video a cada uno.</td>
+            </tr>
+            <tr>
+              <td class="mono">7–8</td>
+              <td class="label"><em>Instagram activo</em></td>
+              <td>3 posts/semana. Primer contenido VeriFactu publicado. Primer Reel de Reni a cámara.</td>
+            </tr>
+            <tr>
+              <td class="mono">9–10</td>
+              <td class="label"><em>Walk-ins BCN</em></td>
+              <td>Reni hace 3–5 visitas presenciales por semana en Barcelona.</td>
+            </tr>
+            <tr>
+              <td class="mono">11–12</td>
+              <td class="label"><em>Embajadores</em></td>
+              <td>Contactar a 3–5 barbers con audiencia. Propuesta Pro gratis. Primera colaboración.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- IX · LO QUE QUIZÁS NO SE OS HA OCURRIDO -->
+  <section class="drench-espresso">
+    <div class="container container--narrow">
+      <div class="section-head">
+        <p class="section-head__num"><em>IX</em></p>
+        <div class="section-head__meta">
+          <span class="section-head__kicker">09 · Ideas no obvias</span>
+          <h2>Lo que quizás<br><em>no os ha ocurrido.</em></h2>
+        </div>
+      </div>
+
+      <ul class="e-list">
+        <li>
+          <span>
+            <strong>La frase que abre todo</strong>
+            "¿Sabéis que Fresha se queda el 20% de cada cliente nuevo que os trae?" La mayoría de barberos no sabe el porcentaje exacto. Cuando lo oyen, quieren saber más.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>VeriFactu como urgencia, no como feature</strong>
+            La apertura para frío no es el producto — es la amenaza: "En julio 2027 multas hasta €50K. ¿Tu software lo cubre?" Eso abre la puerta. Luego muestras el producto.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Grupos de WhatsApp de barberos</strong>
+            Reni ya está en ellos. Son el canal más directo y de mayor confianza. No spam — mensaje natural pidiendo que quien quiera vea el Loom se lo pida.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>PDF checklist VeriFactu como lead magnet</strong>
+            Una página descargable: "Checklist VeriFactu para tu barbería". Email a cambio. Base de datos de prospectos gratis, automática y pasiva.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Google Business de otracita</strong>
+            Dar de alta el negocio en Google Maps. Cuando un barbero busque el nombre, lo encontrará con reseñas. Gratis y tarda 10 minutos.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>El momento del referido — sistemático</strong>
+            Cuando alguien pague el primer mes, la siguiente frase siempre: "¿Conoces a algún otro barbero al que le pueda interesar?" No ad hoc — protocolo fijo.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Lanzamiento en Product Hunt</strong>
+            Cuando tengáis 10 clientes y feedback: mini-lanzamiento en Product Hunt. No para barberos — para visibilidad técnica y backlinks SEO. Gratis.
+          </span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <span>otracita</span>
+        <span>Alex &amp; Reni · 2026</span>
+        <span>A vender.</span>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
