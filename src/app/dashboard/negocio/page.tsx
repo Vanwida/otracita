@@ -9,6 +9,7 @@ import { auth } from '@/lib/auth/server'
 import NegocioForm from '@/app/dashboard/_components/NegocioForm'
 import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
 import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import { hasFeature } from '@/lib/billing/tier'
 
 interface ServiceItem {
   name: string
@@ -99,6 +100,7 @@ export default async function NegocioPage() {
 
       <NegocioForm
         clientId={client.id}
+        bonusesEnabled={hasFeature(client, 'teamBonuses')}
         initial={{
           businessName: client.businessName || '',
           whatsappNumber: client.whatsappNumber || '',

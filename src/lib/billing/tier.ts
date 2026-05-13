@@ -57,6 +57,10 @@ export const FEATURE_MIN_TIER = {
   // conversiones con sus pixels (Meta, GA4, Google Ads, TikTok). Solo
   // tiene sentido para barberos que invierten en ads.
   gtmContainer: 'pro',
+  // Pro+: bonos por barbero. Cada dueño configura los bonos de su equipo
+  // (reseñas, productos, asistencia, etc.); en caja se incrementan los
+  // contadores y a fin de mes se ve quién cobra. Manual-only v1.
+  teamBonuses: 'pro',
 } as const satisfies Record<string, Tier>;
 
 export type Feature = keyof typeof FEATURE_MIN_TIER;
@@ -143,6 +147,7 @@ export function upgradeMessage(feature: Feature): {
     soportePrioritario: 'el soporte prioritario',
     controlFinanciero: 'el control financiero',
     gtmContainer: 'Google Tag Manager',
+    teamBonuses: 'los bonos del equipo',
   };
   const tierLabel: Record<Tier, string> = {
     solo: 'Solo',

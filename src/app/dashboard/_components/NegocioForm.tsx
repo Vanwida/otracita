@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { Store, Scissors, Users, Clock, CalendarX, Check } from 'lucide-react'
+import { Store, Scissors, Users, Clock, CalendarX, Check, Award } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
 import BarbersManager from './BarbersManager'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
+import BonusesManager from './BonusesManager'
 
 interface ServiceItem {
   name: string
@@ -16,6 +17,9 @@ interface ServiceItem {
 
 interface Props {
   clientId: string
+  /** True si el tenant tiene la feature teamBonuses (Pro+). El tab "Bonos"
+   *  se muestra siempre — el contenido cambia según el plan (form vs upsell). */
+  bonusesEnabled: boolean
   initial: {
     businessName: string
     whatsappNumber: string
@@ -35,7 +39,7 @@ interface Props {
   save: (formData: FormData) => Promise<void>
 }
 
-type TabKey = 'info' | 'services' | 'team' | 'hours' | 'blocked'
+type TabKey = 'info' | 'services' | 'team' | 'hours' | 'blocked' | 'bonuses'
 
 interface Tab {
   key: TabKey
@@ -49,6 +53,7 @@ const TABS: Tab[] = [
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'hours', label: 'Horario', icon: Clock },
   { key: 'blocked', label: 'Días bloqueados', icon: CalendarX },
+  { key: 'bonuses', label: 'Bonos', icon: Award },
 ]
 
 /**
@@ -58,7 +63,7 @@ const TABS: Tab[] = [
  * so the user can edit one, jump to another, and save once. Tab 5 (blocked
  * dates) uses the existing API-driven component and saves independently.
  */
-export default function NegocioForm({ clientId, initial, save }: Props) {
+export default function NegocioForm({ clientId, bonusesEnabled, initial, save }: Props) {
   const [tab, setTab] = useState<TabKey>('info')
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -67,7 +72,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
   // resolución media). Sin esto, al deep-linkear a ?tab=blocked el tab queda
   // fuera de la zona visible.
   const tabBtnRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
-    info: null, services: null, team: null, hours: null, blocked: null,
+    info: null, services: null, team: null, hours: null, blocked: null, bonuses: null,
   })
 
   // Allow deep-linking: ?tab=blocked lands en el tab correspondiente.
@@ -83,7 +88,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
       window.location.replace('/dashboard/caja')
       return
     }
-    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'blocked']
+    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'blocked', 'bonuses']
     if ((valid as string[]).includes(raw)) {
       // Syncing tab from URL query param (external state) on mount.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -155,6 +160,17 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
             <p className="text-sm text-ink-2 mt-1">Bloquea fechas específicas (vacaciones, festivos) para que el bot no ofrezca esos días.</p>
           </div>
           <BlockedDatesManager initialDates={initial.blockedDates} clientId={clientId} />
+        </div>
+      ) : tab === 'bonuses' ? (
+        <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Bonos del equipo</h2>
+            <p className="text-sm text-ink-2 mt-1">
+              Configura los incentivos que pagas a cada barbero (reseñas, ventas, asistencia…).
+              En caja sumas el progreso del día; a fin de mes ves quién cobra.
+            </p>
+          </div>
+          <BonusesManager enabled={bonusesEnabled} />
         </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
