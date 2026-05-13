@@ -8,6 +8,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
+import { requireFeature } from '@/lib/billing/tier';
 
 interface ServiceConfig {
   name: string;
@@ -18,6 +19,8 @@ interface ServiceConfig {
 export async function POST(req: NextRequest) {
   const access = await requireClientAccess(req);
   if (!access.ok) return accessErrorResponse(access);
+  const gate = requireFeature(access.client, 'recepcionistaIA');
+  if (gate) return gate;
   const { client } = access;
 
   let body: { date: string; service: string; barber?: string };

@@ -1,11 +1,21 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, PhoneCall, PhoneOff, Loader2 } from 'lucide-react';
+import { useConversation, ConversationProvider } from '@elevenlabs/react';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Recepcionista IA voice-test (ElevenLabs Conversational AI)
+//
+// Migrado el 2026-05-01 de Grok Realtime (~700 LOC manuales de WebSocket /
+// PCM / VAD / playback) a @elevenlabs/react useConversation hook. El SDK
+// abstrae todo el plumbing: signed URL → conexión → mic → audio → transcript
+// → end. Aquí solo gestionamos UI y callbacks.
+//
+// Voz castellana nativa real (vs acento inglés-traducido de Grok). Selector
+// de voz por cliente vendrá en Phase 2 (cuando varios barberos quieran
+// elegir entre JeiJo / Dante / etc).
+// -----------------------------------------------------------------------------
 
 interface ServiceConfig {
   name: string;
@@ -30,180 +40,62 @@ interface TranscriptEntry {
   text: string;
 }
 
-type CallStatus = 'idle' | 'connecting' | 'connected' | 'error';
-
-// ---------------------------------------------------------------------------
-// PCM16 helpers
-// ---------------------------------------------------------------------------
-
-function floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(float32Array.length * 2);
-  const view = new DataView(buffer);
-  for (let i = 0; i < float32Array.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Array[i]));
-    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  }
-  return buffer;
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToFloat32(base64: string, audioCtx: AudioContext): AudioBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  const int16 = new Int16Array(bytes.buffer);
-  const float32 = new Float32Array(int16.length);
-  for (let i = 0; i < int16.length; i++) {
-    float32[i] = int16[i] / 0x8000;
-  }
-  const audioBuffer = audioCtx.createBuffer(1, float32.length, 24000);
-  audioBuffer.getChannelData(0).set(float32);
-  return audioBuffer;
-}
-
-// ---------------------------------------------------------------------------
-// System prompt builder
-// ---------------------------------------------------------------------------
-
-function buildSystemPrompt(client: ClientConfig): string {
-  const barbersList =
-    client.barbers.length > 0 ? client.barbers.join(', ') : 'cualquier barbero';
-  const hours = `${client.hours.start} - ${client.hours.end}`;
-
-  // Inject current date so the AI can resolve relative dates correctly
-  const today = new Date().toLocaleDateString('es-ES', {
-    timeZone: 'Europe/Madrid',
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  // Internal reference list — AI uses this to map caller's answer to a service
-  const serviceLines = client.services
-    .map(s => `  - ${s.name} (${s.duration} min${s.price ? `, ${s.price}€` : ''})`)
-    .join('\n') || '  - Corte de cabello (30 min)';
-
-  return `Eres la recepcionista por voz de ${client.businessName}, una barbería. Atiendes llamadas y reservas citas.
-
-IDIOMA: Habla SIEMPRE en español de España, con tono cercano y natural. Solo cambia a inglés si el cliente te habla claramente en inglés desde el principio; en cualquier otro caso, español.
-
-FECHA DE HOY: ${today}. Úsala siempre para resolver nombres de día ("el viernes", "mañana", etc.) al formato YYYY-MM-DD correcto. Nunca adivines el año.
-
-TU TRABAJO:
-1. Saluda con calidez al cliente.
-2. Si quiere reservar: pídele su nombre y luego haz UNA sola pregunta: "¿Es para corte, barba o las dos?".
-3. Según su respuesta, elige internamente el servicio que mejor encaje de la lista de abajo — NUNCA leas la lista en voz alta.
-4. Pregúntale qué día y hora le viene bien.
-5. Usa check_availability con el nombre del servicio elegido para encontrar huecos.
-6. Ofrece como mucho 3 huecos disponibles.
-7. Cuando confirme, usa create_booking.
-8. Confirma brevemente y despídete.
-
-SERVICIOS (referencia interna — NUNCA los leas en voz alta al cliente):
-${serviceLines}
-
-CÓMO MAPEAR LA RESPUESTA DEL CLIENTE A UN SERVICIO:
-- "corte" / "pelo" → el servicio de corte básico o más común
-- "barba" → el servicio de barba
-- "los dos" / "corte y barba" → un servicio combinado de corte+barba
-- Nombre específico de servicio → úsalo directamente
-- Si tienes dudas → por defecto el corte básico
-
-REGLAS:
-- Cada respuesta CORTA — máximo 2 frases. Es una llamada de teléfono, no un email.
-- NUNCA enumeres ni leas servicios. Solo pregunta "¿corte, barba o las dos?" y mapea internamente.
-- Nunca ofrezcas más de 3 huecos a la vez.
-- Si no hay huecos el día pedido, sugiere el siguiente día disponible.
-- Barberos disponibles: ${barbersList}.
-- Horario: ${hours}.
-- Si el cliente quiere CAMBIAR o CANCELAR una reserva: explícale que solo puedes crear citas nuevas, y ofrece reservar el nuevo hueco que quiera. Las cancelaciones se hacen en persona o llamando.
-- Resuelve siempre los nombres de día con la FECHA DE HOY de arriba. "El viernes" = el próximo viernes a partir de hoy.
-
-EJEMPLOS:
-"¡Hola! Soy la recepcionista de ${client.businessName}, ¿en qué te puedo ayudar?"
-"¿Es para corte, barba o las dos?"
-"¿Qué día te viene bien? Tengo huecos el viernes a las 11:00, 12:00 y 16:00."
-
-Si por algún motivo el cliente arranca en inglés, contesta en inglés con el mismo tono breve y directo.`;
-}
-
-// ---------------------------------------------------------------------------
-// Tool definitions
-// ---------------------------------------------------------------------------
-
-const TOOLS = [
-  {
-    type: 'function',
-    name: 'check_availability',
-    description:
-      'Check available appointment slots. Call this when the customer asks about availability or wants to book.',
-    parameters: {
-      type: 'object',
-      properties: {
-        date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
-        service: { type: 'string', description: 'Service name exactly as listed' },
-        barber: { type: 'string', description: 'Barber name (optional)' },
-      },
-      required: ['date', 'service'],
-    },
-  },
-  {
-    type: 'function',
-    name: 'create_booking',
-    description:
-      'Create a confirmed booking after customer agrees to a specific slot.',
-    parameters: {
-      type: 'object',
-      properties: {
-        customerName: { type: 'string' },
-        service: { type: 'string' },
-        barber: { type: 'string' },
-        date: { type: 'string', description: 'YYYY-MM-DD' },
-        time: { type: 'string', description: 'HH:MM' },
-      },
-      required: ['customerName', 'service', 'date', 'time'],
-    },
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
+// Wrapper que monta el ConversationProvider del SDK. El hook
+// useConversation() solo funciona dentro de este provider, por eso
+// envolvemos aquí en lugar de pedirle al consumer que lo haga.
 export default function VoiceTest({ client }: { client: ClientConfig }) {
-  const [status, setStatus] = useState<CallStatus>('idle');
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  return (
+    <ConversationProvider>
+      <VoiceTestInner client={client} />
+    </ConversationProvider>
+  );
+}
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+function VoiceTestInner({ client }: { client: ClientConfig }) {
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  // Audio playback queue
-  const playbackQueueRef = useRef<AudioBuffer[]>([]);
-  const isPlayingRef = useRef(false);
-  const nextPlayTimeRef = useRef(0);
+  // Hook del SDK. Maneja toda la conexión WS, audio, VAD internamente.
+  // Los callbacks nos dan el output que necesitamos para la UI.
+  const conversation = useConversation({
+    onConnect: () => {
+      setConnecting(false);
+      setErrorMessage(null);
+    },
+    onDisconnect: () => {
+      setConnecting(false);
+    },
+    onMessage: (msg: { source: 'user' | 'ai'; message: string }) => {
+      // El SDK emite 'user' y 'ai' (no 'assistant'); normalizamos a la
+      // shape que ya usaba el componente original.
+      const role: 'user' | 'assistant' = msg.source === 'ai' ? 'assistant' : 'user';
+      const text = msg.message?.trim();
+      if (!text) return;
+      setTranscript((prev) => {
+        // Si el último mensaje es del mismo rol, lo concatenamos (deltas).
+        const last = prev[prev.length - 1];
+        if (last?.role === role) {
+          return [...prev.slice(0, -1), { role, text: `${last.text} ${text}`.trim() }];
+        }
+        return [...prev, { role, text }];
+      });
+    },
+    onError: (err: unknown) => {
+      console.error('[voice-test] ElevenLabs error:', err);
+      const message =
+        typeof err === 'object' && err && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Error en el asistente de voz';
+      setErrorMessage(message);
+      setConnecting(false);
+    },
+  });
 
-  // Pending tool call accumulator: call_id -> { name, args }
-  const pendingCallsRef = useRef<
-    Record<string, { name: string; args: string }>
-  >({});
+  const status = conversation.status; // 'disconnected' | 'connecting' | 'connected' | 'disconnecting'
+  const isSpeaking = conversation.isSpeaking;
+  const isConnected = status === 'connected';
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -213,371 +105,75 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
   }, [transcript]);
 
   // ---------------------------------------------------------------------------
-  // Audio playback
+  // Start call: pide permiso de micro + signed URL al backend + abre sesión.
   // ---------------------------------------------------------------------------
-
-  const playNextBuffer = useCallback(() => {
-    const ctx = audioCtxRef.current;
-    if (!ctx || playbackQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      setIsSpeaking(false);
-      return;
-    }
-
-    isPlayingRef.current = true;
-    setIsSpeaking(true);
-    const buffer = playbackQueueRef.current.shift()!;
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-
-    const startTime = Math.max(ctx.currentTime, nextPlayTimeRef.current);
-    source.start(startTime);
-    nextPlayTimeRef.current = startTime + buffer.duration;
-
-    source.onended = () => {
-      playNextBuffer();
-    };
-  }, []);
-
-  const enqueueAudio = useCallback(
-    (base64: string) => {
-      const ctx = audioCtxRef.current;
-      if (!ctx) return;
-      const buffer = base64ToFloat32(base64, ctx);
-      playbackQueueRef.current.push(buffer);
-      if (!isPlayingRef.current) {
-        playNextBuffer();
-      }
-    },
-    [playNextBuffer]
-  );
-
-  // ---------------------------------------------------------------------------
-  // Tool call handler
-  // ---------------------------------------------------------------------------
-
-  const handleToolCall = useCallback(
-    async (name: string, callId: string, argsJson: string) => {
-      let result = '';
-      try {
-        const args = JSON.parse(argsJson);
-
-        if (name === 'check_availability') {
-          const res = await fetch('/api/voice/availability', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(args),
-          });
-          const data = await res.json();
-          result = JSON.stringify(data);
-        } else if (name === 'create_booking') {
-          const res = await fetch('/api/voice/book', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(args),
-          });
-          const data = await res.json();
-          result = JSON.stringify(data);
-        } else {
-          result = JSON.stringify({ error: 'Unknown tool' });
-        }
-      } catch (err) {
-        console.error('Tool call failed:', err);
-        result = JSON.stringify({ error: 'Tool execution failed' });
-      }
-
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-      ws.send(
-        JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: callId,
-            output: result,
-          },
-        })
-      );
-      ws.send(JSON.stringify({ type: 'response.create' }));
-    },
-    []
-  );
-
-  // ---------------------------------------------------------------------------
-  // WebSocket message handler
-  // ---------------------------------------------------------------------------
-
-  const handleMessage = useCallback(
-    (event: MessageEvent) => {
-      let msg: Record<string, unknown>;
-      try {
-        msg = JSON.parse(event.data as string);
-      } catch {
-        return;
-      }
-
-      const type = msg.type as string;
-
-      switch (type) {
-        // AI audio delta
-        case 'response.output_audio.delta': {
-          const delta = msg.delta as string | undefined;
-          if (delta) enqueueAudio(delta);
-          break;
-        }
-
-        // AI audio done (silence after speaking)
-        case 'response.output_audio.done': {
-          break;
-        }
-
-        // Transcript from AI
-        case 'response.output_audio_transcript.delta': {
-          const delta = msg.delta as string | undefined;
-          if (delta) {
-            setTranscript(prev => {
-              const last = prev[prev.length - 1];
-              if (last?.role === 'assistant') {
-                return [
-                  ...prev.slice(0, -1),
-                  { role: 'assistant', text: last.text + delta },
-                ];
-              }
-              return [...prev, { role: 'assistant', text: delta }];
-            });
-          }
-          break;
-        }
-
-        // Transcript from user (VAD detected)
-        case 'conversation.item.input_audio_transcription.completed': {
-          const text = msg.transcript as string | undefined;
-          if (text?.trim()) {
-            setTranscript(prev => [...prev, { role: 'user', text: text.trim() }]);
-          }
-          break;
-        }
-
-        // VAD detected user speech start
-        case 'input_audio_buffer.speech_started': {
-          setIsListening(true);
-          // Interrupt playback queue when user starts speaking
-          playbackQueueRef.current = [];
-          isPlayingRef.current = false;
-          nextPlayTimeRef.current = 0;
-          setIsSpeaking(false);
-          break;
-        }
-
-        // VAD detected user speech end
-        case 'input_audio_buffer.speech_stopped': {
-          setIsListening(false);
-          break;
-        }
-
-        // Tool call arguments accumulation
-        case 'response.function_call_arguments.delta': {
-          const callId = msg.call_id as string;
-          const name = msg.name as string;
-          const delta = msg.delta as string;
-          if (callId) {
-            if (!pendingCallsRef.current[callId]) {
-              pendingCallsRef.current[callId] = { name, args: '' };
-            }
-            pendingCallsRef.current[callId].args += delta;
-          }
-          break;
-        }
-
-        // Tool call complete
-        case 'response.function_call_arguments.done': {
-          const callId = msg.call_id as string;
-          const name = msg.name as string;
-          const argsStr = msg.arguments as string;
-          const accumulated = pendingCallsRef.current[callId];
-          const finalArgs = argsStr || accumulated?.args || '{}';
-          const finalName = name || accumulated?.name || '';
-          if (callId && finalName) {
-            delete pendingCallsRef.current[callId];
-            handleToolCall(finalName, callId, finalArgs);
-          }
-          break;
-        }
-
-        case 'error': {
-          console.error('Grok WS error:', msg);
-          setErrorMessage((msg.error as { message?: string })?.message || 'WebSocket error');
-          break;
-        }
-      }
-    },
-    [enqueueAudio, handleToolCall]
-  );
-
-  // ---------------------------------------------------------------------------
-  // Start call
-  // ---------------------------------------------------------------------------
-
   const startCall = useCallback(async () => {
-    setStatus('connecting');
+    setConnecting(true);
     setErrorMessage(null);
     setTranscript([]);
-    playbackQueueRef.current = [];
-    isPlayingRef.current = false;
-    nextPlayTimeRef.current = 0;
-    pendingCallsRef.current = {};
 
     try {
-      // 1. Mic permission
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+      // 1. Permiso de micrófono (requerido por el SDK aunque él no lo pida).
+      await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // 2. AudioContext at 16 kHz for mic capture
-      const audioCtx = new AudioContext({ sampleRate: 16000 });
-      audioCtxRef.current = audioCtx;
-
-      // 3. Get ephemeral token
+      // 2. Backend: signed URL del agent ElevenLabs (corto-vivo, no expone
+      //    nuestra API key al navegador).
       const tokenRes = await fetch('/api/voice/token');
       if (!tokenRes.ok) {
-        throw new Error('Failed to get voice token');
+        const err = await tokenRes.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${tokenRes.status}`);
       }
-      const { token } = await tokenRes.json();
-
-      // 4. Open WebSocket
-      const ws = new WebSocket('wss://api.x.ai/v1/realtime', [
-        `xai-client-secret.${token}`,
-      ]);
-      wsRef.current = ws;
-
-      ws.onmessage = handleMessage;
-
-      ws.onerror = (e) => {
-        console.error('WebSocket error', e);
-        setStatus('error');
-        setErrorMessage('Error de conexión con el asistente de voz.');
+      const { signedUrl, voiceId } = (await tokenRes.json()) as {
+        signedUrl: string;
+        voiceId?: string | null;
       };
 
-      ws.onclose = () => {
-        if (status !== 'idle') setStatus('idle');
-      };
-
-      ws.onopen = () => {
-        setStatus('connected');
-
-        // 5. Send session.update
-        // Modelo: 'grok-voice-think-fast-1.0' (recomendado en docs xAI por
-        // mejor experiencia conversacional). Alternativa más barata/rápida:
-        // 'grok-voice-fast-1.0'. El antiguo 'grok-2-voice-agent' fue
-        // retirado al lanzar la generación voice-fast.
-        // Voice IDs son lowercase: eve, ara, rex, sal, leo.
-        ws.send(
-          JSON.stringify({
-            type: 'session.update',
-            session: {
-              model: 'grok-voice-think-fast-1.0',
-              voice: 'eve',
-              instructions: buildSystemPrompt(client),
-              audio: {
-                input: { format: { type: 'audio/pcm', rate: 16000 } },
-                output: { format: { type: 'audio/pcm', rate: 24000 } },
-              },
-              turn_detection: { type: 'server_vad' },
-              tools: TOOLS,
-              tool_choice: 'auto',
-            },
-          })
-        );
-
-        // 6. Start streaming mic audio
-        const source = audioCtx.createMediaStreamSource(stream);
-        sourceRef.current = source;
-
-        // ScriptProcessorNode — deprecated but widely supported
-        // Buffer size 4096 gives ~256ms latency at 16kHz
-        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-        scriptProcessorRef.current = processor;
-
-        processor.onaudioprocess = (e) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          const float32 = e.inputBuffer.getChannelData(0);
-          const pcm16 = floatTo16BitPCM(float32);
-          const base64 = arrayBufferToBase64(pcm16);
-          ws.send(
-            JSON.stringify({
-              type: 'input_audio_buffer.append',
-              audio: base64,
-            })
-          );
-        };
-
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
-      };
+      // 3. SDK: arranca sesión. A partir de aquí los callbacks de useConversation
+      //    gestionan transcript / audio / errores. Si el backend mandó voiceId,
+      //    se lo pasamos como override TTS para no depender de la voz que
+      //    esté configurada en el Agent (más fácil cambiar voz vía env var
+      //    o, en Phase 2, vía clients.voiceId).
+      await conversation.startSession({
+        signedUrl,
+        ...(voiceId
+          ? { overrides: { tts: { voiceId } } }
+          : {}),
+      });
     } catch (err) {
-      console.error('Start call error:', err);
-      setStatus('error');
+      console.error('[voice-test] startCall error:', err);
       setErrorMessage(
-        err instanceof Error ? err.message : 'Error al iniciar la llamada.'
+        err instanceof Error ? err.message : 'No se pudo iniciar la llamada.',
       );
-      // Clean up partial state
-      mediaStreamRef.current?.getTracks().forEach(t => t.stop());
-      mediaStreamRef.current = null;
-      audioCtxRef.current?.close();
-      audioCtxRef.current = null;
+      setConnecting(false);
     }
-  }, [client, handleMessage, status]);
+  }, [conversation]);
 
   // ---------------------------------------------------------------------------
   // Stop call
   // ---------------------------------------------------------------------------
-
-  const stopCall = useCallback(() => {
-    // Close WebSocket
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-      wsRef.current = null;
+  const stopCall = useCallback(async () => {
+    try {
+      await conversation.endSession();
+    } catch (err) {
+      console.error('[voice-test] endSession error:', err);
     }
+  }, [conversation]);
 
-    // Stop mic
-    scriptProcessorRef.current?.disconnect();
-    scriptProcessorRef.current = null;
-    sourceRef.current?.disconnect();
-    sourceRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach(t => t.stop());
-    mediaStreamRef.current = null;
-
-    // Close AudioContext
-    audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-
-    // Reset playback
-    playbackQueueRef.current = [];
-    isPlayingRef.current = false;
-    nextPlayTimeRef.current = 0;
-    pendingCallsRef.current = {};
-
-    setStatus('idle');
-    setIsSpeaking(false);
-    setIsListening(false);
-  }, []);
-
-  // Clean up on unmount
+  // Cleanup on unmount. Cast a unknown porque el SDK declara endSession()
+  // como void en los .d.ts pero en runtime devuelve una Promise.
   useEffect(() => {
     return () => {
-      stopCall();
+      try {
+        const result = conversation.endSession() as unknown as Promise<unknown> | void;
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+          (result as Promise<unknown>).catch(() => {});
+        }
+      } catch {
+        // swallow
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
-  const isConnected = status === 'connected';
-  const isConnecting = status === 'connecting';
 
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-2xl mx-auto">
@@ -597,33 +193,22 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
         <div className="p-6 md:p-8 flex flex-col items-center gap-5 border-b border-line">
           {/* Animated mic orb */}
           <div className="relative flex items-center justify-center">
-            {/* Pulse rings when listening */}
-            {isListening && (
-              <>
-                <span className="absolute inline-flex h-24 w-24 rounded-full bg-success/20 animate-ping" />
-                <span className="absolute inline-flex h-20 w-20 rounded-full bg-success/10 animate-ping [animation-delay:150ms]" />
-              </>
+            {isSpeaking && isConnected && (
+              <span className="absolute inline-flex h-24 w-24 rounded-full bg-brand/20 animate-ping" />
             )}
-            {/* AI speaking indicator */}
-            {isSpeaking && !isListening && (
-              <span className="absolute inline-flex h-24 w-24 rounded-full bg-brand/20 animate-ping [animation-delay:0ms]" />
-            )}
-
             <div
               className={`relative h-20 w-20 rounded-full flex items-center justify-center transition-colors duration-300 ${
-                isListening
-                  ? 'bg-success shadow-lg'
-                  : isSpeaking
+                isSpeaking && isConnected
                   ? 'bg-brand shadow-lg'
                   : isConnected
-                  ? 'bg-overlay border border-line-strong'
-                  : 'bg-overlay border border-line'
+                    ? 'bg-success shadow-lg'
+                    : 'bg-overlay border border-line'
               }`}
             >
               {isConnected ? (
                 <Mic
                   className={`h-8 w-8 ${
-                    isListening || isSpeaking ? 'text-brand-ink' : 'text-ink-2'
+                    isSpeaking ? 'text-brand-ink' : 'text-brand-ink'
                   }`}
                 />
               ) : (
@@ -634,10 +219,10 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
 
           {/* Status label */}
           <div className="flex items-center gap-2 text-sm font-medium">
-            {status === 'idle' && (
+            {status === 'disconnected' && !connecting && (
               <span className="text-ink-2">Listo para iniciar</span>
             )}
-            {status === 'connecting' && (
+            {(connecting || status === 'connecting') && (
               <>
                 <Loader2 className="h-4 w-4 text-brand animate-spin" />
                 <span className="text-brand">Conectando...</span>
@@ -647,40 +232,32 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
               <>
                 <span className="h-2 w-2 rounded-full bg-success shadow-sm" />
                 <span className="text-success">
-                  {isListening
-                    ? 'Escuchando...'
-                    : isSpeaking
-                    ? 'IA hablando...'
-                    : 'Conectado'}
+                  {isSpeaking ? 'IA hablando...' : 'Escuchando'}
                 </span>
-              </>
-            )}
-            {status === 'error' && (
-              <>
-                <span className="h-2 w-2 rounded-full bg-danger" />
-                <span className="text-danger">Error de conexión</span>
               </>
             )}
           </div>
 
           {/* Error message */}
           {errorMessage && (
-            <p className="text-xs text-danger text-center max-w-xs">{errorMessage}</p>
+            <p className="text-xs text-danger text-center max-w-xs">
+              {errorMessage}
+            </p>
           )}
 
           {/* CTA Button */}
-          {!isConnected ? (
+          {!isConnected && status !== 'connecting' ? (
             <button
               onClick={startCall}
-              disabled={isConnecting}
-              className="flex items-center gap-2.5 bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink font-semibold text-sm px-6 py-3 rounded-xl transition-colors shadow-md"
+              disabled={connecting}
+              className="btn-primary shadow-md"
             >
-              {isConnecting ? (
+              {connecting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <PhoneCall className="h-4 w-4" />
               )}
-              {isConnecting ? 'Conectando...' : 'Iniciar llamada'}
+              {connecting ? 'Conectando...' : 'Iniciar llamada'}
             </button>
           ) : (
             <button
@@ -709,10 +286,7 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
             )}
           </div>
 
-          <div
-            ref={transcriptRef}
-            className="h-64 overflow-y-auto space-y-3 scrollbar-thin"
-          >
+          <div ref={transcriptRef} className="h-64 overflow-y-auto space-y-3 scrollbar-thin">
             {transcript.length === 0 ? (
               <p className="text-ink-3 text-sm text-center py-10">
                 La conversación aparecerá aquí...
@@ -725,7 +299,6 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
                     entry.role === 'user' ? 'flex-row-reverse' : 'flex-row'
                   }`}
                 >
-                  {/* Avatar */}
                   <div
                     className={`h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5 ${
                       entry.role === 'user'
@@ -735,7 +308,6 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
                   >
                     {entry.role === 'user' ? 'U' : 'IA'}
                   </div>
-                  {/* Bubble */}
                   <div
                     className={`max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
                       entry.role === 'user'
@@ -754,11 +326,11 @@ export default function VoiceTest({ client }: { client: ClientConfig }) {
 
       {/* Info footer */}
       <div className="mt-4 flex flex-wrap gap-3 text-xs text-ink-3">
-        <span>Servicios: {client.services.map(s => s.name).join(', ') || '—'}</span>
-        {client.barbers.length > 0 && (
-          <span>Barbers: {client.barbers.join(', ')}</span>
-        )}
-        <span>Horario: {client.hours.start} – {client.hours.end}</span>
+        <span>Servicios: {client.services.map((s) => s.name).join(', ') || '—'}</span>
+        {client.barbers.length > 0 && <span>Barberos: {client.barbers.join(', ')}</span>}
+        <span>
+          Horario: {client.hours.start} – {client.hours.end}
+        </span>
       </div>
     </div>
   );
