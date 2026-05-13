@@ -21,5 +21,7 @@ export const auth = betterAuth({
     'https://agendalo.aistudios.pro',
     'https://reserva.aistudios.pro',
     'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
   ],
 });

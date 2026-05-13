@@ -32,9 +32,10 @@ import type { WeeklyHours } from '@/lib/availability'
 //   Band B — Masthead: una frase Fraunces en terracota + soporte + link
 //   Band C — Secundario condicional (lista, recap o ActivationTracker)
 //
-// Las KPIs (visitas, clientes nuevos, ocupación, nota media) viven en
-// /dashboard/rendimiento. La privacidad de cifras durante la jornada se
-// preserva: aquí solo enseñamos € en estado "done" (después de cierre).
+// Las KPIs viven cada una en su sitio: visitas y € en Caja, clientes nuevos
+// en Clientes, nota media en Crecer → Reseñas. La privacidad de cifras
+// durante la jornada se preserva: aquí solo enseñamos € en estado "done"
+// (después de cierre).
 //
 // State machine en src/lib/dashboard/home-state.ts. El page solo decide copy
 // + layout; los hechos los computa la lib.
@@ -220,7 +221,9 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
 
       {/* Footer — plan + suscripción, siempre discreto */}
       <footer className="mt-16 pt-6 border-t border-line flex items-center gap-3 flex-wrap text-xs text-ink-2">
-        <span className="uppercase tracking-wider font-semibold">{client.plan}</span>
+        <span className="uppercase tracking-wider font-semibold">
+          {planLabel(client.plan)}
+        </span>
         <span className="text-line-strong">·</span>
         <span className={`uppercase tracking-wider font-semibold ${
           client.status === 'active' ? 'text-success' : client.status === 'pending' ? 'text-warning' : 'text-ink-2'
@@ -630,6 +633,28 @@ function clientStatusLabel(status: string): string {
       return 'Inactivo'
     default:
       return status
+  }
+}
+
+function planLabel(plan: string): string {
+  // Mapea plan IDs internos a etiquetas humanas. El plan ID en DB puede ser
+  // legacy ('chatbot', 'full', 'ads') o nuevo ('solo', 'pro', 'estudio') —
+  // muestra siempre algo legible, nunca el enum raw.
+  switch (plan) {
+    case 'chatbot':
+      return 'Chatbot WhatsApp'
+    case 'ads':
+      return 'Google Ads'
+    case 'full':
+      return 'Pack completo'
+    case 'solo':
+      return 'Solo'
+    case 'pro':
+      return 'Pro'
+    case 'estudio':
+      return 'Estudio'
+    default:
+      return plan
   }
 }
 

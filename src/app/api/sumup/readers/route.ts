@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import { listReaders, ensureValidAccessToken, SumupApiError } from '@/lib/sumup/client'
 import { getOauthEnv } from '@/lib/sumup/oauth'
 
@@ -17,6 +18,8 @@ import { getOauthEnv } from '@/lib/sumup/oauth'
 export async function GET(req: Request) {
   const access = await requireClientAccess(req)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'sumupTapToPay')
+  if (gate) return gate
   const { client } = access
 
   if (!client.sumupAccessToken || !client.sumupMerchantCode || !client.sumupRefreshToken) {

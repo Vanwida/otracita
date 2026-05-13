@@ -5,10 +5,11 @@ import { usePathname } from 'next/navigation'
 import { NAV_ITEMS, isNavItemActive } from './nav-config'
 
 // -----------------------------------------------------------------------------
-// Renderiza los 4 ítems del menú principal con el estado "active" calculado
-// desde el pathname. Usado en dos sitios (sidebar desktop + bottom nav móvil)
-// — el modo cambia el layout/spacing pero la lógica de active es la misma,
-// asi que extraer el cálculo a `isNavItemActive` (en nav-config) mantiene DRY.
+// Renderiza los ítems del menú principal (definidos en nav-config) con el
+// estado "active" calculado desde el pathname. Usado en dos sitios (sidebar
+// desktop + bottom nav móvil) — el modo cambia el layout/spacing pero la
+// lógica de active es la misma, así que extraer el cálculo a `isNavItemActive`
+// (en nav-config) mantiene DRY.
 // -----------------------------------------------------------------------------
 
 interface Props {

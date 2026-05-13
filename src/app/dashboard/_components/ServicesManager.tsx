@@ -158,10 +158,10 @@ export default function ServicesManager({ initial }: Props) {
                 Destacar en la home
               </label>
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={cancelEdit} className="flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink border border-line hover:border-line-strong rounded-lg px-3 py-1.5 transition-colors">
+                <button type="button" onClick={cancelEdit} className="btn-secondary btn-sm">
                   <X className="h-3.5 w-3.5" /> Cancelar
                 </button>
-                <button type="button" onClick={saveEdit} className="flex items-center gap-1.5 text-xs font-medium text-brand-ink bg-brand hover:bg-brand-strong rounded-lg px-3 py-1.5 transition-colors">
+                <button type="button" onClick={saveEdit} className="btn-primary btn-sm">
                   <Check className="h-3.5 w-3.5" /> Guardar
                 </button>
               </div>
@@ -283,10 +283,10 @@ export default function ServicesManager({ initial }: Props) {
             )}
           </label>
           <div className="flex gap-2 justify-end">
-            <button type="button" onClick={cancelAdd} className="flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink border border-line hover:border-line-strong rounded-lg px-3 py-1.5 transition-colors">
+            <button type="button" onClick={cancelAdd} className="btn-secondary btn-sm">
               <X className="h-3.5 w-3.5" /> Cancelar
             </button>
-            <button type="button" onClick={saveAdd} className="flex items-center gap-1.5 text-xs font-medium text-brand-ink bg-brand hover:bg-brand-strong rounded-lg px-3 py-1.5 transition-colors">
+            <button type="button" onClick={saveAdd} className="btn-primary btn-sm">
               <Check className="h-3.5 w-3.5" /> Añadir
             </button>
           </div>

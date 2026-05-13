@@ -134,7 +134,7 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
                     type="button"
                     onClick={onSaveDelay}
                     disabled={pending || !delayChanged}
-                    className="ml-auto rounded-lg bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink text-xs font-semibold px-3 py-2 transition-colors inline-flex items-center gap-1.5"
+                    className="btn-primary btn-sm ml-auto"
                   >
                     {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Guardar'}
                   </button>

@@ -39,7 +39,7 @@ export default function OpenStripePortalButton({ disabled = false, disabledReaso
         type="button"
         onClick={onClick}
         disabled={disabled || loading}
-        className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60 disabled:cursor-not-allowed self-start"
+        className="btn-primary self-start"
       >
         <ExternalLink className="h-4 w-4" />
         {loading ? 'Abriendo portal...' : 'Gestionar suscripción'}

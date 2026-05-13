@@ -20,7 +20,7 @@ export default function AppPageCopyButton({ url }: { url: string }) {
     <button
       type="button"
       onClick={copy}
-      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-2 text-sm font-semibold text-brand-ink transition-colors"
+      className="btn-primary btn-sm"
     >
       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
       {copied ? 'Copiado' : 'Copiar enlace'}

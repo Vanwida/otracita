@@ -255,7 +255,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-xl bg-brand hover:bg-brand-strong px-6 py-3 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+              className="btn-primary"
             >
               {saving ? 'Guardando...' : 'Guardar cambios'}
             </button>

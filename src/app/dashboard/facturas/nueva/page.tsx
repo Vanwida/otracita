@@ -41,7 +41,7 @@ export default async function NuevaFacturaPage() {
           </p>
           <Link
             href="/dashboard/caja"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
+            className="btn-primary mt-6"
           >
             Activar facturación
           </Link>

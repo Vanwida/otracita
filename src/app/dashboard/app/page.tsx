@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 
 const SITE_ORIGIN = 'https://otracita.es'
 
@@ -54,7 +54,7 @@ export default async function AppPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
-      <AjustesBreadcrumb current="App para clientes" />
+      <HubBreadcrumb current="App para clientes" />
       <div className="mb-2">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
           <Smartphone className="h-7 w-7 text-brand" />
@@ -68,7 +68,7 @@ export default async function AppPage() {
       </div>
 
       {!readyForApp && (
-        <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm text-ink-2">
+        <div className="bg-overlay border border-line rounded-xl p-4 text-sm text-ink-2">
           Tu app no está publicada todavía. Activa el toggle &ldquo;App publicada&rdquo; abajo y guarda.
         </div>
       )}

@@ -158,7 +158,7 @@ export default function LoyaltyCustomerLookup({ enabled }: { enabled: boolean })
         <button
           type="submit"
           disabled={state.kind === 'loading' || !phone.trim()}
-          className="rounded-lg bg-brand hover:bg-brand-strong text-brand-ink px-4 py-2 text-sm font-semibold disabled:opacity-60 inline-flex items-center gap-2"
+          className="btn-primary btn-sm"
         >
           {state.kind === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Buscar'}
         </button>
@@ -275,7 +275,7 @@ function LoadedView({
               onAdjust(d, adjustNote.trim() || null)
               setAdjustNote('')
             }}
-            className="rounded-lg bg-brand hover:bg-brand-strong text-brand-ink px-4 py-2 text-sm font-semibold disabled:opacity-60 inline-flex items-center gap-2"
+            className="btn-primary btn-sm"
           >
             {busy === 'adjust' && <Loader2 className="h-4 w-4 animate-spin" />}
             Aplicar ajuste
@@ -353,7 +353,7 @@ function StampsCanje({
           type="button"
           onClick={onRedeem}
           disabled={busy}
-          className="mt-3 rounded-lg bg-brand hover:bg-brand-strong text-brand-ink px-4 py-2 text-sm font-semibold disabled:opacity-60 inline-flex items-center gap-2"
+          className="btn-primary btn-sm mt-3"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
           Canjear: <RewardLabel reward={progress.reward} />
@@ -401,7 +401,7 @@ function PointsCanje({
               type="button"
               onClick={() => onRedeem(i)}
               disabled={!t.canRedeem || busy}
-              className="rounded-md bg-brand hover:bg-brand-strong text-brand-ink px-3 py-1 text-xs font-semibold disabled:opacity-40 inline-flex items-center gap-1"
+              className="btn-primary btn-sm disabled:opacity-40"
             >
               {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
               Canjear

@@ -15,7 +15,6 @@ import {
   TrendingDown,
   Minus,
   ChevronRight,
-  ChevronLeft,
   ShoppingBag,
 } from 'lucide-react'
 import { Suspense } from 'react'
@@ -153,18 +152,13 @@ export default async function CajaPage({ searchParams }: PageProps) {
 
   return (
     <div className="px-4 md:px-8 lg:px-12 max-w-4xl mx-auto pb-16">
-      {/* max-w-4xl es la baseline compartida con /rendimiento. /dashboard
-          (home) queda max-w-3xl por elección editorial — el masthead
-          Fraunces respira mejor en una columna más estrecha. */}
-      {/* Header — volver + título + period tabs */}
+      {/* max-w-4xl es la baseline de páginas operativas. /dashboard (home)
+          queda max-w-3xl por elección editorial — el masthead Fraunces
+          respira mejor en una columna más estrecha. */}
+      {/* Header — título + period tabs. Caja es un tab top-level, el usuario
+          vuelve al Inicio desde el logo o desde el bottom-nav. Un back-link
+          aquí sería redundante. */}
       <header className="pt-10 lg:pt-14 pb-8 border-b border-line">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-6 transition-colors"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-          Volver al inicio
-        </Link>
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-tight">
             Caja
@@ -221,6 +215,20 @@ export default async function CajaPage({ searchParams }: PageProps) {
           value={tipsEur > 0 ? formatEuros(tipsEur) : '—'}
           trend={computeTrend(tipsEur, tipsPrevEur)}
         />
+      </section>
+
+      {/* Control financiero — link al módulo de gastos, costes fijos e IVA */}
+      <section className="mt-8">
+        <Link
+          href="/dashboard/finanzas"
+          className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-line bg-surface hover:border-brand hover:shadow-[0_4px_20px_rgba(201,101,60,0.07)] transition-all group"
+        >
+          <div>
+            <p className="font-semibold text-ink text-sm">Control financiero</p>
+            <p className="text-xs text-ink-2 mt-0.5">Gastos, costes fijos, IVA estimado — tu P&amp;L real</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-ink-3 group-hover:text-brand transition-colors shrink-0" aria-hidden="true" />
+        </Link>
       </section>
 
       {/* Desglose por barbero — solo se renderiza si hay ≥2 barberos activos. */}

@@ -177,7 +177,7 @@ export default function ConnectSettings({ initial }: Props) {
             type="button"
             onClick={startOnboarding}
             disabled={loading}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+            className="btn-primary w-full sm:w-auto"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
             Continuar verificación
@@ -207,7 +207,7 @@ export default function ConnectSettings({ initial }: Props) {
             type="button"
             onClick={startOnboarding}
             disabled={loading}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+            className="btn-primary w-full sm:w-auto"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
             Completar verificación
@@ -229,7 +229,7 @@ export default function ConnectSettings({ initial }: Props) {
             type="button"
             onClick={startOnboarding}
             disabled={loading}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+            className="btn-primary w-full sm:w-auto"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
             Activar cobros online

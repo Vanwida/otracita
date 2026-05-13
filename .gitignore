@@ -47,3 +47,6 @@ sumup-*.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude code — agent worktrees (efímeros, copias de src/)
+.claude/worktrees/

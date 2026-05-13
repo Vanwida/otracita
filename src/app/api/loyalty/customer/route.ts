@@ -5,6 +5,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import { computeBalance, computeProgress } from '@/lib/loyalty/compute'
 import type { LoyaltyConfig } from '@/lib/loyalty/types'
 
@@ -24,6 +25,8 @@ import type { LoyaltyConfig } from '@/lib/loyalty/types'
 export async function GET(request: Request) {
   const access = await requireClientAccess(request)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'loyaltyAdvanced')
+  if (gate) return gate
 
   if (!access.client.loyaltyEnabled) {
     return Response.json({ error: 'Loyalty no está activo' }, { status: 400 })

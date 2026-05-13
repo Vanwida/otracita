@@ -166,7 +166,7 @@ export function ConfirmDialogHost() {
             type="button"
             onClick={() => close(false)}
             disabled={isPending}
-            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink hover:border-line-strong transition-colors disabled:opacity-60"
+            className="btn-secondary btn-sm"
           >
             {state.cancelLabel ?? 'Cancelar'}
           </button>
@@ -185,7 +185,7 @@ export function ConfirmDialogHost() {
             className={
               danger
                 ? 'inline-flex items-center gap-1.5 rounded-lg bg-danger hover:bg-danger/90 px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-danger/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface outline-none'
-                : 'inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface outline-none'
+                : 'btn-primary btn-sm focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface outline-none'
             }
           >
             {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

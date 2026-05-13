@@ -227,7 +227,7 @@ export default function BarbersManager() {
           type="button"
           onClick={addBarber}
           disabled={creating || !newName.trim()}
-          className="rounded-lg bg-brand hover:bg-brand-strong px-4 py-3 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+          className="btn-primary"
         >
           {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Añadir
@@ -662,7 +662,7 @@ function BlockingBookingRow({
           type="button"
           onClick={reassign}
           disabled={busy || !targetBarberId}
-          className="inline-flex items-center gap-1 rounded-lg bg-brand hover:bg-brand-strong px-3 py-1.5 text-xs font-semibold text-brand-ink disabled:opacity-60"
+          className="btn-primary btn-sm"
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           Reasignar

@@ -5,6 +5,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import {
   sanitizeStampsConfig,
   sanitizePointsConfig,
@@ -39,6 +40,8 @@ interface ConfigBody {
 export async function PATCH(request: Request) {
   const access = await requireClientAccess(request)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'loyaltyAdvanced')
+  if (gate) return gate
 
   let body: ConfigBody
   try {

@@ -9,43 +9,45 @@ import { eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   Users,
-  Repeat,
-  Shield,
   Phone,
   Star,
-  Sparkles,
   Clock,
   Snowflake,
-  TrendingUp,
-  UserPlus,
-  Heart,
+  Shield,
+  AlertTriangle,
+  MessageCircle,
 } from 'lucide-react'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 import SearchAndSort from './SearchAndSort'
+import CustomerContactActions from './CustomerContactActions'
 
 // -----------------------------------------------------------------------------
-// /dashboard/clientes — listado de clientes de la barbería con stats
-// agregadas (gastado, propinas, nota media) y un chip de estado heurístico
-// (Habitual / Nuevo / Inactivo).
+// /dashboard/clientes — listado accionable de clientes de la barbería.
 //
-// Datos:
-//   · `bookings.price` está en EUROS (no cents — foot-gun documentado en
-//     CLAUDE.md). Lo multiplicamos por 100 al normalizar para mostrar.
-//   · Aggregates por cliente vía LEFT JOINs en una sola query — evita
-//     N round-trips. La tabla escala a ~miles de clientes por barbería
-//     sin problema; si crece más, paginar.
-//   · Stats globales (facturado, ticket medio, propinas) se computan
-//     sobre el set sin filtro para que cambiar el filtro de reputación
-//     no altere los KPIs del top.
+// Esta página existe para responder TRES preguntas que sí se accionan:
+//   1. ¿Quién no viene? (Inactivos > 90 días)         → reactivar via Marketing
+//   2. ¿Quién me ha fallado? (No-shows)               → perdonar / bloquear
+//   3. ¿A quién tengo bloqueado?                      → revisar / desbloquear
+//
+// NO mostramos KPIs vanity (Total / Retención / Frecuencia) — un barbero no
+// los acciona. La métrica accionable es "23 inactivos" porque pulsable → CTA
+// "reactivar con promo" que lleva a Marketing.
+//
+// La búsqueda + ordenar siguen disponibles para el caso raro de lookup
+// puntual ("¿quién era Carlos?"). El caso normal es entrar desde la cita en
+// Agenda — el usuario no busca clientes a diario.
+//
+// Datos: `bookings.price` está en EUROS (foot-gun en CLAUDE.md). Aggregates
+// vía LEFT JOIN en una sola query — escala hasta miles sin paginar.
 // -----------------------------------------------------------------------------
 
-type Reputation = 'good' | 'warning' | 'blocked'
-type ReputationFilter = Reputation | 'all'
+type StatusFilter = 'all' | 'inactivo' | 'noshow' | 'blocked'
 type SortKey = 'recent' | 'spent' | 'visits' | 'rating' | 'name'
 
 interface Props {
-  searchParams: Promise<{ rep?: string; q?: string; sort?: string }>
+  searchParams: Promise<{ status?: string; q?: string; sort?: string }>
 }
 
 // Mapa de ORDER BY válido — defendemos contra inyección por URL.
@@ -57,10 +59,10 @@ const SORT_SQL: Record<SortKey, string> = {
   name: `LOWER(COALESCE(c.name, '')) ASC`,
 }
 
-/** Construye href para los pills de reputación preservando search y sort actuales. */
-function buildPillHref(rep: ReputationFilter | null, q: string, sort: SortKey): string {
+/** Construye href para los pills de status preservando search y sort actuales. */
+function buildPillHref(status: StatusFilter | null, q: string, sort: SortKey): string {
   const params = new URLSearchParams()
-  if (rep && rep !== 'all') params.set('rep', rep)
+  if (status && status !== 'all') params.set('status', status)
   if (q.length > 0) params.set('q', q)
   if (sort !== 'recent') params.set('sort', sort)
   const qs = params.toString()
@@ -87,15 +89,17 @@ const HABITUAL_DAYS = 30
 const INACTIVO_DAYS = 90
 
 export default async function ClientesPage({ searchParams }: Props) {
-  const { rep: rawRep, q: rawQ, sort: rawSort } = await searchParams
+  const { status: rawStatus, q: rawQ, sort: rawSort } = await searchParams
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  const repFilter: ReputationFilter =
-    rawRep === 'warning' || rawRep === 'blocked' || rawRep === 'good' ? rawRep : 'all'
+  const statusFilter: StatusFilter =
+    rawStatus === 'inactivo' || rawStatus === 'noshow' || rawStatus === 'blocked'
+      ? rawStatus
+      : 'all'
 
   const search = (rawQ ?? '').trim().slice(0, 100)
   const searchLike = `%${search.toLowerCase()}%`
@@ -105,10 +109,20 @@ export default async function ClientesPage({ searchParams }: Props) {
   const sortKey: SortKey = (rawSort && rawSort in SORT_SQL ? (rawSort as SortKey) : 'recent')
   const orderClause = SORT_SQL[sortKey]
 
-  // Single SQL — customers + aggregates por LEFT JOIN. Más eficiente que
-  // N+1 queries y mantiene la lectura simple en JS.
-  const repWhere =
-    repFilter === 'all' ? sql`` : sql`AND c.reputation = ${repFilter}`
+  // Mapeo del filter pill → WHERE clause de la query principal.
+  const statusWhere = (() => {
+    if (statusFilter === 'blocked') return sql`AND c.reputation = 'blocked'`
+    if (statusFilter === 'noshow') return sql`AND COALESCE(c.no_shows, 0) > 0`
+    if (statusFilter === 'inactivo') {
+      // Inactivo: tiene historial (total_bookings ≥ 1) Y su última visita es >90d
+      // (o nunca tuvo). Excluimos los que aún no tienen bookings — esos son
+      // "Nuevo, sin venir aún", no "Inactivo".
+      return sql`AND COALESCE(c.total_bookings, 0) >= 1
+                 AND (c.last_booking_at IS NULL
+                      OR c.last_booking_at < NOW() - INTERVAL '${sql.raw(`${INACTIVO_DAYS} days`)}')`
+    }
+    return sql``
+  })()
 
   // Búsqueda por nombre o phone (insensible a mayúsculas, parcial).
   const searchWhere = search
@@ -146,7 +160,7 @@ export default async function ClientesPage({ searchParams }: Props) {
       GROUP BY customer_phone
     ) r ON r.customer_phone = c.phone
     WHERE c.client_id = ${client.id}
-    ${repWhere}
+    ${statusWhere}
     ${searchWhere}
     ORDER BY ${sql.raw(orderClause)}
   `)
@@ -161,136 +175,122 @@ export default async function ClientesPage({ searchParams }: Props) {
     last_booking_at: r.last_booking_at ? new Date(r.last_booking_at) : null,
   }))
 
-  // Stats globales DE clientes — siempre sobre TODO el set, no afectados
-  // por filtros. Las métricas financieras (Facturado, Ticket medio, Propinas,
-  // Nota media) viven ahora en /dashboard/caja porque son métricas DEL
-  // NEGOCIO, no DE clientes.
-  //
-  // Aquí solo las que describen al SET de personas:
-  //   · Total / Recurrentes / Bloqueados (counts básicos)
-  //   · Nuevos este mes (acquisición)
-  //   · Retención: % de recurrentes que volvieron en últimos 60 días
-  //   · Frecuencia media: días promedio entre bookings (sólo recurrentes)
-  const monthStartIso = (() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  })()
-
-  const globalsResult = await db.execute(sql`
+  // Counts para los filter pills — una sola query con COUNT FILTER por estado.
+  // No mostramos "totales" como KPI: el número en cada pill ya da contexto.
+  const countsResult = await db.execute(sql`
     SELECT
-      COUNT(*)::int AS total_customers,
-      COUNT(*) FILTER (WHERE COALESCE(total_bookings, 0) >= 2)::int AS recurring,
-      COUNT(*) FILTER (WHERE reputation = 'blocked')::int AS blocked,
-      COUNT(*) FILTER (WHERE created_at >= ${monthStartIso}::date)::int AS new_this_month,
-      -- Retención: % de recurrentes que han venido en últimos 60d
-      CASE
-        WHEN COUNT(*) FILTER (WHERE COALESCE(total_bookings, 0) >= 2) > 0
-        THEN ROUND(
-          100.0 * COUNT(*) FILTER (
-            WHERE COALESCE(total_bookings, 0) >= 2
-            AND last_booking_at >= NOW() - INTERVAL '60 days'
-          )
-          / COUNT(*) FILTER (WHERE COALESCE(total_bookings, 0) >= 2)
-        )::int
-        ELSE NULL
-      END AS retention_pct,
-      -- Frecuencia media: días entre primera (created_at) y última visita
-      -- dividido por (total_bookings - 1) — solo para clientes con ≥2 visitas.
-      -- Es aproximación (asume distribución uniforme); buena señal a escala.
-      ROUND(AVG(
-        EXTRACT(EPOCH FROM (last_booking_at - created_at)) / 86400.0
-        / NULLIF(GREATEST(total_bookings - 1, 1), 0)
-      ) FILTER (WHERE COALESCE(total_bookings, 0) >= 2 AND last_booking_at IS NOT NULL))::int AS avg_freq_days
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (
+        WHERE COALESCE(total_bookings, 0) >= 1
+        AND (last_booking_at IS NULL
+             OR last_booking_at < NOW() - INTERVAL '${sql.raw(`${INACTIVO_DAYS} days`)}')
+      )::int AS inactivos,
+      COUNT(*) FILTER (WHERE COALESCE(no_shows, 0) > 0)::int AS noshows,
+      COUNT(*) FILTER (WHERE reputation = 'blocked')::int AS bloqueados
     FROM ${customers}
     WHERE client_id = ${client.id}
   `)
 
-  const g = (globalsResult as unknown as {
-    rows: Array<{
-      total_customers: number
-      recurring: number
-      blocked: number
-      new_this_month: number
-      retention_pct: number | null
-      avg_freq_days: number | null
-    }>
-  }).rows[0]
-
-  const totalCustomers = Number(g?.total_customers ?? 0)
-  const recurring = Number(g?.recurring ?? 0)
-  const blocked = Number(g?.blocked ?? 0)
-  const newThisMonth = Number(g?.new_this_month ?? 0)
-  const retentionPct = g?.retention_pct ?? null
-  const avgFreqDays = g?.avg_freq_days ?? null
+  const counts = (countsResult as unknown as {
+    rows: Array<{ total: number; inactivos: number; noshows: number; bloqueados: number }>
+  }).rows[0] ?? { total: 0, inactivos: 0, noshows: 0, bloqueados: 0 }
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Clientes</h1>
-        <p className="text-ink-2">Tus clientes y cómo se comportan. Para ver dinero, ve a Caja.</p>
+      <HubBreadcrumb current="Clientes" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
+
+      <div className="mb-6">
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-1">Clientes</h1>
+        <p className="text-ink-2 text-sm">
+          Quién no viene · quién falla · quién está bloqueado.{' '}
+          <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Caja.</span>
+        </p>
       </div>
 
-      {/* Top stats — métricas DE clientes (no del negocio). Las financieras
-          (facturado, ticket medio, propinas, nota media) viven ahora en
-          /dashboard/caja porque son métricas DEL NEGOCIO. */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        <StatCard icon={Users} label="Total" value={totalCustomers.toLocaleString('es-ES')} />
-        <StatCard
-          icon={Repeat}
-          label="Recurrentes"
-          value={recurring.toLocaleString('es-ES')}
-          hint="Con 2+ reservas"
-        />
-        <StatCard
-          icon={UserPlus}
-          label="Nuevos este mes"
-          value={newThisMonth.toLocaleString('es-ES')}
-        />
-        <StatCard
-          icon={Heart}
-          label="Retención"
-          value={retentionPct !== null ? `${retentionPct}%` : '—'}
-          hint={retentionPct !== null ? 'Vuelven en 60 días' : 'Necesitas recurrentes'}
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="Frecuencia"
-          value={avgFreqDays !== null ? `${avgFreqDays}d` : '—'}
-          hint={avgFreqDays !== null ? 'Días entre visitas' : 'Necesitas recurrentes'}
-        />
-        {/* Bloqueados solo si > 0 — ahorra ruido visual. */}
-        {blocked > 0 && (
-          <StatCard
-            icon={Shield}
-            label="Bloqueados"
-            value={blocked.toLocaleString('es-ES')}
-            tone="danger"
-          />
-        )}
-      </div>
-
-      {/* Search + sort + export */}
+      {/* Buscador + ordenar (la búsqueda es para el caso raro de lookup
+          puntual; el barbero llega a un cliente normalmente desde la cita
+          en Agenda). */}
       <SearchAndSort />
 
-      {/* Filter tabs — los hrefs preservan q y sort vía buildPillHref para
-          que cambiar reputación no pierda el resto de filtros activos. */}
+      {/* Filter pills — accionables, con contador. No hay pill "Todos los
+          buenos" porque no se acciona; sí "Inactivos / No-shows / Bloqueados"
+          porque cada uno tiene un curso de acción claro. */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto">
-        <FilterPill href={buildPillHref(null, search, sortKey)} active={repFilter === 'all'} label="Todos" />
-        <FilterPill href={buildPillHref('good', search, sortKey)} active={repFilter === 'good'} label="Buena" />
-        <FilterPill href={buildPillHref('warning', search, sortKey)} active={repFilter === 'warning'} label="Aviso" />
-        <FilterPill href={buildPillHref('blocked', search, sortKey)} active={repFilter === 'blocked'} label="Bloqueados" />
+        <FilterPill
+          href={buildPillHref(null, search, sortKey)}
+          active={statusFilter === 'all'}
+          label="Todos"
+          count={counts.total}
+        />
+        <FilterPill
+          href={buildPillHref('inactivo', search, sortKey)}
+          active={statusFilter === 'inactivo'}
+          label="Inactivos"
+          count={counts.inactivos}
+          icon={Snowflake}
+        />
+        <FilterPill
+          href={buildPillHref('noshow', search, sortKey)}
+          active={statusFilter === 'noshow'}
+          label="No-shows"
+          count={counts.noshows}
+          icon={AlertTriangle}
+        />
+        <FilterPill
+          href={buildPillHref('blocked', search, sortKey)}
+          active={statusFilter === 'blocked'}
+          label="Bloqueados"
+          count={counts.bloqueados}
+          icon={Shield}
+        />
       </div>
 
-      {/* Table */}
+      {/* Banner accionable cuando filtras por Inactivos. La acción real está
+          en el botón 💬 de cada fila — abre WhatsApp con su nombre prerellenado.
+          La automatización masiva (reactivación con promo) viene en una
+          siguiente iteración; por ahora ofrecemos lo que SÍ se puede hacer. */}
+      {statusFilter === 'inactivo' && counts.inactivos > 0 && (
+        <div className="mb-4 rounded-xl bg-brand-softer border border-brand/20 px-4 py-3">
+          <p className="text-sm font-semibold text-brand-strong">
+            {counts.inactivos} {counts.inactivos === 1 ? 'cliente' : 'clientes'} sin venir hace más de 90 días
+          </p>
+          <p className="text-xs text-ink-2 mt-0.5">
+            Mándales un mensaje desde el botón <span className="inline-flex items-center justify-center h-4 w-4 rounded bg-success/10 text-success align-middle"><MessageCircle className="h-3 w-3" /></span> de cada fila. Recuperas tráfico con 30 segundos de trabajo.
+          </p>
+        </div>
+      )}
+
+      {/* Tabla */}
       <div className="bg-surface border border-line rounded-xl overflow-hidden">
         {rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Users className="h-8 w-8 text-ink-3" />
-            <p className="text-ink-3 text-sm">
-              {repFilter === 'all'
-                ? 'Aún no tienes clientes registrados. Aparecerán aquí cuando el bot agende su primera reserva.'
-                : 'No hay clientes con este filtro.'}
-            </p>
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+            <div className="h-12 w-12 rounded-2xl bg-brand-softer flex items-center justify-center">
+              <Users className="h-6 w-6 text-brand" />
+            </div>
+            {statusFilter === 'all' && search.length === 0 ? (
+              <>
+                <p className="font-display text-base font-semibold text-ink mt-1">Sin clientes todavía</p>
+                <p className="text-ink-3 text-sm max-w-xs">
+                  Aparecerán aquí cuando alguien reserve por WhatsApp o por tu app pública.
+                </p>
+                <Link
+                  href="/dashboard/app"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand hover:text-brand-strong transition-colors"
+                >
+                  Compartir mi app pública →
+                </Link>
+              </>
+            ) : (
+              <p className="text-ink-3 text-sm max-w-xs">
+                {statusFilter === 'inactivo'
+                  ? 'Ningún cliente lleva más de 90 días sin venir. Buen trabajo.'
+                  : statusFilter === 'noshow'
+                  ? 'Nadie ha hecho no-show. Tu agenda está limpia.'
+                  : statusFilter === 'blocked'
+                  ? 'No tienes a nadie bloqueado.'
+                  : 'No hay clientes con este filtro o búsqueda.'}
+              </p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -298,13 +298,12 @@ export default async function ClientesPage({ searchParams }: Props) {
               <thead className="bg-overlay border-b border-line">
                 <tr className="text-left">
                   <th className="px-4 py-3 font-semibold text-ink-2">Cliente</th>
-                  <th className="px-4 py-3 font-semibold text-ink-2 hidden lg:table-cell">Teléfono</th>
                   <th className="px-4 py-3 font-semibold text-ink-2 text-center">Visitas</th>
                   <th className="px-4 py-3 font-semibold text-ink-2 text-right hidden md:table-cell">Gastado</th>
                   <th className="px-4 py-3 font-semibold text-ink-2 hidden md:table-cell">Última visita</th>
                   <th className="px-4 py-3 font-semibold text-ink-2 text-center hidden sm:table-cell">Nota</th>
                   <th className="px-4 py-3 font-semibold text-ink-2">Estado</th>
-                  <th className="px-4 py-3 font-semibold text-ink-2 w-24" />
+                  <th className="px-4 py-3 font-semibold text-ink-2 w-32 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -314,15 +313,42 @@ export default async function ClientesPage({ searchParams }: Props) {
                   return (
                     <tr key={c.id} className="hover:bg-canvas transition-colors group">
                       <td className="px-4 py-3">
-                        <Link href={`/dashboard/clientes/${c.id}`} className="font-medium text-ink hover:text-brand transition-colors">
-                          {c.name || '—'}
+                        <Link
+                          href={`/dashboard/clientes/${c.id}`}
+                          className="font-medium text-ink hover:text-brand transition-colors block truncate"
+                        >
+                          {c.name || 'Sin nombre'}
                         </Link>
-                        <div className="text-xs text-ink-3 lg:hidden flex items-center gap-1 mt-0.5">
-                          <Phone className="h-3 w-3" /> {c.phone}
+                        <div className="text-xs text-ink-3 flex items-center gap-1 mt-0.5">
+                          <Phone className="h-3 w-3 shrink-0" />
+                          <a href={`tel:${c.phone}`} className="hover:text-brand transition-colors">
+                            {c.phone}
+                          </a>
+                        </div>
+                        {/* Mobile-only: contextual data hidden in dedicated
+                            columns below md. Sin esto el barbero en móvil ve
+                            solo Cliente/Visitas/Estado y pierde el 60% de la
+                            info. */}
+                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-3 md:hidden">
+                          {c.spent_cents > 0 && (
+                            <span className="tabular-nums">{(c.spent_cents / 100).toFixed(0)} €</span>
+                          )}
+                          {c.spent_cents > 0 && c.last_booking_at && <span>·</span>}
+                          {c.last_booking_at && (
+                            <span>{formatLastVisit(c.last_booking_at)}</span>
+                          )}
+                          {c.avg_rating !== null && (
+                            <>
+                              {(c.spent_cents > 0 || c.last_booking_at) && <span>·</span>}
+                              <span className="inline-flex items-center gap-0.5">
+                                <Star className="h-2.5 w-2.5 text-warning fill-warning" />
+                                {c.avg_rating.toFixed(1)}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-ink-2 hidden lg:table-cell">{c.phone}</td>
-                      <td className="px-4 py-3 text-center text-ink">
+                      <td className="px-4 py-3 text-center text-ink tabular-nums">
                         {c.total_bookings ?? 0}
                         {(c.no_shows ?? 0) > 0 && (
                           <span className="ml-1.5 text-[10px] text-danger" title={`${c.no_shows} no-shows`}>
@@ -350,11 +376,14 @@ export default async function ClientesPage({ searchParams }: Props) {
                         <StatusChip status={status} reputation={reputationVal} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {reputationVal === 'blocked' ? (
-                          <UnblockCustomerButton customerId={c.id} />
-                        ) : (c.no_shows ?? 0) > 0 ? (
-                          <ForgiveNoShowsButton customerId={c.id} customerName={c.name} />
-                        ) : null}
+                        <div className="flex items-center justify-end gap-1">
+                          <CustomerContactActions phone={c.phone} name={c.name} />
+                          {reputationVal === 'blocked' ? (
+                            <UnblockCustomerButton customerId={c.id} />
+                          ) : (c.no_shows ?? 0) > 0 ? (
+                            <ForgiveNoShowsButton customerId={c.id} customerName={c.name} />
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -372,6 +401,7 @@ export default async function ClientesPage({ searchParams }: Props) {
 // Sub-componentes + helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+type Reputation = 'good' | 'warning' | 'blocked'
 type CustomerStatus = 'habitual' | 'nuevo' | 'inactivo' | 'normal'
 
 function computeStatus(lastBookingAt: Date | null, totalBookings: number): CustomerStatus {
@@ -405,7 +435,6 @@ function StatusChip({ status, reputation }: { status: CustomerStatus; reputation
   if (status === 'habitual') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success border border-success/20 px-2.5 py-0.5 text-xs font-medium">
-        <Sparkles className="h-3 w-3" />
         Habitual
       </span>
     )
@@ -444,43 +473,31 @@ function formatLastVisit(d: Date | null): React.ReactNode {
   return `hace ${Math.floor(days / 365)} años`
 }
 
-function StatCard({
-  icon: Icon,
+function FilterPill({
+  href,
+  active,
   label,
-  value,
-  hint,
-  tone = 'default',
+  count,
+  icon: Icon,
 }: {
-  icon: typeof Users
+  href: string
+  active: boolean
   label: string
-  value: string | number
-  hint?: string
-  tone?: 'default' | 'danger'
+  count: number
+  icon?: typeof Users
 }) {
-  const tint = tone === 'danger' ? 'text-danger' : 'text-ink'
-  return (
-    <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon className="h-3.5 w-3.5 text-ink-3" />
-        <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{label}</p>
-      </div>
-      <p className={`text-xl md:text-2xl font-bold ${tint} tabular-nums`}>{value}</p>
-      {hint && <p className="text-[10px] text-ink-3 mt-1">{hint}</p>}
-    </div>
-  )
-}
-
-function FilterPill({ href, active, label }: { href: string; active: boolean; label: string }) {
   return (
     <Link
       href={href}
-      className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-colors border ${
+      className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors border ${
         active
           ? 'bg-brand text-brand-ink border-brand'
           : 'bg-surface text-ink-2 border-line hover:border-line-strong hover:text-ink'
       }`}
     >
+      {Icon && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
       {label}
+      <span className={`tabular-nums ${active ? 'opacity-80' : 'text-ink-3'}`}>{count}</span>
     </Link>
   )
 }

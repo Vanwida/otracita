@@ -59,7 +59,7 @@ export default function MobileAppConnect() {
                 type="button"
                 onClick={generatePin}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-1.5 text-xs font-semibold text-brand-ink transition-colors disabled:opacity-60"
+                className="btn-primary btn-sm"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Smartphone className="h-3.5 w-3.5" />}
                 Conectar app móvil

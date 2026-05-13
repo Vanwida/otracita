@@ -10,7 +10,6 @@ import { ConfirmDialogHost } from "./_components/ConfirmDialog"
 import { UndoToastHost } from "./_components/UndoToast"
 import SidebarToggle from "./_components/SidebarToggle"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
-import MobileMoreTrigger from "@/app/dashboard/_components/MobileMoreTrigger"
 import { Wordmark } from "@/components/brand"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
@@ -132,11 +131,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <ConfirmDialogHost />
       <UndoToastHost />
 
-      {/* Mobile Bottom Nav — los 4 ítems del menú principal + "Más" para
-          acceder al drawer (sesión, cerrar sesión, panel admin si aplica). */}
+      {/* Mobile Bottom Nav — 5 tabs principales. Sesión/admin/logout viven
+          en el drawer del top-bar hamburger; no se duplican aquí. */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-surface border-t border-line flex items-center justify-around px-2 lg:hidden">
         <DashboardSidebarNav variant="bottom" />
-        <MobileMoreTrigger />
       </nav>
 
     </div>

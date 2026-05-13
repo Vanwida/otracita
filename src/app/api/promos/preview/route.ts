@@ -1,4 +1,5 @@
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import { detectGaps, resolveWindow, type WindowPreset } from '@/lib/promos/detect-gaps'
 import { findEligibleCustomers } from '@/lib/promos/eligible-customers'
 import { defaultPromoMessage } from '@/lib/promos/defaults'
@@ -24,6 +25,8 @@ const PREVIEW_LIMIT = 25
 export async function POST(req: Request) {
   const access = await requireClientAccess(req)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'promosContextuales')
+  if (gate) return gate
   const { client } = access
 
   if (!client.promosEnabled) {

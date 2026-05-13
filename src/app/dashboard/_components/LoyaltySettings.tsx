@@ -165,7 +165,7 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="rounded-xl bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+          className="btn-primary"
         >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           Guardar
@@ -407,8 +407,8 @@ function RewardEditor({
       {value.type === 'service' && (
         <>
           {services.length === 0 ? (
-            <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-ink-2 flex items-start gap-2">
-              <Info className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+            <div className="rounded-lg border border-line bg-overlay px-3 py-2 text-xs text-ink-2 flex items-start gap-2">
+              <Info className="h-4 w-4 text-ink-3 mt-0.5 shrink-0" />
               Aún no tienes servicios registrados. Añádelos en{' '}
               <span className="font-semibold">Mi negocio</span> para poder regalarlos.
             </div>

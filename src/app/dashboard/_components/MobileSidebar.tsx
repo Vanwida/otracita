@@ -14,9 +14,9 @@ interface Props {
   needsSetup: boolean
 }
 
-// Event fired by `MobileMoreTrigger` (the bottom-nav "Más" button) so the
-// drawer can be opened from a sibling client component without lifting state
-// into the server-rendered layout.
+// Custom event reserved for future external triggers of the drawer. The
+// top-bar hamburger uses its own local handler. Kept as a hook to avoid
+// re-introducing imperative coupling when we re-add a programmatic opener.
 const OPEN_DRAWER_EVENT = 'otracita:open-drawer'
 
 export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {

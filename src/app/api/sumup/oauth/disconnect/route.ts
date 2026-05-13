@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 
 // -----------------------------------------------------------------------------
 // POST /api/sumup/oauth/disconnect — el barbero revoca la integración
@@ -15,6 +16,8 @@ import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-cli
 export async function POST(req: Request) {
   const access = await requireClientAccess(req)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'sumupTapToPay')
+  if (gate) return gate
 
   await db
     .update(clients)

@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import { buildAuthorizeUrl, generateState } from '@/lib/sumup/oauth'
 
 // -----------------------------------------------------------------------------
@@ -17,6 +18,8 @@ const CLIENT_COOKIE = 'sumup_oauth_client'
 export async function GET(req: Request) {
   const access = await requireClientAccess(req)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'sumupTapToPay')
+  if (gate) return gate
 
   const state = generateState()
   let url: string

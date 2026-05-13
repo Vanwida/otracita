@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { clients, bookings } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import { createReaderCheckout, ensureValidAccessToken } from '@/lib/sumup/client'
 import { getOauthEnv } from '@/lib/sumup/oauth'
 
@@ -35,6 +36,8 @@ interface Body {
 export async function POST(req: Request) {
   const access = await requireClientAccess(req)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'sumupTapToPay')
+  if (gate) return gate
   const { client } = access
 
   if (!client.sumupAccessToken || !client.sumupRefreshToken || !client.sumupMerchantCode) {

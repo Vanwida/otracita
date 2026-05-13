@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { promoPushes } from '@/db/schema'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireFeature } from '@/lib/billing/tier'
 import { dispatchUserNotification } from '@/lib/notifications/dispatch'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 import { findEligibleCustomers } from '@/lib/promos/eligible-customers'
@@ -39,6 +40,8 @@ interface SendBody {
 export async function POST(req: Request) {
   const access = await requireClientAccess(req)
   if (!access.ok) return accessErrorResponse(access)
+  const gate = requireFeature(access.client, 'promosContextuales')
+  if (gate) return gate
   const { client } = access
 
   if (!client.promosEnabled) {

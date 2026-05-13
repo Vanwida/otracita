@@ -387,7 +387,7 @@ export default function ManualInvoiceForm({
         <button
           type="submit"
           disabled={submitDisabled}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+          className="btn-primary"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {loading ? 'Emitiendo…' : isInvoice ? 'Emitir factura' : 'Emitir ticket'}

@@ -197,7 +197,7 @@ export default function SumupCheckoutPrompt({
               <button
                 type="button"
                 onClick={startCheckout}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-3 text-sm font-semibold text-brand-ink transition-colors"
+                className="btn-primary w-full"
               >
                 <CreditCard className="h-4 w-4" />
                 Cobrar con SumUp

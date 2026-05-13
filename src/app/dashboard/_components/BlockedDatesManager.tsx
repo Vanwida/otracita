@@ -127,7 +127,7 @@ export default function BlockedDatesManager({ initialDates, clientId }: BlockedD
           type="button"
           onClick={addDate}
           disabled={loading || !inputDate}
-          className="bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink font-medium rounded-lg px-4 py-2 text-sm transition-colors"
+          className="btn-primary btn-sm"
         >
           Bloquear
         </button>

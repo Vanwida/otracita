@@ -5,6 +5,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
+import { hasFeature, upgradeRequiredResponse } from '@/lib/billing/tier';
 
 // -----------------------------------------------------------------------------
 // /api/barbers — per-client staff CRUD.
@@ -80,6 +81,15 @@ export async function POST(req: Request) {
     .from(barbers)
     .where(eq(barbers.clientId, access.client.id));
   const nextOrder = current.length;
+
+  // Multi-barbero gate: tier Solo permite 1 barbero. Pro+ ilimitado.
+  // Sólo bloqueamos al CREAR uno nuevo (la re-activación de uno antiguo
+  // pasa por el branch de arriba y no llega aquí). La feature se llama
+  // multiBarber en el catálogo y se requiere a partir del segundo.
+  const activeCount = current.filter((b) => b.active).length;
+  if (activeCount >= 1 && !hasFeature(access.client, 'multiBarber')) {
+    return upgradeRequiredResponse('multiBarber');
+  }
 
   const [created] = await db
     .insert(barbers)

@@ -7,7 +7,7 @@ import { clients, ratings } from '@/db/schema'
 import { desc, eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { Star, MessageSquare, MessageCircle, Smartphone } from 'lucide-react'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 import RatingsToggle from './RatingsToggle'
 import TipsSettings from '@/app/dashboard/_components/TipsSettings'
 
@@ -67,11 +67,13 @@ export default async function ReseñasPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <AjustesBreadcrumb current="Reseñas" />
+      <HubBreadcrumb current="Reseñas" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
       <div className="mb-6">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Reseñas</h1>
         <p className="text-ink-2">
-          Lo que tus clientes opinan tras cada servicio. Las pedimos automáticamente al terminar la cita.
+          {client.ratingsEnabled
+            ? 'Lo que tus clientes opinan tras cada servicio. Las pedimos automáticamente al terminar la cita.'
+            : 'Activa el sistema y el bot pedirá valoración tras cada cita.'}
         </p>
       </div>
 

@@ -292,7 +292,7 @@ export default function InvoicingSettings({ initial }: Props) {
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="rounded-xl bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+          className="btn-primary"
         >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           Guardar facturación

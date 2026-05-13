@@ -111,10 +111,54 @@ export async function POST(request: Request) {
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object;
+        const trialEnd = subscription.trial_end
+          ? new Date(subscription.trial_end * 1000)
+          : null;
         await db
           .update(subscriptions)
-          .set({ status: subscription.status })
+          .set({
+            status: subscription.status,
+            trialEndsAt: trialEnd,
+          })
           .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
+
+        // Mirror trialEndsAt al client row (la UI consulta por ahí).
+        const [sub] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
+        if (sub) {
+          await db
+            .update(clients)
+            .set({ trialEndsAt: trialEnd })
+            .where(eq(clients.id, sub.clientId));
+        }
+        break;
+      }
+
+      case 'customer.subscription.trial_will_end': {
+        // Stripe lo dispara 3 días antes del fin del trial. Notificar
+        // al barbero para que añada tarjeta. Por ahora solo notifyAlex
+        // para que él avise por WhatsApp; en futuro: email automático
+        // al barbero con link al portal Stripe.
+        const subscription = event.data.object;
+        const [sub] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
+        if (sub) {
+          const [c] = await db
+            .select()
+            .from(clients)
+            .where(eq(clients.id, sub.clientId));
+          if (c) {
+            void notifyAlex(
+              `⏰ Trial Pro termina en 3 días: ${c.businessName} (${c.email}). Stripe sub ${subscription.id}.`,
+            ).catch((err) => {
+              console.error('[stripe-webhook] notifyAlex (trial_will_end) failed:', err);
+            });
+          }
+        }
         break;
       }
 
@@ -128,7 +172,9 @@ export async function POST(request: Request) {
           })
           .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
 
-        // Mirror the cancellation onto the owning client row.
+        // Mirror the cancellation onto the owning client row. Bajamos
+        // tier a 'solo' (free): mantenemos al cliente activo en la
+        // plataforma con acceso al tier base, en lugar de borrarle todo.
         const [sub] = await db
           .select()
           .from(subscriptions)
@@ -136,7 +182,12 @@ export async function POST(request: Request) {
         if (sub) {
           await db
             .update(clients)
-            .set({ status: 'cancelled' })
+            .set({
+              status: 'cancelled',
+              tier: 'solo',
+              billingInterval: null,
+              trialEndsAt: null,
+            })
             .where(eq(clients.id, sub.clientId));
         }
         break;
@@ -176,11 +227,33 @@ async function handleCheckoutSessionCompleted(
   }
 
   // Fall through = subscription sign-up (default existing flow).
-  const { plan, businessName, phone } = (session.metadata ?? {}) as {
+  const meta = (session.metadata ?? {}) as {
     plan?: string;
+    tier?: string;
+    billing_interval?: string;
     businessName?: string;
     phone?: string;
   };
+  const { plan, businessName, phone } = meta;
+  // Resolve tier desde metadata (nuevo) o legacy plan.
+  const tier: 'solo' | 'pro' | 'estudio' =
+    meta.tier === 'pro' || meta.tier === 'estudio' || meta.tier === 'solo'
+      ? meta.tier
+      : plan === 'full'
+      ? 'estudio'
+      : 'pro'; // 'chatbot' o cualquier legacy → pro
+  const billingInterval: 'monthly' | 'annual' | null =
+    meta.billing_interval === 'annual' ? 'annual' : 'monthly';
+
+  // trialEndsAt viene en la subscription, no en el session. Si Stripe ya
+  // expandió subscription, lo leemos; si no, lo dejamos null y el evento
+  // customer.subscription.created/updated lo poblará.
+  let trialEndsAt: Date | null = null;
+  if (typeof session.subscription === 'object' && session.subscription !== null) {
+    if (session.subscription.trial_end) {
+      trialEndsAt = new Date(session.subscription.trial_end * 1000);
+    }
+  }
 
   const email = session.customer_email || session.customer_details?.email || '';
 
@@ -205,6 +278,10 @@ async function handleCheckoutSessionCompleted(
       billingEmail: email,
       phone: phone || '',
       plan: plan || 'chatbot',
+      tier,
+      billingInterval,
+      trialStartedAt: trialEndsAt ? new Date() : null,
+      trialEndsAt,
       status: 'pending',
       stripeCustomerId: (session.customer as string) || null,
       stripeSubscriptionId: (session.subscription as string) || null,
@@ -257,8 +334,11 @@ async function handleCheckoutSessionCompleted(
         .set({
           clientId: client.id,
           plan: plan || existingSub.plan,
+          tier,
+          billingInterval,
+          trialEndsAt,
           amount: session.amount_total ?? existingSub.amount,
-          status: 'active',
+          status: trialEndsAt ? 'trialing' : 'active',
         })
         .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
     } else {
@@ -266,8 +346,11 @@ async function handleCheckoutSessionCompleted(
         clientId: client.id,
         stripeSubscriptionId: subscriptionId,
         plan: plan || 'chatbot',
+        tier,
+        billingInterval,
+        trialEndsAt,
         amount: session.amount_total || 0,
-        status: 'active',
+        status: trialEndsAt ? 'trialing' : 'active',
       });
     }
   }

@@ -131,7 +131,7 @@ export default async function CustomerDetailPage({ params }: Props) {
   void barbersTable // imported for future use; suppress unused warning if any
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <Link
         href="/dashboard/clientes"
         className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink mb-4 transition-colors"

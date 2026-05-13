@@ -1,27 +1,29 @@
 import {
-  LayoutDashboard,
   Calendar,
-  Users,
   Wallet,
-  Menu,
+  TrendingUp,
+  Settings,
   type LucideIcon,
 } from 'lucide-react';
 
 // -----------------------------------------------------------------------------
 // Shared sidebar navigation config.
 //
-// Menú principal de 5 items. El barbero piensa en el negocio en términos
-// operativos (Inicio, Agenda, Clientes), financieros (Caja) y todo lo
-// demás (Más — hub con configuración, marketing, fidelización, etc.).
+// 4 tabs, regla aplicada: top-level sólo si (a) se usa varias veces al día Y
+// (b) el acceso urgente importa (cliente delante, no puedes hacer 2 clicks):
 //
-// Decisión "5 items, no 4": la regla original de 4 era para reducir
-// fricción mental, pero Caja se mira a diario (cierre de día / facturación)
-// y enterrarla en el hub la haría invisible. Industria (Booksy, Fresha)
-// usan 5+ y funciona.
+//   Agenda   · diario      · operativa (cliente esperando)
+//   Caja     · diario      · cobros (cliente en mostrador)
+//   Crecer   · semanal     · cartera + reseñas + fidelidad + marketing
+//   Ajustes  · mensual     · configuración + admin
 //
-// La URL del hub sigue siendo /dashboard/ajustes — preservamos para no
-// romper bookmarks de barberos beta. Solo cambia el LABEL ("Más") en el
-// menú visible.
+// "Inicio" (la portada one-question en /dashboard) sigue accesible desde el
+// logo del header, pero no ocupa un tab — el workspace real es Agenda.
+//
+// "Clientes" antes era tab top-level — fuera. Un barbero no busca clientes
+// a diario: la cita en Agenda ya trae el contexto. La lista vive ahora
+// como card en Crecer ("¿quién no viene? ¿quién falla? ¿quién está
+// bloqueado?") — preguntas que sí se accionan, no KPIs vanity.
 //
 // El orden importa: sidebar (desktop) y bottom-nav (móvil) consumen la
 // misma lista para que el orden percibido sea idéntico.
@@ -34,39 +36,48 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { href: '/dashboard/agenda', icon: Calendar, label: 'Agenda' },
-  { href: '/dashboard/clientes', icon: Users, label: 'Clientes' },
   { href: '/dashboard/caja', icon: Wallet, label: 'Caja' },
-  { href: '/dashboard/ajustes', icon: Menu, label: 'Más' },
+  { href: '/dashboard/crecer', icon: TrendingUp, label: 'Crecer' },
+  { href: '/dashboard/ajustes', icon: Settings, label: 'Ajustes' },
 ];
 
-/**
- * Las rutas que viven *dentro* del hub "Más" (URL /dashboard/ajustes).
- * Sirven para resaltar el link "Más" como activo cuando el usuario está
- * en cualquiera de sus subpáginas. Caja queda fuera porque tiene su
- * propio item del menú.
- */
-const HUB_PREFIXES = [
+// Rutas que viven *dentro* del hub Crecer — resaltan el tab cuando estás en
+// cualquiera de sus subpáginas.
+const CRECER_PREFIXES = [
+  '/dashboard/crecer',
+  '/dashboard/clientes',
+  '/dashboard/resenas',
+  '/dashboard/fidelidad',
+  '/dashboard/marketing',
+];
+
+// Rutas que viven *dentro* del hub Ajustes.
+const AJUSTES_PREFIXES = [
   '/dashboard/ajustes',
   '/dashboard/negocio',
   '/dashboard/bot',
   '/dashboard/app',
-  '/dashboard/fidelidad',
-  '/dashboard/facturas',
   '/dashboard/mi-plan',
+  '/dashboard/facturas',
   '/dashboard/ayuda',
-  '/dashboard/resenas',
-  '/dashboard/marketing',
-  '/dashboard/rendimiento',
+];
+
+// Rutas que viven *dentro* del tab Caja.
+const CAJA_PREFIXES = [
+  '/dashboard/caja',
+  '/dashboard/finanzas',
 ];
 
 export function isNavItemActive(itemHref: string, pathname: string): boolean {
-  if (itemHref === '/dashboard/ajustes') {
-    return HUB_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  if (itemHref === '/dashboard/crecer') {
+    return CRECER_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   }
-  if (itemHref === '/dashboard') {
-    return pathname === '/dashboard';
+  if (itemHref === '/dashboard/ajustes') {
+    return AJUSTES_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  }
+  if (itemHref === '/dashboard/caja') {
+    return CAJA_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   }
   return pathname === itemHref || pathname.startsWith(`${itemHref}/`);
 }

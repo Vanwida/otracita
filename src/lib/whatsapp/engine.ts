@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { conversations, clients, customers, bookings, analytics, waitlist } from '@/db/schema';
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { getClientByPhoneNumberId, type BarbershopConfig, type ServiceConfig } from './config';
+import { hasFeature } from '@/lib/billing/tier';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
 import {
   getAvailableSlots,
@@ -484,6 +485,19 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   const config = await getClientByPhoneNumberId(msg.phoneNumberId);
   if (!config) {
     console.error(`No client found for phoneNumberId: ${msg.phoneNumberId}`);
+    return;
+  }
+
+  // Tier gate: el bot WhatsApp es feature Pro+ (o Solo en trial activo).
+  // Solo sin trial: dropeamos el mensaje silenciosamente. El barbero
+  // contesta a mano desde su WhatsApp normal. No respondemos con
+  // "upgrade" porque rompería la experiencia del cliente final que escribe
+  // a la barbería sin saber del backend.
+  if (!hasFeature(config, 'whatsappBot')) {
+    console.log(
+      `[whatsapp] gated: client ${config.id} tier=${config.tier} trial=${config.trialEndsAt?.toISOString() ?? 'none'}; dropping incoming message from ${msg.from}`,
+    );
+    await trackAnalytics(config.id, 'messagesReceived');
     return;
   }
 

@@ -45,6 +45,16 @@ export interface BarbershopConfig {
   serviceBufferMinutes: number;
   slotStepMinutes: number;
   botTone: string;
+  // Billing tier + trial. El gate del bot se hace en engine.ts via
+  // hasFeature(this, 'whatsappBot'). Solo Pro+ (o Solo en trial) puede
+  // recibir respuestas automáticas; los demás dejan los mensajes para que
+  // el barbero los conteste a mano.
+  tier: 'solo' | 'pro' | 'estudio';
+  trialEndsAt: Date | null;
+  trialStartedAt: Date | null;
+  status: string;
+  plan: string;
+  stripeSubscriptionId: string | null;
 }
 
 export async function getClientByPhoneNumberId(
@@ -100,5 +110,11 @@ export async function getClientByPhoneNumberId(
     serviceBufferMinutes: client.serviceBufferMinutes,
     slotStepMinutes: client.slotStepMinutes,
     botTone: client.botTone,
+    tier: (client.tier as 'solo' | 'pro' | 'estudio') ?? 'solo',
+    trialEndsAt: client.trialEndsAt ?? null,
+    trialStartedAt: client.trialStartedAt ?? null,
+    status: client.status,
+    plan: client.plan,
+    stripeSubscriptionId: client.stripeSubscriptionId ?? null,
   };
 }

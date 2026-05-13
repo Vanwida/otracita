@@ -132,7 +132,7 @@ export default function CashRegisterPanel() {
           <button
             type="button"
             onClick={() => setOpenModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+            className="btn-primary"
           >
             <Unlock className="h-4 w-4" />
             Abrir caja
@@ -409,7 +409,7 @@ function OpenCashModal({
         type="button"
         onClick={submit}
         disabled={submitting}
-        className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+        className="btn-primary mt-4 w-full"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
         Abrir caja
@@ -558,7 +558,7 @@ function CloseCashModal({
             href={`/api/cash/sessions/${closed.sessionId}/pdf`}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+            className="btn-primary w-full"
           >
             <Receipt className="h-4 w-4" />
             Descargar reporte PDF
@@ -865,7 +865,7 @@ function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
           type="button"
           onClick={submit}
           disabled={submitting}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+          className="btn-primary w-full"
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Registrar apunte

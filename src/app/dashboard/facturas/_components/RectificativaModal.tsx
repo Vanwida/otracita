@@ -258,7 +258,7 @@ export default function RectificativaModal({
             type="button"
             onClick={submit}
             disabled={!valid || submitting}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-brand-ink disabled:opacity-60"
+            className="btn-primary"
           >
             {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Emitir rectificativa

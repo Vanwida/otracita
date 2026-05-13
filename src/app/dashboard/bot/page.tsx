@@ -6,17 +6,12 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 import {
   Bot,
   MessageCircle,
   User,
-  Moon,
-  Bell,
   Star,
-  Shield,
-  Sparkles,
-  Globe,
 } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
@@ -59,12 +54,7 @@ export default async function BotPage() {
     const botToneRaw = (formData.get('botTone') as string | null) ?? 'cercano'
     const botTone = ['cercano', 'neutro', 'formal'].includes(botToneRaw) ? botToneRaw : 'cercano'
     const chatbotGreeting = (formData.get('chatbotGreeting') as string | null) ?? ''
-    const botOutOfHoursMessage = (formData.get('botOutOfHoursMessage') as string | null) ?? ''
-    const reminderTemplate = (formData.get('reminderTemplate') as string | null) ?? ''
     const googleReviewUrl = (formData.get('googleReviewUrl') as string | null) ?? ''
-    const botAllowCancelWhatsapp = formData.get('botAllowCancelWhatsapp') === 'on'
-    const noShowRaw = parseInt((formData.get('noShowBlockThreshold') as string | null) ?? '3', 10)
-    const noShowBlockThreshold = Number.isFinite(noShowRaw) && noShowRaw >= 1 && noShowRaw <= 10 ? noShowRaw : 3
 
     // Sanear URL Google Review: aceptar solo https://
     let cleanReviewUrl: string | null = null
@@ -92,11 +82,7 @@ export default async function BotPage() {
         botName: botName || null,
         botTone,
         chatbotGreeting: chatbotGreeting || null,
-        botOutOfHoursMessage: botOutOfHoursMessage.trim() || null,
-        reminderTemplate: reminderTemplate.trim() || null,
         googleReviewUrl: cleanReviewUrl,
-        botAllowCancelWhatsapp,
-        noShowBlockThreshold,
         updatedAt: new Date(),
       })
       .where(eq(clients.id, records[0].id))
@@ -107,7 +93,7 @@ export default async function BotPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <AjustesBreadcrumb current="Asistente WhatsApp" />
+      <HubBreadcrumb current="Asistente WhatsApp" />
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
           <Bot className="h-7 w-7 text-brand" />
@@ -161,39 +147,6 @@ export default async function BotPage() {
           </p>
         </Card>
 
-        {/* ─── Fuera de horario ────────────────────────────────── */}
-        <Card icon={Moon} title="Respuesta fuera de horario" pending>
-          <p className="text-sm text-ink-2 mb-3">
-            Si un cliente escribe cuando el negocio está cerrado, el bot envía este mensaje
-            en vez de la bienvenida normal. Déjalo vacío para usar la respuesta genérica.
-          </p>
-          <textarea
-            name="botOutOfHoursMessage"
-            rows={3}
-            defaultValue={client.botOutOfHoursMessage || ''}
-            placeholder="Ahora estamos cerrados. Abrimos mañana a las 10:00. ¿Te reservo hueco para cuando abramos?"
-            className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none resize-none"
-          />
-        </Card>
-
-        {/* ─── Recordatorio ────────────────────────────────────── */}
-        <Card icon={Bell} title="Recordatorio día antes" pending>
-          <p className="text-sm text-ink-2 mb-3">
-            El bot envía un WhatsApp el día antes de cada cita confirmada. Personaliza el
-            texto si quieres. Placeholders: <code className="text-xs bg-overlay px-1 rounded">{'{name}'}</code>,{' '}
-            <code className="text-xs bg-overlay px-1 rounded">{'{service}'}</code>,{' '}
-            <code className="text-xs bg-overlay px-1 rounded">{'{time}'}</code>,{' '}
-            <code className="text-xs bg-overlay px-1 rounded">{'{barber}'}</code>
-          </p>
-          <textarea
-            name="reminderTemplate"
-            rows={3}
-            defaultValue={client.reminderTemplate || ''}
-            placeholder="Hola {name}! Recuerda que mañana tienes cita para {service} a las {time} con {barber}. ¿Todo bien?"
-            className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none resize-none"
-          />
-        </Card>
-
         {/* ─── Reviews ─────────────────────────────────────────── */}
         <Card icon={Star} title="Reseñas en Google">
           <p className="text-sm text-ink-2 mb-3">
@@ -218,68 +171,10 @@ export default async function BotPage() {
           </div>
         </Card>
 
-        {/* ─── Capacidades ─────────────────────────────────────── */}
-        <Card icon={Shield} title="Reglas del bot">
-          <div className="space-y-4">
-            <label className="flex items-start gap-3 cursor-pointer" htmlFor="botAllowCancelWhatsapp">
-              <input
-                type="checkbox"
-                id="botAllowCancelWhatsapp"
-                name="botAllowCancelWhatsapp"
-                defaultChecked={client.botAllowCancelWhatsapp}
-                className="h-4 w-4 mt-0.5"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-ink">Permitir cancelar desde WhatsApp</span>
-                  <Pending />
-                </div>
-                <p className="text-xs text-ink-2 mt-0.5">
-                  Si lo desactivas, el bot responde &ldquo;para cancelar, llámanos&rdquo;. Útil si
-                  prefieres canalizar cancelaciones por la app o por llamada.
-                </p>
-              </div>
-            </label>
-
-            <div className="border-t border-line pt-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <label htmlFor="noShowBlockThreshold" className="text-sm font-medium text-ink">
-                  Umbral de no-shows para bloquear al cliente
-                </label>
-                <Pending />
-              </div>
-              <p className="text-xs text-ink-2 mt-0.5 mb-2">
-                Tras acumular este número de no-shows, el bot no acepta más reservas de ese cliente
-                hasta que le perdones manualmente desde Clientes.
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  id="noShowBlockThreshold"
-                  name="noShowBlockThreshold"
-                  min={1}
-                  max={10}
-                  defaultValue={client.noShowBlockThreshold}
-                  className="w-20 bg-surface border border-line rounded-lg p-2 text-sm text-ink text-center focus:border-brand outline-none"
-                />
-                <span className="text-sm text-ink-2">no-shows = bloqueo automático</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* ─── Idioma (informativo) ────────────────────────────── */}
-        <Card icon={Globe} title="Idioma">
-          <p className="text-sm text-ink-2">
-            Auto-detecta español / inglés según el idioma en que escriba el cliente. Ideal para
-            zonas con turistas. El cliente puede pedirle cambiar en cualquier momento.
-          </p>
-        </Card>
-
         <div className="flex items-center justify-end">
           <button
             type="submit"
-            className="rounded-xl bg-brand hover:bg-brand-strong px-6 py-3 text-sm font-semibold text-brand-ink transition-colors active:scale-95"
+            className="btn-primary active:scale-95"
           >
             Guardar cambios
           </button>
@@ -296,12 +191,10 @@ export default async function BotPage() {
 function Card({
   icon: Icon,
   title,
-  pending,
   children,
 }: {
   icon: typeof Bot
   title: string
-  pending?: boolean
   children: React.ReactNode
 }) {
   return (
@@ -309,7 +202,6 @@ function Card({
       <div className="flex items-center gap-2 mb-4">
         <Icon className="h-4 w-4 text-brand" />
         <h2 className="text-base font-semibold text-ink">{title}</h2>
-        {pending && <Pending />}
       </div>
       {children}
     </section>
@@ -334,14 +226,6 @@ function Field({
   )
 }
 
-function Pending() {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 border border-warning/30 px-2 py-0.5 text-[10px] uppercase tracking-widest font-semibold text-warning">
-      <Sparkles className="h-2.5 w-2.5" />
-      Pronto activo
-    </span>
-  )
-}
 
 function ToneRadioGroup({ current }: { current: string }) {
   const options: Array<{ value: string; label: string; example: string }> = [

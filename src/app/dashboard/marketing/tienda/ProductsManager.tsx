@@ -202,7 +202,7 @@ export default function ProductsManager({ initial }: Props) {
           <button
             type="button"
             onClick={startCreate}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+            className="btn-primary mt-5"
           >
             <Plus className="h-4 w-4" />
             Añadir primer producto
@@ -219,7 +219,7 @@ export default function ProductsManager({ initial }: Props) {
             <button
               type="button"
               onClick={startCreate}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-1.5 text-xs font-semibold text-brand-ink transition-colors"
+              className="btn-primary btn-sm"
             >
               <Plus className="h-3.5 w-3.5" />
               Añadir
@@ -415,7 +415,7 @@ export default function ProductsManager({ initial }: Props) {
               type="button"
               onClick={save}
               disabled={pending || uploading}
-              className="rounded-lg bg-brand hover:bg-brand-strong disabled:opacity-50 text-brand-ink text-xs font-semibold px-3 py-2 transition-colors inline-flex items-center gap-1.5"
+              className="btn-primary btn-sm"
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               {draft.id ? 'Guardar cambios' : 'Crear producto'}

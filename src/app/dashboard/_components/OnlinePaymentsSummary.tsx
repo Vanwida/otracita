@@ -83,7 +83,7 @@ export default function OnlinePaymentsSummary({ connectStatus }: Props) {
             </p>
             <Link
               href="/dashboard/caja"
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
+              className="btn-primary mt-4"
             >
               <CreditCard className="h-4 w-4" />
               Activar cobros online

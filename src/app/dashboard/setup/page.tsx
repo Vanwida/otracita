@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   Check, ChevronRight, ChevronLeft, Scissors, ClipboardCheck, Search, Plus, X,
-  Store, Users, Clock, Palette, Receipt, Sun, Moon, Shield, Sparkles, Globe, Loader2,
+  Store, Users, Clock, Palette, Receipt, Sun, Moon, Shield, Globe, Loader2,
 } from "lucide-react"
 
 // -----------------------------------------------------------------------------
@@ -294,13 +294,13 @@ export default function SetupPage() {
                   type="button"
                   onClick={handleScrapeBooksy}
                   disabled={scraping || !booksyUrl.includes("booksy.com")}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-bold text-brand-ink transition-colors disabled:opacity-50"
+                  className="btn-primary w-full"
                 >
                   {scraping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                   {scraping ? "Importando…" : "Importar desde Booksy"}
                 </button>
                 {scraped && (
-                  <p className="text-xs text-success">✅ Datos importados. Revisa abajo y ajusta lo que necesites.</p>
+                  <p className="text-xs text-success">Datos importados. Revisa abajo y ajusta lo que necesites.</p>
                 )}
               </div>
             </details>
@@ -655,10 +655,7 @@ export default function SetupPage() {
         {step === 6 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-xl font-semibold text-ink flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-brand" />
-                Todo listo
-              </h2>
+              <h2 className="text-xl font-semibold text-ink">Todo listo</h2>
               <p className="text-sm text-ink-2 mt-1">
                 Revisa lo que has configurado y dale al botón. Todo es editable
                 después desde tu dashboard.
@@ -743,7 +740,7 @@ export default function SetupPage() {
               type="button"
               onClick={() => setStep(step + 1)}
               disabled={!canAdvance}
-              className="flex items-center gap-2 rounded-lg bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-bold text-brand-ink transition-colors active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary active:scale-95 disabled:opacity-40"
             >
               Siguiente
               <ChevronRight className="h-4 w-4" />
@@ -755,7 +752,7 @@ export default function SetupPage() {
               type="button"
               onClick={handleSubmit}
               disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-brand hover:bg-brand-strong px-6 py-3 text-sm font-bold text-brand-ink transition-colors active:scale-95 disabled:opacity-50"
+              className="btn-primary active:scale-95"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {saving ? "Activando…" : "Activar mi cuenta"}

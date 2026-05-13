@@ -10,7 +10,7 @@ import { auth } from '@/lib/auth/server'
 import { monthRangeInclusive } from '@/lib/invoicing'
 import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 import { MonthSelect, TypeSelect, VoidedToggle } from './FiltersBar'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 import VerifactuBadge, { type VerifactuStatus } from './_components/VerifactuBadge'
 import VerifactuHelpPanel from './_components/VerifactuHelpPanel'
 
@@ -24,6 +24,7 @@ interface SearchParams {
   month?: string
   type?: string
   showVoided?: string
+  verifactuError?: string
 }
 
 function currentMonth(): string {
@@ -60,6 +61,7 @@ export default async function FacturasPage({
   // By default hide voided invoices (they don't count toward stats or the
   // gestor's book). User can opt into seeing them with ?showVoided=1.
   const showVoided = params.showVoided === '1' || params.showVoided === 'true'
+  const verifactuErrorOnly = params.verifactuError === '1' || params.verifactuError === 'true'
   const range = monthRangeInclusive(month)
 
   // Empty state if invoicing disabled
@@ -77,7 +79,7 @@ export default async function FacturasPage({
           </p>
           <Link
             href="/dashboard/caja"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
+            className="btn-primary mt-6"
           >
             Activar facturación
             <ChevronRight className="h-4 w-4" />
@@ -116,9 +118,14 @@ export default async function FacturasPage({
         lt(invoices.issueDate, range.endExclusive),
       )
     : whereIssuedMonth
-  const whereFiltered = typeFilter === 'all'
+  const whereTypeFiltered = typeFilter === 'all'
     ? whereMonthForList
     : and(whereMonthForList, eq(invoices.type, typeFilter))
+  // Cuando llegamos desde el banner de error VeriFactu, filtramos solo
+  // las facturas que Hacienda rechazó o que fallaron técnicamente.
+  const whereFiltered = verifactuErrorOnly
+    ? and(whereTypeFiltered, sql`${invoices.verifactuStatus} IN ('rejected', 'error')`)
+    : whereTypeFiltered
 
   const rows = await db
     .select()
@@ -187,7 +194,7 @@ export default async function FacturasPage({
         </div>
         <Link
           href="/dashboard/facturas/nueva"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-3 text-sm font-semibold text-brand-ink transition-colors"
+          className="btn-primary"
           prefetch={false}
         >
           <Plus className="h-4 w-4" />
@@ -213,6 +220,21 @@ export default async function FacturasPage({
           >
             Ver detalles
             <ChevronRight className="h-3 w-3" />
+          </Link>
+        </div>
+      )}
+
+      {/* Filter banner — visible cuando llegamos por el deep-link de errores. */}
+      {verifactuErrorOnly && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-overlay border border-line px-4 py-2.5">
+          <p className="text-xs text-ink-2">
+            Mostrando solo facturas con problema en Hacienda.
+          </p>
+          <Link
+            href={`/dashboard/facturas?month=${month}${showVoided ? '&showVoided=1' : ''}`}
+            className="text-xs font-semibold text-brand hover:text-brand-strong transition-colors"
+          >
+            Quitar filtro
           </Link>
         </div>
       )}
@@ -245,7 +267,7 @@ export default async function FacturasPage({
           </Link>
           <Link
             href={`/api/invoices/export?month=${month}`}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-3 text-sm font-semibold text-brand-ink transition-colors"
+            className="btn-primary"
             prefetch={false}
             title="Exportar CSV compatible con Excel ES"
           >
@@ -342,7 +364,7 @@ export default async function FacturasPage({
 function Header({ month }: { month: string }) {
   return (
     <div>
-      <AjustesBreadcrumb current="Facturación" />
+      <HubBreadcrumb current="Facturación" />
       <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
         <FileText className="h-7 w-7 text-brand" />
         Facturación

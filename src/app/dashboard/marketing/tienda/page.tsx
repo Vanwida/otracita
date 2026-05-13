@@ -7,7 +7,7 @@ import { clients, products } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { ShoppingBag } from 'lucide-react'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 import ProductsManager from './ProductsManager'
 
 // -----------------------------------------------------------------------------
@@ -38,7 +38,7 @@ export default async function TiendaPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <AjustesBreadcrumb current="Tienda de productos" />
+      <HubBreadcrumb current="Tienda de productos" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
       <header className="mb-6">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
           <ShoppingBag className="h-7 w-7 text-brand" />

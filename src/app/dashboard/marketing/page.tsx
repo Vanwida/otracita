@@ -7,8 +7,8 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import Link from 'next/link'
-import { Megaphone, Repeat, Cake, ShoppingBag, Sparkles, ChevronRight } from 'lucide-react'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import { Megaphone, Repeat, Cake, ShoppingBag, ChevronRight } from 'lucide-react'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 import PromosToggle from './PromosToggle'
 
 // -----------------------------------------------------------------------------
@@ -35,13 +35,13 @@ export default async function MarketingPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <AjustesBreadcrumb current="Marketing" />
+      <HubBreadcrumb current="Marketing" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
       <header className="mb-6">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-          <Sparkles className="h-7 w-7 text-brand" />
+          <Megaphone className="h-7 w-7 text-brand" />
           Marketing
         </h1>
-        <p className="text-ink-2">Herramientas para llenar huecos, fidelizar y vender más.</p>
+        <p className="text-ink-2">Llena huecos. Trae a los que no vienen. Vende más en mostrador.</p>
       </header>
 
       {/* Features live */}

@@ -44,7 +44,7 @@ export default function HomeIntroCard() {
     <div className="mt-6 mb-2 flex items-start gap-3 rounded-xl border border-line bg-overlay/60 px-4 py-3">
       <div className="flex-1 text-sm text-ink-2 leading-relaxed">
         <span className="font-semibold text-ink">Esto es tu Inicio.</span>{' '}
-        Aquí solo verás qué toca ahora. Para tu rendimiento, ve a Más → Rendimiento.
+        Aquí solo verás qué toca ahora. Para tu agenda, ve a Agenda.
         Para € e IVA, a Caja.
       </div>
       <button

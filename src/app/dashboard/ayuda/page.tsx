@@ -1,6 +1,6 @@
 import { MessageCircle, Mail, HelpCircle, ExternalLink, ChevronDown } from 'lucide-react'
 import { HELP_SECTIONS } from '@/lib/help-faqs'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
 
 // Centralised so the Ayuda page mirrors the chat widget contact details.
 const SUPPORT_WHATSAPP = '+34 644 288 663'
@@ -40,7 +40,7 @@ function renderAnswer(text: string): React.ReactNode[] {
 export default function AyudaPage() {
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <AjustesBreadcrumb current="Ayuda" />
+      <HubBreadcrumb current="Ayuda" />
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Ayuda</h1>
         <p className="text-ink-2">
@@ -62,7 +62,7 @@ export default function AyudaPage() {
               <MessageCircle className="h-5 w-5 text-success" />
             </div>
             <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-1">Más rápido</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-1">Recomendado</p>
               <h2 className="text-lg font-semibold text-ink mb-1 group-hover:text-brand transition-colors flex items-center gap-1.5">
                 WhatsApp <ExternalLink className="h-3.5 w-3.5" />
               </h2>

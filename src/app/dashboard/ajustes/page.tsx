@@ -2,19 +2,16 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
-import Link from 'next/link'
 import { db } from '@/db'
-import { clients, barbers as barbersTable, pushSubscriptions, ratings } from '@/db/schema'
-import { and, eq, sql } from 'drizzle-orm'
+import { clients, barbers as barbersTable, pushSubscriptions, invoices } from '@/db/schema'
+import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   Store,
   Bot,
   Smartphone,
-  Gift,
   CreditCard,
   HelpCircle,
-  ChevronRight,
   Users,
   Scissors,
   Clock,
@@ -24,26 +21,21 @@ import {
   MessageCircle,
   Mail,
   Bell,
-  Star,
-  Sparkles,
-  type LucideIcon,
+  FileText,
+  ShieldCheck,
 } from 'lucide-react'
 import { PLANS, type PlanId } from '@/lib/stripe'
-import type { LoyaltyConfig, LoyaltyReward } from '@/lib/loyalty/types'
+import { HubCard, HubCardLine, HubChipRow, HubChip, type HubTone } from '../_components/HubCard'
 
 // -----------------------------------------------------------------------------
-// /dashboard/ajustes — hub de configuración con tarjetas ricas que muestran
-// el estado real de cada área del negocio.
+// /dashboard/ajustes — hub de configuración del negocio.
 //
-// Cada tarjeta tiene la misma estructura:
-//   1. Header: icono + título + StatusPill (esquina derecha)
-//   2. Cuerpo: 1-2 líneas de info principal (nombre del negocio, número de
-//      WhatsApp, URL pública, etc.)
-//   3. Chips: 2-4 mini-stats con icono — el barbero ve los datos clave sin
-//      tener que entrar a la página.
+// Sólo cosas de "set and forget": cómo se llama tu barbería, cómo está el bot,
+// cómo se ve la app pública, qué plan tienes, dónde pedir ayuda.
 //
-// El barbero objetivo no es técnico: queremos que con un vistazo entienda
-// "esto está bien, esto falta, esto puedo mirar".
+// Las features de crecimiento (reseñas, fidelidad, marketing) viven en
+// /dashboard/crecer — son un tab aparte porque tienen una cadencia
+// distinta (semanal vs mensual/setup).
 // -----------------------------------------------------------------------------
 
 interface ServiceItem {
@@ -61,9 +53,15 @@ export default async function AjustesPage() {
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  // Queries paralelas — un único round-trip para todos los counters
-  // que necesitan las cards del hub.
-  const [barberCountRow, pushCountRow, ratingStatsRow] = await Promise.all([
+  // Queries paralelas — un único round-trip para los counters que necesitan
+  // las cards del hub (barberos activos · push installs · facturas del mes).
+  const now = new Date()
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const nextMonth = now.getMonth() === 11
+    ? `${now.getFullYear() + 1}-01-01`
+    : `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}-01`
+
+  const [barberCountRow, pushCountRow, invoiceCountRow] = await Promise.all([
     db
       .select({ n: sql<number>`count(*)` })
       .from(barbersTable)
@@ -75,19 +73,19 @@ export default async function AjustesPage() {
       .where(and(eq(pushSubscriptions.clientId, client.id), eq(pushSubscriptions.enabled, true)))
       .then((rows) => rows[0]),
     db
-      .select({
-        count: sql<number>`count(*)`,
-        avg: sql<number>`avg(${ratings.rating})`,
-      })
-      .from(ratings)
-      .where(eq(ratings.clientId, client.id))
+      .select({ n: sql<number>`count(*)` })
+      .from(invoices)
+      .where(and(
+        eq(invoices.clientId, client.id),
+        gte(invoices.issueDate, monthStart),
+        lt(invoices.issueDate, nextMonth),
+      ))
       .then((rows) => rows[0]),
   ])
 
   const barberCount = Number(barberCountRow?.n ?? 0)
   const pushCount = Number(pushCountRow?.n ?? 0)
-  const ratingCount = Number(ratingStatsRow?.count ?? 0)
-  const ratingAvg = ratingCount > 0 ? Number(ratingStatsRow?.avg ?? 0) : 0
+  const invoiceCount = Number(invoiceCountRow?.n ?? 0)
 
   // Servicios configurados (jsonb) → contar nombres no vacíos.
   const services = (client.chatbotServices as ServiceItem[] | null) ?? []
@@ -100,39 +98,36 @@ export default async function AjustesPage() {
 
   const publicUrl = client.publicSlug ? `${SITE_ORIGIN}/b/${client.publicSlug}` : null
 
-  const loyaltyConfig = (client.loyaltyConfig ?? {}) as Partial<LoyaltyConfig>
-  const loyaltyHeadline = formatLoyaltyHeadline(client.loyaltyEnabled, client.loyaltyMode, loyaltyConfig)
-
   const planMeta = PLANS[client.plan as PlanId] ?? null
   const planPriceEur = planMeta ? planMeta.price / 100 : null
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Más</h1>
-        <p className="text-ink-2">Configuración, marketing y todo lo que no es del día a día. Un vistazo y sabes qué está activo.</p>
+        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Ajustes</h1>
+        <p className="text-ink-2">Configuración del negocio. Lo defines una vez y se queda así.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* Tu barbería — card "ancla" del negocio */}
-        <Card href="/dashboard/negocio" icon={Store} title="Tu barbería" status={{ tone: 'ok', label: 'Configurado' }}>
-          <CardLine bold>{client.businessName || '—'}</CardLine>
+        <HubCard href="/dashboard/negocio" icon={Store} title="Tu barbería" status={{ tone: 'ok', label: 'Configurado' }}>
+          <HubCardLine bold>{client.businessName || '—'}</HubCardLine>
           {client.address && (
-            <CardLine icon={MapPin}>{client.address}</CardLine>
+            <HubCardLine icon={MapPin}>{client.address}</HubCardLine>
           )}
-          <ChipRow>
-            <Chip icon={Users}>{barberCount} {barberCount === 1 ? 'barbero' : 'barberos'}</Chip>
-            <Chip icon={Scissors}>{serviceCount} {serviceCount === 1 ? 'servicio' : 'servicios'}</Chip>
-            {horarioSummary && <Chip icon={Clock}>{horarioSummary}</Chip>}
-          </ChipRow>
-        </Card>
+          <HubChipRow>
+            <HubChip icon={Users}>{barberCount} {barberCount === 1 ? 'barbero' : 'barberos'}</HubChip>
+            <HubChip icon={Scissors}>{serviceCount} {serviceCount === 1 ? 'servicio' : 'servicios'}</HubChip>
+            {horarioSummary && <HubChip icon={Clock}>{horarioSummary}</HubChip>}
+          </HubChipRow>
+        </HubCard>
 
         {/* Asistente WhatsApp — "Conectado" si tiene phone_number_id de Meta
             (el access token tiene fallback al global, así que el phone es el
             único requisito real para que el bot pueda enviar mensajes).
             metaWebhookVerifiedAt es admin-tracking interno, no señal útil
             para el barbero. */}
-        <Card
+        <HubCard
           href="/dashboard/bot"
           icon={Bot}
           title="Asistente WhatsApp"
@@ -143,19 +138,19 @@ export default async function AjustesPage() {
           }
         >
           {client.whatsappNumber || client.phone ? (
-            <CardLine icon={Phone} bold>{client.whatsappNumber || client.phone}</CardLine>
+            <HubCardLine icon={Phone} bold>{client.whatsappNumber || client.phone}</HubCardLine>
           ) : (
-            <CardLine icon={Phone}>Sin número configurado</CardLine>
+            <HubCardLine icon={Phone}>Sin número configurado</HubCardLine>
           )}
-          <ChipRow>
-            <Chip>Tono: {toneLabel(client.botTone)}</Chip>
-            {client.botAllowCancelWhatsapp && <Chip>Cancela por chat</Chip>}
-            {client.googleReviewUrl && <Chip>Pide reseñas</Chip>}
-          </ChipRow>
-        </Card>
+          <HubChipRow>
+            <HubChip>Tono: {toneLabel(client.botTone)}</HubChip>
+            {client.botAllowCancelWhatsapp && <HubChip>Cancela por chat</HubChip>}
+            {client.googleReviewUrl && <HubChip>Pide reseñas</HubChip>}
+          </HubChipRow>
+        </HubCard>
 
         {/* App para clientes */}
-        <Card
+        <HubCard
           href="/dashboard/app"
           icon={Smartphone}
           title="App para clientes"
@@ -166,226 +161,87 @@ export default async function AjustesPage() {
           }
         >
           {publicUrl ? (
-            <CardLine icon={Globe} bold mono>
+            <HubCardLine icon={Globe} bold mono>
               {publicUrl.replace(/^https?:\/\//, '')}
-            </CardLine>
+            </HubCardLine>
           ) : (
-            <CardLine icon={Globe}>URL pendiente de configurar</CardLine>
+            <HubCardLine icon={Globe}>URL pendiente de configurar</HubCardLine>
           )}
-          <ChipRow>
-            <Chip icon={Smartphone}>{pushCount} {pushCount === 1 ? 'instalación' : 'instalaciones'}</Chip>
+          <HubChipRow>
+            <HubChip icon={Smartphone}>{pushCount} {pushCount === 1 ? 'instalación' : 'instalaciones'}</HubChip>
             {client.brandColor && (
-              <Chip>
+              <HubChip>
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full mr-1.5 align-middle"
                   style={{ background: client.brandColor }}
                 />
                 Color
-              </Chip>
+              </HubChip>
             )}
-            {client.promosEnabled && <Chip icon={Bell}>Promos ON</Chip>}
-          </ChipRow>
-        </Card>
+            {client.promosEnabled && <HubChip icon={Bell}>Promos ON</HubChip>}
+          </HubChipRow>
+        </HubCard>
 
-        {/* Reseñas — un punto de entrada propio porque ahora son una entidad
-            independiente de propinas (ratings_enabled flag). */}
-        <Card
-          href="/dashboard/resenas"
-          icon={Star}
-          title="Reseñas"
+        {/* Facturación — VeriFactu + tickets emitidos */}
+        <HubCard
+          href="/dashboard/facturas"
+          icon={FileText}
+          title="Facturación"
           status={
-            client.ratingsEnabled
+            client.invoicingEnabled
               ? { tone: 'ok', label: 'Activa' }
               : { tone: 'neutral', label: 'Desactivada' }
           }
         >
-          {ratingCount > 0 ? (
-            <CardLine bold>
-              {ratingAvg.toFixed(1)}/5 · {ratingCount} {ratingCount === 1 ? 'valoración' : 'valoraciones'}
-            </CardLine>
-          ) : client.ratingsEnabled ? (
-            <CardLine>Aún no has recibido valoraciones.</CardLine>
+          {client.invoicingEnabled ? (
+            <HubCardLine bold>
+              {invoiceCount > 0
+                ? `${invoiceCount} ${invoiceCount === 1 ? 'factura' : 'facturas'} este mes`
+                : 'Sin facturas este mes'}
+            </HubCardLine>
           ) : (
-            <CardLine>Pide opinión a tus clientes tras cada servicio.</CardLine>
+            <HubCardLine>Emite tickets y facturas con cumplimiento VeriFactu.</HubCardLine>
           )}
-          {ratingCount > 0 && (
-            <ChipRow>
-              <Chip icon={Star}>Media {ratingAvg.toFixed(1)}</Chip>
-            </ChipRow>
+          {client.invoicingEnabled && (
+            <HubChipRow>
+              <HubChip icon={ShieldCheck}>VeriFactu</HubChip>
+              <HubChip>Libro de facturas</HubChip>
+            </HubChipRow>
           )}
-        </Card>
-
-        {/* Tarjeta de fidelización */}
-        <Card
-          href="/dashboard/fidelidad"
-          icon={Gift}
-          title="Tarjeta de fidelización"
-          status={
-            client.loyaltyEnabled
-              ? { tone: 'ok', label: 'Activa' }
-              : { tone: 'neutral', label: 'Desactivada' }
-          }
-        >
-          {client.loyaltyEnabled ? (
-            <CardLine bold>{loyaltyHeadline}</CardLine>
-          ) : (
-            <CardLine>Sin programa de fidelidad. Activa para premiar a tus clientes recurrentes.</CardLine>
-          )}
-          {client.loyaltyEnabled && (
-            <ChipRow>
-              <Chip>Modo: {client.loyaltyMode === 'points' ? 'puntos' : 'sellos'}</Chip>
-              {loyaltyConfig.expirationMonths != null
-                ? <Chip>Caduca a {loyaltyConfig.expirationMonths} meses</Chip>
-                : <Chip>Sin caducidad</Chip>}
-            </ChipRow>
-          )}
-        </Card>
-
-        {/* Marketing — punto de entrada para Promos contextuales y futuras
-            features de crecimiento (reactivación, cumpleaños, tienda). */}
-        <Card
-          href="/dashboard/marketing"
-          icon={Sparkles}
-          title="Marketing"
-          status={
-            client.promosEnabled
-              ? { tone: 'ok', label: 'Promos activas' }
-              : { tone: 'neutral', label: 'Sin activar' }
-          }
-        >
-          {client.promosEnabled ? (
-            <CardLine bold>Promos contextuales activadas</CardLine>
-          ) : (
-            <CardLine>Llenar huecos, fidelizar y vender más.</CardLine>
-          )}
-          <ChipRow>
-            {client.promosEnabled && <Chip icon={Sparkles}>Llenar huecos</Chip>}
-            <Chip>+ próximamente</Chip>
-          </ChipRow>
-        </Card>
+        </HubCard>
 
         {/* Tu suscripción */}
-        <Card
+        <HubCard
           href="/dashboard/mi-plan"
           icon={CreditCard}
           title="Tu suscripción"
           status={subscriptionStatus(client.status)}
         >
-          <CardLine bold>
+          <HubCardLine bold>
             {planMeta?.name ?? client.plan}
             {planPriceEur != null && (
               <span className="text-ink-3 font-normal"> · {planPriceEur.toFixed(2)} €/mes</span>
             )}
-          </CardLine>
-          <ChipRow>
-            {client.stripeConnectStatus === 'active' && <Chip tone="ok">Cobros online</Chip>}
+          </HubCardLine>
+          <HubChipRow>
+            {client.stripeConnectStatus === 'active' && <HubChip tone="ok">Cobros online</HubChip>}
             {client.stripeConnectStatus !== 'active' && client.stripeConnectStatus !== 'none' && (
-              <Chip tone="warn">Cobros: {client.stripeConnectStatus}</Chip>
+              <HubChip tone="warn">Cobros: {client.stripeConnectStatus}</HubChip>
             )}
-            {client.tipsEnabled && <Chip>Propinas ON</Chip>}
-          </ChipRow>
-        </Card>
+            {client.tipsEnabled && <HubChip>Propinas ON</HubChip>}
+          </HubChipRow>
+        </HubCard>
 
         {/* Ayuda */}
-        <Card href="/dashboard/ayuda" icon={HelpCircle} title="Ayuda">
-          <CardLine>Soporte directo y preguntas frecuentes.</CardLine>
-          <ChipRow>
-            <Chip icon={MessageCircle}>WhatsApp +34 644 288 663</Chip>
-            <Chip icon={Mail}>soporte@otracita.es</Chip>
-          </ChipRow>
-        </Card>
+        <HubCard href="/dashboard/ayuda" icon={HelpCircle} title="Ayuda">
+          <HubCardLine>Soporte directo y preguntas frecuentes.</HubCardLine>
+          <HubChipRow>
+            <HubChip icon={MessageCircle}>WhatsApp +34 644 288 663</HubChip>
+            <HubChip icon={Mail}>soporte@otracita.es</HubChip>
+          </HubChipRow>
+        </HubCard>
       </div>
     </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Building blocks — diseño visual de las tarjetas
-// ─────────────────────────────────────────────────────────────────────────────
-
-type Tone = 'ok' | 'warn' | 'danger' | 'neutral'
-
-interface CardProps {
-  href: string
-  icon: LucideIcon
-  title: string
-  status?: { tone: Tone; label: string }
-  children: React.ReactNode
-}
-
-function Card({ href, icon: Icon, title, status, children }: CardProps) {
-  return (
-    <Link
-      href={href}
-      className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-surface p-5 hover:border-line-strong hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all"
-    >
-      <div className="flex items-start gap-3">
-        <div className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0 bg-brand-softer text-brand-strong">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
-          <h2 className="font-semibold text-ink text-base leading-tight pt-1.5">{title}</h2>
-          {status && <StatusPill tone={status.tone} label={status.label} />}
-        </div>
-        <ChevronRight className="h-4 w-4 text-ink-3 mt-2 shrink-0 group-hover:text-ink transition-colors" />
-      </div>
-      <div className="flex flex-col gap-1.5 pl-14">
-        {children}
-      </div>
-    </Link>
-  )
-}
-
-function StatusPill({ tone, label }: { tone: Tone; label: string }) {
-  const styles =
-    tone === 'ok' ? 'bg-success/10 text-success border-success/30'
-    : tone === 'warn' ? 'bg-warning/10 text-warning border-warning/30'
-    : tone === 'danger' ? 'bg-danger/10 text-danger border-danger/30'
-    : 'bg-overlay text-ink-3 border-line'
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${styles}`}>
-      {label}
-    </span>
-  )
-}
-
-interface CardLineProps {
-  icon?: LucideIcon
-  bold?: boolean
-  mono?: boolean
-  children: React.ReactNode
-}
-
-function CardLine({ icon: Icon, bold, mono, children }: CardLineProps) {
-  return (
-    <p className={`flex items-center gap-1.5 text-sm ${bold ? 'text-ink font-medium' : 'text-ink-2'} ${mono ? 'font-mono text-xs' : ''}`}>
-      {Icon && <Icon className="h-3.5 w-3.5 text-ink-3 shrink-0" />}
-      <span className="truncate">{children}</span>
-    </p>
-  )
-}
-
-function ChipRow({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap gap-1.5 mt-1">{children}</div>
-}
-
-interface ChipProps {
-  icon?: LucideIcon
-  tone?: Tone
-  children: React.ReactNode
-}
-
-function Chip({ icon: Icon, tone, children }: ChipProps) {
-  const styles =
-    tone === 'ok' ? 'bg-success/10 text-success border-success/30'
-    : tone === 'warn' ? 'bg-warning/10 text-warning border-warning/30'
-    : tone === 'danger' ? 'bg-danger/10 text-danger border-danger/30'
-    : 'bg-overlay/60 text-ink-2 border-line'
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${styles}`}>
-      {Icon && <Icon className="h-3 w-3 shrink-0" />}
-      {children}
-    </span>
   )
 }
 
@@ -437,54 +293,11 @@ function toneLabel(tone: string | null): string {
   return 'cercano'
 }
 
-function subscriptionStatus(status: string): { tone: Tone; label: string } {
+function subscriptionStatus(status: string): { tone: HubTone; label: string } {
   if (status === 'active') return { tone: 'ok', label: 'Activa' }
   if (status === 'trialing') return { tone: 'ok', label: 'Prueba' }
   if (status === 'past_due') return { tone: 'warn', label: 'Pago pendiente' }
   if (status === 'cancelled') return { tone: 'danger', label: 'Cancelada' }
   if (status === 'pending') return { tone: 'warn', label: 'Pendiente' }
   return { tone: 'neutral', label: status }
-}
-
-/**
- * Resume el programa de fidelidad en una línea humana, tipo "Cada 10 cortes
- * regalas 1" o "1 € = 1 punto · canjeas a partir de 100 pts".
- */
-function formatLoyaltyHeadline(
-  enabled: boolean,
-  mode: string,
-  config: Partial<LoyaltyConfig>,
-): string {
-  if (!enabled) return 'Desactivada'
-  if (mode === 'stamps') {
-    const stampsCfg = config as Partial<{ stampsNeeded: number; reward: LoyaltyReward }>
-    const n = stampsCfg.stampsNeeded ?? 0
-    const reward = formatReward(stampsCfg.reward)
-    if (n > 0 && reward) return `Cada ${n} visitas: ${reward}`
-    if (n > 0) return `Cada ${n} visitas`
-    return 'Por configurar'
-  }
-  if (mode === 'points') {
-    const pointsCfg = config as Partial<{
-      euroToPoints: number
-      redeemTiers: Array<{ pointsCost: number; reward: LoyaltyReward }>
-    }>
-    const ratio = pointsCfg.euroToPoints ?? 1
-    const firstTier = pointsCfg.redeemTiers?.[0]
-    if (firstTier) return `${ratio} pt por € · ${firstTier.pointsCost} pts → ${formatReward(firstTier.reward)}`
-    return `${ratio} pt por €`
-  }
-  return 'Configurado'
-}
-
-function formatReward(reward: LoyaltyReward | undefined): string {
-  if (!reward) return ''
-  if (reward.type === 'service') return reward.serviceName ? `${reward.serviceName} gratis` : 'servicio gratis'
-  if (reward.type === 'discount_amount' && typeof reward.cents === 'number') {
-    return `${(reward.cents / 100).toFixed(0)} € de descuento`
-  }
-  if (reward.type === 'discount_pct' && typeof reward.pct === 'number') {
-    return reward.pct === 100 ? 'gratis' : `${reward.pct}% off`
-  }
-  return ''
 }
