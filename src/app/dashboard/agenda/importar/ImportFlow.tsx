@@ -229,7 +229,7 @@ export default function ImportFlow() {
         </div>
 
         <div className="text-xs text-ink-3 leading-relaxed">
-          <strong>Tip:</strong> En Booksy entra en "Appointment List", haz scroll hasta el final
+          <strong>Tip:</strong> En Booksy entra en «Appointment List», haz scroll hasta el final
           y ve capturando por secciones. Cuantas más capturas, mejor la IA ve todo.
         </div>
       </div>

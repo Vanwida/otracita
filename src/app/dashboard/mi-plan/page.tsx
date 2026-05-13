@@ -290,7 +290,7 @@ function TierBanner({
             <p className="text-sm text-ink-2 mt-1">
               Bot WhatsApp, multi-barbero, SumUp Tap to Pay, fidelidad y promos. Sin permanencia.
             </p>
-            <UpgradeToProButton plan="chatbot" label="Empezar prueba de 14 días" />
+            <UpgradeToProButton tier="pro" label="Empezar prueba de 14 días" />
           </div>
         </div>
       </div>

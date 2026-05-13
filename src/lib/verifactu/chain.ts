@@ -200,8 +200,8 @@ export async function chainRegistroAnulacion(
 // `tx` tipado laxo a propósito: drizzle tipa la transacción como un subtipo
 // distinto al `db` base. No nos aporta type-safety encima de lo que ya da la
 // query builder, así que evitamos el chirrido con `any` aquí.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function findLastHashForClient(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   clientId: string,
 ): Promise<string | null> {

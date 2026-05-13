@@ -31,6 +31,8 @@ export default function SidebarToggle() {
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null
     const initial = saved === '1'
+    // Syncs UI to persisted localStorage state on first client paint.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(initial)
     if (initial) document.documentElement.setAttribute('data-sidebar', 'collapsed')
   }, [])

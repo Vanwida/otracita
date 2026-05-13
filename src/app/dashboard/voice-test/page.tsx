@@ -3,10 +3,13 @@ export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth/server';
+import { hasFeature } from '@/lib/billing/tier';
 import { db } from '@/db';
 import { clients } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { Mic } from 'lucide-react';
 import VoiceTest from './VoiceTest';
+import UpgradeRequired from '../_components/UpgradeRequired';
 
 interface ServiceConfig {
   name: string;
@@ -39,6 +42,17 @@ export default async function VoiceTestPage() {
 
   if (!client) {
     redirect('/dashboard/setup');
+  }
+
+  if (!hasFeature(client, 'recepcionistaIA')) {
+    return (
+      <UpgradeRequired
+        feature="recepcionistaIA"
+        title="Recepcionista IA"
+        icon={Mic}
+        back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+      />
+    );
   }
 
   const services = (client.chatbotServices as ServiceConfig[]) || [];

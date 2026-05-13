@@ -6,9 +6,11 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import { hasFeature } from '@/lib/billing/tier'
 import Link from 'next/link'
 import { Megaphone, Repeat, Cake, ShoppingBag, ChevronRight } from 'lucide-react'
 import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import PromosToggle from './PromosToggle'
 
 // -----------------------------------------------------------------------------
@@ -32,6 +34,17 @@ export default async function MarketingPage() {
 
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
+
+  if (!hasFeature(client, 'promosContextuales')) {
+    return (
+      <UpgradeRequired
+        feature="promosContextuales"
+        title="Marketing"
+        icon={Megaphone}
+        back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+      />
+    )
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">

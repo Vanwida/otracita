@@ -12,13 +12,15 @@ import { ArrowRight, Loader2 } from 'lucide-react'
 // -----------------------------------------------------------------------------
 
 interface Props {
-  /** Plan ID del backend (debe coincidir con lo que /api/checkout acepta). */
-  plan: 'chatbot' | 'pro' | 'estudio'
+  /** Tier de destino (los gratis no pasan por este botón). */
+  tier: 'pro' | 'estudio'
+  /** Mensual o anual. Default mensual. */
+  billingInterval?: 'monthly' | 'annual'
   /** Texto del botón. */
   label: string
 }
 
-export default function UpgradeToProButton({ plan, label }: Props) {
+export default function UpgradeToProButton({ tier, billingInterval = 'monthly', label }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +31,7 @@ export default function UpgradeToProButton({ plan, label }: Props) {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ tier, billingInterval }),
       })
       const data = await res.json()
       if (data.url) {

@@ -6,7 +6,9 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import { hasFeature } from '@/lib/billing/tier'
 import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import {
   Bot,
   MessageCircle,
@@ -39,6 +41,17 @@ export default async function BotPage() {
 
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
+
+  if (!hasFeature(client, 'whatsappBot')) {
+    return (
+      <UpgradeRequired
+        feature="whatsappBot"
+        title="Bot WhatsApp"
+        icon={Bot}
+        back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+      />
+    )
+  }
 
   async function saveBotSettings(formData: FormData) {
     'use server'

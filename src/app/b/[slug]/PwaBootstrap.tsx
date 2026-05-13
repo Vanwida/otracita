@@ -50,11 +50,15 @@ export default function PwaBootstrap({ businessName, brand }: Props) {
     const ua = navigator.userAgent
     const isIOS = /iPhone|iPad|iPod/.test(ua)
     if (isIOS) {
-      if (/CriOS\//.test(ua)) setIosBrowser('chrome')
-      else if (/FxiOS\//.test(ua)) setIosBrowser('firefox')
-      else if (/EdgiOS\//.test(ua)) setIosBrowser('other')
-      else if (/Safari\//.test(ua)) setIosBrowser('safari')
-      else setIosBrowser('other')
+      let next: 'chrome' | 'firefox' | 'safari' | 'other'
+      if (/CriOS\//.test(ua)) next = 'chrome'
+      else if (/FxiOS\//.test(ua)) next = 'firefox'
+      else if (/EdgiOS\//.test(ua)) next = 'other'
+      else if (/Safari\//.test(ua)) next = 'safari'
+      else next = 'other'
+      // UA detection runs once on client mount — syncing external state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIosBrowser(next)
     }
 
     const standaloneMedia = window.matchMedia('(display-mode: standalone)').matches

@@ -104,7 +104,7 @@ export default function MobileAppConnect() {
           {!pin && !error && (
             <ul className="mt-3 text-xs text-ink-2 space-y-1 leading-relaxed">
               <li>· Necesitas iPhone XS o más reciente con iOS 16.4+</li>
-              <li>· Descarga la app "otracita Cobros" desde la App Store</li>
+              <li>· Descarga la app «otracita Cobros» desde la App Store</li>
               <li>· Genera un PIN aquí y tecléalo en la app para conectar</li>
               <li>· Una vez conectado, cobras con un toque desde tu móvil</li>
             </ul>

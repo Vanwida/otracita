@@ -24,6 +24,8 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
   const pathname = usePathname()
   const router = useRouter()
 
+  // Close drawer when route changes — syncs with external navigation state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setOpen(false) }, [pathname])
 
   useEffect(() => {

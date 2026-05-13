@@ -6,9 +6,12 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import { hasFeature } from '@/lib/billing/tier'
 import LoyaltySettings from '../_components/LoyaltySettings'
 import LoyaltyCustomerLookup from '../_components/LoyaltyCustomerLookup'
 import HubBreadcrumb from '../_components/HubBreadcrumb'
+import UpgradeRequired from '../_components/UpgradeRequired'
+import { Gift } from 'lucide-react'
 import type { LoyaltyConfig } from '@/lib/loyalty/types'
 
 // -----------------------------------------------------------------------------
@@ -32,6 +35,17 @@ export default async function FidelidadPage() {
 
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
+
+  if (!hasFeature(client, 'loyaltyAdvanced')) {
+    return (
+      <UpgradeRequired
+        feature="loyaltyAdvanced"
+        title="Fidelización"
+        icon={Gift}
+        back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+      />
+    )
+  }
 
   const rawServices = (client.chatbotServices ?? []) as ServiceRow[]
   const serviceNames = Array.isArray(rawServices)

@@ -25,11 +25,12 @@ import type { LoyaltyConfig } from '@/lib/loyalty/types'
 // `customers` para ese tenant, la creamos al vuelo. Así nunca perdemos el
 // award.
 //
-// DRY_RUN: env var LOYALTY_AWARD_DRY_RUN="false" lo activa. Default ON hasta
-// flipear en Vercel — mismo patrón que post-booking-followup.
+// DRY_RUN: env var LOYALTY_AWARD_DRY_RUN="true" lo activa (default OFF para
+// producción). Si en algún incidente quisiéramos parar awards sin tocar
+// código, basta con poner la env a "true" en Vercel.
 // -----------------------------------------------------------------------------
 
-const DRY_RUN = process.env.LOYALTY_AWARD_DRY_RUN !== 'false'
+const DRY_RUN = process.env.LOYALTY_AWARD_DRY_RUN === 'true'
 
 const MAX_BATCH = 200
 

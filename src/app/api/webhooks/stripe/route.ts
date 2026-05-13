@@ -109,30 +109,9 @@ export async function POST(request: Request) {
         break;
       }
 
+      case 'customer.subscription.created':
       case 'customer.subscription.updated': {
-        const subscription = event.data.object;
-        const trialEnd = subscription.trial_end
-          ? new Date(subscription.trial_end * 1000)
-          : null;
-        await db
-          .update(subscriptions)
-          .set({
-            status: subscription.status,
-            trialEndsAt: trialEnd,
-          })
-          .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
-
-        // Mirror trialEndsAt al client row (la UI consulta por ahí).
-        const [sub] = await db
-          .select()
-          .from(subscriptions)
-          .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
-        if (sub) {
-          await db
-            .update(clients)
-            .set({ trialEndsAt: trialEnd })
-            .where(eq(clients.id, sub.clientId));
-        }
+        await handleSubscriptionChange(event.data.object);
         break;
       }
 
@@ -203,6 +182,84 @@ export async function POST(request: Request) {
   }
 
   return Response.json({ received: true });
+}
+
+// -----------------------------------------------------------------------------
+// customer.subscription.{created,updated}
+//
+// Sincroniza el estado de la suscripción con el row del cliente. Reglas:
+//   · trial_end → clients.trialEndsAt (siempre)
+//   · status ∈ {paused, unpaid, incomplete_expired, canceled} → clients.tier=solo
+//     y clients.status=cancelled. Pierde features Pro/Estudio inmediatamente.
+//     (past_due NO downgrades — es periodo de gracia, Stripe seguirá reintentando.)
+//   · status ∈ {trialing, active} → si veníamos de cancelled lo re-activamos.
+//     Mantiene el tier ya configurado por checkout.session.completed.
+// -----------------------------------------------------------------------------
+async function handleSubscriptionChange(
+  subscription: Stripe.Subscription,
+): Promise<void> {
+  const trialEnd = subscription.trial_end ? new Date(subscription.trial_end * 1000) : null;
+
+  await db
+    .update(subscriptions)
+    .set({
+      status: subscription.status,
+      trialEndsAt: trialEnd,
+    })
+    .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
+
+  const [sub] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
+  if (!sub) return; // checkout.session.completed aún no ha creado la row
+
+  const DOWNGRADE_STATUSES = new Set<Stripe.Subscription.Status>([
+    'paused',
+    'unpaid',
+    'incomplete_expired',
+    'canceled',
+  ]);
+  const ACTIVE_STATUSES = new Set<Stripe.Subscription.Status>(['trialing', 'active']);
+
+  if (DOWNGRADE_STATUSES.has(subscription.status)) {
+    await db
+      .update(clients)
+      .set({
+        status: 'cancelled',
+        tier: 'solo',
+        billingInterval: null,
+        trialEndsAt: null,
+      })
+      .where(eq(clients.id, sub.clientId));
+    return;
+  }
+
+  if (ACTIVE_STATUSES.has(subscription.status)) {
+    // Re-activación o sync normal. Mantenemos el tier que el sub ya tiene
+    // configurado (Pro/Estudio según el checkout); el status del cliente
+    // vuelve a 'active' si estaba en cancelled.
+    const updates: {
+      trialEndsAt: Date | null;
+      status?: 'active';
+      tier?: 'solo' | 'pro' | 'estudio';
+    } = { trialEndsAt: trialEnd };
+    const [c] = await db.select().from(clients).where(eq(clients.id, sub.clientId));
+    if (c?.status === 'cancelled') {
+      updates.status = 'active';
+      if (sub.tier === 'pro' || sub.tier === 'estudio') {
+        updates.tier = sub.tier;
+      }
+    }
+    await db.update(clients).set(updates).where(eq(clients.id, sub.clientId));
+    return;
+  }
+
+  // past_due / incomplete: mantenemos tier; solo sync de trialEndsAt.
+  await db
+    .update(clients)
+    .set({ trialEndsAt: trialEnd })
+    .where(eq(clients.id, sub.clientId));
 }
 
 // -----------------------------------------------------------------------------

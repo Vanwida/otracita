@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build artifacts (mobile shell, agent worktrees, generated bundles)
+    "mobile/dist/**",
+    "mobile/ios/**",
+    "mobile/android/**",
+    "mobile/postcss.config.js",
+    ".claude/worktrees/**",
+    ".claude/skills/**",
   ]),
 ]);
 

@@ -1,15 +1,15 @@
 export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { bookings, clients, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
 import { eq, and, gte, lt, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { hasFeature, upgradeMessage } from '@/lib/billing/tier'
-import { ChevronLeft, ArrowRight, TrendingUp } from 'lucide-react'
+import { hasFeature } from '@/lib/billing/tier'
+import { TrendingUp } from 'lucide-react'
 import FinanzasClient from './FinanzasClient'
+import UpgradeRequired from '../_components/UpgradeRequired'
 
 interface PageProps {
   searchParams: Promise<{ month?: string }>
@@ -46,39 +46,13 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   if (!client) redirect('/dashboard/setup')
 
   if (!hasFeature(client, 'controlFinanciero')) {
-    const msg = upgradeMessage('controlFinanciero')
     return (
-      <div className="px-4 md:px-8 lg:px-12 max-w-4xl mx-auto pb-16">
-        <header className="pt-10 lg:pt-14 pb-8 border-b border-line">
-          <Link
-            href="/dashboard/caja"
-            className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-6 transition-colors"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            Caja
-          </Link>
-          <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-tight">
-            Finanzas
-          </h1>
-        </header>
-
-        <section className="mt-16 flex flex-col items-center text-center max-w-sm mx-auto gap-6">
-          <div className="w-14 h-14 rounded-2xl bg-brand-softer flex items-center justify-center">
-            <TrendingUp className="h-7 w-7 text-brand" aria-hidden="true" />
-          </div>
-          <div>
-            <h2 className="font-display text-2xl font-semibold text-ink mb-2">{msg.title}</h2>
-            <p className="text-sm text-ink-2 leading-relaxed">{msg.body}</p>
-          </div>
-          <Link
-            href="/dashboard/mi-plan"
-            className="btn-primary inline-flex items-center gap-2"
-          >
-            Ver Mi plan
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        </section>
-      </div>
+      <UpgradeRequired
+        feature="controlFinanciero"
+        title="Finanzas"
+        icon={TrendingUp}
+        back={{ label: 'Caja', href: '/dashboard/caja' }}
+      />
     )
   }
 

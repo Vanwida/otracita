@@ -85,6 +85,8 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
     }
     const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'blocked']
     if ((valid as string[]).includes(raw)) {
+      // Syncing tab from URL query param (external state) on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTab(raw as TabKey)
     }
   }, [])
