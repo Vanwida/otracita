@@ -20,8 +20,10 @@ import {
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
 import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import SourceChip from '@/app/dashboard/_components/SourceChip'
 import SearchAndSort from './SearchAndSort'
 import CustomerContactActions from './CustomerContactActions'
+import SourceBreakdown from './SourceBreakdown'
 
 // -----------------------------------------------------------------------------
 // /dashboard/clientes — listado accionable de clientes de la barbería.
@@ -83,6 +85,7 @@ interface CustomerRow {
   rating_count: number
   avg_rating: number | null
   completed_count: number
+  first_source: string | null
 }
 
 const HABITUAL_DAYS = 30
@@ -133,6 +136,7 @@ export default async function ClientesPage({ searchParams }: Props) {
     SELECT
       c.id, c.phone, c.name, c.total_bookings, c.no_shows, c.cancellations,
       c.reputation, c.last_booking_at,
+      c.first_source,
       COALESCE(b.spent_cents, 0)::bigint AS spent_cents,
       COALESCE(b.completed_count, 0)::int AS completed_count,
       COALESCE(t.tips_cents, 0)::bigint AS tips_cents,
@@ -195,6 +199,24 @@ export default async function ClientesPage({ searchParams }: Props) {
     rows: Array<{ total: number; inactivos: number; noshows: number; bloqueados: number }>
   }).rows[0] ?? { total: 0, inactivos: 0, noshows: 0, bloqueados: 0 }
 
+  // Breakdown de origen — sólo customers cuya FIRST visit cae en los
+  // últimos 30 días. "Cómo llegan AHORA", no histórico total. Pre-attribution
+  // (first_source IS NULL) se excluye porque no aporta info accionable.
+  const sourceResult = await db.execute(sql`
+    SELECT first_source AS source, COUNT(*)::int AS count
+    FROM ${customers}
+    WHERE client_id = ${client.id}
+      AND first_source IS NOT NULL
+      AND first_source_captured_at IS NOT NULL
+      AND first_source_captured_at >= NOW() - INTERVAL '30 days'
+    GROUP BY first_source
+    ORDER BY COUNT(*) DESC
+  `)
+  const sourceRows = (sourceResult as unknown as { rows: Array<{ source: string; count: number }> })
+    .rows
+    .map((r) => ({ source: r.source, count: Number(r.count) }))
+  const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <HubBreadcrumb current="Clientes" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
@@ -206,6 +228,10 @@ export default async function ClientesPage({ searchParams }: Props) {
           <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Caja.</span>
         </p>
       </div>
+
+      {/* Breakdown de origen — accionable: "¿de dónde me vienen los clientes
+          nuevos?" → decide en qué canal invertir. */}
+      <SourceBreakdown items={sourceRows} total={sourceTotal} />
 
       {/* Buscador + ordenar (la búsqueda es para el caso raro de lookup
           puntual; el barbero llega a un cliente normalmente desde la cita
@@ -324,6 +350,12 @@ export default async function ClientesPage({ searchParams }: Props) {
                           <a href={`tel:${c.phone}`} className="hover:text-brand transition-colors">
                             {c.phone}
                           </a>
+                          {c.first_source && (
+                            <>
+                              <span className="text-ink-3/60">·</span>
+                              <SourceChip source={c.first_source} size="xs" />
+                            </>
+                          )}
                         </div>
                         {/* Mobile-only: contextual data hidden in dedicated
                             columns below md. Sin esto el barbero en móvil ve

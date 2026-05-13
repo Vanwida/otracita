@@ -27,6 +27,35 @@ interface Body {
   customerPhone?: unknown
   customerEmail?: unknown
   notes?: unknown
+  /** Atribución capturada en el cliente (utm/referrer). */
+  attribution?: unknown
+}
+
+// Source/medium normalizados — debe coincidir con `AttributionSource`/
+// `AttributionMedium` en `src/lib/attribution/types.ts`. Lo replicamos
+// como string-literal local para que el server NO importe el módulo
+// 'use client' del helper de localStorage.
+const VALID_SOURCES = new Set([
+  'instagram', 'google_ads', 'google_organic', 'facebook', 'tiktok',
+  'youtube', 'whatsapp_bot', 'walk_in', 'referral', 'direct', 'other',
+])
+const VALID_MEDIUMS = new Set([
+  'cpc', 'organic', 'social', 'referral', 'email', 'none',
+])
+
+function sanitizeAttribution(raw: unknown): {
+  source: string
+  medium: string
+  campaign: string | null
+} | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const source = typeof obj.source === 'string' ? obj.source.trim().toLowerCase() : null
+  const medium = typeof obj.medium === 'string' ? obj.medium.trim().toLowerCase() : null
+  if (!source || !VALID_SOURCES.has(source)) return null
+  if (!medium || !VALID_MEDIUMS.has(medium)) return null
+  const rawCampaign = typeof obj.campaign === 'string' ? obj.campaign.trim().toLowerCase().slice(0, 80) : ''
+  return { source, medium, campaign: rawCampaign || null }
 }
 
 function clientIp(req: Request): string {
@@ -98,6 +127,8 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Barbería no encontrada' }, { status: 404 })
   }
 
+  const attribution = sanitizeAttribution(body.attribution)
+
   const result = await createBooking({
     client,
     customerName,
@@ -107,6 +138,7 @@ export async function POST(req: Request) {
     date,
     time,
     source: 'web',
+    attribution,
   })
 
   if (!result.success) {

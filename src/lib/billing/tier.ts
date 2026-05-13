@@ -53,6 +53,10 @@ export const FEATURE_MIN_TIER = {
 
   // Pro+: control financiero (gastos, costes fijos, retiros, resumen P&L).
   controlFinanciero: 'pro',
+  // Pro+: Google Tag Manager — el barbero pega su container ID y mide
+  // conversiones con sus pixels (Meta, GA4, Google Ads, TikTok). Solo
+  // tiene sentido para barberos que invierten en ads.
+  gtmContainer: 'pro',
 } as const satisfies Record<string, Tier>;
 
 export type Feature = keyof typeof FEATURE_MIN_TIER;
@@ -138,6 +142,7 @@ export function upgradeMessage(feature: Feature): {
     onboarding1a1: 'el onboarding 1:1',
     soportePrioritario: 'el soporte prioritario',
     controlFinanciero: 'el control financiero',
+    gtmContainer: 'Google Tag Manager',
   };
   const tierLabel: Record<Tier, string> = {
     solo: 'Solo',

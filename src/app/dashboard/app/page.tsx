@@ -11,10 +11,15 @@ import {
   Smartphone,
   Bell,
   ExternalLink,
+  BarChart3,
+  Lock,
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
 import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import GtmSettings from './GtmSettings'
+import Link from 'next/link'
+import { hasFeature } from '@/lib/billing/tier'
 
 const SITE_ORIGIN = 'https://otracita.es'
 
@@ -167,6 +172,44 @@ export default async function AppPage() {
         <p className="mt-3 text-xs text-ink-3">
           Activado automáticamente para todos tus clientes que instalen la app. Nada que configurar.
         </p>
+      </section>
+
+      {/* GTM — feature Pro. Si tiene el plan, mostramos el input; si no,
+          un upsell discreto que explica el valor. */}
+      <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-brand" />
+            <h2 className="text-lg font-semibold text-ink">Google Tag Manager</h2>
+            <span className="text-[10px] uppercase tracking-widest font-bold text-brand-strong bg-brand-softer px-1.5 py-0.5 rounded">Pro</span>
+          </div>
+        </div>
+        <p className="text-sm text-ink-2 max-w-2xl mb-4">
+          Conecta tu GTM para medir conversiones con tus propios pixels (Meta, Google Ads, GA4, TikTok…)
+          cuando un cliente confirma reserva. Una sola pieza, todos los tags. Con consentimiento de cookies
+          gestionado automáticamente en tu app pública.
+        </p>
+
+        {hasFeature(client, 'gtmContainer') ? (
+          <GtmSettings initial={client.gtmContainerId ?? null} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-line bg-overlay px-4 py-5 flex items-start gap-3">
+            <Lock className="h-4 w-4 text-ink-3 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-ink mb-1">Disponible en el plan Pro</p>
+              <p className="text-xs text-ink-2 mb-3">
+                Activa Pro para conectar tu GTM y empezar a medir el ROI de tus campañas en redes sociales y
+                buscadores. También desbloqueas bot WhatsApp, SumUp, fidelidad avanzada y control financiero.
+              </p>
+              <Link
+                href="/dashboard/mi-plan"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:text-brand-strong transition-colors"
+              >
+                Ver Mi plan →
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Promos contextuales se gestionan ahora en /dashboard/marketing —

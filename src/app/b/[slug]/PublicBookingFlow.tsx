@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, Scissors, Euro, Clock, ChevronRight, X, Star } from 'lucide-react'
+import { captureLastTouch, readStoredAttribution } from '@/lib/attribution/capture'
 
 // -----------------------------------------------------------------------------
 // PublicBookingFlow — flujo de reserva completo, estilo app.
@@ -168,6 +169,13 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     if (!service || !date || !slot) return
     setSubmitting(true)
     setError(null)
+
+    // Last-touch attribution para ESTA reserva. Si hay first-touch guardado
+    // del primer aterrizaje (más fresco que esta visita), usamos last-touch
+    // = la sesión actual; el backend lo persiste en bookings.referrer*.
+    const attribution = captureLastTouch()
+    const firstTouch = readStoredAttribution()
+
     try {
       const res = await fetch('/api/public/bookings/create', {
         method: 'POST',
@@ -180,6 +188,11 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
           barberId,
           customerName: name.trim(),
           customerPhone: phone.trim(),
+          // Si NO hay first-touch en storage, mandamos el last-touch como
+          // attribution para que el backend lo use también como first-touch
+          // (es la PRIMERA visita conocida). Si hay first-touch, lo usamos
+          // para que el primer touch de este customer sea el correcto.
+          attribution: firstTouch ?? attribution,
         }),
       })
       const data = await res.json()
@@ -188,6 +201,31 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
         setSubmitting(false)
         return
       }
+
+      // Disparar evento de conversión en dataLayer (GTM lo escucha si el
+      // barbero tiene container configurado + consent granted). Standard
+      // GA4 enhanced ecommerce event.
+      if (typeof window !== 'undefined') {
+        const w = window as Window & { dataLayer?: unknown[] }
+        w.dataLayer = w.dataLayer || []
+        w.dataLayer.push({
+          event: 'booking_confirmed',
+          ecommerce: {
+            currency: 'EUR',
+            value: service.price ?? 0,
+            transaction_id: data.bookingId,
+            items: [
+              {
+                item_name: service.name,
+                item_category: 'service',
+                price: service.price ?? 0,
+                quantity: 1,
+              },
+            ],
+          },
+        })
+      }
+
       setConfirmation({
         date,
         time: slot,

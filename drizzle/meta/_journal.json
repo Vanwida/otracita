@@ -120,6 +120,13 @@
       "when": 1778536046953,
       "tag": "0016_add_manual_incomes",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1778708215549,
+      "tag": "0025_attribution_and_gtm",
+      "breakpoints": true
     }
   ]
 }

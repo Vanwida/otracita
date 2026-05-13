@@ -117,6 +117,14 @@ export const clients = pgTable('clients', {
   // huecos" en /dashboard/agenda. El barbero declara que sus clientes han
   // consentido recibir comunicaciones de marketing al activarlo.
   promosEnabled: boolean('promos_enabled').default(false).notNull(),
+  // Google Tag Manager — opcional, feature Pro. Si el barbero pega aquí
+  // su container ID (formato GTM-XXXXXX), inyectamos el snippet de GTM
+  // en /b/[slug]/* y disparamos `booking_confirmed` en dataLayer al
+  // confirmar reserva. Permite al barbero medir conversiones con sus
+  // propios pixels (Meta, Google Ads, GA4) sin que tengamos que tocar
+  // código por cada herramienta. Cookie consent obligatorio antes de
+  // cargar (Consent Mode v2).
+  gtmContainerId: text('gtm_container_id'),
   // Caja efectivo — opt-in. Cuando true, el barbero puede abrir/cerrar
   // sesión de caja en /dashboard/caja, y al marcar una cita como completada
   // se le pide método de pago (cash/card/online) para alimentar el cuadre
@@ -317,6 +325,16 @@ export const customers = pgTable('customers', {
   // gustan los degradados", "siempre llega tarde 5 min". Privadas: nunca
   // se exponen al cliente vía PWA ni se mandan por WhatsApp.
   barberNotes: text('barber_notes'),
+  // First-touch attribution — de dónde vino este cliente la PRIMERA vez.
+  // Se setea al crear el customer (primera reserva) y NO se sobrescribe
+  // después. Sirve para el barbero saber qué canal le trae clientes
+  // nuevos (decisión de inversión en ads). Valores normalizados:
+  // 'instagram', 'google_ads', 'google_organic', 'facebook', 'tiktok',
+  // 'whatsapp_bot', 'walk_in', 'referral', 'direct', 'other'.
+  firstSource: text('first_source'),
+  firstSourceMedium: text('first_source_medium'),     // cpc | organic | social | referral | none
+  firstSourceCampaign: text('first_source_campaign'), // utm_campaign si vino vía ads
+  firstSourceCapturedAt: timestamp('first_source_captured_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -340,7 +358,16 @@ export const bookings = pgTable('bookings', {
   price: integer('price'), // euros
   status: text('status').notNull().default('confirmed'), // confirmed, cancelled, completed, no_show
   googleEventId: text('google_event_id'),
-  source: text('source').notNull().default('bot'), // 'bot' | 'booksy'
+  source: text('source').notNull().default('bot'), // 'bot' | 'booksy' | 'web' | 'manual' | 'voice'
+  // Last-touch attribution — de dónde vino el cliente en ESTA reserva
+  // concreta. Distinto a `source` (canal técnico: bot/web/manual). El
+  // mismo cliente puede tener bookings con `referrerSource` distintos
+  // (vino primero por Instagram, luego directo, luego Google Ads).
+  // Sirve para optimizar campañas tácticas. Null si no se capturó UTM
+  // ni referrer útil (caso normal en bot/manual/voice).
+  referrerSource: text('referrer_source'),
+  referrerMedium: text('referrer_medium'),
+  referrerCampaign: text('referrer_campaign'),
   booksyBookingId: text('booksy_booking_id'), // Booksy reference ID for dedup + update matching
   rawEmailSnippet: text('raw_email_snippet'), // first 500 chars of parsed email, for debugging
   reminderSent: boolean('reminder_sent').default(false),

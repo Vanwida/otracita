@@ -47,6 +47,15 @@ export interface CreateBookingOptions {
   price?: number | null;
   /** Booking source tag — defaults to 'bot'. */
   source?: string;
+  /** Last-touch attribution para ESTA reserva. Se guarda en bookings.referrer*.
+   *  Si el customer es nuevo (primera reserva), también alimenta los
+   *  first_source* de customers. Null si el caller no captura atribución
+   *  (caso bot/manual/voice). */
+  attribution?: {
+    source: string;
+    medium: string;
+    campaign: string | null;
+  } | null;
 }
 
 export type CreateBookingError =
@@ -125,6 +134,7 @@ export async function createBooking(
     date,
     time,
     source = 'bot',
+    attribution,
   } = options;
 
   // --- Input validation -----------------------------------------------------
@@ -274,6 +284,11 @@ export async function createBooking(
       price: price ?? null,
       status: 'confirmed',
       source,
+      // Last-touch attribution para esta reserva. Null si no se capturó —
+      // típico para bot/manual/voice. Solo PWA y voice pueden traer esto.
+      referrerSource: attribution?.source ?? null,
+      referrerMedium: attribution?.medium ?? null,
+      referrerCampaign: attribution?.campaign ?? null,
     })
     .returning();
 
@@ -304,12 +319,19 @@ export async function createBooking(
         })
         .where(eq(customers.id, existingCustomer.id));
     } else {
+      // Customer NUEVO → guardamos first-touch attribution. NUNCA se
+      // sobrescribe en updates posteriores: el first-touch es para
+      // siempre el origen de la primera reserva.
       await db.insert(customers).values({
         clientId: client.id,
         phone: normalisedPhone,
         name: cleanName,
         totalBookings: 1,
         lastBookingAt: new Date(),
+        firstSource: attribution?.source ?? null,
+        firstSourceMedium: attribution?.medium ?? null,
+        firstSourceCampaign: attribution?.campaign ?? null,
+        firstSourceCapturedAt: attribution ? new Date() : null,
       });
     }
   } catch (err) {

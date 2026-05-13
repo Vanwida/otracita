@@ -22,6 +22,8 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import CustomerNotesEditor from './CustomerNotesEditor'
+import SourceChip from '@/app/dashboard/_components/SourceChip'
+import { Compass } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // /dashboard/clientes/[id] — ficha completa de un cliente.
@@ -188,6 +190,24 @@ export default async function CustomerDetailPage({ params }: Props) {
         )}
       </div>
 
+      {/* Atribución — de dónde vino la PRIMERA vez (first-touch) + de dónde
+          vino en cada una de las últimas reservas (last-touch). Compacto:
+          solo se muestra si hay AL MENOS first_source. Para customers
+          pre-attribution toda la sección queda escondida. */}
+      {customer.firstSource && (
+        <AttributionSection
+          firstSource={customer.firstSource}
+          firstCampaign={customer.firstSourceCampaign}
+          firstCapturedAt={customer.firstSourceCapturedAt}
+          recentBookings={bookingRows.slice(0, 5).map((b) => ({
+            id: b.id,
+            date: b.date,
+            referrerSource: b.referrerSource,
+            referrerCampaign: b.referrerCampaign,
+          }))}
+        />
+      )}
+
       {/* Notas del barbero */}
       <div className="mb-6">
         <CustomerNotesEditor customerId={customer.id} initialNotes={customer.barberNotes ?? ''} />
@@ -271,6 +291,108 @@ function topByCount<T>(items: T[]): T | null {
     }
   }
   return max
+}
+
+// -----------------------------------------------------------------------------
+// AttributionSection — first-touch (de dónde vino la PRIMERA vez) + lista
+// last-touch de las últimas reservas. Solo visible si hay first-touch.
+//
+// Por qué first-touch arriba: es la decisión clave para el barbero. Saber
+// que el cliente vino de Instagram → invertir más en Instagram. El last-touch
+// es más fino, útil para optimizar campañas tácticas.
+// -----------------------------------------------------------------------------
+
+interface AttributionSectionProps {
+  firstSource: string
+  firstCampaign: string | null
+  firstCapturedAt: Date | null
+  recentBookings: Array<{
+    id: string
+    date: string
+    referrerSource: string | null
+    referrerCampaign: string | null
+  }>
+}
+
+function AttributionSection({
+  firstSource,
+  firstCampaign,
+  firstCapturedAt,
+  recentBookings,
+}: AttributionSectionProps) {
+  const hasLastTouchData = recentBookings.some((b) => b.referrerSource !== null)
+
+  return (
+    <section className="mb-6">
+      <div className="bg-surface border border-line rounded-xl p-5 md:p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Compass className="h-4 w-4 text-ink-3" />
+          <h2 className="font-display text-base font-semibold text-ink">Atribución</h2>
+        </div>
+
+        {/* First-touch — destacado */}
+        <div className="mb-4 pb-4 border-b border-line">
+          <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-2">
+            Cómo llegó la primera vez
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <SourceChip source={firstSource} />
+            {firstCampaign && (
+              <span className="text-xs text-ink-2">
+                Campaña: <span className="font-medium text-ink">{firstCampaign}</span>
+              </span>
+            )}
+            {firstCapturedAt && (
+              <span className="text-xs text-ink-3">
+                · {formatDate(firstCapturedAt)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Last-touch — historial reciente */}
+        <div>
+          <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-2">
+            Origen de cada reserva (últimas {recentBookings.length})
+          </p>
+          {!hasLastTouchData ? (
+            <p className="text-xs text-ink-3">
+              No se capturó origen en reservas recientes. Cualquier reserva nueva desde tu link público con UTM lo guardará automáticamente.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {recentBookings.map((b) => (
+                <li key={b.id} className="flex items-center gap-2 text-xs">
+                  <span className="text-ink-3 w-20 shrink-0 tabular-nums">
+                    {formatBookingDateShort(b.date)}
+                  </span>
+                  {b.referrerSource ? (
+                    <>
+                      <SourceChip source={b.referrerSource} size="xs" />
+                      {b.referrerCampaign && (
+                        <span className="text-ink-3 truncate">
+                          · {b.referrerCampaign}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-ink-3">Sin origen</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function formatBookingDateShort(date: string): string {
+  // YYYY-MM-DD → DD/MM
+  const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return date
+  return `${m[3]}/${m[2]}`
 }
 
 function Stat({
