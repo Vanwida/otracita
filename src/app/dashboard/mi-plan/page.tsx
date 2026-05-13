@@ -7,12 +7,14 @@ import { db } from '@/db'
 import { clients, subscriptions } from '@/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { CreditCard, Calendar, Receipt, AlertCircle, FileText, ArrowRight } from 'lucide-react'
+import { CreditCard, Calendar, Receipt, AlertCircle, FileText, ArrowRight, Clock } from 'lucide-react'
 import OpenStripePortalButton from '@/app/dashboard/_components/OpenStripePortalButton'
 import OnlinePaymentsSummary from '@/app/dashboard/_components/OnlinePaymentsSummary'
-import AjustesBreadcrumb from '@/app/dashboard/_components/AjustesBreadcrumb'
+import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import UpgradeToProButton from './UpgradeToProButton'
 import { stripe } from '@/lib/stripe'
 import { PLANS } from '@/lib/stripe'
+import { getTier, isInTrial, trialDaysLeft, type Tier } from '@/lib/billing/tier'
 
 interface InvoiceSummary {
   id: string
@@ -75,14 +77,21 @@ export default async function MiPlanPage() {
   }
 
   const hasStripeCustomer = Boolean(client.stripeCustomerId)
+  const tier = getTier(client)
+  const inTrial = isInTrial(client)
+  const daysLeft = trialDaysLeft(client)
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <AjustesBreadcrumb current="Tu suscripción" />
+      <HubBreadcrumb current="Tu suscripción" />
       <div className="mb-8">
         <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Tu suscripción</h1>
         <p className="text-ink-2">Tu suscripción a otracita: plan, próximos cobros y facturas pasadas.</p>
       </div>
+
+      {/* Tier + trial banner — single source of truth para el barbero sobre
+          dónde está y qué pasa el día X. */}
+      <TierBanner tier={tier} inTrial={inTrial} daysLeft={daysLeft} hasStripeCustomer={hasStripeCustomer} />
 
       {/* CTA: point users to the NEW feature (facturas a sus clientes) */}
       <Link
@@ -217,6 +226,98 @@ function SubscriptionStatusBadge({ status }: { status: string }) {
     return <span className="inline-flex items-center rounded-full bg-danger/10 text-danger border border-danger/20 px-2.5 py-0.5 text-xs font-medium">Cancelada</span>
   }
   return <span className="inline-flex items-center rounded-full bg-overlay text-ink-2 border border-line px-2.5 py-0.5 text-xs font-medium">{status}</span>
+}
+
+/* ─── Tier + trial banner ──────────────────────────────────
+   - Si está en trial → banner gold con días restantes y CTA "Añadir tarjeta"
+   - Si tier=solo y no trial → CTA upgrade a Pro
+   - Si tier=pro/estudio activo → confirmación calma con copy correcto */
+function TierBanner({
+  tier,
+  inTrial,
+  daysLeft,
+  hasStripeCustomer,
+}: {
+  tier: Tier
+  inTrial: boolean
+  daysLeft: number
+  hasStripeCustomer: boolean
+}) {
+  const tierLabel = tier === 'solo' ? 'Solo' : tier === 'pro' ? 'Pro' : 'Estudio'
+
+  if (inTrial) {
+    return (
+      <div className="mb-6 rounded-2xl border border-gold bg-gold-soft/30 p-5 md:p-6">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="h-12 w-12 rounded-xl bg-gold/20 border border-gold/30 flex items-center justify-center shrink-0">
+            <Clock className="h-5 w-5 text-gold" aria-hidden="true" />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gold mb-1">
+              Prueba Pro · te quedan {daysLeft} {daysLeft === 1 ? 'día' : 'días'}
+            </p>
+            <h2 className="font-display text-xl font-semibold text-ink">
+              Estás probando todo lo de Pro gratis.
+            </h2>
+            <p className="text-sm text-ink-2 mt-1">
+              Cuando termine, eliges si pagas mensual (49 €) o anual (39 €/mes). Si no añades tarjeta, vuelves a Solo gratis sin perder datos.
+            </p>
+            {hasStripeCustomer && (
+              <div className="mt-4">
+                <OpenStripePortalButton />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (tier === 'solo') {
+    return (
+      <div className="mb-6 rounded-2xl border border-brand/30 bg-brand-softer p-5 md:p-6">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="h-12 w-12 rounded-xl bg-brand border border-brand flex items-center justify-center shrink-0">
+            <CreditCard className="h-5 w-5 text-brand-ink" aria-hidden="true" />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-strong mb-1">
+              Estás en Solo (gratis)
+            </p>
+            <h2 className="font-display text-xl font-semibold text-ink">
+              Pasa a Pro y prueba 14 días gratis.
+            </h2>
+            <p className="text-sm text-ink-2 mt-1">
+              Bot WhatsApp, multi-barbero, SumUp Tap to Pay, fidelidad y promos. Sin permanencia.
+            </p>
+            <UpgradeToProButton plan="chatbot" label="Empezar prueba de 14 días" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // tier=pro o estudio sin trial → estado calmado
+  return (
+    <div className="mb-6 rounded-2xl border border-line bg-surface p-5 md:p-6">
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className="h-12 w-12 rounded-xl bg-brand-softer border border-brand/20 flex items-center justify-center shrink-0">
+          <CreditCard className="h-5 w-5 text-brand" aria-hidden="true" />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <p className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-1">
+            Tu plan
+          </p>
+          <h2 className="font-display text-xl font-semibold text-ink">
+            otracita {tierLabel}
+          </h2>
+          <p className="text-sm text-ink-2 mt-1">
+            Acceso completo a todas las herramientas de tu plan. Sin permanencia en {tierLabel}.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function InvoiceStatusBadge({ status }: { status: string }) {
