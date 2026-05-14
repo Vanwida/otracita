@@ -6,6 +6,7 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
+import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/summary?month=YYYY-MM
@@ -106,7 +107,13 @@ export async function GET(request: Request) {
   const retirosCents = parseInt(retirosResult[0]?.total ?? '0', 10)
   const prevYearIngresosCents = Math.round(parseFloat(prevYearResult[0]?.total ?? '0') * 100)
 
-  const totalGastosCents = gastosVariablesCents + costosFijosCents
+  // Nóminas del equipo — coste real para el local. Mismo helper que
+  // /api/finanzas/payroll para asegurar coherencia entre lo que ve el
+  // barbero en /equipo y la línea "Nóminas" del P&L aquí.
+  const payroll = await computeMonthlyPayroll(clientId, { start, end })
+  const nominasCents = Math.max(0, payroll.totalCents)
+
+  const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
   const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
   const gastosConIvaTotalCents = gastosVariablesConIvaCents + fixedConIvaCents
   const ivaSoportadoCents = Math.round((gastosConIvaTotalCents * 21) / 121)
@@ -122,6 +129,7 @@ export async function GET(request: Request) {
     manualIngresosCents,
     gastosVariablesCents,
     costosFijosCents,
+    nominasCents,
     totalGastosCents,
     ivaRepercutidoCents,
     ivaSoportadoCents,

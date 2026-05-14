@@ -1,13 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { Store, Scissors, Users, Clock, CalendarX, Check, Award } from 'lucide-react'
+import { Store, Scissors, Clock, CalendarX, Check } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
-import BarbersManager from './BarbersManager'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
-import BonusesManager from './BonusesManager'
 
 interface ServiceItem {
   name: string
@@ -17,12 +15,6 @@ interface ServiceItem {
 
 interface Props {
   clientId: string
-  /** True si el tenant tiene la feature teamBonuses (Pro+). El tab "Bonos"
-   *  se muestra siempre — el contenido cambia según el plan (form vs upsell). */
-  bonusesEnabled: boolean
-  /** True si el tenant tiene `controlFinanciero` (Pro+). Desbloquea el panel
-   *  "Cómo cobra" dentro de cada tarjeta de barbero del tab Equipo. */
-  payrollEnabled: boolean
   initial: {
     businessName: string
     whatsappNumber: string
@@ -42,7 +34,9 @@ interface Props {
   save: (formData: FormData) => Promise<void>
 }
 
-type TabKey = 'info' | 'services' | 'team' | 'hours' | 'blocked' | 'bonuses'
+// Tabs internos. Equipo + Bonos se movieron a /dashboard/equipo (top-level
+// tab dedicado) — aquí queda solo el setup raro del negocio.
+type TabKey = 'info' | 'services' | 'hours' | 'blocked'
 
 interface Tab {
   key: TabKey
@@ -53,10 +47,8 @@ interface Tab {
 const TABS: Tab[] = [
   { key: 'info', label: 'Información', icon: Store },
   { key: 'services', label: 'Servicios', icon: Scissors },
-  { key: 'team', label: 'Equipo', icon: Users },
   { key: 'hours', label: 'Horario', icon: Clock },
   { key: 'blocked', label: 'Días bloqueados', icon: CalendarX },
-  { key: 'bonuses', label: 'Bonos', icon: Award },
 ]
 
 /**
@@ -66,7 +58,7 @@ const TABS: Tab[] = [
  * so the user can edit one, jump to another, and save once. Tab 5 (blocked
  * dates) uses the existing API-driven component and saves independently.
  */
-export default function NegocioForm({ clientId, bonusesEnabled, payrollEnabled, initial, save }: Props) {
+export default function NegocioForm({ clientId, initial, save }: Props) {
   const [tab, setTab] = useState<TabKey>('info')
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -75,23 +67,28 @@ export default function NegocioForm({ clientId, bonusesEnabled, payrollEnabled, 
   // resolución media). Sin esto, al deep-linkear a ?tab=blocked el tab queda
   // fuera de la zona visible.
   const tabBtnRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
-    info: null, services: null, team: null, hours: null, blocked: null, bonuses: null,
+    info: null, services: null, hours: null, blocked: null,
   })
 
   // Allow deep-linking: ?tab=blocked lands en el tab correspondiente.
-  // Las viejas tabs ?tab=facturacion y ?tab=cobros se redirigen a /dashboard/caja
-  // (vivien ahí desde commit 4) — handled abajo.
+  // Las viejas tabs ?tab=team y ?tab=bonuses se redirigen a /dashboard/equipo
+  // (vivien ahí desde la reorg de Mayo 2026). Las antiguas facturacion/cobros
+  // siguen redirigidas a /caja (commit 4).
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const raw = params.get('tab')
     if (!raw) return
-    // Redirección legacy: enlaces externos viejos llegan a estas tabs.
+    // Redirecciones legacy:
     if (raw === 'facturacion' || raw === 'cobros') {
       window.location.replace('/dashboard/caja')
       return
     }
-    const valid: TabKey[] = ['info', 'services', 'team', 'hours', 'blocked', 'bonuses']
+    if (raw === 'team' || raw === 'bonuses') {
+      window.location.replace('/dashboard/equipo')
+      return
+    }
+    const valid: TabKey[] = ['info', 'services', 'hours', 'blocked']
     if ((valid as string[]).includes(raw)) {
       // Syncing tab from URL query param (external state) on mount.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -164,17 +161,6 @@ export default function NegocioForm({ clientId, bonusesEnabled, payrollEnabled, 
           </div>
           <BlockedDatesManager initialDates={initial.blockedDates} clientId={clientId} />
         </div>
-      ) : tab === 'bonuses' ? (
-        <div className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Bonos del equipo</h2>
-            <p className="text-sm text-ink-2 mt-1">
-              Configura los incentivos que pagas a cada barbero (reseñas, ventas, asistencia…).
-              En caja sumas el progreso del día; a fin de mes ves quién cobra.
-            </p>
-          </div>
-          <BonusesManager enabled={bonusesEnabled} />
-        </div>
       ) : (
         <form action={onSubmit} className="bg-surface border border-line rounded-xl p-4 md:p-8 space-y-6">
           {/* ─── Información ─── */}
@@ -216,15 +202,6 @@ export default function NegocioForm({ clientId, bonusesEnabled, payrollEnabled, 
               <p className="text-sm text-ink-2 mt-1">Los servicios que ofrece tu negocio. El bot los usará para las reservas.</p>
             </div>
             <ServicesManager initial={initial.services.map((s) => ({ name: String(s.name), duration: s.duration, price: s.price }))} />
-          </div>
-
-          {/* ─── Equipo ─── */}
-          <div className={tab === 'team' ? 'space-y-4' : 'hidden'}>
-            <div>
-              <h2 className="text-lg font-semibold text-ink">Equipo</h2>
-              <p className="text-sm text-ink-2 mt-1">Profesionales del negocio. El bot preguntará con quién quiere reservar el cliente.</p>
-            </div>
-            <BarbersManager payrollEnabled={payrollEnabled} />
           </div>
 
           {/* ─── Horario ─── */}

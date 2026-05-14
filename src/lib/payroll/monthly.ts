@@ -1,0 +1,206 @@
+import { db } from '@/db'
+import {
+  barbers as barbersTable,
+  bookings,
+  productSales,
+  tips,
+  bonuses,
+  bonusEntries,
+} from '@/db/schema'
+import { and, eq, gte, lt, sum, sql } from 'drizzle-orm'
+import { computeBarberPayroll, isProfileConfigured } from './compute'
+import type { BarberSalaryProfile, BarberMonthRaw, PayrollBreakdown, SalaryType } from './types'
+import { computeBonusProgress, type BonusUnit } from '@/lib/bonuses/progress'
+
+// -----------------------------------------------------------------------------
+// computeMonthlyPayroll — agregación DB-pesada del payroll por barbero para
+// un mes. Usado por:
+//   · /api/finanzas/payroll/route.ts (devuelve el desglose entero)
+//   · /api/finanzas/summary/route.ts (necesita el total para restar del P&L)
+//
+// Centraliza las 4 queries (bookings, productos, propinas, bonos) en un
+// solo lugar para que ambos endpoints calculen lo MISMO. Sin esto, el
+// total nóminas que ve el barbero en /equipo podría no coincidir con la
+// línea "Nóminas" que ve en el P&L de /finanzas — incoherencia clásica.
+// -----------------------------------------------------------------------------
+
+export interface MonthlyPayrollItem {
+  barberId: string
+  barberName: string
+  salaryType: SalaryType | null
+  profile: BarberSalaryProfile
+  raw: BarberMonthRaw
+  breakdown: PayrollBreakdown
+}
+
+export interface MonthlyPayroll {
+  items: MonthlyPayrollItem[]
+  totalCents: number
+}
+
+export interface MonthBounds {
+  start: string
+  end: string
+}
+
+export async function computeMonthlyPayroll(
+  clientId: string,
+  bounds: MonthBounds,
+): Promise<MonthlyPayroll> {
+  // 1) Barberos activos.
+  const barbers = await db
+    .select()
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, clientId), eq(barbersTable.active, true)))
+
+  if (barbers.length === 0) {
+    return { items: [], totalCents: 0 }
+  }
+
+  // 2) Servicios facturados por barbero (bookings.price en EUROS → ×100).
+  const servicesByBarber = await db
+    .select({
+      barberId: bookings.barberId,
+      totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+    })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, clientId),
+        eq(bookings.status, 'completed'),
+        gte(bookings.date, bounds.start),
+        lt(bookings.date, bounds.end),
+      ),
+    )
+    .groupBy(bookings.barberId)
+
+  const servicesRevenueMap = new Map<string, number>()
+  for (const row of servicesByBarber) {
+    if (!row.barberId) continue
+    servicesRevenueMap.set(row.barberId, Math.round(parseFloat(row.totalEur ?? '0') * 100))
+  }
+
+  // 3) Productos vendidos por barbero.
+  const productsByBarber = await db
+    .select({
+      barberId: productSales.barberId,
+      totalCents: sum(productSales.totalCents).as('total'),
+    })
+    .from(productSales)
+    .where(
+      and(
+        eq(productSales.clientId, clientId),
+        gte(productSales.soldAt, new Date(bounds.start)),
+        lt(productSales.soldAt, new Date(bounds.end)),
+      ),
+    )
+    .groupBy(productSales.barberId)
+
+  const productsRevenueMap = new Map<string, number>()
+  for (const row of productsByBarber) {
+    if (!row.barberId) continue
+    productsRevenueMap.set(row.barberId, Number(row.totalCents ?? 0))
+  }
+
+  // 4) Propinas por barbero (matched por nombre, schema legacy sin FK).
+  const tipsByName = await db
+    .select({
+      barberName: tips.barberName,
+      totalCents: sum(tips.amountCents).as('total'),
+    })
+    .from(tips)
+    .where(
+      and(
+        eq(tips.clientId, clientId),
+        eq(tips.status, 'paid'),
+        gte(tips.paidAt, new Date(bounds.start)),
+        lt(tips.paidAt, new Date(bounds.end)),
+      ),
+    )
+    .groupBy(tips.barberName)
+
+  const tipsMap = new Map<string, number>()
+  for (const row of tipsByName) {
+    if (!row.barberName) continue
+    const norm = row.barberName.trim().toLowerCase()
+    const match = barbers.find((b) => b.name.trim().toLowerCase() === norm)
+    if (!match) continue
+    tipsMap.set(match.id, (tipsMap.get(match.id) ?? 0) + Number(row.totalCents ?? 0))
+  }
+
+  // 5) Bonos cobrados por barbero.
+  const activeBonuses = await db
+    .select()
+    .from(bonuses)
+    .where(and(eq(bonuses.clientId, clientId), eq(bonuses.active, true)))
+
+  const bonusProgress = await db
+    .select({
+      bonusId: bonusEntries.bonusId,
+      barberId: bonusEntries.barberId,
+      progress: sum(bonusEntries.value).as('progress'),
+    })
+    .from(bonusEntries)
+    .where(
+      and(
+        eq(bonusEntries.clientId, clientId),
+        gte(bonusEntries.date, bounds.start),
+        lt(bonusEntries.date, bounds.end),
+      ),
+    )
+    .groupBy(bonusEntries.bonusId, bonusEntries.barberId)
+
+  const progressMap = new Map<string, number>()
+  for (const p of bonusProgress) {
+    progressMap.set(`${p.bonusId}|${p.barberId}`, Number(p.progress ?? 0))
+  }
+
+  const bonusesPayoutMap = new Map<string, number>()
+  for (const barber of barbers) {
+    let total = 0
+    for (const bonus of activeBonuses) {
+      const progress = progressMap.get(`${bonus.id}|${barber.id}`) ?? 0
+      const r = computeBonusProgress({
+        unit: bonus.unit as BonusUnit,
+        target: bonus.target,
+        rewardCents: bonus.rewardCents,
+        entries: [progress],
+      })
+      total += r.payoutCents
+    }
+    bonusesPayoutMap.set(barber.id, total)
+  }
+
+  // 6) Compute breakdown por barbero — solo los configurados.
+  const items: MonthlyPayrollItem[] = []
+  for (const barber of barbers) {
+    const profile: BarberSalaryProfile = {
+      salaryType: (barber.salaryType as SalaryType | null) ?? null,
+      salaryBaseCents: barber.salaryBaseCents,
+      commissionServicesPct: barber.commissionServicesPct,
+      commissionProductsPct: barber.commissionProductsPct,
+      chairRentCents: barber.chairRentCents,
+    }
+    if (!isProfileConfigured(profile)) continue
+
+    const raw: BarberMonthRaw = {
+      servicesRevenueCents: servicesRevenueMap.get(barber.id) ?? 0,
+      productsRevenueCents: productsRevenueMap.get(barber.id) ?? 0,
+      tipsCents: tipsMap.get(barber.id) ?? 0,
+      bonusesPayoutCents: bonusesPayoutMap.get(barber.id) ?? 0,
+    }
+    items.push({
+      barberId: barber.id,
+      barberName: barber.name,
+      salaryType: profile.salaryType,
+      profile,
+      raw,
+      breakdown: computeBarberPayroll(profile, raw),
+    })
+  }
+
+  items.sort((a, b) => b.breakdown.totalCents - a.breakdown.totalCents)
+  const totalCents = items.reduce((acc, i) => acc + i.breakdown.totalCents, 0)
+
+  return { items, totalCents }
+}

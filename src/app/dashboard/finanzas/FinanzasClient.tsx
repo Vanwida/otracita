@@ -151,6 +151,10 @@ export type FinanzasSummary = {
   manualIngresosCents: number
   gastosVariablesCents: number
   costosFijosCents: number
+  /** Coste del equipo este mes — auto-calculado desde el perfil de pago
+   *  de cada barbero (ver /dashboard/equipo). Se suma a totalGastosCents
+   *  y por tanto resta del beneficio. */
+  nominasCents: number
   totalGastosCents: number
   ivaRepercutidoCents: number
   ivaSoportadoCents: number
@@ -1086,6 +1090,29 @@ export default function FinanzasClient({
                 </button>
               )}
 
+              {/* Nóminas del equipo — auto-calculadas. Sólo aparece si hay
+                  algún barbero con perfil de pago configurado. El detalle
+                  se gestiona en /dashboard/equipo. */}
+              {summary.nominasCents > 0 && (
+                <>
+                  <div className="px-4 pt-3 pb-1 border-t border-line">
+                    <p className="text-xs text-ink-3 font-medium uppercase tracking-wider">Nóminas del equipo</p>
+                  </div>
+                  <a
+                    href="/dashboard/equipo#nominas"
+                    className="flex items-center gap-3 px-4 py-2.5 border-b border-line hover:bg-overlay/30 transition-colors group"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-ink">Lo que cobra el equipo este mes</p>
+                      <p className="text-[11px] text-ink-3 mt-0.5">Ver desglose por barbero →</p>
+                    </div>
+                    <span className="tabular-nums text-sm font-semibold text-ink shrink-0">
+                      {formatCents(summary.nominasCents)}
+                    </span>
+                  </a>
+                </>
+              )}
+
               {/* Pie del bloque */}
               <div className="flex items-baseline justify-between px-4 py-3 bg-overlay">
                 <span className="text-xs font-semibold text-ink-2 uppercase tracking-[0.1em]">Total gastos</span>
@@ -1646,6 +1673,9 @@ export default function FinanzasClient({
             <PrintRow label="Ingresos brutos (con IVA)" value={formatCents(summary.ingresosCents)} />
             <PrintRow label="Gastos variables" value={`-${formatCents(summary.gastosVariablesCents)}`} indent />
             <PrintRow label="Costes fijos activos" value={`-${formatCents(summary.costosFijosCents)}`} indent />
+            {summary.nominasCents > 0 && (
+              <PrintRow label="Nóminas del equipo" value={`-${formatCents(summary.nominasCents)}`} indent />
+            )}
             <PrintRow label="Total gastos" value={formatCents(summary.totalGastosCents)} />
             <PrintRow label="Beneficio bruto (sin IVA)" value={formatCents(summary.beneficioBrutoCents)} bold />
             <PrintRow label="Retiros personales" value={`-${formatCents(summary.retirosCents)}`} />

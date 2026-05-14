@@ -9,8 +9,8 @@ import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import { TrendingUp } from 'lucide-react'
 import FinanzasClient from './FinanzasClient'
-import Payroll from './Payroll'
 import UpgradeRequired from '../_components/UpgradeRequired'
+import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
 
 interface PageProps {
   searchParams: Promise<{ month?: string }>
@@ -127,7 +127,12 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   )
   const costosFijosCents = activeFixedThisMonth.reduce((sum, fc) => sum + fc.amountCents, 0)
 
-  const totalGastosCents = gastosVariablesCents + costosFijosCents
+  // Nóminas computadas del equipo (mismo helper que /api/finanzas/payroll
+  // — coherencia entre la línea P&L y la vista de /dashboard/equipo).
+  const payroll = await computeMonthlyPayroll(client.id, { start, end })
+  const nominasCents = Math.max(0, payroll.totalCents)
+
+  const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
 
   // IVA: ingresos incluyen IVA (precio con IVA), repercutido = precio × 21/121
   const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
@@ -143,7 +148,7 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
 
   const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
 
-  // Beneficio bruto = ingresos netos (sin IVA) − total gastos
+  // Beneficio bruto = ingresos netos (sin IVA) − total gastos (incluye nóminas)
   const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const retirosCents = monthWithdrawals.reduce((sum, w) => sum + w.amountCents, 0)
@@ -165,6 +170,7 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     manualIngresosCents,
     gastosVariablesCents,
     costosFijosCents,
+    nominasCents,
     totalGastosCents,
     ivaRepercutidoCents,
     ivaSoportadoCents,
@@ -212,25 +218,17 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   }))
 
   return (
-    <>
-      <FinanzasClient
-        initialMonth={month}
-        initialSummary={initialSummary}
-        initialExpenses={serializedExpenses}
-        initialFixedCosts={serializedFixedCosts}
-        initialWithdrawals={serializedWithdrawals}
-        initialManualIncomes={serializedManualIncomes}
-        initialServiciosCount={serviciosCount}
-        initialTicketMedioCents={ticketMedioCents}
-        initialCategoryTotals={categoryTotals}
-        initialPrevIngresosCents={prevIngresosCents}
-      />
-      {/* Nóminas del equipo — card autónoma, se auto-oculta si no hay
-          barberos con perfil configurado. Pro feature (la página ya está
-          Pro-gated arriba con controlFinanciero). */}
-      <div className="px-4 md:px-8 lg:px-12 max-w-6xl mx-auto mt-6 mb-12">
-        <Payroll month={month} />
-      </div>
-    </>
+    <FinanzasClient
+      initialMonth={month}
+      initialSummary={initialSummary}
+      initialExpenses={serializedExpenses}
+      initialFixedCosts={serializedFixedCosts}
+      initialWithdrawals={serializedWithdrawals}
+      initialManualIncomes={serializedManualIncomes}
+      initialServiciosCount={serviciosCount}
+      initialTicketMedioCents={ticketMedioCents}
+      initialCategoryTotals={categoryTotals}
+      initialPrevIngresosCents={prevIngresosCents}
+    />
   )
 }

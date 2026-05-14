@@ -27,8 +27,6 @@ import SumupConnect from '../_components/SumupConnect'
 import MobileAppConnect from '../_components/MobileAppConnect'
 import KpiCard, { computeTrend, type Trend } from '../_components/KpiCard'
 import BarberBreakdown from './BarberBreakdown'
-import BonusTracker from './BonusTracker'
-import { hasFeature } from '@/lib/billing/tier'
 import {
   type Period,
   resolvePeriod,
@@ -219,8 +217,20 @@ export default async function CajaPage({ searchParams }: PageProps) {
         />
       </section>
 
-      {/* Control financiero — link al módulo de gastos, costes fijos e IVA */}
-      <section className="mt-8">
+      {/* Links operativos: Facturas a clientes (VeriFactu, diario) y Control
+          financiero (P&L, mensual). Antes Facturas vivía perdida en Ajustes —
+          se usa cada día, vive aquí. */}
+      <section className="mt-8 grid gap-3 md:grid-cols-2">
+        <Link
+          href="/dashboard/facturas"
+          className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-line bg-surface hover:border-brand hover:shadow-[0_4px_20px_rgba(201,101,60,0.07)] transition-all group"
+        >
+          <div>
+            <p className="font-semibold text-ink text-sm">Facturas a clientes</p>
+            <p className="text-xs text-ink-2 mt-0.5">Emitir, ver y rectificar tickets/facturas VeriFactu</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-ink-3 group-hover:text-brand transition-colors shrink-0" aria-hidden="true" />
+        </Link>
         <Link
           href="/dashboard/finanzas"
           className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-line bg-surface hover:border-brand hover:shadow-[0_4px_20px_rgba(201,101,60,0.07)] transition-all group"
@@ -233,20 +243,12 @@ export default async function CajaPage({ searchParams }: PageProps) {
         </Link>
       </section>
 
-      {/* Desglose por barbero — solo se renderiza si hay ≥2 barberos activos. */}
+      {/* Desglose por barbero — solo se renderiza si hay ≥2 barberos activos.
+          Vista resumida en caja; el detalle (bonos, nóminas, cómo cobra) vive
+          en /dashboard/equipo. */}
       <section className="mt-12">
         <BarberBreakdown clientId={client.id} periodStartIso={periodStartIso} />
       </section>
-
-      {/* Bonos del equipo — UNA sola card que combina progreso del mes y
-          log del día. Client component con SWR: al guardar, refresh
-          automático sin tocar la página. Se auto-oculta si no hay bonos
-          configurados (cero ruido para quien no usa el módulo). */}
-      {hasFeature(client, 'teamBonuses') && (
-        <section className="mt-8">
-          <BonusTracker />
-        </section>
-      )}
 
       {/* Ajustes — sección demotada visualmente. Subsecciones con hairline,
           sin cards anidadas. El barbero las toca rara vez; cuando entra a
