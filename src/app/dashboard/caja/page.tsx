@@ -27,8 +27,7 @@ import SumupConnect from '../_components/SumupConnect'
 import MobileAppConnect from '../_components/MobileAppConnect'
 import KpiCard, { computeTrend, type Trend } from '../_components/KpiCard'
 import BarberBreakdown from './BarberBreakdown'
-import BonusDayLog from './BonusDayLog'
-import BonusMonthSummary from './BonusMonthSummary'
+import BonusTracker from './BonusTracker'
 import { hasFeature } from '@/lib/billing/tier'
 import {
   type Period,
@@ -239,14 +238,13 @@ export default async function CajaPage({ searchParams }: PageProps) {
         <BarberBreakdown clientId={client.id} periodStartIso={periodStartIso} />
       </section>
 
-      {/* Bonos del equipo — resumen mes + log diario. Ambas piezas son Pro.
-          BonusMonthSummary se auto-oculta si no hay bonos configurados;
-          BonusDayLog se auto-oculta también. Sin ruido para quien no usa
-          el módulo. */}
+      {/* Bonos del equipo — UNA sola card que combina progreso del mes y
+          log del día. Client component con SWR: al guardar, refresh
+          automático sin tocar la página. Se auto-oculta si no hay bonos
+          configurados (cero ruido para quien no usa el módulo). */}
       {hasFeature(client, 'teamBonuses') && (
-        <section className="mt-8 space-y-4">
-          <BonusMonthSummary clientId={client.id} />
-          <BonusDayLog />
+        <section className="mt-8">
+          <BonusTracker />
         </section>
       )}
 
