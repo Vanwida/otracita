@@ -9,6 +9,7 @@ import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import { TrendingUp } from 'lucide-react'
 import FinanzasClient from './FinanzasClient'
+import Payroll from './Payroll'
 import UpgradeRequired from '../_components/UpgradeRequired'
 
 interface PageProps {
@@ -211,17 +212,25 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   }))
 
   return (
-    <FinanzasClient
-      initialMonth={month}
-      initialSummary={initialSummary}
-      initialExpenses={serializedExpenses}
-      initialFixedCosts={serializedFixedCosts}
-      initialWithdrawals={serializedWithdrawals}
-      initialManualIncomes={serializedManualIncomes}
-      initialServiciosCount={serviciosCount}
-      initialTicketMedioCents={ticketMedioCents}
-      initialCategoryTotals={categoryTotals}
-      initialPrevIngresosCents={prevIngresosCents}
-    />
+    <>
+      <FinanzasClient
+        initialMonth={month}
+        initialSummary={initialSummary}
+        initialExpenses={serializedExpenses}
+        initialFixedCosts={serializedFixedCosts}
+        initialWithdrawals={serializedWithdrawals}
+        initialManualIncomes={serializedManualIncomes}
+        initialServiciosCount={serviciosCount}
+        initialTicketMedioCents={ticketMedioCents}
+        initialCategoryTotals={categoryTotals}
+        initialPrevIngresosCents={prevIngresosCents}
+      />
+      {/* Nóminas del equipo — card autónoma, se auto-oculta si no hay
+          barberos con perfil configurado. Pro feature (la página ya está
+          Pro-gated arriba con controlFinanciero). */}
+      <div className="px-4 md:px-8 lg:px-12 max-w-6xl mx-auto mt-6 mb-12">
+        <Payroll month={month} />
+      </div>
+    </>
   )
 }

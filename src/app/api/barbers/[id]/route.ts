@@ -55,6 +55,12 @@ export async function PATCH(
     blockedDates?: unknown;
     displayOrder?: unknown;
     active?: unknown;
+    // Perfil de pago — Pro feature, validado abajo.
+    salaryType?: unknown;
+    salaryBaseCents?: unknown;
+    commissionServicesPct?: unknown;
+    commissionProductsPct?: unknown;
+    chairRentCents?: unknown;
   };
   try {
     body = await req.json();
@@ -141,6 +147,38 @@ export async function PATCH(
     if (typeof body.active !== 'boolean')
       return Response.json({ error: 'active debe ser boolean.' }, { status: 400 });
     patch.active = body.active;
+  }
+
+  // -- Perfil de pago (Pro feature, gateado a nivel UI; aquí solo validamos
+  //    forma). Si quieres bloqueo estricto por tier, gateamos arriba.
+  if ('salaryType' in body) {
+    if (body.salaryType === null) {
+      patch.salaryType = null;
+    } else if (body.salaryType === 'fijo' || body.salaryType === 'mixto' || body.salaryType === 'autonomo') {
+      patch.salaryType = body.salaryType;
+    } else {
+      return Response.json({ error: 'salaryType inválido.' }, { status: 400 });
+    }
+  }
+  for (const field of ['salaryBaseCents', 'chairRentCents'] as const) {
+    if (field in body) {
+      const v = body[field];
+      const n = typeof v === 'number' ? Math.round(v) : NaN;
+      if (!Number.isFinite(n) || n < 0 || n > 1_000_000_00) {
+        return Response.json({ error: `${field} fuera de rango.` }, { status: 400 });
+      }
+      patch[field] = n;
+    }
+  }
+  for (const field of ['commissionServicesPct', 'commissionProductsPct'] as const) {
+    if (field in body) {
+      const v = body[field];
+      const n = typeof v === 'number' ? Math.round(v) : NaN;
+      if (!Number.isFinite(n) || n < 0 || n > 100) {
+        return Response.json({ error: `${field} debe ser 0-100.` }, { status: 400 });
+      }
+      patch[field] = n;
+    }
   }
 
   await db.update(barbers).set(patch).where(eq(barbers.id, id));

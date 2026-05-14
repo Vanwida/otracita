@@ -259,6 +259,16 @@ export const barbers = pgTable('barbers', {
   // Public-page assets. Optional — falls back to name-only rendering.
   photoUrl: text('photo_url'),
   bio: text('bio'),
+  // Perfil de pago — 5 piezas que se combinan para calcular nómina mensual.
+  // null en salaryType = sin configurar (no aparece en /finanzas/nóminas).
+  // Tres presets en UI: fijo (solo base), mixto (base + comisiones),
+  // autonomo (comisiones + alquiler de silla). Pero TODOS los campos son
+  // independientes — el dueño puede combinar como quiera.
+  salaryType: text('salary_type'),                                   // 'fijo' | 'mixto' | 'autonomo' | null
+  salaryBaseCents: integer('salary_base_cents').default(0).notNull(),
+  commissionServicesPct: integer('commission_services_pct').default(0).notNull(),  // 0-100
+  commissionProductsPct: integer('commission_products_pct').default(0).notNull(),  // 0-100
+  chairRentCents: integer('chair_rent_cents').default(0).notNull(),  // Lo que el barbero PAGA al local (autónomo)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

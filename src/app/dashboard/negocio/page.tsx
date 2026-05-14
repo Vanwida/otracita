@@ -101,6 +101,7 @@ export default async function NegocioPage() {
       <NegocioForm
         clientId={client.id}
         bonusesEnabled={hasFeature(client, 'teamBonuses')}
+        payrollEnabled={hasFeature(client, 'controlFinanciero')}
         initial={{
           businessName: client.businessName || '',
           whatsappNumber: client.whatsappNumber || '',

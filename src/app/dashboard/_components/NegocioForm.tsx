@@ -20,6 +20,9 @@ interface Props {
   /** True si el tenant tiene la feature teamBonuses (Pro+). El tab "Bonos"
    *  se muestra siempre — el contenido cambia según el plan (form vs upsell). */
   bonusesEnabled: boolean
+  /** True si el tenant tiene `controlFinanciero` (Pro+). Desbloquea el panel
+   *  "Cómo cobra" dentro de cada tarjeta de barbero del tab Equipo. */
+  payrollEnabled: boolean
   initial: {
     businessName: string
     whatsappNumber: string
@@ -63,7 +66,7 @@ const TABS: Tab[] = [
  * so the user can edit one, jump to another, and save once. Tab 5 (blocked
  * dates) uses the existing API-driven component and saves independently.
  */
-export default function NegocioForm({ clientId, bonusesEnabled, initial, save }: Props) {
+export default function NegocioForm({ clientId, bonusesEnabled, payrollEnabled, initial, save }: Props) {
   const [tab, setTab] = useState<TabKey>('info')
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -221,7 +224,7 @@ export default function NegocioForm({ clientId, bonusesEnabled, initial, save }:
               <h2 className="text-lg font-semibold text-ink">Equipo</h2>
               <p className="text-sm text-ink-2 mt-1">Profesionales del negocio. El bot preguntará con quién quiere reservar el cliente.</p>
             </div>
-            <BarbersManager />
+            <BarbersManager payrollEnabled={payrollEnabled} />
           </div>
 
           {/* ─── Horario ─── */}

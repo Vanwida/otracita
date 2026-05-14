@@ -6,6 +6,7 @@ import { upload } from '@vercel/blob/client'
 import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X, Camera, User, AlertTriangle } from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
+import BarberSalaryEditor from './BarberSalaryEditor'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — CRUD UI for per-staff scheduling.
@@ -34,6 +35,12 @@ interface BarberRow {
   blockedDates: string[]
   displayOrder: number
   active: boolean
+  // Perfil de pago — feature Pro. Null en salaryType = sin configurar.
+  salaryType: 'fijo' | 'mixto' | 'autonomo' | null
+  salaryBaseCents: number
+  commissionServicesPct: number
+  commissionProductsPct: number
+  chairRentCents: number
   createdAt: string
   updatedAt: string
 }
@@ -49,7 +56,14 @@ interface BlockingBooking {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<{ barbers: BarberRow[] }>)
 
-export default function BarbersManager() {
+interface BarbersManagerProps {
+  /** True si el tenant tiene `controlFinanciero` (Pro+) — desbloquea el
+   *  panel "Cómo cobra" dentro de cada barbero. Si false, el panel se
+   *  oculta y el resto del editor de barberos funciona igual. */
+  payrollEnabled?: boolean
+}
+
+export default function BarbersManager({ payrollEnabled = false }: BarbersManagerProps = {}) {
   const { data, mutate, isLoading } = useSWR('/api/barbers', fetcher, {
     refreshInterval: 15_000,
     revalidateOnFocus: true,
@@ -200,11 +214,13 @@ export default function BarbersManager() {
           busy={busyId === barber.id}
           canMoveUp={i > 0}
           canMoveDown={i < barbers.length - 1}
+          payrollEnabled={payrollEnabled}
           onToggle={() => setExpanded(expanded === barber.id ? null : barber.id)}
           onPatch={(patch) => patchBarber(barber.id, patch)}
           onDelete={() => deleteBarber(barber.id, barber.name)}
           onMoveUp={() => move(barber.id, -1)}
           onMoveDown={() => move(barber.id, 1)}
+          onSalaryUpdated={() => mutate()}
         />
       ))}
 
@@ -253,22 +269,26 @@ function BarberCard({
   busy,
   canMoveUp,
   canMoveDown,
+  payrollEnabled,
   onToggle,
   onPatch,
   onDelete,
   onMoveUp,
   onMoveDown,
+  onSalaryUpdated,
 }: {
   barber: BarberRow
   expanded: boolean
   busy: boolean
   canMoveUp: boolean
   canMoveDown: boolean
+  payrollEnabled: boolean
   onToggle: () => void
   onPatch: (patch: Partial<BarberRow>) => Promise<void>
   onDelete: () => void
   onMoveUp: () => void
   onMoveDown: () => void
+  onSalaryUpdated: () => void
 }) {
   const [nameDraft, setNameDraft] = useState(barber.name)
   const [blockedDraft, setBlockedDraft] = useState('')
@@ -482,6 +502,23 @@ function BarberCard({
               </button>
             </div>
           </div>
+
+          {/* ── Perfil de pago ──────────────────────────────────────────── */}
+          {payrollEnabled && (
+            <div className="pt-4 border-t border-line">
+              <BarberSalaryEditor
+                barberId={barber.id}
+                initial={{
+                  salaryType: barber.salaryType,
+                  salaryBaseCents: barber.salaryBaseCents,
+                  commissionServicesPct: barber.commissionServicesPct,
+                  commissionProductsPct: barber.commissionProductsPct,
+                  chairRentCents: barber.chairRentCents,
+                }}
+                onSaved={onSalaryUpdated}
+              />
+            </div>
+          )}
 
           {busy && (
             <p className="text-xs text-ink-3 inline-flex items-center gap-1.5">
