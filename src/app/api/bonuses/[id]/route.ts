@@ -1,12 +1,12 @@
 import { db } from '@/db'
-import { barberBonuses } from '@/db/schema'
+import { bonuses } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
 
 // -----------------------------------------------------------------------------
 // PATCH  /api/bonuses/[id] — editar { name, unit, target, rewardCents, active }
-// DELETE /api/bonuses/[id] — elimina (cascade borra las entries de su histórico)
+// DELETE /api/bonuses/[id] — elimina (cascade borra entries de progreso)
 // -----------------------------------------------------------------------------
 
 const VALID_UNITS = new Set(['units', 'euros'])
@@ -51,9 +51,9 @@ export async function PATCH(
   }
 
   const [updated] = await db
-    .update(barberBonuses)
+    .update(bonuses)
     .set({ ...updates, updatedAt: new Date() })
-    .where(and(eq(barberBonuses.id, id), eq(barberBonuses.clientId, access.client.id)))
+    .where(and(eq(bonuses.id, id), eq(bonuses.clientId, access.client.id)))
     .returning()
 
   if (!updated) return Response.json({ error: 'Bono no encontrado' }, { status: 404 })
@@ -71,9 +71,9 @@ export async function DELETE(
 
   const { id } = await params
   const deleted = await db
-    .delete(barberBonuses)
-    .where(and(eq(barberBonuses.id, id), eq(barberBonuses.clientId, access.client.id)))
-    .returning({ id: barberBonuses.id })
+    .delete(bonuses)
+    .where(and(eq(bonuses.id, id), eq(bonuses.clientId, access.client.id)))
+    .returning({ id: bonuses.id })
 
   if (deleted.length === 0) return Response.json({ error: 'Bono no encontrado' }, { status: 404 })
   return Response.json({ ok: true })

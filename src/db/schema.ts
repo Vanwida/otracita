@@ -265,40 +265,43 @@ export const barbers = pgTable('barbers', {
   clientNameUnique: unique('barbers_client_name_unique').on(table.clientId, table.name),
 }));
 
-// Bonos del equipo. Cada bono pertenece a UN barbero, definido por el dueño:
-// objetivo + recompensa. El contador del mes se calcula sumando entries
-// del mes (tabla barberBonusEntries). Manual-only v1 — el dueño teclea el
-// progreso desde el cierre de caja, no se auto-deriva de bookings/ratings.
+// Bonos del local. UN catálogo por barbería: el dueño define qué bonos
+// existen (reseñas, upsell, cortes, etc.) y cualquier barbero puede
+// acumular progreso hacia ellos. Manual-only v1 — el dueño teclea desde
+// caja al cierre del día.
 //
-// `unit`: 'units' (reseñas, ventas, días) o 'euros' (€ vendidos en productos).
-// `target`: cantidad para cobrar la recompensa. Si llega, cobra; si no, no.
-// `rewardCents`: lo que se le paga al alcanzar el target.
-export const barberBonuses = pgTable('barber_bonuses', {
+// `unit`: 'units' (reseñas, ventas, cortes) o 'euros' (€ facturados).
+// `target`: lo que hay que alcanzar para cobrar la recompensa.
+// `rewardCents`: lo que cobra QUIEN llegue al target (cada barbero
+// independientemente).
+export const bonuses = pgTable('bonuses', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
-  barberId: uuid('barber_id').notNull().references(() => barbers.id),
   name: text('name').notNull(),                                       // p.ej. "Reseñas Google"
   unit: text('unit').notNull(),                                       // 'units' | 'euros'
-  target: integer('target').notNull(),                                // si unit=euros, target es en cents
+  target: integer('target').notNull(),                                // si unit=euros, en cents
   rewardCents: integer('reward_cents').notNull(),                     // siempre cents
   active: boolean('active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-// Entries del bono. Cada submit en caja cierre día crea N filas (una por
-// bono que el dueño incrementó). `value` sigue la misma unidad del bono:
-// si bonuses.unit='units' → entries.value es unidades; si 'euros' → cents.
-// `date` es la fecha del día al que se imputa (YYYY-MM-DD) — el dueño puede
-// estar cerrando caja a las 22:30 pero la entry se imputa al día de servicio.
-export const barberBonusEntries = pgTable('barber_bonus_entries', {
+// Entries de progreso. Cada fila = "el barbero X sumó Y al bono Z el día D".
+// Multiple barberos pueden sumar al MISMO bono — cada uno acumula su propio
+// progreso. El día del cierre el dueño introduce N entries (uno por
+// barbero × bono que sumó algo).
+//
+// `value` sigue la misma unidad del bono:
+//   bonuses.unit='units' → entries.value es unidades enteras
+//   bonuses.unit='euros' → entries.value es cents
+export const bonusEntries = pgTable('bonus_entries', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
+  bonusId: uuid('bonus_id').notNull().references(() => bonuses.id, { onDelete: 'cascade' }),
   barberId: uuid('barber_id').notNull().references(() => barbers.id),
-  bonusId: uuid('bonus_id').notNull().references(() => barberBonuses.id, { onDelete: 'cascade' }),
-  value: integer('value').notNull(),                                  // mismo signo que unit del bono
+  value: integer('value').notNull(),
   date: text('date').notNull(),                                       // YYYY-MM-DD
-  note: text('note'),                                                 // opcional
+  note: text('note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

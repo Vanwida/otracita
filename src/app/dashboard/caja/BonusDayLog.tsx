@@ -3,27 +3,30 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { Award, Check, Loader2, ChevronDown, ChevronUp, Info } from 'lucide-react'
+import Link from 'next/link'
 import { formatBonusValue, type BonusUnit } from '@/lib/bonuses/progress'
 
 // -----------------------------------------------------------------------------
-// BonusDayLog — registro diario de progreso de bonos en /dashboard/caja.
+// BonusDayLog — log diario del progreso del equipo hacia los bonos del local.
 //
-// Card colapsable que vive cerca del cierre del día. Lista barberos con
-// bonos activos y un input "+X" por bono. Submit envía un array a
-// /api/bonuses/entries. La fecha por defecto es hoy (Madrid) pero el dueño
-// puede cambiarla si está cerrando caja del día anterior.
+// Modelo: el local tiene un catálogo de bonos. Cualquier barbero puede sumar
+// progreso a cualquier bono. Aquí, el dueño al cierre teclea por cada bono
+// activo cuánto ha sumado cada barbero ese día.
 //
-// Diseño:
-//   · Solo barberos con bonos activos aparecen — sin ruido para los demás.
-//   · El input vacío o 0 se omite en el submit (saltar bonos sin progreso).
-//   · Botón "Guardar progreso" único — un solo round-trip para todo.
-//   · Tras guardar, muestra confirmación inline + limpia los inputs.
+// Layout:
+//   [Bono "Reseñas Google" (obj 20, +50€)]
+//     · Reni:   [+3]
+//     · Carlos: [+2]
+//   [Bono "Upsell productos" (obj 300€, +30€)]
+//     · Reni:   [+12€]
+//     · Carlos: [+24€]
+//
+// Submit envía todas las entries en una sola request a /api/bonuses/entries.
+// Las celdas vacías o a 0 se omiten.
 // -----------------------------------------------------------------------------
 
 interface BonusRow {
   id: string
-  barberId: string
-  barberName: string
   name: string
   unit: BonusUnit
   target: number
@@ -31,36 +34,40 @@ interface BonusRow {
   active: boolean
 }
 
-const fetcher = (url: string) =>
+interface BarberRow {
+  id: string
+  name: string
+  active: boolean
+}
+
+const bonusesFetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<{ bonuses: BonusRow[] }>)
+const barbersFetcher = (url: string) =>
+  fetch(url).then((r) => r.json() as Promise<{ barbers: BarberRow[] }>)
 
 function todayMadrid(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
 }
 
 export default function BonusDayLog() {
-  const { data, isLoading } = useSWR('/api/bonuses', fetcher, { refreshInterval: 60_000 })
+  const { data: bonusesData, isLoading: loadingBonuses } = useSWR('/api/bonuses', bonusesFetcher, {
+    refreshInterval: 60_000,
+  })
+  const { data: barbersData, isLoading: loadingBarbers } = useSWR('/api/barbers', barbersFetcher)
+
   const [expanded, setExpanded] = useState(true)
   const [date, setDate] = useState(todayMadrid())
-  // Map bonusId → input value en la unidad nativa (units o euros visibles,
-  // NO cents). Al submit convertimos euros a cents.
+  // Clave compuesta `${bonusId}|${barberId}` → input value (string).
   const [values, setValues] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const bonuses = (data?.bonuses ?? []).filter((b) => b.active)
+  if (loadingBonuses || loadingBarbers) return null
 
-  // Agrupamos bonos por barbero — solo barberos con al menos uno activo.
-  const byBarber = new Map<string, { barberName: string; bonuses: BonusRow[] }>()
-  for (const b of bonuses) {
-    if (!byBarber.has(b.barberId)) {
-      byBarber.set(b.barberId, { barberName: b.barberName, bonuses: [] })
-    }
-    byBarber.get(b.barberId)!.bonuses.push(b)
-  }
+  const bonuses = (bonusesData?.bonuses ?? []).filter((b) => b.active)
+  const barbers = (barbersData?.barbers ?? []).filter((b) => b.active)
 
-  if (isLoading) return null
   if (bonuses.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-line bg-overlay px-5 py-4 text-sm text-ink-2 flex items-start gap-2">
@@ -68,23 +75,35 @@ export default function BonusDayLog() {
         <div>
           <p className="font-medium text-ink">Bonos del equipo</p>
           <p className="text-xs text-ink-3 mt-0.5">
-            Aún no has creado bonos. Hazlo en <strong>Ajustes &gt; Tu barbería &gt; Bonos</strong>.
+            No hay bonos activos. Crea el catálogo en{' '}
+            <Link
+              href="/dashboard/negocio?tab=bonuses"
+              className="text-brand hover:text-brand-strong font-medium"
+            >
+              Ajustes &gt; Tu barbería &gt; Bonos
+            </Link>
+            .
           </p>
         </div>
       </div>
     )
   }
 
+  if (barbers.length === 0) {
+    return null
+  }
+
   async function submit() {
     setError(null)
-    const entries: Array<{ bonusId: string; value: number }> = []
-    for (const [bonusId, raw] of Object.entries(values)) {
+    const entries: Array<{ bonusId: string; barberId: string; value: number }> = []
+    for (const [key, raw] of Object.entries(values)) {
       const parsed = parseFloat(raw.replace(',', '.'))
       if (!Number.isFinite(parsed) || parsed === 0) continue
+      const [bonusId, barberId] = key.split('|')
       const bonus = bonuses.find((b) => b.id === bonusId)
       if (!bonus) continue
       const value = bonus.unit === 'euros' ? Math.round(parsed * 100) : Math.round(parsed)
-      entries.push({ bonusId, value })
+      entries.push({ bonusId, barberId, value })
     }
     if (entries.length === 0) {
       setError('Pon algún valor antes de guardar.')
@@ -125,19 +144,15 @@ export default function BonusDayLog() {
             <Award className="h-4 w-4" />
           </div>
           <div className="text-left">
-            <p className="font-semibold text-ink text-sm">Bonos del día</p>
-            <p className="text-xs text-ink-3 mt-0.5">Suma lo que ha hecho cada barbero hoy</p>
+            <p className="font-semibold text-ink text-sm">Progreso del día</p>
+            <p className="text-xs text-ink-3 mt-0.5">Cuánto ha sumado cada barbero a cada bono</p>
           </div>
         </div>
-        {expanded ? (
-          <ChevronUp className="h-4 w-4 text-ink-3" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-ink-3" />
-        )}
+        {expanded ? <ChevronUp className="h-4 w-4 text-ink-3" /> : <ChevronDown className="h-4 w-4 text-ink-3" />}
       </button>
 
       {expanded && (
-        <div className="border-t border-line px-5 py-4 space-y-4">
+        <div className="border-t border-line px-5 py-4 space-y-5">
           <label className="flex items-center gap-2 text-xs text-ink-2">
             <span>Día:</span>
             <input
@@ -150,41 +165,46 @@ export default function BonusDayLog() {
           </label>
 
           <div className="space-y-4">
-            {Array.from(byBarber.values()).map(({ barberName, bonuses: list }) => (
-              <div key={barberName} className="space-y-2">
-                <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold">
-                  {barberName}
-                </p>
-                <ul className="space-y-1.5">
-                  {list.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center gap-2 flex-wrap text-sm"
-                    >
-                      <span className="flex-1 min-w-[160px] text-ink">{b.name}</span>
-                      <span className="text-[10px] uppercase tracking-widest text-ink-3 shrink-0">
-                        objetivo {formatBonusValue(b.target, b.unit)}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-ink-2 text-sm">+</span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step={b.unit === 'euros' ? 0.5 : 1}
-                          min={0}
-                          value={values[b.id] ?? ''}
-                          onChange={(e) =>
-                            setValues((v) => ({ ...v, [b.id]: e.target.value }))
-                          }
-                          placeholder="0"
-                          className="w-20 bg-surface border border-line rounded px-2 py-1 text-sm text-ink tabular-nums focus:border-brand focus:outline-none text-right"
-                        />
-                        <span className="text-xs text-ink-3 w-12 shrink-0">
-                          {b.unit === 'euros' ? '€' : 'uds'}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
+            {bonuses.map((bonus) => (
+              <div key={bonus.id} className="rounded-xl border border-line overflow-hidden">
+                <div className="px-3 py-2 bg-overlay/40 border-b border-line flex items-baseline justify-between gap-3 flex-wrap">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <p className="font-medium text-ink text-sm">{bonus.name}</p>
+                    <span className="text-[11px] text-ink-3">
+                      objetivo {formatBonusValue(bonus.target, bonus.unit)}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-ink-3">
+                    recompensa <strong className="text-ink-2">{formatBonusValue(bonus.rewardCents, 'euros')}</strong>
+                  </span>
+                </div>
+                <ul className="divide-y divide-line">
+                  {barbers.map((barber) => {
+                    const key = `${bonus.id}|${barber.id}`
+                    return (
+                      <li key={barber.id} className="px-3 py-2 flex items-center gap-3 text-sm">
+                        <span className="flex-1 text-ink-2 truncate">{barber.name}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-ink-2">+</span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            step={bonus.unit === 'euros' ? 0.5 : 1}
+                            min={0}
+                            value={values[key] ?? ''}
+                            onChange={(e) =>
+                              setValues((v) => ({ ...v, [key]: e.target.value }))
+                            }
+                            placeholder="0"
+                            className="w-20 bg-surface border border-line rounded px-2 py-1 text-sm text-ink tabular-nums focus:border-brand focus:outline-none text-right"
+                          />
+                          <span className="text-xs text-ink-3 w-8 shrink-0">
+                            {bonus.unit === 'euros' ? '€' : 'uds'}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             ))}

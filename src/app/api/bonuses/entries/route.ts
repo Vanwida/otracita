@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { barberBonuses, barberBonusEntries } from '@/db/schema'
+import { bonuses, bonusEntries, barbers as barbersTable } from '@/db/schema'
 import { and, eq, gte, lt, inArray } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
@@ -7,15 +7,16 @@ import { requireFeature } from '@/lib/billing/tier'
 // -----------------------------------------------------------------------------
 // /api/bonuses/entries
 //
-// GET ?month=YYYY-MM → devuelve TODAS las entries del mes para todos los
-//   bonos del tenant (para construir la vista mensual).
+// GET ?month=YYYY-MM → todas las entries del mes (todos los bonos, todos
+//   los barberos) para construir vistas mensuales.
 //
-// POST → crea N entries de golpe (bulk). Pensado para el cierre de caja:
-//   el dueño teclea "+3 reseñas, +24€ productos" y mandamos un array.
-//   Cada entry valida que su bonus pertenece al tenant.
+// POST → crea N entries de golpe (bulk) desde el cierre de caja. Cada
+//   entry tiene { bonusId, barberId, value } — cualquier barbero puede
+//   sumar a cualquier bono activo.
 //
 // Body POST:
-//   { date: 'YYYY-MM-DD', entries: [{ bonusId, value, note? }, ...] }
+//   { date: 'YYYY-MM-DD',
+//     entries: [{ bonusId, barberId, value, note? }, ...] }
 // -----------------------------------------------------------------------------
 
 interface PostBody {
@@ -25,6 +26,7 @@ interface PostBody {
 
 interface EntryInput {
   bonusId?: unknown
+  barberId?: unknown
   value?: unknown
   note?: unknown
 }
@@ -56,19 +58,19 @@ export async function GET(request: Request) {
 
   const rows = await db
     .select({
-      id: barberBonusEntries.id,
-      bonusId: barberBonusEntries.bonusId,
-      barberId: barberBonusEntries.barberId,
-      value: barberBonusEntries.value,
-      date: barberBonusEntries.date,
-      note: barberBonusEntries.note,
+      id: bonusEntries.id,
+      bonusId: bonusEntries.bonusId,
+      barberId: bonusEntries.barberId,
+      value: bonusEntries.value,
+      date: bonusEntries.date,
+      note: bonusEntries.note,
     })
-    .from(barberBonusEntries)
+    .from(bonusEntries)
     .where(
       and(
-        eq(barberBonusEntries.clientId, access.client.id),
-        gte(barberBonusEntries.date, bounds.start),
-        lt(barberBonusEntries.date, bounds.end),
+        eq(bonusEntries.clientId, access.client.id),
+        gte(bonusEntries.date, bounds.start),
+        lt(bonusEntries.date, bounds.end),
       ),
     )
 
@@ -94,51 +96,60 @@ export async function POST(request: Request) {
   if (!Array.isArray(body.entries) || body.entries.length === 0) {
     return Response.json({ error: 'entries debe ser un array no vacío' }, { status: 400 })
   }
-  if (body.entries.length > 100) {
-    return Response.json({ error: 'Demasiadas entries (max 100)' }, { status: 400 })
+  if (body.entries.length > 200) {
+    return Response.json({ error: 'Demasiadas entries (max 200)' }, { status: 400 })
   }
 
-  // Validar todas las entries y resolver el barberId de cada bonus.
-  const parsed: Array<{ bonusId: string; value: number; note: string | null }> = []
+  const parsed: Array<{ bonusId: string; barberId: string; value: number; note: string | null }> = []
   for (const raw of body.entries as EntryInput[]) {
     const bonusId = typeof raw.bonusId === 'string' ? raw.bonusId : null
+    const barberId = typeof raw.barberId === 'string' ? raw.barberId : null
     const value = typeof raw.value === 'number' ? Math.round(raw.value) : NaN
     const note = typeof raw.note === 'string' ? raw.note.trim().slice(0, 200) || null : null
     if (!bonusId) return Response.json({ error: 'entry.bonusId requerido' }, { status: 400 })
+    if (!barberId) return Response.json({ error: 'entry.barberId requerido' }, { status: 400 })
     if (!Number.isFinite(value)) return Response.json({ error: 'entry.value debe ser número' }, { status: 400 })
-    if (value === 0) continue // saltar entries vacías — útil cuando el form trae todo a 0
-    parsed.push({ bonusId, value, note })
+    if (value === 0) continue
+    parsed.push({ bonusId, barberId, value, note })
   }
 
   if (parsed.length === 0) {
     return Response.json({ ok: true, inserted: 0 })
   }
 
-  // Verificar que todos los bonuses pertenecen al tenant + obtener barberId.
-  const bonusIds = parsed.map((e) => e.bonusId)
+  // Validar bonos del tenant
+  const bonusIds = Array.from(new Set(parsed.map((e) => e.bonusId)))
   const bonusRows = await db
-    .select({ id: barberBonuses.id, barberId: barberBonuses.barberId })
-    .from(barberBonuses)
-    .where(and(eq(barberBonuses.clientId, access.client.id), inArray(barberBonuses.id, bonusIds)))
-
-  const barberByBonus = new Map(bonusRows.map((b) => [b.id, b.barberId]))
-  if (barberByBonus.size !== new Set(bonusIds).size) {
+    .select({ id: bonuses.id })
+    .from(bonuses)
+    .where(and(eq(bonuses.clientId, access.client.id), inArray(bonuses.id, bonusIds)))
+  if (bonusRows.length !== bonusIds.length) {
     return Response.json({ error: 'Algún bono no pertenece a tu barbería' }, { status: 403 })
   }
 
+  // Validar barberos del tenant
+  const barberIds = Array.from(new Set(parsed.map((e) => e.barberId)))
+  const barberRows = await db
+    .select({ id: barbersTable.id })
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, access.client.id), inArray(barbersTable.id, barberIds)))
+  if (barberRows.length !== barberIds.length) {
+    return Response.json({ error: 'Algún barbero no pertenece a tu barbería' }, { status: 403 })
+  }
+
   const inserted = await db
-    .insert(barberBonusEntries)
+    .insert(bonusEntries)
     .values(
       parsed.map((e) => ({
         clientId: access.client.id,
         bonusId: e.bonusId,
-        barberId: barberByBonus.get(e.bonusId)!,
+        barberId: e.barberId,
         value: e.value,
         date,
         note: e.note,
       })),
     )
-    .returning({ id: barberBonusEntries.id })
+    .returning({ id: bonusEntries.id })
 
   return Response.json({ ok: true, inserted: inserted.length })
 }
