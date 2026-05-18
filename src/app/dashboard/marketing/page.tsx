@@ -9,7 +9,7 @@ import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import Link from 'next/link'
 import { Megaphone, Repeat, Cake, ShoppingBag, ChevronRight } from 'lucide-react'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import PromosToggle from './PromosToggle'
 
@@ -47,16 +47,12 @@ export default async function MarketingPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <HubBreadcrumb current="Marketing" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
-      <header className="mb-6">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-          <Megaphone className="h-7 w-7 text-brand" />
-          Marketing
-        </h1>
-        <p className="text-ink-2">Llena huecos. Trae a los que no vienen. Vende más en mostrador.</p>
-      </header>
-
+    <PageShell
+      title="Marketing"
+      subtitle="Llena huecos. Trae a los que no vienen. Vende más en mostrador."
+      maxWidth="4xl"
+      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+    >
       {/* Features live */}
       <section className="mb-6 space-y-4">
         <PromosToggle initialEnabled={client.promosEnabled} />
@@ -104,7 +100,7 @@ export default async function MarketingPage() {
           />
         </div>
       </section>
-    </div>
+    </PageShell>
   )
 }
 
