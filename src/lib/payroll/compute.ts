@@ -15,6 +15,12 @@ import type { BarberMonthRaw, BarberSalaryProfile, PayrollBreakdown } from './ty
 //
 // Defensivo: percentages se capean a [0, 100] por si entra un valor raro
 // desde la API (que ya valida, pero belt-and-braces).
+//
+// R8: el 3er argumento opcional `precomputedServicesCommissionCents` deja
+// que el caller (monthly.ts) pase una comisión de servicios ya calculada
+// con overrides POR-SERVICIO. Cuando NO se pasa (tests, callers viejos),
+// se mantiene EXACTAMENTE el camino histórico `revenue × globalPct` — por
+// eso compute.test.ts sigue verde sin tocarlo.
 // -----------------------------------------------------------------------------
 
 function clampPct(n: number): number {
@@ -27,11 +33,15 @@ function clampPct(n: number): number {
 export function computeBarberPayroll(
   profile: BarberSalaryProfile,
   raw: BarberMonthRaw,
+  precomputedServicesCommissionCents?: number,
 ): PayrollBreakdown {
   const base = Math.max(0, Math.round(profile.salaryBaseCents))
-  const commissionServicesCents = Math.round(
-    raw.servicesRevenueCents * (clampPct(profile.commissionServicesPct) / 100),
-  )
+  const commissionServicesCents =
+    precomputedServicesCommissionCents !== undefined
+      ? Math.max(0, Math.round(precomputedServicesCommissionCents))
+      : Math.round(
+          raw.servicesRevenueCents * (clampPct(profile.commissionServicesPct) / 100),
+        )
   const commissionProductsCents = Math.round(
     raw.productsRevenueCents * (clampPct(profile.commissionProductsPct) / 100),
   )
