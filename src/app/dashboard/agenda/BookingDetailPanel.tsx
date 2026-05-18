@@ -12,7 +12,8 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { CalendarEvent } from './types';
+import { paymentBadge } from './types';
+import type { CalendarEvent, Barber } from './types';
 
 interface Props {
   booking: CalendarEvent | null;
@@ -29,6 +30,12 @@ interface Props {
    *  Al pulsar "Marcar completada" lanzamos cobro en el datáfono en vez
    *  del modal manual cash/card/online. */
   sumupReaderConnected?: boolean;
+  /** Equipo activo — para el selector de barbero del editor "mover cita"
+   *  (R3: mover sin entrar en Horarios y cambios). */
+  barbers?: Barber[];
+  /** Se invoca tras un movimiento exitoso (date/time/barber). El padre
+   *  revalida la agenda. */
+  onMoved?: () => void;
 }
 
 interface PaymentSnapshot {
@@ -51,7 +58,7 @@ interface PaymentLinkData {
 const MIN_AMOUNT_EUROS = 0.5;
 const MAX_AMOUNT_EUROS = 5000;
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false, barbers = [], onMoved }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -77,6 +84,62 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const canSellProduct = booking?.status === 'confirmed';
   const [cancelOpen, setCancelOpen] = useState(false);
   const [productSaleOpen, setProductSaleOpen] = useState(false);
+  // Editor "mover cita" (R3): mover día/hora/barbero sin salir del panel.
+  // Solo para citas confirmadas (las completadas/canceladas no se mueven).
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveDate, setMoveDate] = useState('');
+  const [moveTime, setMoveTime] = useState('');
+  const [moveBarberId, setMoveBarberId] = useState<string>('');
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const canMove = booking?.status === 'confirmed' && booking?.source !== 'booksy';
+
+  // Sembrar el editor con los valores actuales cada vez que cambia la
+  // reserva o se abre el editor.
+  useEffect(() => {
+    if (booking) {
+      setMoveDate(booking.date);
+      setMoveTime(booking.time);
+      setMoveBarberId(booking.barberId ?? '');
+      setMoveOpen(false);
+      setMoveError(null);
+    }
+  }, [booking?.id, booking]);
+
+  async function submitMove() {
+    if (!booking) return;
+    setMoving(true);
+    setMoveError(null);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: moveDate,
+          time: moveTime,
+          barberId: moveBarberId === '' ? null : moveBarberId,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setMoveError(
+          body?.error ||
+            (res.status === 409
+              ? 'Ese hueco ya está ocupado.'
+              : 'No se pudo mover la cita.'),
+        );
+        setMoving(false);
+        return;
+      }
+      setMoveOpen(false);
+      onMoved?.();
+      onClose();
+    } catch {
+      setMoveError('Sin conexión. La cita no se movió.');
+    } finally {
+      setMoving(false);
+    }
+  }
   // Cuántas ventas de producto hay registradas en este booking, para mostrar
   // un badge "X productos vendidos" tras añadir. Se actualiza tras el modal.
   const [productSalesCount, setProductSalesCount] = useState(0);
@@ -470,6 +533,14 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     Barbero
                   </p>
                   <p className="text-sm font-medium text-ink-2">{booking.barber}</p>
+                  {/* A2: el cliente pidió a este barbero explícitamente
+                      (vs auto-asignado). Driven by bookings.barberRequested. */}
+                  {booking.barberRequested && (
+                    <p className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-strong">
+                      <span aria-hidden="true">♥</span>
+                      Solicitado por el cliente
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -496,6 +567,97 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </p>
               </div>
 
+              {/* Mover cita (R3) — editar día/hora/barbero sin entrar en
+                  "Horarios y cambios". Solo citas confirmadas no-Booksy.
+                  Reusa PATCH /api/bookings/[id] con re-validación de solape. */}
+              {canMove && (
+                <div className="pt-1">
+                  {!moveOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setMoveOpen(true)}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface hover:border-line-strong px-4 py-2.5 text-sm font-medium text-ink-2 hover:text-ink transition-colors"
+                    >
+                      Mover cita
+                    </button>
+                  ) : (
+                    <div className="rounded-xl border border-line bg-overlay/40 p-3 space-y-3">
+                      <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
+                        Mover cita
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="move-date" className="text-[11px] font-medium text-ink-2">
+                          Fecha
+                        </label>
+                        <input
+                          id="move-date"
+                          type="date"
+                          value={moveDate}
+                          onChange={(e) => setMoveDate(e.target.value)}
+                          className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="move-time" className="text-[11px] font-medium text-ink-2">
+                          Hora
+                        </label>
+                        <input
+                          id="move-time"
+                          type="time"
+                          step={300}
+                          value={moveTime}
+                          onChange={(e) => setMoveTime(e.target.value)}
+                          className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                        />
+                      </div>
+                      {barbers.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="move-barber" className="text-[11px] font-medium text-ink-2">
+                            Barbero
+                          </label>
+                          <select
+                            id="move-barber"
+                            value={moveBarberId}
+                            onChange={(e) => setMoveBarberId(e.target.value)}
+                            className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                          >
+                            <option value="">Cualquiera</option>
+                            {barbers.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {moveError && <p className="text-xs text-danger">{moveError}</p>}
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMoveOpen(false);
+                            setMoveError(null);
+                          }}
+                          disabled={moving}
+                          className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={submitMove}
+                          disabled={moving || !moveDate || !moveTime}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-2 text-xs font-semibold text-brand-ink disabled:opacity-60 transition-colors"
+                        >
+                          {moving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                          Guardar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Price */}
               {booking.price !== null && (
                 <div className="space-y-1">
@@ -505,6 +667,29 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   <p className="text-sm font-semibold text-brand">{booking.price} €</p>
                 </div>
               )}
+
+              {/* R6 — método de cobro registrado (display-only). La captura
+                  la hace WS-D al completar; aquí solo se refleja. */}
+              {(() => {
+                const pb = paymentBadge(booking.paymentMethod);
+                if (!pb) return null;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
+                      Cobrado
+                    </p>
+                    <p className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+                      <span
+                        className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded bg-success/10 text-xs font-bold"
+                        aria-hidden="true"
+                      >
+                        {pb.glyph}
+                      </span>
+                      {pb.label}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Marcar como completada — acción principal cuando la cita ha
                   terminado. Dispara auto-facturación en el servidor: la

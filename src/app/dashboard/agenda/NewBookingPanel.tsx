@@ -4,20 +4,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
+import type { Barber } from './types';
+
 interface Service {
   name: string;
   duration: number;
   price: number;
 }
 
-interface Barber {
-  name: string;
-}
-
 interface Props {
   isOpen: boolean;
   initialDate: string;
   initialTime: string;
+  /** Barbero de la columna clicada en agenda — preselecciona el <select>.
+   *  Null/undefined → "Sin preferencia". */
+  initialBarberId?: string | null;
   services: Service[];
   barbers: Barber[];
   onClose: () => void;
@@ -33,6 +34,7 @@ export default function NewBookingPanel({
   isOpen,
   initialDate,
   initialTime,
+  initialBarberId,
   services,
   barbers,
   onClose,
@@ -49,14 +51,20 @@ export default function NewBookingPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync initial values when panel opens
+  // Sync initial values when panel opens. Si vino un initialBarberId
+  // (columna clicada en agenda), preseleccionamos ese barbero por nombre;
+  // si no, "Sin preferencia".
   useEffect(() => {
     if (isOpen) {
       setDate(initialDate);
       setTime(initialTime);
+      const preset = initialBarberId
+        ? barbers.find((b) => b.id === initialBarberId)?.name ?? ''
+        : '';
+      setBarber(preset);
       setError(null);
     }
-  }, [isOpen, initialDate, initialTime]);
+  }, [isOpen, initialDate, initialTime, initialBarberId, barbers]);
 
   // Auto-fill duration & price when service changes
   const handleServiceChange = (name: string) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
 import {
   startOfWeek,
@@ -14,20 +14,22 @@ import {
   endOfMonth,
   addMonths,
   subMonths,
+  parseISO,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X } from 'lucide-react';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
 import DayGrid from './DayGrid';
 import BookingDetailPanel from './BookingDetailPanel';
 import NewBookingPanel from './NewBookingPanel';
 import PromosFillModal from './PromosFillModal';
-import type { CalendarEvent } from './types';
+import SlotActionMenu from './SlotActionMenu';
+import type { CalendarEvent, Barber, SlotAction } from './types';
 
 interface Props {
   services: Array<{ name: string; duration: number; price: number }>;
-  barbers: Array<{ name: string }>;
+  barbers: Barber[];
   blockedDates: string[];
   hours: Record<string, string> | null;
   /**
@@ -43,19 +45,42 @@ interface Props {
   /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal
    *  manual cash/card/online. */
   sumupReaderConnected?: boolean;
+  /**
+   * Costura para WS-B: se invoca cuando el usuario elige "Falta de
+   * disponibilidad" o "Ausencia" en el menú contextual de slot. NUEVA
+   * CITA NO pasa por aquí (la resuelve CalendarView con NewBookingPanel).
+   * Default no-op hasta que WS-B cablee BlockModal/AbsenceModal.
+   */
+  onSelectSlotAction?: (
+    action: Extract<SlotAction, { type: 'unavailability' | 'absence' }>,
+  ) => void;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false, onSelectSlotAction }: Props) {
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
   const [selectedBooking, setSelectedBooking] = useState<CalendarEvent | null>(null);
   const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
-  const [newBookingSlot, setNewBookingSlot] = useState<{ date: string; time: string }>({
+  const [newBookingSlot, setNewBookingSlot] = useState<{
+    date: string;
+    time: string;
+    barberId: string | null;
+  }>({
     date: format(new Date(), 'yyyy-MM-dd'),
     time: '10:00',
+    barberId: null,
   });
+  // Menú contextual de slot (A7). null = cerrado.
+  const [slotMenu, setSlotMenu] = useState<{
+    date: string;
+    time: string;
+    barberId: string | null;
+  } | null>(null);
+  // Error transitorio de un movimiento de cita (drag&drop / mover manual).
+  // Se autolimpia; el rollback visual lo hace el revalidate de SWR.
+  const [moveError, setMoveError] = useState<string | null>(null);
   // Build the calendar fetch URL from the current view. SWR keys by URL so
   // changing view/date/barber automatically triggers a new request — and
   // a background poll every 10s keeps the grid in sync when the bot creates
@@ -120,11 +145,118 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     setCurrentDay(new Date());
   };
 
-  const handleSlotClick = (date: string, time: string) => {
-    setNewBookingSlot({ date, time });
+  // Clic en hueco vacío → menú contextual (A7). barberId opcional:
+  // DayGrid lo pasa (columna clicada); Week/Month llaman con 2 args.
+  const handleSlotClick = (date: string, time: string, barberId?: string | null) => {
     setSelectedBooking(null);
-    setIsNewBookingOpen(true);
+    setIsNewBookingOpen(false);
+    setSlotMenu({ date, time, barberId: barberId ?? null });
   };
+
+  // Despacha la opción elegida en el menú. NUEVA CITA la resolvemos aquí
+  // (NewBookingPanel prefilled). Las otras dos se delegan a WS-B vía
+  // stubs — costura limpia, no-op + TODO hasta que sus paneles existan.
+  const handleSlotAction = (action: SlotAction) => {
+    setSlotMenu(null);
+    if (action.type === 'new_booking') {
+      setNewBookingSlot({
+        date: action.date,
+        time: action.time,
+        barberId: action.barberId,
+      });
+      setIsNewBookingOpen(true);
+      return;
+    }
+    // WS-B owns BlockModal/AbsenceModal. El intent ya llega con
+    // {type,date,time,barberId} listo para consumir. Si WS-B aún no
+    // cableó el handler, es un no-op silencioso (no rompe el flujo).
+    onSelectSlotAction?.(action);
+  };
+
+  // Etiqueta humana del slot para el subtítulo del menú: "lun 18 may · 10:30 · Reni".
+  const slotMenuLabel = useMemo(() => {
+    if (!slotMenu) return undefined;
+    let label = `${format(parseISO(slotMenu.date), "EEE d MMM", { locale: es })} · ${slotMenu.time}`;
+    if (slotMenu.barberId) {
+      const b = barbers.find((x) => x.id === slotMenu.barberId);
+      if (b) label += ` · ${b.name}`;
+    }
+    return label;
+  }, [slotMenu, barbers]);
+
+  // Mover una cita (drag&drop en DayGrid o "mover manual" desde el panel
+  // detalle). Optimista: pintamos el cambio YA en la caché de SWR, luego
+  // PATCH; al volver revalidamos para reconciliar con el servidor (y
+  // deshacer el optimismo si hubo solape/permiso). R1/R3.
+  const handleEventMove = useCallback(
+    async (
+      id: string,
+      next: { date: string; time: string; barberId: string | null },
+    ) => {
+      const current = events.find((e) => e.id === id);
+      if (!current) return;
+      // No-op si no cambia nada (mismo día, hora y barbero).
+      const sameBarber =
+        (current.barberId ?? null) === (next.barberId ?? null);
+      if (
+        current.date === next.date &&
+        current.time === next.time &&
+        sameBarber
+      ) {
+        return;
+      }
+      setMoveError(null);
+      const nextBarberName = next.barberId
+        ? barbers.find((b) => b.id === next.barberId)?.name ?? current.barber
+        : null;
+
+      // 1) Update optimista en la caché SWR (sin revalidar todavía).
+      await refetch(
+        (prev) =>
+          (prev ?? []).map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  date: next.date,
+                  time: next.time,
+                  barberId: next.barberId,
+                  barber: nextBarberName,
+                }
+              : e,
+          ),
+        { revalidate: false },
+      );
+
+      // 2) PATCH al endpoint (re-valida solape en servidor).
+      try {
+        const res = await fetch(`/api/bookings/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: next.date,
+            time: next.time,
+            barberId: next.barberId,
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setMoveError(
+            body?.error ||
+              (res.status === 409
+                ? 'Ese hueco ya está ocupado.'
+                : 'No se pudo mover la cita.'),
+          );
+        }
+      } catch {
+        setMoveError('Sin conexión. La cita no se movió.');
+      } finally {
+        // 3) Revalidar SIEMPRE: si el PATCH falló, esto deshace el
+        // optimismo volviendo a la verdad del servidor.
+        await refetch();
+      }
+    },
+    [events, barbers, refetch],
+  );
 
   const handleEventClick = (event: CalendarEvent) => {
     setIsNewBookingOpen(false);
@@ -225,7 +357,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         </a>
         <button
           onClick={() => {
-            setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00' });
+            setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: null });
             setSelectedBooking(null);
             setIsNewBookingOpen(true);
           }}
@@ -239,6 +371,25 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         {loading && <Loader2 className="h-4 w-4 text-ink-3 animate-spin" />}
       </div>
 
+      {/* Error de movimiento (drag&drop / mover manual). El revalidate de
+          SWR ya devolvió la cita a su sitio; esto solo explica por qué. */}
+      {moveError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 px-4 py-2 bg-danger/10 border-b border-danger/30 text-danger text-xs font-medium shrink-0"
+        >
+          <span>{moveError}</span>
+          <button
+            type="button"
+            onClick={() => setMoveError(null)}
+            className="text-danger/70 hover:text-danger"
+            aria-label="Cerrar aviso"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Grid */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {viewMode === 'day' ? (
@@ -250,6 +401,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             hours={hours}
             onEventClick={handleEventClick}
             onSlotClick={handleSlotClick}
+            onEventMove={handleEventMove}
           />
         ) : viewMode === 'week' ? (
           <WeekGrid
@@ -277,6 +429,8 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         stripeConnectStatus={stripeConnectStatus}
         cashRegisterEnabled={cashRegisterEnabled}
         sumupReaderConnected={sumupReaderConnected}
+        barbers={barbers}
+        onMoved={() => refetch()}
       />
 
       {/* Promos modal — solo se renderiza si está activado en /dashboard/app */}
@@ -287,11 +441,21 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         />
       )}
 
+      {/* Menú contextual de slot (A7) — chooser sobre la agenda atenuada */}
+      <SlotActionMenu
+        open={slotMenu !== null}
+        slot={slotMenu}
+        contextLabel={slotMenuLabel}
+        onClose={() => setSlotMenu(null)}
+        onAction={handleSlotAction}
+      />
+
       {/* New booking panel */}
       <NewBookingPanel
         isOpen={isNewBookingOpen}
         initialDate={newBookingSlot.date}
         initialTime={newBookingSlot.time}
+        initialBarberId={newBookingSlot.barberId}
         services={services}
         barbers={barbers}
         onClose={() => setIsNewBookingOpen(false)}

@@ -562,6 +562,12 @@ export const bookings = pgTable('bookings', {
   // bookings legacy, futuros, o tenants sin caja activa. Alimenta el cuadre
   // diario en /dashboard/caja: cash, card (datáfono), online (Stripe).
   paymentMethod: text('payment_method'),
+  // true SOLO si el cliente pidió explícitamente a este barbero al reservar
+  // (vs auto-asignado por el resolver pickBarberForCustomer). Lo pinta el
+  // ♥ "Solicitado por el cliente" en agenda + panel detalle (feedback A2).
+  // Aditiva, default false → callers existentes no se ven afectados; se
+  // pone a true en createBooking solo cuando barberId vino explícito.
+  barberRequested: boolean('barber_requested').default(false).notNull(),
   cancelledAt: timestamp('cancelled_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

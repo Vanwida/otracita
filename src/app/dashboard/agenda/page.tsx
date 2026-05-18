@@ -26,7 +26,12 @@ export default async function CalendarPage() {
   // introdujo la tabla). Usarlo provocaba que un barbero dado de baja (soft
   // delete → active=false) siguiera apareciendo en la agenda.
   const barberRows = await db
-    .select({ name: barbersTable.name })
+    .select({
+      id: barbersTable.id,
+      name: barbersTable.name,
+      photoUrl: barbersTable.photoUrl,
+      displayOrder: barbersTable.displayOrder,
+    })
     .from(barbersTable)
     .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
     .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
