@@ -161,6 +161,11 @@ export async function GET(request: Request) {
   // últimas N semanas YA CONGELADAS para este ganador.
   let streakBonusCents = 0
   if (officialWinnerId && comp.streakBonusCents > 0) {
+    // TODO(streak-adjacency): enforce consecutive weeks when payout is folded
+    // into payroll. Hoy streakBonusFor mira las últimas N filas congeladas
+    // sin exigir que sean semanas adyacentes — un hueco no rompe la racha.
+    // Irrelevante en v1 (R10 standalone, la racha no paga), pero quien
+    // pliegue la competición a nómina debe cerrarlo.
     const recent = await db
       .select({ winnerBarberId: teamCompetitionWeeks.winnerBarberId })
       .from(teamCompetitionWeeks)

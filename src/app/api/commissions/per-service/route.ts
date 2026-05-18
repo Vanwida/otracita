@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { barberServiceCommissions } from '@/db/schema'
+import { barberServiceCommissions, barbers as barbersTable } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
@@ -72,6 +72,18 @@ export async function PUT(request: Request) {
   if (!barberId) return Response.json({ error: 'barberId requerido' }, { status: 400 })
   if (!Array.isArray(body.overrides)) {
     return Response.json({ error: 'overrides debe ser un array' }, { status: 400 })
+  }
+
+  // Convención #1: nunca confiar en un id del body sin validar tenant. El
+  // barbero DEBE pertenecer a la barbería de la sesión, si no se crearían
+  // filas huérfanas (inertes porque monthly.ts scopea por clientId, pero
+  // se cierra igual — mismo patrón que /api/bonuses/entries).
+  const [ownedBarber] = await db
+    .select({ id: barbersTable.id })
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, access.client.id), eq(barbersTable.id, barberId)))
+  if (!ownedBarber) {
+    return Response.json({ error: 'Ese barbero no pertenece a tu barbería' }, { status: 403 })
   }
 
   // Valida + normaliza. serviceName trim no vacío, pct entero 0..100.
