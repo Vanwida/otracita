@@ -42,6 +42,26 @@ export type SlotAction =
   | { type: 'unavailability'; date: string; time: string; barberId: string | null }
   | { type: 'absence'; date: string; time: string; barberId: string | null };
 
+/** Glifo corto del método de cobro para el badge R6 (display-only — la
+ *  CAPTURA del método la hace WS-D al completar la cita). null → sin
+ *  badge (aún no cobrada / tenant sin caja). Mapeo Booksy:
+ *    cash → "€" (efectivo) · card → "card" (datáfono) · online → "B"
+ *    (Bizum / pago online vía Stripe). */
+export function paymentBadge(
+  method: string | null,
+): { glyph: string; label: string } | null {
+  switch (method) {
+    case 'cash':
+      return { glyph: '€', label: 'Cobrado en efectivo' };
+    case 'card':
+      return { glyph: 'card', label: 'Cobrado con tarjeta' };
+    case 'online':
+      return { glyph: 'B', label: 'Cobrado online (Bizum/tarjeta)' };
+    default:
+      return null;
+  }
+}
+
 /** Número de colores en la paleta de barbero (--color-barber-0..7).
  *  Mantener en sync con globals.css @theme. */
 export const BARBER_PALETTE_SIZE = 8;

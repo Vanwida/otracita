@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
-import { barberColorVar } from './types';
+import { barberColorVar, paymentBadge } from './types';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
@@ -409,6 +409,23 @@ export default function DayGrid({
                             {event.service}
                           </p>
                         )}
+                        {/* R6 badge cobrado (display-only). El método lo
+                            captura WS-D al completar; aquí solo se pinta.
+                            Pegado abajo-derecha para no robar la línea de
+                            cliente/servicio. */}
+                        {(() => {
+                          const pb = paymentBadge(event.paymentMethod);
+                          if (!pb || height <= 28) return null;
+                          return (
+                            <span
+                              className="absolute bottom-1 right-1 inline-flex items-center justify-center min-w-[1rem] h-4 px-1 rounded bg-surface/70 text-[9px] font-bold tabular-nums"
+                              title={pb.label}
+                              aria-label={pb.label}
+                            >
+                              {pb.glyph}
+                            </span>
+                          );
+                        })()}
                       </div>
                     );
                   })}

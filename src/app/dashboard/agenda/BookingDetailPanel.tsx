@@ -12,6 +12,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { paymentBadge } from './types';
 import type { CalendarEvent } from './types';
 
 interface Props {
@@ -513,6 +514,29 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   <p className="text-sm font-semibold text-brand">{booking.price} €</p>
                 </div>
               )}
+
+              {/* R6 — método de cobro registrado (display-only). La captura
+                  la hace WS-D al completar; aquí solo se refleja. */}
+              {(() => {
+                const pb = paymentBadge(booking.paymentMethod);
+                if (!pb) return null;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
+                      Cobrado
+                    </p>
+                    <p className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+                      <span
+                        className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded bg-success/10 text-xs font-bold"
+                        aria-hidden="true"
+                      >
+                        {pb.glyph}
+                      </span>
+                      {pb.label}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Marcar como completada — acción principal cuando la cita ha
                   terminado. Dispara auto-facturación en el servidor: la
