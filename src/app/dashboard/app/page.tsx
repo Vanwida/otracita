@@ -8,7 +8,6 @@ import { clients, pushSubscriptions } from '@/db/schema'
 import { and, count, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
-  Smartphone,
   Bell,
   ExternalLink,
   BarChart3,
@@ -16,7 +15,7 @@ import {
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 import GtmSettings from './GtmSettings'
 import Link from 'next/link'
 import { hasFeature } from '@/lib/billing/tier'
@@ -58,19 +57,17 @@ export default async function AppPage() {
   const readyForApp = Boolean(url && client.publicEnabled)
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
-      <HubBreadcrumb current="App para clientes" />
-      <div className="mb-2">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-          <Smartphone className="h-7 w-7 text-brand" />
-          App para clientes
-        </h1>
-        <p className="text-ink-2 text-sm max-w-2xl">
-          La app de tu barbería en el móvil de tus clientes. Instalable desde Safari y Chrome (sin App Store),
-          con tu logo, tus colores y tu nombre. Usa el mismo motor que tu agenda y tu WhatsApp: no hay nada
-          que mantener en paralelo.
-        </p>
-      </div>
+    <PageShell
+      title="App para clientes"
+      maxWidth="5xl"
+      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+    >
+      <div className="space-y-6">
+      <p className="text-ink-2 max-w-2xl" style={{ fontSize: 'var(--text-meta)' }}>
+        La app de tu barbería en el móvil de tus clientes. Instalable desde Safari y Chrome (sin App Store),
+        con tu logo, tus colores y tu nombre. Usa el mismo motor que tu agenda y tu WhatsApp: no hay nada
+        que mantener en paralelo.
+      </p>
 
       {!readyForApp && (
         <div className="bg-overlay border border-line rounded-xl p-4 text-sm text-ink-2">
@@ -214,6 +211,7 @@ export default async function AppPage() {
 
       {/* Promos contextuales se gestionan ahora en /dashboard/marketing —
           conceptualmente son marketing, no configuración de la app. */}
-    </div>
+      </div>
+    </PageShell>
   )
 }

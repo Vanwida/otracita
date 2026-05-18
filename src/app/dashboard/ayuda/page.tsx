@@ -1,6 +1,6 @@
 import { MessageCircle, Mail, HelpCircle, ExternalLink, ChevronDown } from 'lucide-react'
 import { HELP_SECTIONS } from '@/lib/help-faqs'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 
 // Centralised so the Ayuda page mirrors the chat widget contact details.
 const SUPPORT_WHATSAPP = '+34 644 288 663'
@@ -39,15 +39,15 @@ function renderAnswer(text: string): React.ReactNode[] {
 
 export default function AyudaPage() {
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <HubBreadcrumb current="Ayuda" />
-      <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Ayuda</h1>
-        <p className="text-ink-2">
-          Tu primer puerto: el chat-widget (abajo a la derecha) responde cualquier duda usando la misma base que ves aquí.
-          Si no encuentras respuesta, escríbenos por WhatsApp.
-        </p>
-      </div>
+    <PageShell
+      title="Ayuda"
+      maxWidth="4xl"
+      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+    >
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Tu primer puerto: el chat-widget (abajo a la derecha) responde cualquier duda usando la misma base que ves aquí.
+        Si no encuentras respuesta, escríbenos por WhatsApp.
+      </p>
 
       {/* Contact cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
@@ -118,6 +118,6 @@ export default function AyudaPage() {
           </section>
         ))}
       </div>
-    </div>
+    </PageShell>
   )
 }
