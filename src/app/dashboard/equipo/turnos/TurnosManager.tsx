@@ -460,17 +460,20 @@ function WorkBlock({
           const bs = Math.max(toMinutes(b.startTime as string), ws)
           const be = Math.min(toMinutes(b.endTime as string), we)
           if (be <= bs) return null
+          const label = `${b.kind === 'absence' ? 'Ausencia' : 'No disponible'} ${b.startTime}-${b.endTime}`
           return (
             <div
               key={b.id}
+              role="img"
+              aria-label={label}
               className="absolute top-1 bottom-1 rounded bg-danger/15 border border-danger/40 flex items-center justify-center"
               style={{
                 left: `${((bs - ws) / (we - ws)) * 100}%`,
                 width: `${((be - bs) / (we - ws)) * 100}%`,
               }}
-              title={`${b.kind === 'absence' ? 'Ausencia' : 'No disponible'} ${b.startTime}-${b.endTime}`}
+              title={label}
             >
-              <Ban className="h-3 w-3 text-danger shrink-0" />
+              <Ban className="h-3 w-3 text-danger shrink-0" aria-hidden="true" />
             </div>
           )
         })}

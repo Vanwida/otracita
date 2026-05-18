@@ -44,7 +44,12 @@ export async function GET(
   const rows = await db
     .select()
     .from(barberBreaks)
-    .where(eq(barberBreaks.barberId, id))
+    .where(
+      and(
+        eq(barberBreaks.clientId, access.client.id),
+        eq(barberBreaks.barberId, id),
+      ),
+    )
     .orderBy(asc(barberBreaks.weekday), asc(barberBreaks.startTime));
   return Response.json({ breaks: rows });
 }
@@ -112,7 +117,14 @@ export async function PUT(
 
   // Replace the whole set atomically.
   await db.transaction(async (tx) => {
-    await tx.delete(barberBreaks).where(eq(barberBreaks.barberId, id));
+    await tx
+      .delete(barberBreaks)
+      .where(
+        and(
+          eq(barberBreaks.clientId, access.client.id),
+          eq(barberBreaks.barberId, id),
+        ),
+      );
     if (clean.length > 0) {
       await tx.insert(barberBreaks).values(clean);
     }
@@ -121,7 +133,12 @@ export async function PUT(
   const rows = await db
     .select()
     .from(barberBreaks)
-    .where(eq(barberBreaks.barberId, id))
+    .where(
+      and(
+        eq(barberBreaks.clientId, access.client.id),
+        eq(barberBreaks.barberId, id),
+      ),
+    )
     .orderBy(asc(barberBreaks.weekday), asc(barberBreaks.startTime));
   return Response.json({ breaks: rows });
 }

@@ -46,7 +46,12 @@ export async function GET(
   const rows = await db
     .select()
     .from(barberBlocks)
-    .where(eq(barberBlocks.barberId, id))
+    .where(
+      and(
+        eq(barberBlocks.clientId, access.client.id),
+        eq(barberBlocks.barberId, id),
+      ),
+    )
     .orderBy(asc(barberBlocks.date), asc(barberBlocks.startTime));
 
   const { searchParams } = new URL(req.url);
@@ -166,13 +171,28 @@ export async function DELETE(
   }
 
   // Scope the delete to the owned barber so a tenant can't delete another
-  // tenant's block by id-guessing.
+  // tenant's block by id-guessing. clientId added as defense-in-depth
+  // (consistent with the rest of the codebase) on top of the barberId
+  // ownership check above.
   const [row] = await db
     .select()
     .from(barberBlocks)
-    .where(and(eq(barberBlocks.id, blockId), eq(barberBlocks.barberId, id)));
+    .where(
+      and(
+        eq(barberBlocks.clientId, access.client.id),
+        eq(barberBlocks.id, blockId),
+        eq(barberBlocks.barberId, id),
+      ),
+    );
   if (!row) return Response.json({ error: 'No existe.' }, { status: 404 });
 
-  await db.delete(barberBlocks).where(eq(barberBlocks.id, blockId));
+  await db
+    .delete(barberBlocks)
+    .where(
+      and(
+        eq(barberBlocks.clientId, access.client.id),
+        eq(barberBlocks.id, blockId),
+      ),
+    );
   return Response.json({ ok: true });
 }
