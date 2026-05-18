@@ -4,17 +4,21 @@
 // informes": rail de iconos a la izquierda + BARRA DE PESTAÑAS HORIZONTAL,
 // cada pestaña = una pantalla que cabe en viewport, la página NUNCA scrollea).
 //
-// Un área = un tab del rail nivel-1. Sus pestañas = nivel-2 (rutas anidadas:
-// deep-link + botón atrás del navegador funcionan sin estado extra). La
-// pestaña `seg: null` es la ruta índice del área (pestaña por defecto).
+// Este fichero ES EL CONTRATO de IA (auditado contra el código real). NO se
+// improvisan pestañas: 7 áreas top-level, nombres estándar de software de
+// gestión. nav-config deriva de aquí; AreaTabs y el resaltado del rail
+// consumen esta misma lista — cero duplicación.
 //
-// Nomenclatura ESTÁNDAR — palabras que un barbero no técnico y cualquier
-// usuario de software de gestión reconoce al instante. Sin nombres de marca
-// "monos" (Caja→Ventas, Crecer→Marketing).
+//   Agenda     · Día · Semana · Importar
+//   Ventas     · Resumen · Cobros · Cierre de caja · Propinas · Facturas · Productos
+//   Clientes   · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
+//   Equipo     · Empleados · Turnos · Comisiones · Bonos · Competición
+//   Informes   · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
+//   Marketing  · Fidelidad · Promos · WhatsApp · Reseñas
+//   Ajustes    · Negocio · Pagos · Reservas online · Recepcionista IA · Suscripción · App · Ayuda
 //
-// Para añadir/cambiar una pestaña: edítalo AQUÍ + crea la ruta anidada. El
-// `<AreaTabs>` y el resaltado del rail consumen esta misma lista — cero
-// duplicación.
+// `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
+// viven fuera del nav del barbero.
 // -----------------------------------------------------------------------------
 
 import {
@@ -29,7 +33,7 @@ import {
 } from 'lucide-react'
 
 export interface AreaTab {
-  /** Segmento de ruta hija. `null` = ruta índice del área (pestaña por defecto). */
+  /** Segmento de ruta (para deep-link). `null` = ruta índice del área. */
   seg: string | null
   label: string
   /** Href absoluto al que navega la pestaña. */
@@ -51,22 +55,14 @@ export interface Area {
   tabs: AreaTab[]
   /**
    * Prefijos de ruta que pertenecen al área (resaltan el tab del rail).
-   * Incluye rutas legacy que aún viven fuera del slug raíz mientras se
-   * migran. El primero debe ser `/dashboard/<key>`.
+   * Incluye rutas legacy que aún viven fuera del slug raíz. El primero
+   * debe ser `/dashboard/<key>`.
    */
   prefixes: string[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Las 6 áreas. Orden = orden del rail (desktop) y bottom-nav (móvil).
-//
-//   Agenda     · diario    · operativa (cliente esperando)
-//   Ventas     · diario    · cobros · cierre de caja · facturas · productos
-//   Clientes   · semanal   · ficha cliente · fidelidad · reseñas
-//   Equipo     · mensual   · empleados · turnos · comisiones
-//   Informes   · semanal   · panel · ingresos · citas · clientes (stats)
-//   Marketing  · semanal   · promos · bot · tienda
-//   Ajustes    · raro      · negocio · facturación · app · plan
+// Las 7 áreas. Orden = orden del rail (desktop) y bottom-nav (móvil).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const AREAS: Area[] = [
@@ -75,7 +71,17 @@ export const AREAS: Area[] = [
     label: 'Agenda',
     icon: Calendar,
     href: '/dashboard/agenda',
-    tabs: [{ seg: null, label: 'Agenda', href: '/dashboard/agenda' }],
+    subtitle: 'Tu día y tu semana de un vistazo.',
+    // Día/Semana/Mes ya viven como conmutador NATIVO dentro de
+    // CalendarView (calendario operativo con drag&drop + SWR keyed por
+    // vista): es la misma funcionalidad "Día · Semana" del contrato,
+    // renderizada como toggle in-component, no como rutas (forzar rutas
+    // rompería el estado/DnD de un componente de ~1850 líneas). La barra
+    // de pestañas del área solo añade Importar como hermano navegable.
+    tabs: [
+      { seg: null, label: 'Calendario', href: '/dashboard/agenda' },
+      { seg: 'importar', label: 'Importar', href: '/dashboard/agenda/importar' },
+    ],
     prefixes: ['/dashboard/agenda'],
   },
   {
@@ -83,12 +89,14 @@ export const AREAS: Area[] = [
     label: 'Ventas',
     icon: ShoppingCart,
     href: '/dashboard/ventas',
-    subtitle: 'Cobros, cierre de caja y facturas del día.',
+    subtitle: 'Cobros, cierre de caja, propinas y facturas.',
     tabs: [
       { seg: null, label: 'Resumen', href: '/dashboard/ventas' },
-      { seg: 'caja', label: 'Cierre de caja', href: '/dashboard/ventas/caja' },
-      { seg: 'facturas', label: 'Facturas', href: '/dashboard/ventas/facturas' },
       { seg: 'cobros', label: 'Cobros', href: '/dashboard/ventas/cobros' },
+      { seg: 'caja', label: 'Cierre de caja', href: '/dashboard/ventas/caja' },
+      { seg: 'propinas', label: 'Propinas', href: '/dashboard/ventas/propinas' },
+      { seg: 'facturas', label: 'Facturas', href: '/dashboard/ventas/facturas' },
+      { seg: 'productos', label: 'Productos', href: '/dashboard/ventas/productos' },
     ],
     prefixes: [
       '/dashboard/ventas',
@@ -101,20 +109,12 @@ export const AREAS: Area[] = [
     label: 'Clientes',
     icon: Contact,
     href: '/dashboard/clientes',
-    subtitle: 'Ficha de cliente, fidelidad y reseñas.',
-    // Hrefs = rutas reales (hermanas legacy, sin migrar a nested para no
-    // arriesgar los enlaces internos). AreaTabs resuelve el activo por
-    // prefix-match del pathname, así que funciona igual.
+    subtitle: 'Tu cartera: quién no viene, quién falla, de dónde vienen.',
     tabs: [
-      { seg: null, label: 'Clientes', href: '/dashboard/clientes' },
-      { seg: 'fidelidad', label: 'Fidelidad', href: '/dashboard/fidelidad' },
-      { seg: 'resenas', label: 'Reseñas', href: '/dashboard/resenas' },
+      { seg: null, label: 'Lista', href: '/dashboard/clientes' },
+      { seg: 'atribucion', label: 'Atribución', href: '/dashboard/clientes/atribucion' },
     ],
-    prefixes: [
-      '/dashboard/clientes',
-      '/dashboard/fidelidad',
-      '/dashboard/resenas',
-    ],
+    prefixes: ['/dashboard/clientes'],
   },
   {
     key: 'equipo',
@@ -127,7 +127,7 @@ export const AREAS: Area[] = [
       { seg: 'turnos', label: 'Turnos', href: '/dashboard/equipo/turnos' },
       { seg: 'comisiones', label: 'Comisiones', href: '/dashboard/equipo/comisiones' },
       { seg: 'bonos', label: 'Bonos', href: '/dashboard/equipo/bonos' },
-      { seg: 'nominas', label: 'Nóminas', href: '/dashboard/equipo/nominas' },
+      { seg: 'competicion', label: 'Competición', href: '/dashboard/equipo/competicion' },
     ],
     prefixes: ['/dashboard/equipo'],
   },
@@ -136,13 +136,15 @@ export const AREAS: Area[] = [
     label: 'Informes',
     icon: BarChart3,
     href: '/dashboard/informes',
-    subtitle: 'Tu P&L real: ingresos, gastos, IVA y beneficio.',
-    // Una sola vista: el P&L. FinanzasClient es una herramienta
-    // autocontenida viewport-locked con header propio (mes + imprimir);
-    // no se tabula para no inventar datos ni operar sobre un componente
-    // de 91KB. Cuando existan reports Booksy (Ingresos/Citas/Clientes con
-    // sus queries) se añaden aquí como pestañas.
-    tabs: [{ seg: null, label: 'Panel', href: '/dashboard/informes' }],
+    subtitle: 'Tu negocio en números: P&L, ingresos, citas y clientes.',
+    tabs: [
+      { seg: null, label: 'Panel', href: '/dashboard/informes' },
+      { seg: 'ingresos', label: 'Ingresos', href: '/dashboard/informes/ingresos' },
+      { seg: 'citas', label: 'Citas', href: '/dashboard/informes/citas' },
+      { seg: 'clientes', label: 'Clientes', href: '/dashboard/informes/clientes' },
+      { seg: 'nominas', label: 'Nóminas', href: '/dashboard/informes/nominas' },
+      { seg: 'marketing', label: 'Marketing', href: '/dashboard/informes/marketing' },
+    ],
     prefixes: [
       '/dashboard/informes',
       '/dashboard/finanzas',
@@ -153,16 +155,19 @@ export const AREAS: Area[] = [
     label: 'Marketing',
     icon: Megaphone,
     href: '/dashboard/marketing',
-    subtitle: 'Promociones, bot de WhatsApp y tienda online.',
+    subtitle: 'Lo que hace que vuelvan: fidelidad, promos, bot y reseñas.',
     tabs: [
-      { seg: null, label: 'Promociones', href: '/dashboard/marketing' },
-      { seg: 'bot', label: 'Bot WhatsApp', href: '/dashboard/bot' },
-      { seg: 'tienda', label: 'Tienda', href: '/dashboard/marketing/tienda' },
+      { seg: null, label: 'Fidelidad', href: '/dashboard/marketing' },
+      { seg: 'promos', label: 'Promos', href: '/dashboard/marketing/promos' },
+      { seg: 'whatsapp', label: 'WhatsApp', href: '/dashboard/marketing/whatsapp' },
+      { seg: 'resenas', label: 'Reseñas', href: '/dashboard/marketing/resenas' },
     ],
     prefixes: [
       '/dashboard/marketing',
       '/dashboard/crecer',
       '/dashboard/bot',
+      '/dashboard/fidelidad',
+      '/dashboard/resenas',
     ],
   },
   {
@@ -171,14 +176,13 @@ export const AREAS: Area[] = [
     icon: Settings,
     href: '/dashboard/ajustes',
     subtitle: 'Configuración del negocio. Lo defines una vez y se queda así.',
-    // Hrefs = rutas reales (no nested aún). El índice es una rejilla de
-    // cards Booksy (09.53.25) que funciona como drill-down; las pestañas
-    // dan navegación directa al mismo destino.
     tabs: [
-      { seg: null, label: 'General', href: '/dashboard/ajustes' },
-      { seg: 'negocio', label: 'Negocio', href: '/dashboard/negocio' },
+      { seg: null, label: 'Negocio', href: '/dashboard/ajustes' },
+      { seg: 'pagos', label: 'Pagos', href: '/dashboard/ajustes/pagos' },
+      { seg: 'reservas', label: 'Reservas online', href: '/dashboard/ajustes/reservas' },
+      { seg: 'recepcionista', label: 'Recepcionista IA', href: '/dashboard/ajustes/recepcionista' },
+      { seg: 'suscripcion', label: 'Suscripción', href: '/dashboard/mi-plan' },
       { seg: 'app', label: 'App', href: '/dashboard/app' },
-      { seg: 'plan', label: 'Plan', href: '/dashboard/mi-plan' },
       { seg: 'ayuda', label: 'Ayuda', href: '/dashboard/ayuda' },
     ],
     prefixes: [
@@ -187,6 +191,7 @@ export const AREAS: Area[] = [
       '/dashboard/app',
       '/dashboard/mi-plan',
       '/dashboard/ayuda',
+      '/dashboard/voice-test',
     ],
   },
 ]

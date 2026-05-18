@@ -14,7 +14,6 @@ import {
   Lock,
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
-import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
 import GtmSettings from './GtmSettings'
@@ -127,28 +126,25 @@ export default async function AppPage() {
         </div>
       </section>
 
-      {/* Identity editor — full form (slug, logo upload, cover, color,
-          descripción, redes). Lives here now that "Mi app" is the single
-          home for the PWA; no more duplicate "Página pública" tab in
-          Mi negocio. */}
-      <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
-        <PublicPageSettings
-          initial={{
-            slug: client.publicSlug,
-            publicEnabled: client.publicEnabled,
-            brandLogoUrl: client.brandLogoUrl,
-            brandLogoAltUrl: client.brandLogoAltUrl,
-            brandCoverUrl: client.brandCoverUrl,
-            brandColor: client.brandColor,
-            brandTheme: client.brandTheme,
-            publicDescription: client.publicDescription,
-            instagramHandle: client.instagramHandle,
-            tiktokHandle: client.tiktokHandle,
-            facebookUrl: client.facebookUrl,
-            websiteUrl: client.websiteUrl,
-          }}
-        />
-      </section>
+      {/* La config de identidad de la página pública (slug, logo, color,
+          tema, descripción, redes) se gestiona ahora en Ajustes →
+          Reservas online — editor canónico único de esos campos (DRY).
+          Esta pestaña es solo la PWA: compartir, push y analítica. */}
+      <Link
+        href="/dashboard/ajustes/reservas"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 transition-colors hover:border-brand"
+      >
+        <div className="min-w-0">
+          <p className="text-[0.8125rem] font-semibold text-ink">
+            Personalizar la página de reservas
+          </p>
+          <p className="mt-0.5 text-[0.75rem] text-ink-2">
+            Logo, color, portada, descripción y redes — en Ajustes → Reservas
+            online.
+          </p>
+        </div>
+        <ExternalLink className="h-4 w-4 shrink-0 text-ink-2" aria-hidden="true" />
+      </Link>
 
       {/* Notifications */}
       <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">

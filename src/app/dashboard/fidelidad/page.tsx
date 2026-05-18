@@ -1,82 +1,11 @@
-export const dynamic = 'force-dynamic'
-
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
-import { db } from '@/db'
-import { clients } from '@/db/schema'
-import { eq } from 'drizzle-orm'
-import { auth } from '@/lib/auth/server'
-import { hasFeature } from '@/lib/billing/tier'
-import LoyaltySettings from '../_components/LoyaltySettings'
-import LoyaltyCustomerLookup from '../_components/LoyaltyCustomerLookup'
-import AreaShell from '../_components/AreaShell'
-import AreaContent from '../_components/AreaContent'
-import UpgradeRequired from '../_components/UpgradeRequired'
-import { Gift } from 'lucide-react'
-import type { LoyaltyConfig } from '@/lib/loyalty/types'
 
 // -----------------------------------------------------------------------------
-// /dashboard/fidelidad — Config de la tarjeta de fidelidad de la barbería.
-//
-// Server component ligero que carga el cliente autenticado + los servicios
-// disponibles (necesarios para picks de recompensa "un servicio gratis") y
-// delega toda la UI a <LoyaltySettings /> (client, se auto-guarda via PATCH
-// /api/loyalty/config — mismo patrón que TipsSettings).
+// /dashboard/fidelidad — RUTA LEGACY. La tarjeta de fidelidad es ahora la
+// pestaña índice del área Marketing (/dashboard/marketing). Redirect 1:1
+// para no romper deep-links ni enlaces internos (patrón SaaS estándar).
 // -----------------------------------------------------------------------------
 
-interface ServiceRow {
-  name: string
-  duration?: number | string
-  price?: number | string
-}
-
-export default async function FidelidadPage() {
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user?.email) redirect('/login')
-
-  const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
-  if (!client) redirect('/dashboard/setup')
-
-  if (!hasFeature(client, 'loyaltyAdvanced')) {
-    return (
-      <UpgradeRequired
-        feature="loyaltyAdvanced"
-        title="Fidelidad"
-        icon={Gift}
-        back={{ label: 'Clientes', href: '/dashboard/clientes' }}
-      />
-    )
-  }
-
-  const rawServices = (client.chatbotServices ?? []) as ServiceRow[]
-  const serviceNames = Array.isArray(rawServices)
-    ? rawServices
-        .map((s) => (typeof s?.name === 'string' ? s.name.trim() : ''))
-        .filter((n): n is string => n.length > 0)
-    : []
-
-  return (
-    <AreaShell area="clientes">
-      <AreaContent scroll="region" maxWidth="5xl">
-        <p
-          className="text-ink-2 mb-4"
-          style={{ fontSize: 'var(--text-meta)' }}
-        >
-          Premia a tus clientes recurrentes. Tú eliges las reglas: al décimo
-          corte, puntos por euro gastado, lo que funcione en tu barbería.
-        </p>
-
-        <LoyaltySettings
-          initial={{
-            enabled: client.loyaltyEnabled,
-            mode: (client.loyaltyMode as 'stamps' | 'points') ?? 'stamps',
-            config: client.loyaltyConfig as unknown as LoyaltyConfig | null,
-          }}
-          availableServices={serviceNames}
-        />
-
-        <LoyaltyCustomerLookup enabled={client.loyaltyEnabled} />
-      </AreaContent>
-    </AreaShell>
-  )
+export default function FidelidadLegacyRedirect() {
+  redirect('/dashboard/marketing')
 }

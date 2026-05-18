@@ -10,6 +10,7 @@ import { hasFeature } from '@/lib/billing/tier'
 import { TrendingUp } from 'lucide-react'
 import FinanzasClient from '../finanzas/FinanzasClient'
 import UpgradeRequired from '../_components/UpgradeRequired'
+import AreaTabs from '../_components/AreaTabs'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
 
 // -----------------------------------------------------------------------------
@@ -232,18 +233,38 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     createdAt: m.createdAt.toISOString(),
   }))
 
+  // Panel = el P&L (FinanzasClient autocontenido viewport-locked). No se
+  // envuelve en AreaShell para no duplicar su header/scroll; en su lugar se
+  // antepone una barra de pestañas fina (shrink-0) para que el contrato de
+  // IA (Panel·Ingresos·Citas·Clientes·Nóminas·Marketing) sea navegable, y
+  // FinanzasClient rellena el resto con su propio shell. LÓGICA INTACTA.
   return (
-    <FinanzasClient
-      initialMonth={month}
-      initialSummary={initialSummary}
-      initialExpenses={serializedExpenses}
-      initialFixedCosts={serializedFixedCosts}
-      initialWithdrawals={serializedWithdrawals}
-      initialManualIncomes={serializedManualIncomes}
-      initialServiciosCount={serviciosCount}
-      initialTicketMedioCents={ticketMedioCents}
-      initialCategoryTotals={categoryTotals}
-      initialPrevIngresosCents={prevIngresosCents}
-    />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
+      <div className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)] pt-[var(--space-card)]">
+        <div className="flex items-baseline justify-between gap-4 pb-3">
+          <h1
+            className="font-semibold leading-tight text-ink"
+            style={{ fontSize: 'var(--text-page-title)' }}
+          >
+            Informes
+          </h1>
+        </div>
+        <AreaTabs area="informes" />
+      </div>
+      <div className="min-h-0 flex-1">
+        <FinanzasClient
+          initialMonth={month}
+          initialSummary={initialSummary}
+          initialExpenses={serializedExpenses}
+          initialFixedCosts={serializedFixedCosts}
+          initialWithdrawals={serializedWithdrawals}
+          initialManualIncomes={serializedManualIncomes}
+          initialServiciosCount={serviciosCount}
+          initialTicketMedioCents={ticketMedioCents}
+          initialCategoryTotals={categoryTotals}
+          initialPrevIngresosCents={prevIngresosCents}
+        />
+      </div>
+    </div>
   )
 }

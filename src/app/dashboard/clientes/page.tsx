@@ -25,7 +25,6 @@ import AreaContent from '@/app/dashboard/_components/AreaContent'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import SearchAndSort from './SearchAndSort'
 import CustomerContactActions from './CustomerContactActions'
-import SourceBreakdown from './SourceBreakdown'
 
 // -----------------------------------------------------------------------------
 // /dashboard/clientes — listado accionable de clientes de la barbería.
@@ -204,23 +203,9 @@ export default async function ClientesPage({ searchParams }: Props) {
     rows: Array<{ total: number; inactivos: number; noshows: number; bloqueados: number }>
   }).rows[0] ?? { total: 0, inactivos: 0, noshows: 0, bloqueados: 0 }
 
-  // Breakdown de origen — sólo customers cuya FIRST visit cae en los
-  // últimos 30 días. "Cómo llegan AHORA", no histórico total. Pre-attribution
-  // (first_source IS NULL) se excluye porque no aporta info accionable.
-  const sourceResult = await db.execute(sql`
-    SELECT first_source AS source, COUNT(*)::int AS count
-    FROM ${customers}
-    WHERE client_id = ${client.id}
-      AND first_source IS NOT NULL
-      AND first_source_captured_at IS NOT NULL
-      AND first_source_captured_at >= NOW() - INTERVAL '30 days'
-    GROUP BY first_source
-    ORDER BY COUNT(*) DESC
-  `)
-  const sourceRows = (sourceResult as unknown as { rows: Array<{ source: string; count: number }> })
-    .rows
-    .map((r) => ({ source: r.source, count: Number(r.count) }))
-  const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
+  // El breakdown de origen (atribución) se movió a su propia pestaña
+  // /dashboard/clientes/atribucion (contrato de IA) — esta vista es solo
+  // la Lista accionable.
 
   return (
     <AreaShell area="clientes">
@@ -229,10 +214,6 @@ export default async function ClientesPage({ searchParams }: Props) {
         Quién no viene · quién falla · quién está bloqueado.{' '}
         <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Ventas.</span>
       </p>
-
-      {/* Breakdown de origen — accionable: "¿de dónde me vienen los clientes
-          nuevos?" → decide en qué canal invertir. */}
-      <SourceBreakdown items={sourceRows} total={sourceTotal} />
 
       {/* Buscador + ordenar (la búsqueda es para el caso raro de lookup
           puntual; el barbero llega a un cliente normalmente desde la cita
