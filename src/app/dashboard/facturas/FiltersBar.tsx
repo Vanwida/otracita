@@ -23,13 +23,21 @@ function formatMonth(month: string): string {
   return `${MONTH_NAMES[idx] ?? m} ${y}`
 }
 
-function buildHref(params: Record<string, string | undefined>): string {
+// basePath default = ruta legacy. La pestaña Ventas→Facturas pasa
+// '/dashboard/ventas/facturas' para que los filtros naveguen dentro del
+// área tabulada sin duplicar este componente (DRY).
+const DEFAULT_BASE = '/dashboard/facturas'
+
+function buildHref(
+  params: Record<string, string | undefined>,
+  basePath: string = DEFAULT_BASE,
+): string {
   const p = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (v && v !== 'all') p.set(k, v)
   }
   const query = p.toString()
-  return `/dashboard/facturas${query ? `?${query}` : ''}`
+  return `${basePath}${query ? `?${query}` : ''}`
 }
 
 // -----------------------------------------------------------------------------
@@ -38,10 +46,12 @@ export function MonthSelect({
   currentMonth,
   currentType,
   showVoided,
+  basePath,
 }: {
   currentMonth: string
   currentType?: string
   showVoided?: boolean
+  basePath?: string
 }) {
   const now = new Date()
   const options: DropdownOption[] = []
@@ -51,11 +61,14 @@ export function MonthSelect({
     options.push({
       value,
       label: formatMonth(value),
-      href: buildHref({
-        month: value,
-        type: currentType,
-        showVoided: showVoided ? '1' : undefined,
-      }),
+      href: buildHref(
+        {
+          month: value,
+          type: currentType,
+          showVoided: showVoided ? '1' : undefined,
+        },
+        basePath,
+      ),
     })
   }
   return <DropdownMenu label="Mes" options={options} selected={currentMonth} minWidth="11rem" />
@@ -72,37 +85,48 @@ export function TypeSelect({
   currentType,
   currentMonth,
   showVoided,
+  basePath,
 }: {
   currentType: string
   currentMonth: string
   showVoided: boolean
+  basePath?: string
 }) {
   const options: DropdownOption[] = [
     {
       value: 'all',
       label: 'Todos los tipos',
-      href: buildHref({
-        month: currentMonth,
-        showVoided: showVoided ? '1' : undefined,
-      }),
+      href: buildHref(
+        {
+          month: currentMonth,
+          showVoided: showVoided ? '1' : undefined,
+        },
+        basePath,
+      ),
     },
     {
       value: 'ticket',
       label: 'Tickets',
-      href: buildHref({
-        month: currentMonth,
-        type: 'ticket',
-        showVoided: showVoided ? '1' : undefined,
-      }),
+      href: buildHref(
+        {
+          month: currentMonth,
+          type: 'ticket',
+          showVoided: showVoided ? '1' : undefined,
+        },
+        basePath,
+      ),
     },
     {
       value: 'invoice',
       label: 'Facturas',
-      href: buildHref({
-        month: currentMonth,
-        type: 'invoice',
-        showVoided: showVoided ? '1' : undefined,
-      }),
+      href: buildHref(
+        {
+          month: currentMonth,
+          type: 'invoice',
+          showVoided: showVoided ? '1' : undefined,
+        },
+        basePath,
+      ),
     },
   ]
   return <DropdownMenu label="Tipo" options={options} selected={currentType} minWidth="10rem" />
@@ -114,13 +138,15 @@ export function VoidedToggle({
   month,
   typeFilter,
   showVoided,
+  basePath,
 }: {
   month: string
   typeFilter: string
   showVoided: boolean
+  basePath?: string
 }) {
-  const off = buildHref({ month, type: typeFilter })
-  const on = buildHref({ month, type: typeFilter, showVoided: '1' })
+  const off = buildHref({ month, type: typeFilter }, basePath)
+  const on = buildHref({ month, type: typeFilter, showVoided: '1' }, basePath)
   return (
     <Link
       href={showVoided ? off : on}

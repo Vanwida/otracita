@@ -10,18 +10,28 @@
 
 export default function DashboardLoading() {
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto animate-pulse">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="h-8 w-48 bg-overlay rounded-lg mb-3" />
-        <div className="h-4 w-80 bg-overlay/60 rounded" />
-      </div>
-      {/* Card grid */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="h-32 bg-overlay rounded-2xl" />
-        <div className="h-32 bg-overlay rounded-2xl" />
-        <div className="h-32 bg-overlay rounded-2xl" />
-        <div className="h-32 bg-overlay rounded-2xl" />
+    <div className="h-full flex flex-col overflow-hidden bg-canvas animate-pulse">
+      {/* Header compacto fijo — mismo esqueleto que el header real
+          viewport-locked (shrink-0), evita salto al resolver. */}
+      <header
+        className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)]"
+        style={{ paddingTop: 'var(--space-card)', paddingBottom: 'var(--space-card)' }}
+      >
+        <div className="max-w-5xl mx-auto">
+          <div className="h-5 w-44 bg-overlay rounded-md" />
+          <div className="h-3 w-72 bg-overlay/60 rounded mt-1.5" />
+        </div>
+      </header>
+      {/* Cuerpo scrolleable */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-5xl mx-auto" style={{ padding: 'var(--space-page)' }}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="h-28 bg-overlay rounded-control" />
+            <div className="h-28 bg-overlay rounded-control" />
+            <div className="h-28 bg-overlay rounded-control" />
+            <div className="h-28 bg-overlay rounded-control" />
+          </div>
+        </div>
       </div>
     </div>
   )

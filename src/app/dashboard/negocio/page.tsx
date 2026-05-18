@@ -8,7 +8,8 @@ import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import NegocioForm from '@/app/dashboard/_components/NegocioForm'
 import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 
 interface ServiceItem {
   name: string
@@ -90,11 +91,11 @@ export default async function NegocioPage() {
   }
 
   return (
-    <PageShell
-      title="Tu barbería"
-      subtitle="Datos, servicios, equipo y horario con los que opera tu asistente."
-      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
-    >
+    <AreaShell area="ajustes">
+      <AreaContent scroll="region" maxWidth="5xl">
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Datos, servicios, equipo y horario con los que opera tu asistente.
+      </p>
       <NegocioForm
         clientId={client.id}
         initial={{
@@ -109,6 +110,7 @@ export default async function NegocioPage() {
         }}
         save={saveBusiness}
       />
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }

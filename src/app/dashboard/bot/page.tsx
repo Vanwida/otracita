@@ -7,7 +7,8 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import {
   Bot,
@@ -48,7 +49,7 @@ export default async function BotPage() {
         feature="whatsappBot"
         title="Bot WhatsApp"
         icon={Bot}
-        back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+        back={{ label: 'Marketing', href: '/dashboard/marketing' }}
       />
     )
   }
@@ -105,12 +106,12 @@ export default async function BotPage() {
   }
 
   return (
-    <PageShell
-      title="Asistente WhatsApp"
-      subtitle="Cómo se presenta y responde por WhatsApp. Todo aplica a partir del siguiente mensaje que reciba."
-      maxWidth="4xl"
-      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
-    >
+    <AreaShell area="marketing">
+      <AreaContent scroll="region" maxWidth="5xl">
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Cómo se presenta y responde por WhatsApp. Todo aplica a partir del
+        siguiente mensaje que reciba.
+      </p>
       <form action={saveBotSettings} className="space-y-6">
         {/* ─── Identidad ───────────────────────────────────────── */}
         <Card icon={User} title="Identidad">
@@ -186,7 +187,8 @@ export default async function BotPage() {
           </button>
         </div>
       </form>
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
 

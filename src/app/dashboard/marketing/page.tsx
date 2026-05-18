@@ -7,9 +7,9 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
-import Link from 'next/link'
-import { Megaphone, Repeat, Cake, ShoppingBag, ChevronRight } from 'lucide-react'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import { Megaphone, Repeat, Cake } from 'lucide-react'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import PromosToggle from './PromosToggle'
 
@@ -41,42 +41,17 @@ export default async function MarketingPage() {
         feature="promosContextuales"
         title="Marketing"
         icon={Megaphone}
-        back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+        back={{ label: 'Inicio', href: '/dashboard' }}
       />
     )
   }
 
   return (
-    <PageShell
-      title="Marketing"
-      subtitle="Llena huecos. Trae a los que no vienen. Vende más en mostrador."
-      maxWidth="4xl"
-      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
-    >
-      {/* Features live */}
+    <AreaShell area="marketing">
+      <AreaContent scroll="region" maxWidth="5xl">
+      {/* Features live — la Tienda es ahora su propia pestaña del área. */}
       <section className="mb-6 space-y-4">
         <PromosToggle initialEnabled={client.promosEnabled} />
-
-        {/* Tienda de productos — feature live (modelo manual: el barbero
-            registra venta al cobrar). Tienda online en /b/[slug] queda
-            para fase futura. */}
-        <Link
-          href="/dashboard/marketing/tienda"
-          className="group flex items-start gap-4 bg-surface border border-line hover:border-line-strong rounded-2xl p-5 md:p-6 transition-colors"
-        >
-          <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-brand-softer text-brand-strong">
-            <ShoppingBag className="h-5 w-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-ink">Tienda de productos</h3>
-            <p className="text-sm text-ink-2 mt-1">
-              Da de alta lo que vendes en mostrador (champú, ceras, peines...).
-              Al cobrar, registras la venta desde la agenda y se atribuye al barbero
-              que la hace. Aparece en Caja como upsells.
-            </p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-ink-3 mt-2 shrink-0 group-hover:text-ink transition-colors" />
-        </Link>
       </section>
 
       {/* Roadmap — placeholders honestos para que el barbero vea qué viene */}
@@ -100,7 +75,8 @@ export default async function MarketingPage() {
           />
         </div>
       </section>
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
 

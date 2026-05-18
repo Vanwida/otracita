@@ -9,7 +9,8 @@ import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import LoyaltySettings from '../_components/LoyaltySettings'
 import LoyaltyCustomerLookup from '../_components/LoyaltyCustomerLookup'
-import PageShell from '../_components/PageShell'
+import AreaShell from '../_components/AreaShell'
+import AreaContent from '../_components/AreaContent'
 import UpgradeRequired from '../_components/UpgradeRequired'
 import { Gift } from 'lucide-react'
 import type { LoyaltyConfig } from '@/lib/loyalty/types'
@@ -40,9 +41,9 @@ export default async function FidelidadPage() {
     return (
       <UpgradeRequired
         feature="loyaltyAdvanced"
-        title="Fidelización"
+        title="Fidelidad"
         icon={Gift}
-        back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+        back={{ label: 'Clientes', href: '/dashboard/clientes' }}
       />
     )
   }
@@ -55,26 +56,27 @@ export default async function FidelidadPage() {
     : []
 
   return (
-    <PageShell
-      title="Tarjeta de fidelización"
-      maxWidth="4xl"
-      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
-    >
-      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
-        Premia a tus clientes recurrentes. Tú eliges las reglas: al décimo
-        corte, puntos por euro gastado, lo que funcione en tu barbería.
-      </p>
+    <AreaShell area="clientes">
+      <AreaContent scroll="region" maxWidth="5xl">
+        <p
+          className="text-ink-2 mb-4"
+          style={{ fontSize: 'var(--text-meta)' }}
+        >
+          Premia a tus clientes recurrentes. Tú eliges las reglas: al décimo
+          corte, puntos por euro gastado, lo que funcione en tu barbería.
+        </p>
 
-      <LoyaltySettings
-        initial={{
-          enabled: client.loyaltyEnabled,
-          mode: (client.loyaltyMode as 'stamps' | 'points') ?? 'stamps',
-          config: client.loyaltyConfig as unknown as LoyaltyConfig | null,
-        }}
-        availableServices={serviceNames}
-      />
+        <LoyaltySettings
+          initial={{
+            enabled: client.loyaltyEnabled,
+            mode: (client.loyaltyMode as 'stamps' | 'points') ?? 'stamps',
+            config: client.loyaltyConfig as unknown as LoyaltyConfig | null,
+          }}
+          availableServices={serviceNames}
+        />
 
-      <LoyaltyCustomerLookup enabled={client.loyaltyEnabled} />
-    </PageShell>
+        <LoyaltyCustomerLookup enabled={client.loyaltyEnabled} />
+      </AreaContent>
+    </AreaShell>
   )
 }

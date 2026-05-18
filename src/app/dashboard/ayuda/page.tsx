@@ -1,6 +1,7 @@
 import { MessageCircle, Mail, HelpCircle, ExternalLink, ChevronDown } from 'lucide-react'
 import { HELP_SECTIONS } from '@/lib/help-faqs'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 
 // Centralised so the Ayuda page mirrors the chat widget contact details.
 const SUPPORT_WHATSAPP = '+34 644 288 663'
@@ -39,11 +40,8 @@ function renderAnswer(text: string): React.ReactNode[] {
 
 export default function AyudaPage() {
   return (
-    <PageShell
-      title="Ayuda"
-      maxWidth="4xl"
-      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
-    >
+    <AreaShell area="ajustes">
+      <AreaContent scroll="region" maxWidth="5xl">
       <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
         Tu primer puerto: el chat-widget (abajo a la derecha) responde cualquier duda usando la misma base que ves aquí.
         Si no encuentras respuesta, escríbenos por WhatsApp.
@@ -118,6 +116,7 @@ export default function AyudaPage() {
           </section>
         ))}
       </div>
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
