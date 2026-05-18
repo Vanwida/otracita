@@ -133,13 +133,13 @@ export const AREAS: Area[] = [
     label: 'Informes',
     icon: BarChart3,
     href: '/dashboard/informes',
-    subtitle: 'Tu negocio en números: ingresos, citas y clientes.',
-    tabs: [
-      { seg: null, label: 'Panel', href: '/dashboard/informes' },
-      { seg: 'ingresos', label: 'Ingresos', href: '/dashboard/informes/ingresos' },
-      { seg: 'citas', label: 'Citas', href: '/dashboard/informes/citas' },
-      { seg: 'clientes', label: 'Clientes', href: '/dashboard/informes/clientes' },
-    ],
+    subtitle: 'Tu P&L real: ingresos, gastos, IVA y beneficio.',
+    // Una sola vista: el P&L. FinanzasClient es una herramienta
+    // autocontenida viewport-locked con header propio (mes + imprimir);
+    // no se tabula para no inventar datos ni operar sobre un componente
+    // de 91KB. Cuando existan reports Booksy (Ingresos/Citas/Clientes con
+    // sus queries) se añaden aquí como pestañas.
+    tabs: [{ seg: null, label: 'Panel', href: '/dashboard/informes' }],
     prefixes: [
       '/dashboard/informes',
       '/dashboard/finanzas',

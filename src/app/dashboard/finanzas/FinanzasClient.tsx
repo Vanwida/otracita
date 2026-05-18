@@ -706,11 +706,11 @@ export default function FinanzasClient({
       >
         <div className="max-w-2xl mx-auto">
         <Link
-          href="/dashboard/caja"
+          href="/dashboard/ventas"
           className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-1.5 transition-colors"
         >
           <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-          Caja
+          Ventas
         </Link>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-1">
