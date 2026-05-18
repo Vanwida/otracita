@@ -52,6 +52,9 @@ interface Props {
   /** barberId is the canonical id of the clicked column (null for the
    *  "Sin asignar" fallback / single-column shops). */
   onSlotClick: (date: string, time: string, barberId: string | null) => void;
+  /** Clic en la CABECERA de una columna de barbero → menú de acciones
+   *  (editar horario · ausencia · falta disp. · qué ha hecho). Fix #2. */
+  onBarberClick: (barber: Barber) => void;
   /**
    * Drag&drop: el usuario soltó la cita `id` en una nueva (date,time) y/o
    * columna de barbero. barberId=null → columna "Sin asignar" (mantener
@@ -86,6 +89,7 @@ export default function DayGrid({
   hours,
   onEventClick,
   onSlotClick,
+  onBarberClick,
   onEventMove,
 }: Props) {
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
@@ -288,33 +292,54 @@ export default function DayGrid({
                     opaco, así que ahora tapa correctamente las citas que
                     suben. La esquina sup-izq (gutter spacer) va a z-50 para
                     quedar sobre las cabeceras al scrollear en ambos ejes. */}
-                <div className="h-[var(--agenda-col-header-h)] flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-40">
-                  <span
-                    className="absolute top-0 left-0 right-0 h-[3px]"
-                    style={{ backgroundColor: colColor }}
-                    aria-hidden="true"
-                  />
-                  {col.barber?.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={col.barber.photoUrl}
-                      alt=""
-                      className="h-7 w-7 rounded-full object-cover ring-2 shrink-0"
-                      style={{ ['--tw-ring-color' as string]: colColor }}
-                    />
-                  ) : (
-                    <span
-                      className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: colColor }}
-                      aria-hidden="true"
+                {(() => {
+                  const headerInner = (
+                    <>
+                      <span
+                        className="absolute top-0 left-0 right-0 h-[3px]"
+                        style={{ backgroundColor: colColor }}
+                        aria-hidden="true"
+                      />
+                      {col.barber?.photoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={col.barber.photoUrl}
+                          alt=""
+                          className="h-7 w-7 rounded-full object-cover ring-2 shrink-0"
+                          style={{ ['--tw-ring-color' as string]: colColor }}
+                        />
+                      ) : (
+                        <span
+                          className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                          style={{ backgroundColor: colColor }}
+                          aria-hidden="true"
+                        >
+                          {col.barber ? initials(col.barber.name) : '∅'}
+                        </span>
+                      )}
+                      <span className="text-[11px] font-bold text-ink-2 truncate max-w-full leading-none">
+                        {col.label}
+                      </span>
+                    </>
+                  );
+                  const headerClass =
+                    'h-[var(--agenda-col-header-h)] w-full flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-40';
+                  // Clic en la cabecera → menú de acciones del barbero
+                  // (fix #2). Solo si la columna mapea a un barbero real
+                  // (la fallback "Sin asignar"/"Todos" no es accionable).
+                  return col.barber ? (
+                    <button
+                      type="button"
+                      onClick={() => onBarberClick(col.barber!)}
+                      aria-label={`Acciones de ${col.barber.name}`}
+                      className={`${headerClass} cursor-pointer hover:bg-overlay/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand transition-colors`}
                     >
-                      {col.barber ? initials(col.barber.name) : '∅'}
-                    </span>
-                  )}
-                  <span className="text-[11px] font-bold text-ink-2 truncate max-w-full leading-none">
-                    {col.label}
-                  </span>
-                </div>
+                      {headerInner}
+                    </button>
+                  ) : (
+                    <div className={headerClass}>{headerInner}</div>
+                  );
+                })()}
 
                 {/* Column body — también drop target del drag&drop. */}
                 <div
