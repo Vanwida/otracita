@@ -11,17 +11,20 @@ import { requireFeature } from '@/lib/billing/tier'
 // del equipo puede acumular progreso hacia cualquier bono activo.
 //
 // GET  → lista todos los bonos del tenant.
-// POST → crea uno { name, unit, target, rewardCents }.
+// POST → crea uno { name, kind, unit, target, rewardCents }.
 //
+// `kind` (R9): 'meta' (todo-o-nada, default) | 'tramo' (proporcional).
 // `target`:
 //   · unit='units'  → entero (reseñas, cortes, etc.). Mínimo 1.
 //   · unit='euros'  → cents (multiplicar por 100 en el form).
 // -----------------------------------------------------------------------------
 
 const VALID_UNITS = new Set(['units', 'euros'])
+const VALID_KINDS = new Set(['meta', 'tramo'])
 
 interface CreateBody {
   name?: unknown
+  kind?: unknown
   unit?: unknown
   target?: unknown
   rewardCents?: unknown
@@ -37,6 +40,7 @@ export async function GET(request: Request) {
     .select({
       id: bonuses.id,
       name: bonuses.name,
+      kind: bonuses.kind,
       unit: bonuses.unit,
       target: bonuses.target,
       rewardCents: bonuses.rewardCents,
@@ -63,11 +67,13 @@ export async function POST(request: Request) {
   }
 
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : ''
+  const kind = typeof body.kind === 'string' && body.kind ? body.kind : 'meta'
   const unit = typeof body.unit === 'string' ? body.unit : ''
   const target = typeof body.target === 'number' ? Math.round(body.target) : NaN
   const rewardCents = typeof body.rewardCents === 'number' ? Math.round(body.rewardCents) : NaN
 
   if (!name) return Response.json({ error: 'Nombre requerido' }, { status: 400 })
+  if (!VALID_KINDS.has(kind)) return Response.json({ error: 'kind debe ser meta|tramo' }, { status: 400 })
   if (!VALID_UNITS.has(unit)) return Response.json({ error: 'unit debe ser units|euros' }, { status: 400 })
   if (!Number.isFinite(target) || target < 1) return Response.json({ error: 'target debe ser ≥ 1' }, { status: 400 })
   if (!Number.isFinite(rewardCents) || rewardCents < 0) {
@@ -79,6 +85,7 @@ export async function POST(request: Request) {
     .values({
       clientId: access.client.id,
       name,
+      kind,
       unit,
       target,
       rewardCents,

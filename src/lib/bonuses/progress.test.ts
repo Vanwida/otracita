@@ -53,6 +53,40 @@ describe('computeBonusProgress', () => {
   })
 })
 
+describe('computeBonusProgress — R9 kind', () => {
+  it("kind omitido ≡ 'meta' (no-regresión: paga solo si reached)", () => {
+    const pending = computeBonusProgress({ unit: 'units', target: 20, rewardCents: 5000, entries: [10] })
+    assert.equal(pending.payoutCents, 0)
+    const reached = computeBonusProgress({ unit: 'units', target: 20, rewardCents: 5000, entries: [20] })
+    assert.equal(reached.payoutCents, 5000)
+  })
+
+  it("kind='meta' explícito = mismo todo-o-nada", () => {
+    const r = computeBonusProgress({ unit: 'units', kind: 'meta', target: 20, rewardCents: 5000, entries: [19] })
+    assert.equal(r.status, 'pending')
+    assert.equal(r.payoutCents, 0)
+  })
+
+  it("kind='tramo' paga proporcional al pct aunque no llegue", () => {
+    // 50% de progreso → 50% de 5000 = 2500
+    const r = computeBonusProgress({ unit: 'units', kind: 'tramo', target: 20, rewardCents: 5000, entries: [10] })
+    assert.equal(r.pct, 50)
+    assert.equal(r.status, 'pending')
+    assert.equal(r.payoutCents, 2500)
+  })
+
+  it("kind='tramo' capado a rewardCents al pasarse del objetivo", () => {
+    const r = computeBonusProgress({ unit: 'units', kind: 'tramo', target: 10, rewardCents: 1000, entries: [50] })
+    assert.equal(r.pct, 100)
+    assert.equal(r.payoutCents, 1000)
+  })
+
+  it("kind='tramo' con 0 progreso → 0", () => {
+    const r = computeBonusProgress({ unit: 'units', kind: 'tramo', target: 20, rewardCents: 5000, entries: [] })
+    assert.equal(r.payoutCents, 0)
+  })
+})
+
 describe('formatBonusValue', () => {
   it('units → string plano', () => {
     assert.equal(formatBonusValue(20, 'units'), '20')

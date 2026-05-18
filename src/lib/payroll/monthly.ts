@@ -11,7 +11,7 @@ import {
 import { and, eq, gte, lt, sum, sql } from 'drizzle-orm'
 import { computeBarberPayroll, isProfileConfigured } from './compute'
 import type { BarberSalaryProfile, BarberMonthRaw, PayrollBreakdown, SalaryType } from './types'
-import { computeBonusProgress, type BonusUnit } from '@/lib/bonuses/progress'
+import { computeBonusProgress, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
 import {
   computeServicesCommissionCents,
   type ServiceRevenueRow,
@@ -215,6 +215,7 @@ export async function computeMonthlyPayroll(
       const progress = progressMap.get(`${bonus.id}|${barber.id}`) ?? 0
       const r = computeBonusProgress({
         unit: bonus.unit as BonusUnit,
+        kind: bonus.kind as BonusKind,
         target: bonus.target,
         rewardCents: bonus.rewardCents,
         entries: [progress],

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import { Award, Check, Loader2, CheckCircle2, Info } from 'lucide-react'
 import Link from 'next/link'
-import { computeBonusProgress, formatBonusValue, type BonusUnit } from '@/lib/bonuses/progress'
+import { computeBonusProgress, formatBonusValue, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
 
 // -----------------------------------------------------------------------------
 // BonusTracker — vista única que combina progreso del mes + log diario.
@@ -22,6 +22,7 @@ import { computeBonusProgress, formatBonusValue, type BonusUnit } from '@/lib/bo
 interface BonusRow {
   id: string
   name: string
+  kind: BonusKind
   unit: BonusUnit
   target: number
   rewardCents: number
@@ -128,6 +129,7 @@ export default function BonusTracker() {
       const progress = progressMap.get(`${bonus.id}|${barber.id}`) ?? 0
       const r = computeBonusProgress({
         unit: bonus.unit,
+        kind: bonus.kind,
         target: bonus.target,
         rewardCents: bonus.rewardCents,
         entries: [progress],
@@ -235,6 +237,7 @@ export default function BonusTracker() {
                 const progress = progressMap.get(`${bonus.id}|${barber.id}`) ?? 0
                 const summary = computeBonusProgress({
                   unit: bonus.unit,
+                  kind: bonus.kind,
                   target: bonus.target,
                   rewardCents: bonus.rewardCents,
                   entries: [progress],
