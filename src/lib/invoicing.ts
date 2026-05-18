@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { clients, bookings, invoices, invoiceItems, productSales } from '@/db/schema';
+import { clients, bookings, bookingServices, invoices, invoiceItems, productSales } from '@/db/schema';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { notifyAlex } from '@/lib/notify-alex';
 import { chainRegistroAlta, getEmisorNif } from '@/lib/verifactu/chain';
@@ -157,6 +157,32 @@ export async function generateInvoiceFromBooking(
           name: booking.service,
           quantity: 1,
           unitPriceCents: Math.round(booking.price * 100),
+        },
+        client.ivaRate,
+      ),
+    );
+  }
+
+  // Servicios EXTRA (R7) — una línea por servicio adicional. El principal va
+  // arriba desde booking.price; estos vienen de booking_services. Si no hay
+  // (caso normal: bot/voice/import o cita simple) este SELECT devuelve [] y
+  // el comportamiento es idéntico al de antes. priceEuros está en EUROS
+  // (mismo foot-gun que bookings.price) → ×100 a céntimos.
+  const extraServiceRows = await db
+    .select()
+    .from(bookingServices)
+    .where(eq(bookingServices.bookingId, bookingId))
+    .orderBy(bookingServices.displayOrder);
+
+  for (const ex of extraServiceRows) {
+    if (ex.priceEuros == null || ex.priceEuros <= 0) continue;
+    lines.push(
+      buildLineItem(
+        {
+          kind: 'service',
+          name: ex.name,
+          quantity: 1,
+          unitPriceCents: Math.round(ex.priceEuros * 100),
         },
         client.ivaRate,
       ),
