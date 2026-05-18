@@ -18,9 +18,16 @@ import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 //
 // Campos aceptados:
 //   · barberId (string | null)   → reasignar a otro barbero (o "cualquiera")
+//   · date (YYYY-MM-DD)          → mover la cita de día (drag&drop / manual)
+//   · time (HH:MM)               → mover la cita de hora (drag&drop / manual)
 //   · status ('cancelled'        → cancelar
 //             | 'completed')     → cerrar cita: dispara auto-facturación
 //                                  (servicio + productos vendidos)
+//
+// date/time/barberId se pueden combinar libremente (mover hora, barbero,
+// o ambos). La re-validación de solape corre UNA vez contra los valores
+// FINALES (destino), reusando la misma lógica de clash `s < be && e > bs`.
+// R1/R3: snap a 5 min lo hace el cliente; el servidor acepta cualquier HH:MM.
 //
 // Transiciones permitidas para `status`:
 //   confirmed → completed   (botón "Marcar como completada" en agenda)
@@ -55,6 +62,8 @@ export async function PATCH(
 
   let body: {
     barberId?: unknown
+    date?: unknown
+    time?: unknown
     status?: unknown
     notify?: unknown
     notifyMessage?: unknown
@@ -109,11 +118,47 @@ export async function PATCH(
     patch.status = body.status
   }
 
-  // ── Reassign barber ──────────────────────────────────────────────────
+  // ── Mover (date/time) + reasignar barbero ────────────────────────────
+  // Drag&drop en la agenda y "mover manual" desde el panel detalle
+  // entran por aquí. Calculamos primero los valores DESTINO (date, time,
+  // barberId) combinando lo que venga en el body con lo actual de la
+  // reserva, y luego corremos UNA sola re-validación de solape contra
+  // esos valores finales. R1/R3.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+  const TIME_RE = /^\d{2}:\d{2}$/
+
+  let targetDate = booking.date
+  let targetTime = booking.time
+  // barberId destino: undefined = no se toca; null = "cualquiera";
+  // string = barbero concreto (validado contra el tenant).
+  let targetBarberId: string | null | undefined = undefined
+  let targetBarberLabel = booking.barber ?? 'El profesional'
+
+  if ('date' in body) {
+    if (typeof body.date !== 'string' || !DATE_RE.test(body.date)) {
+      return Response.json({ error: 'date debe ser YYYY-MM-DD.' }, { status: 400 })
+    }
+    targetDate = body.date
+    patch.date = body.date
+  }
+
+  if ('time' in body) {
+    if (typeof body.time !== 'string' || !TIME_RE.test(body.time)) {
+      return Response.json({ error: 'time debe ser HH:MM.' }, { status: 400 })
+    }
+    const mins = parseMinutes(body.time)
+    if (Number.isNaN(mins) || mins < 0 || mins >= 24 * 60) {
+      return Response.json({ error: 'time fuera de rango.' }, { status: 400 })
+    }
+    targetTime = body.time
+    patch.time = body.time
+  }
+
   if ('barberId' in body) {
     const nextBarberId = body.barberId
-    let barberName: string | null = null
     if (nextBarberId === null || nextBarberId === '') {
+      targetBarberId = null
+      targetBarberLabel = 'El profesional'
       patch.barberId = null
       patch.barber = null
     } else if (typeof nextBarberId === 'string') {
@@ -131,42 +176,56 @@ export async function PATCH(
       if (!newBarber) {
         return Response.json({ error: 'Barbero destino no válido.' }, { status: 400 })
       }
-      barberName = newBarber.name
-
-      // Si NO se cancela también en este PATCH, comprobar solape en el
-      // horario del destino. Si se cancela, da igual (no hay conflicto).
-      if (patch.status !== 'cancelled') {
-        const start = parseMinutes(booking.time)
-        const end = start + booking.duration
-        const sameDay = await db
-          .select()
-          .from(bookings)
-          .where(
-            and(
-              eq(bookings.clientId, access.client.id),
-              eq(bookings.barberId, nextBarberId),
-              eq(bookings.date, booking.date),
-              ne(bookings.status, 'cancelled'),
-              ne(bookings.id, id),
-            ),
-          )
-        const clash = sameDay.some((b) => {
-          const bs = parseMinutes(b.time)
-          const be = bs + b.duration
-          return start < be && end > bs
-        })
-        if (clash) {
-          return Response.json(
-            { error: `${newBarber.name} ya tiene otra reserva a esa hora.` },
-            { status: 409 },
-          )
-        }
-      }
-
+      targetBarberId = nextBarberId
+      targetBarberLabel = newBarber.name
       patch.barberId = nextBarberId
-      patch.barber = barberName
+      patch.barber = newBarber.name
     } else {
       return Response.json({ error: 'barberId debe ser string o null.' }, { status: 400 })
+    }
+  }
+
+  // ── Re-validación de solape (destino) ────────────────────────────────
+  // Corre cuando se mueve hora/día y/o se reasigna a un barbero concreto,
+  // y SOLO si la reserva no se está cancelando en el mismo PATCH (una
+  // cita cancelada no puede chocar con nada). "Cualquiera" (barberId
+  // null) no se valida: el resolver de disponibilidad elegirá al vuelo.
+  const movedTime = 'date' in body || 'time' in body
+  const reassignedToConcrete = targetBarberId !== undefined && targetBarberId !== null
+  // El barbero efectivo contra el que validar: el destino si se reasignó,
+  // si no el actual de la reserva.
+  const effectiveBarberId =
+    targetBarberId !== undefined ? targetBarberId : booking.barberId
+
+  if (
+    patch.status !== 'cancelled' &&
+    effectiveBarberId &&
+    (movedTime || reassignedToConcrete)
+  ) {
+    const start = parseMinutes(targetTime)
+    const end = start + booking.duration
+    const sameDay = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.clientId, access.client.id),
+          eq(bookings.barberId, effectiveBarberId),
+          eq(bookings.date, targetDate),
+          ne(bookings.status, 'cancelled'),
+          ne(bookings.id, id),
+        ),
+      )
+    const clash = sameDay.some((b) => {
+      const bs = parseMinutes(b.time)
+      const be = bs + b.duration
+      return start < be && end > bs
+    })
+    if (clash) {
+      return Response.json(
+        { error: `${targetBarberLabel} ya tiene otra reserva a esa hora.` },
+        { status: 409 },
+      )
     }
   }
 

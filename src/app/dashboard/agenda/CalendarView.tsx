@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
 import {
   startOfWeek,
@@ -17,7 +17,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X } from 'lucide-react';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
 import DayGrid from './DayGrid';
@@ -78,6 +78,9 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     time: string;
     barberId: string | null;
   } | null>(null);
+  // Error transitorio de un movimiento de cita (drag&drop / mover manual).
+  // Se autolimpia; el rollback visual lo hace el revalidate de SWR.
+  const [moveError, setMoveError] = useState<string | null>(null);
   // Build the calendar fetch URL from the current view. SWR keys by URL so
   // changing view/date/barber automatically triggers a new request — and
   // a background poll every 10s keeps the grid in sync when the bot creates
@@ -180,6 +183,80 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     }
     return label;
   }, [slotMenu, barbers]);
+
+  // Mover una cita (drag&drop en DayGrid o "mover manual" desde el panel
+  // detalle). Optimista: pintamos el cambio YA en la caché de SWR, luego
+  // PATCH; al volver revalidamos para reconciliar con el servidor (y
+  // deshacer el optimismo si hubo solape/permiso). R1/R3.
+  const handleEventMove = useCallback(
+    async (
+      id: string,
+      next: { date: string; time: string; barberId: string | null },
+    ) => {
+      const current = events.find((e) => e.id === id);
+      if (!current) return;
+      // No-op si no cambia nada (mismo día, hora y barbero).
+      const sameBarber =
+        (current.barberId ?? null) === (next.barberId ?? null);
+      if (
+        current.date === next.date &&
+        current.time === next.time &&
+        sameBarber
+      ) {
+        return;
+      }
+      setMoveError(null);
+      const nextBarberName = next.barberId
+        ? barbers.find((b) => b.id === next.barberId)?.name ?? current.barber
+        : null;
+
+      // 1) Update optimista en la caché SWR (sin revalidar todavía).
+      await refetch(
+        (prev) =>
+          (prev ?? []).map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  date: next.date,
+                  time: next.time,
+                  barberId: next.barberId,
+                  barber: nextBarberName,
+                }
+              : e,
+          ),
+        { revalidate: false },
+      );
+
+      // 2) PATCH al endpoint (re-valida solape en servidor).
+      try {
+        const res = await fetch(`/api/bookings/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: next.date,
+            time: next.time,
+            barberId: next.barberId,
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setMoveError(
+            body?.error ||
+              (res.status === 409
+                ? 'Ese hueco ya está ocupado.'
+                : 'No se pudo mover la cita.'),
+          );
+        }
+      } catch {
+        setMoveError('Sin conexión. La cita no se movió.');
+      } finally {
+        // 3) Revalidar SIEMPRE: si el PATCH falló, esto deshace el
+        // optimismo volviendo a la verdad del servidor.
+        await refetch();
+      }
+    },
+    [events, barbers, refetch],
+  );
 
   const handleEventClick = (event: CalendarEvent) => {
     setIsNewBookingOpen(false);
@@ -294,6 +371,25 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         {loading && <Loader2 className="h-4 w-4 text-ink-3 animate-spin" />}
       </div>
 
+      {/* Error de movimiento (drag&drop / mover manual). El revalidate de
+          SWR ya devolvió la cita a su sitio; esto solo explica por qué. */}
+      {moveError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 px-4 py-2 bg-danger/10 border-b border-danger/30 text-danger text-xs font-medium shrink-0"
+        >
+          <span>{moveError}</span>
+          <button
+            type="button"
+            onClick={() => setMoveError(null)}
+            className="text-danger/70 hover:text-danger"
+            aria-label="Cerrar aviso"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Grid */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {viewMode === 'day' ? (
@@ -305,6 +401,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             hours={hours}
             onEventClick={handleEventClick}
             onSlotClick={handleSlotClick}
+            onEventMove={handleEventMove}
           />
         ) : viewMode === 'week' ? (
           <WeekGrid
@@ -332,6 +429,8 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         stripeConnectStatus={stripeConnectStatus}
         cashRegisterEnabled={cashRegisterEnabled}
         sumupReaderConnected={sumupReaderConnected}
+        barbers={barbers}
+        onMoved={() => refetch()}
       />
 
       {/* Promos modal — solo se renderiza si está activado en /dashboard/app */}

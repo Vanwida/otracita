@@ -14,6 +14,10 @@ const TOTAL_HEIGHT = (GRID_END - GRID_START) * PX_PER_MIN; // 1680px
 // Must equal --agenda-col-header-h (52px). The gutter wrapper reserves
 // header + body so its scroll height matches the column bodies exactly.
 const COL_HEADER_H = 52;
+// Drag&drop / click-to-create se ajustan a esta rejilla de minutos. 5 min
+// = "ajustar minutos libremente" sin que un pixel mal puesto deje 10:03
+// (R1/R3). El servidor acepta cualquier HH:MM; el snap es UX del cliente.
+const SNAP_MIN = 5;
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -47,6 +51,16 @@ interface Props {
   /** barberId is the canonical id of the clicked column (null for the
    *  "Sin asignar" fallback / single-column shops). */
   onSlotClick: (date: string, time: string, barberId: string | null) => void;
+  /**
+   * Drag&drop: el usuario soltó la cita `id` en una nueva (date,time) y/o
+   * columna de barbero. barberId=null → columna "Sin asignar" (mantener
+   * "cualquiera"). El padre hace el update optimista + PATCH + revalida.
+   * R1/R3.
+   */
+  onEventMove: (
+    id: string,
+    next: { date: string; time: string; barberId: string | null },
+  ) => void;
 }
 
 // El FILL del bloque codifica el ESTADO de la cita (UI0 #3); la identidad
@@ -96,9 +110,39 @@ export default function DayGrid({
   hours,
   onEventClick,
   onSlotClick,
+  onEventMove,
 }: Props) {
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Drag&drop nativo (HTML5, sin dependencia nueva). Guardamos el id de la
+  // cita arrastrada y el offset (px) entre el cursor y el borde superior
+  // del bloque, para que al soltar la hora destino sea la del INICIO del
+  // bloque y no la del punto donde se agarró.
+  const dragRef = useRef<{ id: string; grabOffsetPx: number } | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Soltar una cita en una columna: calcula la (date,time,barberId)
+  // destino y delega en el padre (update optimista + PATCH + revalida).
+  const handleColumnDrop = (
+    e: React.DragEvent<HTMLDivElement>,
+    barberId: string | null,
+  ) => {
+    e.preventDefault();
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setDraggingId(null);
+    if (!drag) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    // y del cursor → restamos el offset de agarre → top del bloque.
+    const topPx = e.clientY - rect.top - drag.grabOffsetPx;
+    const startMinutes = Math.round(topPx / PX_PER_MIN) + GRID_START;
+    const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
+    const clamped = Math.max(GRID_START, Math.min(GRID_END - SNAP_MIN, snapped));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
+    const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    onEventMove(drag.id, { date: dateStr, time, barberId });
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -197,9 +241,9 @@ export default function DayGrid({
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const clickedMinutes = Math.floor(y / PX_PER_MIN) + GRID_START;
-    // Snap a 5 min (R1/R3: ajustar minutos libremente, no solo medias horas).
-    const rounded = Math.round(clickedMinutes / 5) * 5;
-    const clamped = Math.max(GRID_START, Math.min(GRID_END - 5, rounded));
+    // Snap a SNAP_MIN (R1/R3: ajustar minutos libremente, no solo medias horas).
+    const rounded = Math.round(clickedMinutes / SNAP_MIN) * SNAP_MIN;
+    const clamped = Math.max(GRID_START, Math.min(GRID_END - SNAP_MIN, rounded));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -286,11 +330,19 @@ export default function DayGrid({
                   </span>
                 </div>
 
-                {/* Column body */}
+                {/* Column body — también drop target del drag&drop. */}
                 <div
                   className="relative cursor-pointer"
                   style={{ height: TOTAL_HEIGHT }}
                   onClick={e => handleColumnClick(e, col.barber?.id ?? null)}
+                  onDragOver={e => {
+                    // Permitir soltar SOLO si hay una cita arrastrándose.
+                    if (dragRef.current) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }
+                  }}
+                  onDrop={e => handleColumnDrop(e, col.barber?.id ?? null)}
                 >
                   {/* Business hours dimming — before open */}
                   {businessHours && businessHours.open > GRID_START && (
@@ -359,16 +411,44 @@ export default function DayGrid({
                     const endM = endMin % 60;
                     const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 
+                    // Booksy = solo lectura (lo gestiona Booksy); las
+                    // citas canceladas no se mueven. El resto es arrastrable
+                    // para reprogramar (R1/R3).
+                    const isDraggable = !isBooksy && !isCancelled;
+                    const isDragging = draggingId === event.id;
+
                     return (
                       <div
                         key={event.id}
                         data-event="true"
+                        draggable={isDraggable}
+                        onDragStart={e => {
+                          if (!isDraggable) return;
+                          // Offset entre el cursor y el top del bloque, para
+                          // que al soltar la hora sea la del INICIO, no la
+                          // del punto agarrado.
+                          const r = e.currentTarget.getBoundingClientRect();
+                          dragRef.current = {
+                            id: event.id,
+                            grabOffsetPx: e.clientY - r.top,
+                          };
+                          e.dataTransfer.effectAllowed = 'move';
+                          // Firefox exige setData para iniciar el drag.
+                          e.dataTransfer.setData('text/plain', event.id);
+                          setDraggingId(event.id);
+                        }}
+                        onDragEnd={() => {
+                          dragRef.current = null;
+                          setDraggingId(null);
+                        }}
                         onClick={e => {
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${
-                          isCancelled ? 'line-through opacity-70' : ''
+                        className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 overflow-hidden transition-opacity hover:opacity-80 ${
+                          isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                        } ${isCancelled ? 'line-through opacity-70' : ''} ${
+                          isDragging ? 'opacity-40' : ''
                         }`}
                         style={{
                           top,
