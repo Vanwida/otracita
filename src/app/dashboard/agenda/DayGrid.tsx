@@ -105,19 +105,25 @@ export default function DayGrid({
   ) => {
     e.preventDefault();
     const drag = dragRef.current;
+    // Fallback: si el ref se perdió entre frames (Safari/FF nulan refs
+    // custom en algunos drags), recuperamos el id del dataTransfer que
+    // SIEMPRE seteamos en onDragStart. Sin offset → asumimos agarre por
+    // el borde superior del bloque (0px), suficiente con el snap de 5min.
+    const dragId = drag?.id ?? (e.dataTransfer.getData('text/plain') || null);
+    const grabOffsetPx = drag?.grabOffsetPx ?? 0;
     dragRef.current = null;
     setDraggingId(null);
-    if (!drag) return;
+    if (!dragId) return;
     const rect = e.currentTarget.getBoundingClientRect();
     // y del cursor → restamos el offset de agarre → top del bloque.
-    const topPx = e.clientY - rect.top - drag.grabOffsetPx;
+    const topPx = e.clientY - rect.top - grabOffsetPx;
     const startMinutes = Math.round(topPx / PX_PER_MIN) + GRID_START;
     const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
     const clamped = Math.max(GRID_START, Math.min(GRID_END - SNAP_MIN, snapped));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    onEventMove(drag.id, { date: dateStr, time, barberId });
+    onEventMove(dragId, { date: dateStr, time, barberId });
   };
 
   useEffect(() => {
@@ -316,8 +322,12 @@ export default function DayGrid({
                   style={{ height: TOTAL_HEIGHT }}
                   onClick={e => handleColumnClick(e, col.barber?.id ?? null)}
                   onDragOver={e => {
-                    // Permitir soltar SOLO si hay una cita arrastrándose.
-                    if (dragRef.current) {
+                    // Permitir soltar mientras haya una cita arrastrándose.
+                    // Comprobamos ref O estado: el ref es síncrono pero el
+                    // estado (draggingId) sobrevive a frames donde el ref se
+                    // limpia. preventDefault en dragover es OBLIGATORIO para
+                    // que el evento drop dispare (spec HTML5).
+                    if (dragRef.current || draggingId) {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = 'move';
                     }
@@ -433,7 +443,15 @@ export default function DayGrid({
                         }}
                         className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 overflow-hidden transition-opacity hover:opacity-80 ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                        } ${treatment} ${isDragging ? 'opacity-40' : ''}`}
+                        } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
+                          // Mientras se arrastra CUALQUIER cita, las demás
+                          // dejan de capturar puntero/drop: así el dragover y
+                          // el drop SIEMPRE llegan al cuerpo de la columna,
+                          // incluso si sueltas encima de otra cita (era el
+                          // bug — soltar sobre una cita existente no hacía
+                          // nada porque el tile interceptaba el drop).
+                          draggingId ? 'pointer-events-none' : ''
+                        }`}
                         style={{ top, height, ...blockStyle }}
                         title={event.title}
                       >
