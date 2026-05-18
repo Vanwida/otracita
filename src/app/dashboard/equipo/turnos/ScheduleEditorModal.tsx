@@ -190,11 +190,11 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[var(--color-scrim-strong)] backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-surface border border-line rounded-2xl w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] flex flex-col"
+        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -243,7 +243,7 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
                         onChange={(e) => patchDay(day, { start: e.target.value })}
                         className="bg-surface border border-line rounded-lg px-2 py-1.5 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
                       />
-                      <span className="text-ink-3 text-sm">–</span>
+                      <span className="text-ink-3 text-sm">-</span>
                       <input
                         type="time"
                         value={d.end}
@@ -281,7 +281,7 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
                           onChange={(e) => patchBreak(day, idx, 'start', e.target.value)}
                           className="bg-surface border border-line rounded-lg px-2 py-1.5 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
                         />
-                        <span className="text-ink-3 text-sm">–</span>
+                        <span className="text-ink-3 text-sm">-</span>
                         <input
                           type="time"
                           value={br.end}

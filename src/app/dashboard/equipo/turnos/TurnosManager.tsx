@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,10 +10,11 @@ import {
   CalendarOff,
   Ban,
   Clock,
+  Check,
+  Coffee,
+  ArrowRight,
 } from 'lucide-react'
 import {
-  HOURS_DAYS,
-  DAY_LABELS,
   type HoursDay,
   hoursDayForDate,
   parseHoursValue,
@@ -26,19 +28,20 @@ import BlockModal from './BlockModal'
 
 // -----------------------------------------------------------------------------
 // TurnosManager — timeline de turnos del equipo (R12 horario/descansos, R2
-// faltas de disponibilidad + ausencias). Mirror del Booksy "Turnos"
-// (screenshots 10.17.35 día / 10.17.56 semana).
+// faltas de disponibilidad + ausencias). Densidad estilo Booksy "Turnos"
+// (screenshot 10.17.35), estética del proyecto (tokens, sin glass/gradient).
 //
-//  · Día   → filas empleado × eje de horas; bloque verde = ventana abierta,
-//            inset gris "Descanso" = barber_breaks de ese weekday, banda
-//            roja = barber_block puntual de ESA fecha.
-//  · Semana→ grid empleado × 7 días; cada celda resume horas + descanso.
+// v1 = vista DÍA solamente (la vista Semana + "Copiar" es follow-up, fuera
+// de scope por shape brief aprobado). Filas = barberos activos, eje x =
+// horas. Bloque verde = ventana abierta (desde `hours`, propio o heredado
+// del local), inset gris "Descanso" = barber_breaks de ese weekday, banda
+// danger = barber_block puntual de ESA fecha.
 //
-// Click en fila/celda → chooser (EDITAR HORARIO / AÑADIR AUSENCIA / AÑADIR
-// FALTA DE DISPONIBILIDAD, screenshots 10.18.07 + 10.22.09) → abre el modal
-// correspondiente. Los modales escriben vía las APIs tenant-scoped ya
-// existentes; al cerrar con éxito hacemos router.refresh() para repintar
-// con datos frescos del server (sin estado duplicado en cliente).
+// Click en fila → chooser (Editar horario · Añadir ausencia · Falta de
+// disponibilidad, screenshot 10.18.07) → abre el modal correspondiente.
+// Los modales escriben vía las APIs tenant-scoped ya existentes; al cerrar
+// con éxito hacemos router.refresh() para repintar con datos frescos del
+// server (success optimista + revalidate, sin estado duplicado).
 // -----------------------------------------------------------------------------
 
 export interface TurnosBreak {
@@ -63,6 +66,7 @@ export interface TurnosBarber {
   id: string
   name: string
   photoUrl: string | null
+  /** null = el barbero hereda el horario del local (clients.chatbotHours). */
   hours: Record<string, string> | null
   breaks: TurnosBreak[]
   blocks: TurnosBlock[]
@@ -73,11 +77,8 @@ interface Props {
   shopHours: Record<string, string> | null
 }
 
-type ViewMode = 'dia' | 'semana'
-
-// Timeline axis: 8:00–22:00 covers any realistic barbershop day and matches
-// the Booksy axis density. One source for both the header ticks and the
-// block geometry.
+// Eje 8:00-22:00 cubre cualquier jornada real de barbería y casa con la
+// densidad del eje Booksy. Una sola fuente para los ticks y la geometría.
 const AXIS_START_MIN = 8 * 60
 const AXIS_END_MIN = 22 * 60
 const AXIS_SPAN = AXIS_END_MIN - AXIS_START_MIN
@@ -90,14 +91,6 @@ function addDays(date: string, n: number): string {
   const d = new Date(`${date}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
-}
-
-/** Monday of the ISO week containing `date`. */
-function mondayOf(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`)
-  const dow = d.getUTCDay() // 0=Sun
-  const delta = dow === 0 ? -6 : 1 - dow
-  return addDays(date, delta)
 }
 
 function formatDayHeader(date: string): string {
@@ -120,24 +113,16 @@ function pctWidth(startMin: number, endMin: number): number {
 
 interface ChooserState {
   barber: TurnosBarber
-  date: string
 }
 
 export default function TurnosManager({ barbers, shopHours }: Props) {
   const router = useRouter()
-  const [view, setView] = useState<ViewMode>('dia')
   const [anchor, setAnchor] = useState<string>(madridToday())
 
   const [chooser, setChooser] = useState<ChooserState | null>(null)
   const [scheduleFor, setScheduleFor] = useState<TurnosBarber | null>(null)
   const [absenceFor, setAbsenceFor] = useState<{ barber: TurnosBarber; date: string } | null>(null)
   const [blockFor, setBlockFor] = useState<{ barber: TurnosBarber; date: string } | null>(null)
-
-  const weekStart = useMemo(() => mondayOf(anchor), [anchor])
-  const weekDates = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart],
-  )
 
   const hourTicks = useMemo(() => {
     const ticks: number[] = []
@@ -153,66 +138,51 @@ export default function TurnosManager({ barbers, shopHours }: Props) {
   }
 
   function step(dir: -1 | 1) {
-    setAnchor((a) => addDays(a, view === 'dia' ? dir : dir * 7))
+    setAnchor((a) => addDays(a, dir))
   }
 
+  // Empty: sin barberos activos → manda a Empleados (no hay nada que editar).
   if (barbers.length === 0) {
     return (
       <div className="rounded-control border border-line bg-surface p-8 text-center">
         <Clock className="h-6 w-6 text-ink-3 mx-auto mb-3" />
         <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
-          Sin barberos activos
+          Todavía no hay barberos
         </h2>
         <p className="text-ink-2 mt-1 max-w-md mx-auto" style={{ fontSize: 'var(--text-meta)' }}>
-          Añade barberos en la pestaña Empleados para gestionar sus turnos aquí.
+          Añade a tu equipo en Empleados y luego vuelve aquí para ajustar sus turnos.
         </p>
+        <Link
+          href="/dashboard/equipo"
+          className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-lg text-sm font-medium text-[var(--color-cream-high)] bg-[var(--color-espresso)] hover:bg-[var(--color-espresso-2)] transition-colors"
+        >
+          Ir a Empleados
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Toolbar: Día/Semana + navegación de fecha */}
+      {/* Toolbar: navegación de día */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          role="tablist"
-          aria-label="Vista"
-          className="inline-flex items-center gap-1 bg-overlay border border-line rounded-control p-1"
-        >
-          {(['dia', 'semana'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                view === v ? 'bg-surface shadow-sm text-ink' : 'text-ink-3 hover:text-ink-2'
-              }`}
-            >
-              {v === 'dia' ? 'Día' : 'Semana'}
-            </button>
-          ))}
-        </div>
-
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => step(-1)}
-            aria-label="Anterior"
+            aria-label="Día anterior"
             className="p-1.5 rounded-md border border-line bg-surface text-ink-2 hover:text-ink hover:border-line-strong transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-medium text-ink capitalize min-w-[12rem] text-center">
-            {view === 'dia'
-              ? formatDayHeader(anchor)
-              : `${formatDayHeader(weekStart)} – ${formatDayHeader(addDays(weekStart, 6))}`}
+            {formatDayHeader(anchor)}
           </span>
           <button
             type="button"
             onClick={() => step(1)}
-            aria-label="Siguiente"
+            aria-label="Día siguiente"
             className="p-1.5 rounded-md border border-line bg-surface text-ink-2 hover:text-ink hover:border-line-strong transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
@@ -225,24 +195,19 @@ export default function TurnosManager({ barbers, shopHours }: Props) {
             Hoy
           </button>
         </div>
+
+        <p className="text-xs text-ink-3">
+          Toca un barbero para editar su horario, añadir una ausencia o bloquear una franja.
+        </p>
       </div>
 
-      {view === 'dia' ? (
-        <DayTimeline
-          barbers={barbers}
-          shopHours={shopHours}
-          date={anchor}
-          hourTicks={hourTicks}
-          onPickRow={(barber) => setChooser({ barber, date: anchor })}
-        />
-      ) : (
-        <WeekGrid
-          barbers={barbers}
-          shopHours={shopHours}
-          weekDates={weekDates}
-          onPickCell={(barber, date) => setChooser({ barber, date })}
-        />
-      )}
+      <DayTimeline
+        barbers={barbers}
+        shopHours={shopHours}
+        date={anchor}
+        hourTicks={hourTicks}
+        onPickRow={(barber) => setChooser({ barber })}
+      />
 
       {chooser && (
         <ActionChooser
@@ -253,11 +218,11 @@ export default function TurnosManager({ barbers, shopHours }: Props) {
             setChooser(null)
           }}
           onAddAbsence={() => {
-            setAbsenceFor({ barber: chooser.barber, date: chooser.date })
+            setAbsenceFor({ barber: chooser.barber, date: anchor })
             setChooser(null)
           }}
           onAddBlock={() => {
-            setBlockFor({ barber: chooser.barber, date: chooser.date })
+            setBlockFor({ barber: chooser.barber, date: anchor })
             setChooser(null)
           }}
         />
@@ -294,16 +259,18 @@ export default function TurnosManager({ barbers, shopHours }: Props) {
 }
 
 // -----------------------------------------------------------------------------
-// Resolve the open window for a barber on a given date: their own `hours`,
-// falling back to shop hours (same inheritance rule as the engine).
+// Resuelve la ventana abierta de un barbero en una fecha: su `hours` propio,
+// o el del local si lo hereda (misma regla de herencia que el motor). El
+// segundo valor indica si está heredando, para pintar "Horario del local".
 // -----------------------------------------------------------------------------
 function openWindowFor(
   barber: TurnosBarber,
   hoursDay: HoursDay,
   shopHours: Record<string, string> | null,
-) {
+): { win: ReturnType<typeof parseHoursValue>; inherited: boolean } {
+  const inherited = barber.hours == null
   const map = barber.hours ?? shopHours
-  return parseHoursValue(map?.[hoursDay])
+  return { win: parseHoursValue(map?.[hoursDay]), inherited }
 }
 
 function Avatar({ barber }: { barber: TurnosBarber }) {
@@ -325,7 +292,7 @@ function Avatar({ barber }: { barber: TurnosBarber }) {
 }
 
 // -----------------------------------------------------------------------------
-// DayTimeline — filas empleado × eje horario (screenshot 10.17.35).
+// DayTimeline — filas empleado x eje horario (screenshot 10.17.35).
 // -----------------------------------------------------------------------------
 function DayTimeline({
   barbers,
@@ -344,9 +311,9 @@ function DayTimeline({
 
   return (
     <div className="rounded-control border border-line bg-surface overflow-hidden">
-      {/* Hour axis header */}
+      {/* Cabecera eje horario */}
       <div className="flex items-stretch border-b border-line bg-overlay/60">
-        <div className="w-44 shrink-0 border-r border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+        <div className="w-48 shrink-0 border-r border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
           Empleado
         </div>
         <div className="relative flex-1 h-8">
@@ -364,7 +331,7 @@ function DayTimeline({
 
       <div className="divide-y divide-line">
         {barbers.map((barber) => {
-          const win = openWindowFor(barber, hoursDay, shopHours)
+          const { win, inherited } = openWindowFor(barber, hoursDay, shopHours)
           const breaks = barber.breaks.filter(
             (b) => weekdayToHoursDay(b.weekday) === hoursDay,
           )
@@ -378,24 +345,34 @@ function DayTimeline({
               onClick={() => onPickRow(barber)}
               className="group flex items-stretch w-full text-left hover:bg-overlay/40 transition-colors"
             >
-              <div className="w-44 shrink-0 border-r border-line px-3 py-3 flex items-center gap-2">
+              <div className="w-48 shrink-0 border-r border-line px-3 py-3 flex items-center gap-2">
                 <Avatar barber={barber} />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-ink truncate">{barber.name}</p>
-                  <p className="text-[11px] text-ink-3 truncate">
-                    {fullDayBlock
-                      ? fullDayBlock.kind === 'absence'
-                        ? 'Ausente todo el día'
-                        : 'No disponible'
-                      : win
-                        ? `${win.start}–${win.end} · ${formatRangeHours(win)}`
-                        : 'Sin turno'}
+                  <p className="text-[11px] text-ink-3 truncate flex items-center gap-1">
+                    {fullDayBlock ? (
+                      <>
+                        <Ban className="h-3 w-3 shrink-0" />
+                        {fullDayBlock.kind === 'absence'
+                          ? 'Ausente todo el día'
+                          : 'No disponible'}
+                      </>
+                    ) : win ? (
+                      <>
+                        {`${win.start}-${win.end} · ${formatRangeHours(win)}`}
+                        {inherited && (
+                          <span className="text-ink-3">· horario del local</span>
+                        )}
+                      </>
+                    ) : (
+                      'Sin turno'
+                    )}
                   </p>
                 </div>
               </div>
 
               <div className="relative flex-1 h-16">
-                {/* Hour gridlines */}
+                {/* Líneas guía por hora */}
                 {hourTicks.map((m) => (
                   <span
                     key={m}
@@ -449,11 +426,13 @@ function WorkBlock({
         width: `${pctWidth(ws, we)}%`,
       }}
     >
-      <span className="absolute top-1.5 left-2 text-[11px] font-medium text-success tabular-nums">
-        {win.start}–{win.end}
+      {/* color nunca como señal única → icono + texto (DESIGN.md) */}
+      <span className="absolute top-1.5 left-2 text-[11px] font-medium text-success tabular-nums flex items-center gap-1">
+        <Check className="h-3 w-3 shrink-0" />
+        {win.start}-{win.end}
       </span>
 
-      {/* Inset descansos recurrentes (barber_breaks) */}
+      {/* Descansos recurrentes inset (barber_breaks) */}
       {breaks.map((br) => {
         const bs = Math.max(toMinutes(br.startTime), ws)
         const be = Math.min(toMinutes(br.endTime), we)
@@ -461,14 +440,15 @@ function WorkBlock({
         return (
           <div
             key={br.id}
-            className="absolute top-1/2 -translate-y-1/2 h-7 rounded bg-overlay border border-line-strong flex items-center justify-center"
+            className="absolute top-1/2 -translate-y-1/2 h-7 rounded bg-overlay border border-line-strong flex items-center justify-center gap-1 px-1"
             style={{
               left: `${((bs - ws) / (we - ws)) * 100}%`,
               width: `${((be - bs) / (we - ws)) * 100}%`,
             }}
-            title={`Descanso ${br.startTime}–${br.endTime}`}
+            title={`Descanso ${br.startTime}-${br.endTime}`}
           >
-            <span className="text-[10px] font-medium text-ink-2 px-1 truncate">Descanso</span>
+            <Coffee className="h-3 w-3 text-ink-2 shrink-0" />
+            <span className="text-[10px] font-medium text-ink-2 truncate">Descanso</span>
           </div>
         )
       })}
@@ -483,13 +463,15 @@ function WorkBlock({
           return (
             <div
               key={b.id}
-              className="absolute top-1 bottom-1 rounded bg-danger/15 border border-danger/40"
+              className="absolute top-1 bottom-1 rounded bg-danger/15 border border-danger/40 flex items-center justify-center"
               style={{
                 left: `${((bs - ws) / (we - ws)) * 100}%`,
                 width: `${((be - bs) / (we - ws)) * 100}%`,
               }}
-              title={`${b.kind === 'absence' ? 'Ausencia' : 'No disponible'} ${b.startTime}–${b.endTime}`}
-            />
+              title={`${b.kind === 'absence' ? 'Ausencia' : 'No disponible'} ${b.startTime}-${b.endTime}`}
+            >
+              <Ban className="h-3 w-3 text-danger shrink-0" />
+            </div>
           )
         })}
     </div>
@@ -497,113 +479,8 @@ function WorkBlock({
 }
 
 // -----------------------------------------------------------------------------
-// WeekGrid — empleado × 7 días (screenshot 10.17.56).
-// -----------------------------------------------------------------------------
-function WeekGrid({
-  barbers,
-  shopHours,
-  weekDates,
-  onPickCell,
-}: {
-  barbers: TurnosBarber[]
-  shopHours: Record<string, string> | null
-  weekDates: string[]
-  onPickCell: (barber: TurnosBarber, date: string) => void
-}) {
-  return (
-    <div className="rounded-control border border-line bg-surface overflow-x-auto">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-overlay/60 border-b border-line">
-            <th className="sticky left-0 z-10 bg-overlay w-44 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">
-              Empleado
-            </th>
-            {weekDates.map((d, i) => (
-              <th
-                key={d}
-                className="px-2 py-2 text-center text-[11px] font-semibold text-ink-2 min-w-[7rem]"
-              >
-                <span className="block uppercase tracking-wide">
-                  {DAY_LABELS[HOURS_DAYS[i]]}
-                </span>
-                <span className="block text-[10px] text-ink-3 tabular-nums">
-                  {new Date(`${d}T00:00:00Z`).getUTCDate()}
-                </span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {barbers.map((barber) => (
-            <tr key={barber.id}>
-              <td className="sticky left-0 z-10 bg-surface w-44 px-3 py-3 border-r border-line">
-                <div className="flex items-center gap-2">
-                  <Avatar barber={barber} />
-                  <span className="text-sm font-medium text-ink truncate">{barber.name}</span>
-                </div>
-              </td>
-              {weekDates.map((d, i) => {
-                const hoursDay = HOURS_DAYS[i]
-                const win = openWindowFor(barber, hoursDay, shopHours)
-                const dayBreaks = barber.breaks.filter(
-                  (b) => weekdayToHoursDay(b.weekday) === hoursDay,
-                )
-                const dayBlocks = barber.blocks.filter((b) => b.date === d)
-                const fullDay = dayBlocks.find((b) => !b.startTime || !b.endTime)
-                return (
-                  <td key={d} className="p-1.5 align-top">
-                    <button
-                      type="button"
-                      onClick={() => onPickCell(barber, d)}
-                      className="w-full rounded-md border px-2 py-2 text-left transition-colors min-h-[3.5rem] group hover:border-line-strong"
-                      style={{
-                        backgroundColor: fullDay
-                          ? 'color-mix(in srgb, var(--color-danger) 10%, transparent)'
-                          : win
-                            ? 'color-mix(in srgb, var(--color-success) 12%, transparent)'
-                            : 'var(--color-overlay)',
-                        borderColor: fullDay
-                          ? 'color-mix(in srgb, var(--color-danger) 30%, transparent)'
-                          : win
-                            ? 'color-mix(in srgb, var(--color-success) 30%, transparent)'
-                            : 'var(--color-line)',
-                      }}
-                    >
-                      {fullDay ? (
-                        <span className="text-[11px] font-medium text-danger flex items-center gap-1">
-                          <Ban className="h-3 w-3" />
-                          {fullDay.kind === 'absence' ? 'Ausencia' : 'Bloqueado'}
-                        </span>
-                      ) : win ? (
-                        <>
-                          <span className="block text-[11px] font-medium text-success tabular-nums">
-                            {win.start}–{win.end}
-                          </span>
-                          {dayBreaks.length > 0 && (
-                            <span className="block text-[10px] text-ink-3 mt-0.5">
-                              {dayBreaks.length} descanso{dayBreaks.length === 1 ? '' : 's'}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-[11px] text-ink-3">No hay turno</span>
-                      )}
-                      <Pencil className="h-3 w-3 text-ink-3 opacity-0 group-hover:opacity-100 transition-opacity float-right -mt-3" />
-                    </button>
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// ActionChooser — popup tras click en fila/celda (screenshots 10.18.07,
-// 10.22.09): EDITAR HORARIO / AÑADIR AUSENCIA / AÑADIR FALTA DE DISPONIBILIDAD.
+// ActionChooser — popup tras click en fila (screenshot 10.18.07):
+// Editar horario · Añadir ausencia · Falta de disponibilidad.
 // -----------------------------------------------------------------------------
 function ActionChooser({
   barberName,
@@ -620,11 +497,11 @@ function ActionChooser({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--color-scrim-strong)] backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-surface border border-line rounded-2xl w-full max-w-xs overflow-hidden"
+        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-xs overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-line">
@@ -635,7 +512,7 @@ function ActionChooser({
           {[
             { label: 'Editar horario de trabajo', icon: Pencil, fn: onEditSchedule },
             { label: 'Añadir ausencia', icon: CalendarOff, fn: onAddAbsence },
-            { label: 'Añadir falta de disponibilidad', icon: Ban, fn: onAddBlock },
+            { label: 'Falta de disponibilidad', icon: Ban, fn: onAddBlock },
           ].map(({ label, icon: Icon, fn }) => (
             <button
               key={label}

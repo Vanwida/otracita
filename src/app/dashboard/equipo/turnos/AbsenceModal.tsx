@@ -72,11 +72,11 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[var(--color-scrim-strong)] backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-surface border border-line rounded-2xl w-full max-w-md my-8 flex flex-col"
+        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-md my-8 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-line px-5 py-4 flex items-center justify-between">

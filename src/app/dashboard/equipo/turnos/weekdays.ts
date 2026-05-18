@@ -29,16 +29,6 @@ export const HOURS_DAYS = [
 
 export type HoursDay = (typeof HOURS_DAYS)[number]
 
-export const DAY_LABELS: Record<HoursDay, string> = {
-  lunes: 'Lun.',
-  martes: 'Mar.',
-  miercoles: 'Mié.',
-  jueves: 'Jue.',
-  viernes: 'Vie.',
-  sabado: 'Sáb.',
-  domingo: 'Dom.',
-}
-
 export const DAY_LABELS_LONG: Record<HoursDay, string> = {
   lunes: 'Lunes',
   martes: 'Martes',
