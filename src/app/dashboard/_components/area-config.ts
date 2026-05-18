@@ -102,10 +102,13 @@ export const AREAS: Area[] = [
     icon: Contact,
     href: '/dashboard/clientes',
     subtitle: 'Ficha de cliente, fidelidad y reseñas.',
+    // Hrefs = rutas reales (hermanas legacy, sin migrar a nested para no
+    // arriesgar los enlaces internos). AreaTabs resuelve el activo por
+    // prefix-match del pathname, así que funciona igual.
     tabs: [
       { seg: null, label: 'Clientes', href: '/dashboard/clientes' },
-      { seg: 'fidelidad', label: 'Fidelidad', href: '/dashboard/clientes/fidelidad' },
-      { seg: 'resenas', label: 'Reseñas', href: '/dashboard/clientes/resenas' },
+      { seg: 'fidelidad', label: 'Fidelidad', href: '/dashboard/fidelidad' },
+      { seg: 'resenas', label: 'Reseñas', href: '/dashboard/resenas' },
     ],
     prefixes: [
       '/dashboard/clientes',
