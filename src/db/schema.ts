@@ -365,6 +365,13 @@ export const customers = pgTable('customers', {
   clientId: uuid('client_id').references(() => clients.id).notNull(),
   phone: text('phone').notNull(),
   name: text('name'),
+  // Email del cliente (opcional). Lo captura el form público de reserva
+  // o lo edita el barbero en /dashboard/clientes. Per-tenant igual que
+  // phone/name: la misma persona en 2 barberías son 2 filas distintas
+  // (no dedup cross-tenant — sería un problema de multi-tenancy). Si el
+  // teléfono coincide con un app_users con email, se rellena UNA vez al
+  // crear el customer (nunca sobrescribe un email puesto por el barbero).
+  email: text('email'),
   totalBookings: integer('total_bookings').default(0),
   noShows: integer('no_shows').default(0),
   cancellations: integer('cancellations').default(0),

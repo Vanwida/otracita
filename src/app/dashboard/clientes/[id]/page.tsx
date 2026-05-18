@@ -10,6 +10,7 @@ import { auth } from '@/lib/auth/server'
 import {
   ChevronLeft,
   Phone,
+  Mail,
   Calendar,
   Wallet,
   Heart,
@@ -22,6 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import CustomerNotesEditor from './CustomerNotesEditor'
+import CustomerEmailEditor from './CustomerEmailEditor'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import { Compass } from 'lucide-react'
 
@@ -155,6 +157,14 @@ export default async function CustomerDetailPage({ params }: Props) {
             <Phone className="h-3.5 w-3.5 text-ink-3" />
             {customer.phone}
           </p>
+          {customer.email && (
+            <p className="text-sm text-ink-2 flex items-center gap-1.5 mt-1">
+              <Mail className="h-3.5 w-3.5 text-ink-3" />
+              <a href={`mailto:${customer.email}`} className="hover:text-brand transition-colors break-all">
+                {customer.email}
+              </a>
+            </p>
+          )}
           <p className="text-xs text-ink-3 mt-1">
             Cliente desde {formatDate(customer.createdAt)}
           </p>
@@ -207,6 +217,12 @@ export default async function CustomerDetailPage({ params }: Props) {
           }))}
         />
       )}
+
+      {/* Email del cliente — editable. Lo puede haber capturado el form
+          público o la sesión de la app; aquí el barbero lo corrige. */}
+      <div className="mb-6">
+        <CustomerEmailEditor customerId={customer.id} initialEmail={customer.email ?? ''} />
+      </div>
 
       {/* Notas del barbero */}
       <div className="mb-6">

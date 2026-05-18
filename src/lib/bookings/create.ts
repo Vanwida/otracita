@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { barbers as barbersTable, bookings, clients, customers } from '@/db/schema';
+import { appUsers, barbers as barbersTable, bookings, clients, customers } from '@/db/schema';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
 import type { BarberConfig } from '@/lib/whatsapp/config';
@@ -33,6 +33,11 @@ export interface CreateBookingOptions {
   client: ClientRow;
   customerPhone: string;
   customerName?: string | null;
+  /** Email opcional del cliente. Solo se persiste en `customers.email`,
+   *  nunca en `bookings`. Se guarda al crear el customer; en updates solo
+   *  rellena si el email actual es NULL (jamás pisa un email puesto por
+   *  el barbero en /dashboard/clientes). */
+  customerEmail?: string | null;
   service: string;
   /** Specific barber id, if the customer chose one. When null/undefined, we
    *  auto-assign using pickBarberForCustomer. */
@@ -77,6 +82,24 @@ interface ConfiguredService {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
+// Validación de email deliberadamente laxa (RFC completo es inviable y
+// rechaza addresses válidas raras). Solo descartamos basura evidente.
+// Fuente única — la comparte la API pública y el editor del dashboard
+// vía `isValidEmail`.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Email no vacío con forma plausible. Vacío/whitespace → false. */
+export function isValidEmail(raw: string): boolean {
+  const v = raw.trim();
+  return v.length > 0 && v.length <= 254 && EMAIL_RE.test(v);
+}
+
+/** Normaliza un email para guardar: trim + lowercase, o null si vacío. */
+function normaliseEmail(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  return v.length > 0 ? v : null;
+}
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -100,6 +123,22 @@ function daysBetween(fromISO: string, toISO: string): number {
   const from = new Date(`${fromISO}T00:00:00Z`).getTime();
   const to = new Date(`${toISO}T00:00:00Z`).getTime();
   return Math.round((to - from) / 86_400_000);
+}
+
+/**
+ * Busca el email de la sesión PWA (app_users) por teléfono. Enlace
+ * direccional app→customer: solo lo usamos para SEMBRAR un email cuando
+ * el customer no tiene uno. `app_users.phone` es UNIQUE global (no per
+ * tenant) — el mismo teléfono = la misma persona aunque reserve en
+ * varias barberías. Devuelve null si no hay app user o no tiene email.
+ */
+async function lookupAppUserEmail(phone: string): Promise<string | null> {
+  const [u] = await db
+    .select({ email: appUsers.email })
+    .from(appUsers)
+    .where(eq(appUsers.phone, phone))
+    .limit(1);
+  return normaliseEmail(u?.email ?? null);
 }
 
 async function loadActiveBarbers(clientId: string): Promise<BarberConfig[]> {
@@ -129,6 +168,7 @@ export async function createBooking(
     client,
     customerPhone,
     customerName,
+    customerEmail,
     service,
     barberId,
     date,
@@ -300,6 +340,13 @@ export async function createBooking(
   try {
     const normalisedPhone = customerPhone.trim();
     const cleanName = customerName ? customerName.trim() : null;
+    // Email aportado por el caller (PWA). Solo lo aceptamos si tiene forma
+    // válida — un email basura es peor que NULL (rompe envíos futuros).
+    const callerEmail =
+      customerEmail && isValidEmail(customerEmail)
+        ? normaliseEmail(customerEmail)
+        : null;
+
     const [existingCustomer] = await db
       .select()
       .from(customers)
@@ -310,10 +357,19 @@ export async function createBooking(
         ),
       );
     if (existingCustomer) {
+      // Backfill de email SOLO si está vacío. El email puesto por el
+      // barbero en /dashboard/clientes siempre gana — nunca lo pisamos
+      // con lo que escriba el cliente en el form público. Si el customer
+      // ya tiene email, no tocamos esa columna.
+      let backfillEmail: string | null = null;
+      if (!existingCustomer.email) {
+        backfillEmail = callerEmail ?? (await lookupAppUserEmail(normalisedPhone));
+      }
       await db
         .update(customers)
         .set({
           name: cleanName ?? existingCustomer.name,
+          ...(backfillEmail ? { email: backfillEmail } : {}),
           totalBookings: sql`${customers.totalBookings} + 1`,
           lastBookingAt: new Date(),
         })
@@ -322,10 +378,17 @@ export async function createBooking(
       // Customer NUEVO → guardamos first-touch attribution. NUNCA se
       // sobrescribe en updates posteriores: el first-touch es para
       // siempre el origen de la primera reserva.
+      //
+      // Email: el del caller manda; si no lo trae, intentamos enlazarlo
+      // UNA vez desde la sesión de la PWA (app_users.email) por teléfono.
+      // Direccional app→customer; cualquier email posterior del barbero
+      // gana (solo rellenamos aquí porque la fila acaba de nacer).
+      const seedEmail = callerEmail ?? (await lookupAppUserEmail(normalisedPhone));
       await db.insert(customers).values({
         clientId: client.id,
         phone: normalisedPhone,
         name: cleanName,
+        email: seedEmail,
         totalBookings: 1,
         lastBookingAt: new Date(),
         firstSource: attribution?.source ?? null,

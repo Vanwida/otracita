@@ -91,6 +91,7 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
   const [gridLoading, setGridLoading] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [prefilled, setPrefilled] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -114,10 +115,11 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     if (prefilled) return
     fetch('/api/app/me', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d: { loggedIn: boolean; user?: { name: string | null; phone: string } }) => {
+      .then((d: { loggedIn: boolean; user?: { name: string | null; phone: string; email?: string | null } }) => {
         if (d.loggedIn && d.user) {
           if (d.user.name) setName((prev) => prev || d.user!.name || '')
           if (d.user.phone) setPhone((prev) => prev || d.user!.phone || '')
+          if (d.user.email) setEmail((prev) => prev || d.user!.email || '')
         }
         setPrefilled(true)
       })
@@ -188,6 +190,7 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
           barberId,
           customerName: name.trim(),
           customerPhone: phone.trim(),
+          customerEmail: email.trim(),
           // Si NO hay first-touch en storage, mandamos el last-touch como
           // attribution para que el backend lo use también como first-touch
           // (es la PRIMERA visita conocida). Si hay first-touch, lo usamos
@@ -246,6 +249,7 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     setSlot(null)
     setName('')
     setPhone('')
+    setEmail('')
     setError(null)
     setConfirmation(null)
   }
@@ -450,6 +454,17 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
                 type="tel"
                 placeholder="+34 600 123 456"
               />
+              <div className="sm:col-span-2">
+                <Input
+                  label="Email (opcional)"
+                  value={email}
+                  onChange={setEmail}
+                  autoComplete="email"
+                  type="email"
+                  placeholder="tu@email.com"
+                  optional
+                />
+              </div>
             </div>
           </div>
         )}
@@ -759,6 +774,7 @@ function Input({
   type = 'text',
   autoComplete,
   placeholder,
+  optional = false,
 }: {
   label: string
   value: string
@@ -766,6 +782,8 @@ function Input({
   type?: string
   autoComplete?: string
   placeholder?: string
+  /** Cuando true el campo NO es obligatorio (name/phone siguen required). */
+  optional?: boolean
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -778,7 +796,7 @@ function Input({
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
         placeholder={placeholder}
-        required
+        required={!optional}
         className="rounded-lg px-3 py-3 text-sm outline-none transition-colors"
         style={{
           background: 'var(--theme-surface-elevated)',

@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { createBooking } from '@/lib/bookings/create'
+import { createBooking, isValidEmail } from '@/lib/bookings/create'
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 // -----------------------------------------------------------------------------
@@ -113,6 +113,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Nombre inválido (1-80 caracteres)' }, { status: 400 })
   if (!rawPhone)
     return Response.json({ error: 'Teléfono requerido' }, { status: 400 })
+  // Email es opcional. Solo validamos forma si vino algo: un email mal
+  // escrito es peor que ninguno (rompe envíos futuros). Vacío → se ignora.
+  if (customerEmail && (customerEmail.length > 254 || !isValidEmail(customerEmail)))
+    return Response.json({ error: 'Email inválido' }, { status: 400 })
 
   const phone = normalisePhone(rawPhone)
   if (!/^\+?\d{9,15}$/.test(phone))
@@ -138,6 +142,7 @@ export async function POST(req: Request) {
     date,
     time,
     source: 'web',
+    customerEmail: customerEmail || null,
     attribution,
   })
 
@@ -151,12 +156,12 @@ export async function POST(req: Request) {
     return Response.json({ error: result.message }, { status })
   }
 
-  // Silently log email + notes to the server for now — no column to store
-  // them yet (both are truly optional). TODO: if real demand, add
-  // bookings.customer_email + bookings.notes in a future migration.
-  if (customerEmail || notes) {
+  // El email (si vino y es válido) ya lo persiste createBooking en
+  // customers.email. `notes` sigue sin columna — es de verdad opcional;
+  // si hay demanda real se añade bookings.notes en una migración futura.
+  if (notes) {
     console.log(
-      `[public-booking] optional fields: email=${customerEmail || 'none'} notes=${notes ? notes.length + 'chars' : 'none'} booking=${result.booking.id}`,
+      `[public-booking] notes presentes (${notes.length} chars) sin columna — booking=${result.booking.id}`,
     )
   }
 
