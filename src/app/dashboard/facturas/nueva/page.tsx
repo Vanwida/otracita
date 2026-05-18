@@ -35,7 +35,7 @@ export default async function NuevaFacturaPage() {
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
             <Receipt className="h-6 w-6 text-brand" />
           </div>
-          <h2 className="font-display text-2xl font-semibold text-ink">Activa la facturación</h2>
+          <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-page-title)' }}>Activa la facturación</h2>
           <p className="mt-2 text-ink-2 max-w-md mx-auto">
             Para emitir tickets y facturas necesitas activar primero la facturación en tus ajustes.
           </p>
@@ -69,7 +69,10 @@ export default async function NuevaFacturaPage() {
       </Link>
 
       <div className="mt-4">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink">
+        <h1
+          className="font-semibold text-ink leading-tight"
+          style={{ fontSize: 'var(--text-page-title)' }}
+        >
           Nueva factura
         </h1>
         <p className="mt-2 text-ink-2">

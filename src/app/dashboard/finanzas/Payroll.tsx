@@ -68,7 +68,7 @@ export default function Payroll({ month }: Props) {
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Total a pagar</p>
-          <p className="font-display text-lg font-bold text-ink tabular-nums">{formatEuros(totalCents)}</p>
+          <p className="text-lg font-bold text-ink tabular-nums">{formatEuros(totalCents)}</p>
         </div>
       </div>
 
@@ -99,7 +99,7 @@ export default function Payroll({ month }: Props) {
                 </div>
                 <div className="text-right shrink-0">
                   <p
-                    className={`font-display text-base font-bold tabular-nums ${
+                    className={`text-base font-bold tabular-nums ${
                       item.breakdown.totalCents < 0 ? 'text-danger' : 'text-ink'
                     }`}
                   >
@@ -139,7 +139,7 @@ export default function Payroll({ month }: Props) {
                     <div className="flex items-baseline justify-between gap-3 pt-3 pb-1">
                       <span className="text-sm font-semibold text-ink">Total</span>
                       <span
-                        className={`font-display text-lg font-bold tabular-nums ${
+                        className={`text-lg font-bold tabular-nums ${
                           item.breakdown.totalCents < 0 ? 'text-danger' : 'text-ink'
                         }`}
                       >

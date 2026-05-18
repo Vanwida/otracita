@@ -751,7 +751,10 @@ export default function FinanzasClient({
                 Te quedan limpios
               </p>
               <div className="flex items-baseline gap-3 mt-2">
-                <span className={`font-display tabular-nums text-5xl font-semibold leading-none ${quedanLimpiosCents < 0 ? 'text-danger' : 'text-ink'}`}>
+                <span
+                  className={`tabular-nums font-bold leading-none ${quedanLimpiosCents < 0 ? 'text-danger' : 'text-ink'}`}
+                  style={{ fontSize: 'var(--text-figure)' }}
+                >
                   {formatCents(quedanLimpiosCents)}
                 </span>
                 {(() => {
@@ -1455,7 +1458,8 @@ export default function FinanzasClient({
                 onChange={(e) => setExpenseAmount(e.target.value)}
                 placeholder="0"
                 inputMode="decimal"
-                className="w-full text-3xl font-semibold text-ink bg-transparent border-b border-line outline-none pb-1 tabular-nums"
+                className="w-full font-bold text-ink bg-transparent border-b border-line outline-none pb-1 tabular-nums focus:border-brand"
+                style={{ fontSize: 'var(--text-figure)' }}
                 autoFocus
               />
             </div>
@@ -1531,7 +1535,8 @@ export default function FinanzasClient({
                 onChange={(e) => setWithdrawalAmount(e.target.value)}
                 placeholder="0"
                 inputMode="decimal"
-                className="w-full text-3xl font-semibold text-ink bg-transparent border-b border-line outline-none pb-1 tabular-nums"
+                className="w-full font-bold text-ink bg-transparent border-b border-line outline-none pb-1 tabular-nums focus:border-brand"
+                style={{ fontSize: 'var(--text-figure)' }}
                 autoFocus
               />
             </div>
@@ -1599,7 +1604,8 @@ export default function FinanzasClient({
                 onChange={(e) => setManualAmount(e.target.value)}
                 placeholder="0"
                 inputMode="decimal"
-                className="w-full text-3xl font-semibold text-ink bg-transparent border-b border-line outline-none pb-1 tabular-nums"
+                className="w-full font-bold text-ink bg-transparent border-b border-line outline-none pb-1 tabular-nums focus:border-brand"
+                style={{ fontSize: 'var(--text-figure)' }}
                 autoFocus
               />
             </div>

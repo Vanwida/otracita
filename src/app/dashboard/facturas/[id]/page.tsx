@@ -129,7 +129,7 @@ export default async function InvoiceDetailPage({
           >
             <AlertOctagon className="h-8 w-8 text-danger flex-shrink-0 mt-0.5" aria-hidden="true" />
             <div className="flex-1">
-              <p className="font-display text-xl md:text-2xl font-bold text-danger uppercase tracking-wide">
+              <p className="text-xl md:text-2xl font-bold text-danger uppercase tracking-wide">
                 Factura anulada
               </p>
               <p className="text-sm md:text-base text-ink mt-2">
@@ -143,11 +143,11 @@ export default async function InvoiceDetailPage({
           {/* Header: emisor + nº factura + QR VeriFactu en esquina sup-dcha */}
           <div className="flex items-start justify-between gap-6 flex-wrap pb-6 border-b border-line">
             <div>
-              <p className="font-display text-xs font-semibold uppercase tracking-widest text-brand">{title}</p>
-              <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mt-1">{invoice.number}</h1>
+              <p className="text-xs font-semibold uppercase tracking-widest text-brand">{title}</p>
+              <h1 className="text-3xl md:text-4xl font-bold text-ink mt-1">{invoice.number}</h1>
               <p className="text-ink-2 text-sm mt-1">Emitida el {formatDate(invoice.issueDate)}</p>
               <div className="mt-4">
-                <p className="font-display font-semibold text-ink text-lg">{client.fiscalName || client.businessName}</p>
+                <p className="font-semibold text-ink text-lg">{client.fiscalName || client.businessName}</p>
                 {client.fiscalNif && <p className="text-ink-2 text-sm mt-0.5">NIF: {client.fiscalNif}</p>}
                 {client.fiscalAddress && <p className="text-ink-2 text-sm mt-0.5">{client.fiscalAddress}</p>}
                 {(client.fiscalPostalCode || client.fiscalCity) && (
@@ -212,7 +212,7 @@ export default async function InvoiceDetailPage({
                 <span>IVA {invoice.ivaRate}%</span>
                 <span className="font-mono">{formatEuros(invoice.ivaAmountCents)} €</span>
               </div>
-              <div className="flex justify-between font-display text-xl font-semibold text-ink pt-3 border-t border-line">
+              <div className="flex justify-between text-xl font-semibold text-ink pt-3 border-t border-line">
                 <span>Total</span>
                 <span className="font-mono">{formatEuros(invoice.totalCents)} €</span>
               </div>

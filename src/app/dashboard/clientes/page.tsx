@@ -297,7 +297,7 @@ export default async function ClientesPage({ searchParams }: Props) {
             </div>
             {statusFilter === 'all' && search.length === 0 ? (
               <>
-                <p className="font-display text-base font-semibold text-ink mt-1">Sin clientes todavía</p>
+                <p className="text-base font-semibold text-ink mt-1">Sin clientes todavía</p>
                 <p className="text-ink-3 text-sm max-w-xs">
                   Aparecerán aquí cuando alguien reserve por WhatsApp o por tu app pública.
                 </p>
