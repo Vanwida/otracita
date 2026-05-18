@@ -1,11 +1,14 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Trash2, FileWarning } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
+import RectificativaModal from '../facturas/_components/RectificativaModal';
+import NumberInput from '../_components/NumberInput';
 import { pushUndoToast } from '../_components/UndoToast';
+import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -75,8 +78,30 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   // factura ya se ha emitido con los productos vendidos hasta ese momento
   // y nuevas ventas no podrían incluirse sin rectificativa.
   const canSellProduct = booking?.status === 'confirmed';
+  // A3 — Booksy es solo-lectura (sus citas se gestionan en Booksy). La
+  // edición libre solo aplica ANTES de cerrar la cita (confirmed/no_show):
+  // no hay documento fiscal todavía. Tras completar → rectificativa.
+  const isBooksy = booking?.source === 'booksy';
+  const canEditFreely =
+    !isBooksy &&
+    (booking?.status === 'confirmed' || booking?.status === 'no_show');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [productSaleOpen, setProductSaleOpen] = useState(false);
+  // A3 — editar servicio/precio. Antes de completar = edición libre (modal
+  // propio). Después de completar = rectificativa (factura sellada nunca se
+  // muta). `editOpen` abre el modal pre-completion; `rectificativa` guarda la
+  // factura encontrada para abrir RectificativaModal post-completion.
+  const [editOpen, setEditOpen] = useState(false);
+  const [rectInvoice, setRectInvoice] = useState<{
+    id: string;
+    number: string;
+    subtotalCents: number;
+    totalCents: number;
+    ivaRate: number;
+    status: string;
+  } | null>(null);
+  const [rectLoading, setRectLoading] = useState(false);
+  const [rectError, setRectError] = useState<string | null>(null);
   // Cuántas ventas de producto hay registradas en este booking, para mostrar
   // un badge "X productos vendidos" tras añadir. Se actualiza tras el modal.
   const [productSalesCount, setProductSalesCount] = useState(0);
@@ -92,6 +117,10 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     setPaymentData(null);
     setPaymentError(null);
     setLinkCopied(false);
+    // A3 — cierra cualquier modal de edición/rectificativa al cambiar de cita.
+    setEditOpen(false);
+    setRectInvoice(null);
+    setRectError(null);
     if (booking) {
       setAmountEuros(booking.price != null ? String(booking.price) : '');
       const customer = booking.customerName || booking.customerPhone;
@@ -271,6 +300,41 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       setMethodPromptOpen(true);
     }
   }
+
+  // A3 post-completion: localiza la factura de la cita cerrada y abre el
+  // modal de rectificativa. Nunca toca la factura original (createRectificativa
+  // emite un documento nuevo que la sustituye legalmente y la sella en
+  // VeriFactu con su propia huella).
+  const openRectificativa = useCallback(async () => {
+    if (!booking) return;
+    setRectError(null);
+    setRectLoading(true);
+    try {
+      const res = await fetch(
+        `/api/invoices/by-booking?bookingId=${encodeURIComponent(booking.id)}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRectError(data.error || 'No se pudo cargar la factura.');
+        return;
+      }
+      if (!data.invoice) {
+        setRectError(
+          'Esta cita no tiene factura emitida (puede que la facturación no esté activa). No hay nada que rectificar.',
+        );
+        return;
+      }
+      if (data.invoice.status === 'rectified') {
+        setRectError('Esta factura ya tiene una rectificativa emitida.');
+        return;
+      }
+      setRectInvoice(data.invoice);
+    } catch {
+      setRectError('Error de red.');
+    } finally {
+      setRectLoading(false);
+    }
+  }, [booking]);
 
   const copyPhone = () => {
     if (!booking) return;
@@ -506,6 +570,23 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
+              {/* A3 — editar servicio/precio ANTES de cerrar la cita. Sin
+                  documento fiscal aún → edición libre (PUT services). Tras
+                  completar, este botón desaparece y se ofrece la
+                  rectificativa (bloque isCompleted abajo). */}
+              {canEditFreely && (
+                <div className="pt-2 border-t border-line">
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(true)}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface hover:border-brand hover:text-brand px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Editar servicio o precio
+                  </button>
+                </div>
+              )}
+
               {/* Marcar como completada — acción principal cuando la cita ha
                   terminado. Dispara auto-facturación en el servidor: la
                   factura incluye el servicio + productos vendidos durante
@@ -530,19 +611,37 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
-              {/* Cita ya completada — confirmación visual + recordatorio de
-                  qué se hizo. No hay acciones disponibles aquí (la factura
-                  se rectifica desde /dashboard/caja). */}
+              {/* Cita ya completada — la factura está sellada en VeriFactu y
+                  NUNCA se muta. A3: "Editar venta" emite una rectificativa
+                  (createRectificativa) que la sustituye legalmente. */}
               {isCompleted && (
-                <div className="pt-2 border-t border-line">
+                <div className="pt-2 border-t border-line space-y-2">
                   <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-1">
                     <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
                       <CheckCircle2 className="h-4 w-4" /> Cita completada
                     </p>
                     <p className="text-xs text-ink-2 leading-relaxed">
-                      Si necesitas anular o ajustar la factura, hazlo desde Caja con una rectificativa.
+                      La factura ya está emitida. Para corregir el importe o el
+                      servicio se emite una rectificativa — la original no se
+                      modifica.
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={openRectificativa}
+                    disabled={rectLoading}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface hover:border-brand hover:text-brand px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors disabled:opacity-60"
+                  >
+                    {rectLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileWarning className="h-4 w-4" />
+                    )}
+                    Editar venta (rectificativa)
+                  </button>
+                  {rectError && (
+                    <p className="text-xs text-danger leading-relaxed">{rectError}</p>
+                  )}
                 </div>
               )}
 
@@ -670,14 +769,17 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                             <label htmlFor="pay-amount" className="text-[11px] font-medium text-ink-2">
                               Importe (€)
                             </label>
-                            <input
+                            <NumberInput
                               id="pay-amount"
-                              type="number"
+                              value={amountEuros === '' ? null : Number(amountEuros)}
+                              onValueChange={(n) =>
+                                setAmountEuros(n === null ? '' : String(n))
+                              }
                               min={MIN_AMOUNT_EUROS}
                               max={MAX_AMOUNT_EUROS}
+                              decimals={2}
                               step="0.01"
-                              value={amountEuros}
-                              onChange={(e) => setAmountEuros(e.target.value)}
+                              aria-label="Importe a cobrar en euros"
                               className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
                             />
                           </div>
@@ -817,7 +919,338 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           }}
         />
       )}
+
+      {/* A3 pre-completion — edición libre de servicio/precio/extras. */}
+      {booking && editOpen && (
+        <EditServiceModal
+          booking={booking}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false);
+            startTransition(() => router.refresh());
+          }}
+        />
+      )}
+
+      {/* A3 post-completion — rectificativa de la factura sellada. La
+          original NUNCA se muta; createRectificativa emite un documento
+          nuevo que la sustituye y la sella en VeriFactu. RectificativaModal
+          navega a la factura nueva al confirmar. */}
+      {rectInvoice && (
+        <RectificativaModal
+          originalInvoiceId={rectInvoice.id}
+          originalNumber={rectInvoice.number}
+          originalSubtotalCents={rectInvoice.subtotalCents}
+          originalTotalCents={rectInvoice.totalCents}
+          originalIvaRate={rectInvoice.ivaRate}
+          onClose={() => setRectInvoice(null)}
+        />
+      )}
     </AnimatePresence>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// EditServiceModal — A3 antes de completar. Edita el servicio principal, su
+// precio/duración y los servicios extra (R7). No hay documento fiscal todavía
+// → es edición libre vía PUT /api/bookings/[id]/services, que reescribe el
+// snapshot bookings.duration = principal + suma(extras) (mismo helper que
+// create.ts, evita el foot-gun de solape). Campos numéricos = NumberInput
+// (R11): se pueden dejar vacíos sin que salten a 0.
+// -----------------------------------------------------------------------------
+function EditServiceModal({
+  booking,
+  onClose,
+  onSaved,
+}: {
+  booking: CalendarEvent;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [service, setService] = useState(booking.service);
+  const [price, setPrice] = useState<number | null>(booking.price);
+  const [duration, setDuration] = useState<number | null>(booking.duration);
+  const [extras, setExtras] = useState<BookingServiceLine[]>([]);
+  const [loadingExtras, setLoadingExtras] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Precarga los servicios extra existentes para que editar no los borre.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/bookings/${booking.id}/services`, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((d: { extraServices?: BookingServiceLine[] }) => {
+        if (Array.isArray(d.extraServices)) setExtras(d.extraServices);
+      })
+      .catch(() => {
+        /* aborted/red — el barbero puede re-añadir manualmente */
+      })
+      .finally(() => setLoadingExtras(false));
+    return () => controller.abort();
+  }, [booking.id]);
+
+  const totalDuration = computeBookingSnapshot(duration ?? 0, extras).durationMin;
+
+  const updateExtra = (idx: number, patch: Partial<BookingServiceLine>) => {
+    setExtras((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  };
+
+  const submit = async () => {
+    if (!service.trim()) {
+      setError('El servicio principal es obligatorio.');
+      return;
+    }
+    if (!duration || duration <= 0) {
+      setError('La duración del servicio principal debe ser mayor que 0.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/bookings/${booking.id}/services`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service: service.trim(),
+          price: price,
+          duration: duration,
+          extraServices: extras.filter(
+            (e) => e.name.trim() && e.durationMin > 0,
+          ),
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(data?.error || 'No se pudo guardar.');
+        setSubmitting(false);
+        return;
+      }
+      onSaved();
+    } catch {
+      setError('Error de red.');
+      setSubmitting(false);
+    }
+  };
+
+  const INPUT =
+    'w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors';
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--color-scrim-strong)] backdrop-blur-sm p-4"
+      onClick={() => !submitting && onClose()}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-5 border-b border-line flex items-start gap-3">
+          <div className="h-10 w-10 rounded-full bg-brand-softer flex items-center justify-center shrink-0">
+            <Pencil className="h-5 w-5 text-brand" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-ink">
+              Editar servicio o precio
+            </h3>
+            <p className="text-xs text-ink-2 mt-0.5">
+              {booking.customerName ?? booking.customerPhone} · {booking.date}{' '}
+              {booking.time}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            aria-label="Cerrar"
+            className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-40"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5">
+              Servicio principal
+            </label>
+            <input
+              type="text"
+              value={service}
+              onChange={(e) => setService(e.target.value)}
+              disabled={submitting}
+              className={INPUT}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5">
+                Duración (min)
+              </label>
+              <NumberInput
+                value={duration}
+                onValueChange={setDuration}
+                min={5}
+                max={480}
+                decimals={0}
+                disabled={submitting}
+                className={INPUT}
+                aria-label="Duración del servicio principal en minutos"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5">
+                Precio (€)
+              </label>
+              <NumberInput
+                value={price}
+                onValueChange={setPrice}
+                min={0}
+                decimals={2}
+                step="0.01"
+                placeholder="0"
+                disabled={submitting}
+                className={INPUT}
+                aria-label="Precio del servicio principal en euros"
+              />
+            </div>
+          </div>
+
+          {/* Servicios extra (R7) */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+              Servicios extra
+            </p>
+            {loadingExtras ? (
+              <div className="flex justify-center py-3">
+                <Loader2 className="h-4 w-4 animate-spin text-ink-3" />
+              </div>
+            ) : (
+              <>
+                {extras.map((extra, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-lg border border-line bg-overlay/40 p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        value={extra.name}
+                        onChange={(e) =>
+                          updateExtra(idx, { name: e.target.value })
+                        }
+                        placeholder="Nombre del servicio"
+                        disabled={submitting}
+                        className={INPUT}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExtras((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        disabled={submitting}
+                        aria-label={`Quitar servicio extra ${idx + 1}`}
+                        className="inline-flex items-center justify-center h-8 w-8 shrink-0 rounded-md text-ink-3 hover:text-danger hover:bg-danger/10 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] text-ink-2 mb-1 block">
+                          Duración (min)
+                        </label>
+                        <NumberInput
+                          value={extra.durationMin}
+                          onValueChange={(n) =>
+                            updateExtra(idx, { durationMin: n ?? 0 })
+                          }
+                          min={0}
+                          max={480}
+                          decimals={0}
+                          disabled={submitting}
+                          className={INPUT}
+                          aria-label={`Duración servicio extra ${idx + 1}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-ink-2 mb-1 block">
+                          Precio (€)
+                        </label>
+                        <NumberInput
+                          value={extra.priceEuros}
+                          onValueChange={(n) =>
+                            updateExtra(idx, { priceEuros: n })
+                          }
+                          min={0}
+                          decimals={2}
+                          step="0.01"
+                          placeholder="0"
+                          disabled={submitting}
+                          className={INPUT}
+                          aria-label={`Precio servicio extra ${idx + 1}`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExtras((prev) => [
+                      ...prev,
+                      { name: '', durationMin: 30, priceEuros: null },
+                    ])
+                  }
+                  disabled={submitting}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-line hover:border-brand hover:text-brand px-3 py-2 text-xs font-semibold text-ink-2 transition-colors disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Añadir otro servicio
+                </button>
+              </>
+            )}
+            {extras.length > 0 && (
+              <p className="text-[11px] text-ink-2">
+                Duración total:{' '}
+                <span className="font-semibold text-ink tabular-nums">
+                  {totalDuration} min
+                </span>
+              </p>
+            )}
+          </div>
+
+          {error && (
+            <p className="text-sm rounded-lg bg-danger/10 border border-danger/30 text-danger px-3 py-2">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-overlay/40 border-t border-line">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { Banknote, CreditCard, Globe, X, Loader2 } from 'lucide-react'
+import { Banknote, CreditCard, Globe, X, Loader2, ArrowLeft } from 'lucide-react'
 import { useEffect } from 'react'
 
 // -----------------------------------------------------------------------------
@@ -86,6 +86,22 @@ export default function PaymentMethodPrompt({ open, onClose, onPick, subtitle, p
             onClick={() => onPick('online')}
             disabled={pending}
           />
+        </div>
+
+        {/* Volver — A3: salir del prompt SIN cobrar para corregir
+            precio/servicio antes de confirmar. Distinto de la X (que es
+            "cerrar"): este botón es la acción explícita de retroceso que
+            pidió Reni. Deshabilitado mientras se procesa el cobro. */}
+        <div className="px-4 pb-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:text-ink hover:border-line-strong transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Volver
+          </button>
         </div>
 
         {pending && (
