@@ -36,12 +36,13 @@ interface Props {
   /** Acción primaria sticky a la derecha del header (botón oscuro alto contraste). */
   action?: ReactNode
   /** Ancho máximo del contenido. Default 6xl (más ancho que el editorial 5xl). */
-  maxWidth?: 'full' | '5xl' | '6xl' | '7xl'
+  maxWidth?: 'full' | '4xl' | '5xl' | '6xl' | '7xl'
   children: ReactNode
 }
 
 const MAX_W: Record<NonNullable<Props['maxWidth']>, string> = {
   full: 'max-w-none',
+  '4xl': 'max-w-4xl',
   '5xl': 'max-w-5xl',
   '6xl': 'max-w-6xl',
   '7xl': 'max-w-7xl',
