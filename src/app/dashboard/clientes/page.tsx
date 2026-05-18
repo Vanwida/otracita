@@ -10,6 +10,7 @@ import { auth } from '@/lib/auth/server'
 import {
   Users,
   Phone,
+  Mail,
   Star,
   Clock,
   Snowflake,
@@ -75,6 +76,7 @@ interface CustomerRow {
   id: string
   phone: string
   name: string | null
+  email: string | null
   total_bookings: number | null
   no_shows: number | null
   cancellations: number | null
@@ -129,12 +131,14 @@ export default async function ClientesPage({ searchParams }: Props) {
 
   // Búsqueda por nombre o phone (insensible a mayúsculas, parcial).
   const searchWhere = search
-    ? sql`AND (LOWER(COALESCE(c.name, '')) LIKE ${searchLike} OR c.phone LIKE ${searchLike})`
+    ? sql`AND (LOWER(COALESCE(c.name, '')) LIKE ${searchLike}
+               OR c.phone LIKE ${searchLike}
+               OR LOWER(COALESCE(c.email, '')) LIKE ${searchLike})`
     : sql``
 
   const result = await db.execute(sql`
     SELECT
-      c.id, c.phone, c.name, c.total_bookings, c.no_shows, c.cancellations,
+      c.id, c.phone, c.name, c.email, c.total_bookings, c.no_shows, c.cancellations,
       c.reputation, c.last_booking_at,
       c.first_source,
       COALESCE(b.spent_cents, 0)::bigint AS spent_cents,
@@ -348,6 +352,18 @@ export default async function ClientesPage({ searchParams }: Props) {
                           <a href={`tel:${c.phone}`} className="hover:text-brand transition-colors">
                             {c.phone}
                           </a>
+                          {c.email && (
+                            <>
+                              <span className="text-ink-3/60">·</span>
+                              <Mail className="h-3 w-3 shrink-0" />
+                              <a
+                                href={`mailto:${c.email}`}
+                                className="hover:text-brand transition-colors truncate max-w-[160px]"
+                              >
+                                {c.email}
+                              </a>
+                            </>
+                          )}
                           {c.first_source && (
                             <>
                               <span className="text-ink-3/60">·</span>
