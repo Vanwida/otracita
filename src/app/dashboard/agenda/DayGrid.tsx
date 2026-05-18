@@ -455,7 +455,15 @@ export default function DayGrid({
                           height,
                           backgroundColor: bg,
                           color: ink,
-                          borderLeft: `3px solid ${colColor}`,
+                          // Longhand, NO shorthand: `borderLeft: '4px solid
+                          // var(--color-barber-N)'` se descartaba entero en
+                          // motores que no parsean la var-con-oklch() dentro
+                          // del shorthand → la cita salía sin color. Separado
+                          // en width/style/color, el color del barbero ahora
+                          // sí pinta. 4px = barra-acento de DESIGN.md.
+                          borderLeftWidth: '4px',
+                          borderLeftStyle: 'solid',
+                          borderLeftColor: colColor,
                         }}
                         title={event.title}
                       >

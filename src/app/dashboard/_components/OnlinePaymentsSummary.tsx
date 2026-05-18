@@ -74,7 +74,7 @@ export default function OnlinePaymentsSummary({ connectStatus }: Props) {
             <Wallet className="h-5 w-5 text-brand" />
           </div>
           <div className="flex-1 min-w-[200px]">
-            <h2 className="font-display text-xl md:text-2xl font-semibold text-ink">
+            <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
               Cobros online
             </h2>
             <p className="text-sm text-ink-2 mt-1">
@@ -174,7 +174,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="px-5 py-5 md:px-6">
       <p className="text-xs font-semibold uppercase tracking-widest text-ink-3">{label}</p>
-      <p className="mt-1 text-2xl font-display font-semibold text-ink tabular-nums">{value}</p>
+      <p className="mt-1 font-bold text-ink tabular-nums" style={{ fontSize: 'var(--text-figure)' }}>{value}</p>
     </div>
   )
 }

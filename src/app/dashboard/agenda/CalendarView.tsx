@@ -26,6 +26,7 @@ import NewBookingPanel from './NewBookingPanel';
 import PromosFillModal from './PromosFillModal';
 import SlotActionMenu from './SlotActionMenu';
 import type { CalendarEvent, Barber, SlotAction } from './types';
+import { barberColorVar } from './types';
 
 interface Props {
   services: Array<{ name: string; duration: number; price: number }>;
@@ -387,6 +388,33 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+      )}
+
+      {/* Leyenda de barberos — mismo color determinista por displayOrder
+          que pinta la barra-acento de cada cita (DayGrid). Booksy lo tiene
+          en el panel "Destacar"; aquí va como tira densa bajo los controles.
+          Solo en vista día (las columnas por barbero solo existen ahí) y
+          con equipo configurado. color + nombre = AAA (no solo color). */}
+      {viewMode === 'day' && barbers.length > 0 && (
+        <div
+          role="group"
+          aria-label="Leyenda de colores por barbero"
+          className="flex items-center gap-x-4 gap-y-1 flex-wrap px-4 py-2 border-b border-line bg-overlay/60 shrink-0"
+        >
+          <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-ink-2">
+            Equipo
+          </span>
+          {barbers.map((b) => (
+            <span key={b.id} className="inline-flex items-center gap-1.5 min-w-0">
+              <span
+                className="h-2.5 w-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: barberColorVar(b.displayOrder) }}
+                aria-hidden="true"
+              />
+              <span className="text-xs font-medium text-ink truncate">{b.name}</span>
+            </span>
+          ))}
         </div>
       )}
 

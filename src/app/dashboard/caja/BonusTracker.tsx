@@ -199,7 +199,7 @@ export default function BonusTracker() {
             <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">
               Comprometido
             </p>
-            <p className="font-display text-lg font-bold text-success tabular-nums">
+            <p className="text-lg font-bold text-success tabular-nums">
               {formatBonusValue(totalPayoutCents, 'euros')}
             </p>
           </div>

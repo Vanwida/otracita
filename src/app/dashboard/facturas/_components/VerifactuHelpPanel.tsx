@@ -30,7 +30,7 @@ export default function VerifactuHelpPanel() {
             <Shield className="h-5 w-5 text-brand" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-display text-lg md:text-xl font-bold text-ink">
+            <h2 className="text-lg md:text-xl font-bold text-ink">
               Tu facturación cumple con Hacienda
             </h2>
             <p className="text-sm text-ink-2 mt-1 max-w-2xl leading-relaxed">

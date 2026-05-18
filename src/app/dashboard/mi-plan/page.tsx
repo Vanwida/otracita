@@ -104,7 +104,7 @@ export default async function MiPlanPage() {
           </div>
           <div className="flex-1 min-w-[200px]">
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-strong mb-1">Nuevo</p>
-            <h2 className="font-display text-xl md:text-2xl font-semibold text-ink">Gestiona las facturas de tus clientes</h2>
+            <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Gestiona las facturas de tus clientes</h2>
             <p className="text-sm text-ink-2 mt-1">
               Activa la facturación automática y emite tickets/facturas con cada reserva. Exporta CSV mensual para tu gestor.
             </p>
@@ -122,7 +122,7 @@ export default async function MiPlanPage() {
 
           <div className="flex-1 min-w-[200px]">
             <p className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-1">Plan actual</p>
-            <h2 className="font-display text-2xl font-semibold text-ink">{planMeta?.name ?? planId}</h2>
+            <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-page-title)' }}>{planMeta?.name ?? planId}</h2>
             {planMeta && (
               <p className="text-sm text-ink-2 mt-1">{planMeta.description}</p>
             )}
@@ -256,7 +256,7 @@ function TierBanner({
             <p className="text-xs font-semibold uppercase tracking-widest text-gold mb-1">
               Prueba Pro · te quedan {daysLeft} {daysLeft === 1 ? 'día' : 'días'}
             </p>
-            <h2 className="font-display text-xl font-semibold text-ink">
+            <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
               Estás probando todo lo de Pro gratis.
             </h2>
             <p className="text-sm text-ink-2 mt-1">
@@ -284,7 +284,7 @@ function TierBanner({
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-strong mb-1">
               Estás en Solo (gratis)
             </p>
-            <h2 className="font-display text-xl font-semibold text-ink">
+            <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
               Pasa a Pro y prueba 14 días gratis.
             </h2>
             <p className="text-sm text-ink-2 mt-1">
@@ -308,7 +308,7 @@ function TierBanner({
           <p className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-1">
             Tu plan
           </p>
-          <h2 className="font-display text-xl font-semibold text-ink">
+          <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
             otracita {tierLabel}
           </h2>
           <p className="text-sm text-ink-2 mt-1">

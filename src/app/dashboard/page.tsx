@@ -21,16 +21,17 @@ import { pluralizeEs, formatEuros } from '@/lib/i18n/plural-es'
 import type { WeeklyHours } from '@/lib/availability'
 
 // -----------------------------------------------------------------------------
-// /dashboard — Home, rediseñada como **portada de periódico**.
+// /dashboard — Home como **panel de control denso** (UI0 / Booksy), no
+// portada de revista. Una pregunta, una respuesta: el barbero entra a leer
+// "qué toca ahora" en 3 segundos.
 //
-// Una pregunta, una respuesta. La home no es un panel de KPIs ni un workspace;
-// el barbero vive en /agenda. Aquí solo viene a leer "qué toca ahora".
-//
-// Estructura:
-//   Band A — Dateline (fecha + nombre del negocio)
+// Estructura (densa, sans, tokens):
+//   Header compacto — fecha + negocio + plan/estado (utility labels)
 //   AttentionPanel condicional (token Meta a punto de caducar, etc.)
-//   Band B — Masthead: una frase Fraunces en terracota + soporte + link
-//   Band C — Secundario condicional (lista, recap o ActivationTracker)
+//   StatusLine — la respuesta del state machine: titular sans pesado
+//     (NUNCA Fraunces / clamp editorial) + soporte + acción
+//   Bloque secundario condicional (lista, recap o pasos de activación)
+//     dentro de DataPanel
 //
 // Las KPIs viven cada una en su sitio: visitas y € en Caja, clientes nuevos
 // en Clientes, nota media en Crecer → Reseñas. La privacidad de cifras
@@ -38,7 +39,7 @@ import type { WeeklyHours } from '@/lib/availability'
 // (después de cierre).
 //
 // State machine en src/lib/dashboard/home-state.ts. El page solo decide copy
-// + layout; los hechos los computa la lib.
+// + layout; los hechos los computa la lib (inalterada).
 // -----------------------------------------------------------------------------
 
 interface PageProps {
@@ -180,99 +181,123 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
     .where(eq(subscriptions.clientId, client.id))
 
   return (
-    <div className="px-4 md:px-8 lg:px-12 max-w-3xl mx-auto pb-16">
-      {/* Band A — Dateline */}
-      <header className="pt-10 lg:pt-16 pb-6 flex items-center justify-between gap-4 border-b border-line">
-        <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 tabular-nums">
-          {formatDateline(now)}
-        </p>
-        {client.businessName && (
-          <p className="text-sm text-ink-2 truncate max-w-[40%]" title={client.businessName}>
-            {client.businessName}
-          </p>
-        )}
+    <div className="h-full flex flex-col overflow-hidden bg-canvas">
+      {/* Header compacto de panel — viewport-locked, shrink-0, NUNCA
+          scrollea. Fecha + negocio + plan/estado como metadata de
+          utilidad. Sin titular de revista. */}
+      <header
+        className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)]"
+        style={{ paddingTop: 'var(--space-card)', paddingBottom: 'var(--space-card)' }}
+      >
+        <div className="max-w-5xl mx-auto flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[0.6875rem] uppercase tracking-[0.1em] font-semibold text-ink-2 tabular-nums">
+              {formatDateline(now)}
+            </p>
+            {client.businessName && (
+              <h1
+                className="mt-0.5 font-semibold text-ink leading-tight truncate"
+                style={{ fontSize: 'var(--text-page-title)' }}
+                title={client.businessName}
+              >
+                {client.businessName}
+              </h1>
+            )}
+          </div>
+          <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end text-[0.6875rem]">
+            <span className="uppercase tracking-[0.1em] font-semibold text-ink-2">
+              {planLabel(client.plan)}
+            </span>
+            <span
+              className={`uppercase tracking-[0.1em] font-semibold ${
+                client.status === 'active'
+                  ? 'text-success'
+                  : client.status === 'pending'
+                  ? 'text-warning'
+                  : 'text-ink-2'
+              }`}
+            >
+              {clientStatusLabel(client.status)}
+            </span>
+            {subscription && (
+              <span className="tabular-nums text-ink-2">
+                {(subscription.amount / 100).toFixed(2).replace('.', ',')} €/mes
+              </span>
+            )}
+            <Link
+              href="/dashboard/mi-plan"
+              className="text-brand hover:text-brand-strong font-semibold transition-colors"
+            >
+              Mi plan
+            </Link>
+          </div>
+        </div>
       </header>
 
-      {/* Intro card — primera visita, dismissable, jamás vuelve. */}
-      <HomeIntroCard />
-
-      {/* AttentionPanel — solo si hay alertas reales */}
-      {alerts.length > 0 && (
-        <div className="mt-6">
-          <AttentionPanel alerts={alerts} />
-        </div>
-      )}
-
-      {/* Band B — Masthead */}
-      <Masthead state={state} />
-
-      {/* Band C — Secundario por estado */}
-      <SecondaryBand
-        state={state}
-        pendingClosure={pendingClosure}
-        todayStr={todayStr}
-        yesterdayStr={yesterdayStr}
-        cashRegisterEnabled={Boolean(client.cashRegisterEnabled)}
-        sumupReaderConnected={Boolean(
-          client.sumupAccessToken && client.sumupMerchantCode && client.sumupReaderId,
-        )}
-        clientForActivation={client}
-      />
-
-      {/* Footer — plan + suscripción, siempre discreto */}
-      <footer className="mt-16 pt-6 border-t border-line flex items-center gap-3 flex-wrap text-xs text-ink-2">
-        <span className="uppercase tracking-wider font-semibold">
-          {planLabel(client.plan)}
-        </span>
-        <span className="text-line-strong">·</span>
-        <span className={`uppercase tracking-wider font-semibold ${
-          client.status === 'active' ? 'text-success' : client.status === 'pending' ? 'text-warning' : 'text-ink-2'
-        }`}>
-          {clientStatusLabel(client.status)}
-        </span>
-        {subscription && (
-          <>
-            <span className="text-line-strong">·</span>
-            <span className="tabular-nums">
-              {(subscription.amount / 100).toFixed(2).replace('.', ',')} €/mes
-            </span>
-          </>
-        )}
-        <Link
-          href="/dashboard/mi-plan"
-          className="ml-auto text-brand hover:text-brand-strong transition-colors"
+      {/* Cuerpo — única región scrolleable. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div
+          className="max-w-5xl mx-auto space-y-4"
+          style={{ padding: 'var(--space-page)' }}
         >
-          Gestionar suscripción →
-        </Link>
-      </footer>
+          {/* Intro card — primera visita, dismissable, jamás vuelve. */}
+          <HomeIntroCard />
+
+          {/* AttentionPanel — solo si hay alertas reales */}
+          {alerts.length > 0 && <AttentionPanel alerts={alerts} />}
+
+          {/* StatusLine — la respuesta del state machine, densa */}
+          <StatusLine state={state} />
+
+          {/* Bloque secundario por estado */}
+          <SecondaryBand
+            state={state}
+            pendingClosure={pendingClosure}
+            todayStr={todayStr}
+            yesterdayStr={yesterdayStr}
+            cashRegisterEnabled={Boolean(client.cashRegisterEnabled)}
+            sumupReaderConnected={Boolean(
+              client.sumupAccessToken && client.sumupMerchantCode && client.sumupReaderId,
+            )}
+            clientForActivation={client}
+          />
+        </div>
+      </div>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Masthead — la pieza de portada. Una frase Fraunces en terracota + soporte
-// + link tracked-uppercase. Sin iconos, sin cards, sin chrome.
+// StatusLine — la respuesta del state machine como tarjeta densa de panel.
+// El titular es sans pesado (NUNCA Fraunces, NUNCA clamp editorial): es la
+// línea de estado del control panel, no un masthead de revista. Borde +
+// tono cálido cuando hay acción pendiente (mismo lenguaje que la Caja).
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Masthead({ state }: { state: HomeState }) {
+function StatusLine({ state }: { state: HomeState }) {
   const content = renderState(state)
+  // El estado 'closingPending' es el único que reclama atención activa —
+  // tinte cálido como las citas pendientes de cierre en la agenda.
+  const needsAttention = state.kind === 'closingPending'
   return (
-    <section className="pt-12 lg:pt-20 pb-12 lg:pb-20">
-      <h1
-        className="font-display font-semibold text-brand leading-[1.05] tracking-[-0.02em]"
-        style={{ fontSize: 'clamp(2rem, 6vw, 4rem)' }}
-      >
+    <section
+      className={`rounded-control border bg-surface ${
+        needsAttention ? 'border-warning/30 bg-warning/5' : 'border-line'
+      }`}
+      style={{ padding: 'var(--space-card)' }}
+    >
+      <h2 className="font-bold text-ink leading-tight tracking-[-0.01em] text-2xl sm:text-[1.75rem]">
         {content.lead}
-      </h1>
+      </h2>
       {content.supporting && (
-        <p className="mt-6 lg:mt-8 text-base lg:text-lg text-ink-2 leading-relaxed max-w-prose">
+        <p className="mt-2 text-data text-ink-2 leading-relaxed">
           {content.supporting}
         </p>
       )}
       {content.link && (
         <Link
           href={content.link.href}
-          className="mt-8 lg:mt-10 inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-brand hover:text-brand-strong transition-colors"
+          className="mt-3 inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.1em] font-bold text-brand hover:text-brand-strong transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           {content.link.label}
           <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -416,15 +441,15 @@ function SecondaryBand({
 }: SecondaryBandProps) {
   if (state.kind === 'pendingActivation') {
     return (
-      <section className="border-t border-line pt-10">
+      <PanelSection title="Activación">
         <ActivationSteps client={clientForActivation} />
-      </section>
+      </PanelSection>
     )
   }
 
   if (state.kind === 'closingPending') {
     return (
-      <section className="border-t border-line pt-10">
+      <PanelSection title="Pendiente de cierre">
         <PendingClosureList
           bookings={pendingClosure}
           todayStr={todayStr}
@@ -432,41 +457,59 @@ function SecondaryBand({
           cashRegisterEnabled={cashRegisterEnabled}
           sumupReaderConnected={sumupReaderConnected}
         />
-      </section>
+      </PanelSection>
     )
   }
 
   if (state.kind === 'nextImminent' && state.followUps.length > 0) {
     return (
-      <section className="border-t border-line pt-10">
-        <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 mb-4">
-          Después
-        </p>
-        <ul className="space-y-3">
+      <PanelSection title="Después">
+        <ul>
           {state.followUps.map((b) => (
             <BookingRow key={b.id} time={b.time} customer={b.customerName} service={b.service} />
           ))}
         </ul>
-      </section>
+      </PanelSection>
     )
   }
 
   if (state.kind === 'midShiftGap' && state.restOfDay.length > 0) {
     return (
-      <section className="border-t border-line pt-10">
-        <p className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2 mb-4">
-          Resto del día
-        </p>
-        <ul className="space-y-3">
+      <PanelSection title="Resto del día">
+        <ul>
           {state.restOfDay.map((b) => (
             <BookingRow key={b.id} time={b.time} customer={b.customerName} service={b.service} />
           ))}
         </ul>
-      </section>
+      </PanelSection>
     )
   }
 
   return null
+}
+
+// PanelSection — contenedor denso (DataPanel-like): header de utilidad
+// tintado + cuerpo con borde. Reemplaza al `border-t pt-10` editorial.
+function PanelSection({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-control border border-line bg-surface overflow-hidden">
+      <header
+        className="border-b border-line px-[var(--space-card)] py-2"
+        style={{ background: 'var(--table-head-bg)' }}
+      >
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-ink-2">
+          {title}
+        </p>
+      </header>
+      <div className="p-[var(--space-card)]">{children}</div>
+    </section>
+  )
 }
 
 function BookingRow({
@@ -479,8 +522,8 @@ function BookingRow({
   service: string
 }) {
   return (
-    <li className="flex items-baseline gap-4 text-base">
-      <span className="text-brand tabular-nums font-semibold w-14 shrink-0">{time}</span>
+    <li className="flex items-baseline gap-3 py-[var(--space-tight)] text-data border-b border-line/70 last:border-b-0">
+      <span className="text-brand-strong tabular-nums font-semibold w-12 shrink-0">{time}</span>
       <span className="text-ink truncate">
         {customer || 'Sin nombre'} <span className="text-ink-2">· {service}</span>
       </span>
@@ -547,23 +590,26 @@ function ActivationSteps({
   ]
 
   return (
-    <ol className="space-y-5">
+    <ol>
       {steps.map((step, idx) => (
-        <li key={step.title} className="flex items-start gap-4">
+        <li
+          key={step.title}
+          className="flex items-start gap-3 py-[var(--space-tight)] border-b border-line/70 last:border-b-0"
+        >
           <div className="shrink-0 mt-0.5">
             {step.done ? (
-              <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+              <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
             ) : (
-              <Clock className="h-5 w-5 text-ink-2" aria-hidden="true" />
+              <Clock className="h-4 w-4 text-ink-2" aria-hidden="true" />
             )}
             <span className="sr-only">{step.done ? 'Completado' : 'Pendiente'}</span>
           </div>
           <div className="min-w-0">
-            <p className="text-base font-semibold text-ink">
-              <span className="text-ink-2 mr-2 tabular-nums font-medium">{idx + 1}.</span>
+            <p className="text-data font-semibold text-ink">
+              <span className="text-ink-2 mr-1.5 tabular-nums font-medium">{idx + 1}.</span>
               {step.title}
             </p>
-            <p className="text-sm text-ink-2 mt-1 leading-relaxed">{step.subtitle}</p>
+            <p className="text-meta text-ink-2 mt-0.5 leading-relaxed">{step.subtitle}</p>
           </div>
         </li>
       ))}

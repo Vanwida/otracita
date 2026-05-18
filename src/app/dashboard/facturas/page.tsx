@@ -11,6 +11,7 @@ import { monthRangeInclusive } from '@/lib/invoicing'
 import { Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 import { MonthSelect, TypeSelect, VoidedToggle } from './FiltersBar'
 import PageShell from '@/app/dashboard/_components/PageShell'
+import StatStrip from '@/app/dashboard/_components/StatStrip'
 import VerifactuBadge, { type VerifactuStatus } from './_components/VerifactuBadge'
 import VerifactuHelpPanel from './_components/VerifactuHelpPanel'
 
@@ -73,7 +74,7 @@ export default async function FacturasPage({
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
             <Receipt className="h-6 w-6 text-brand" />
           </div>
-          <h2 className="font-display text-2xl font-semibold text-ink">Activa la facturación</h2>
+          <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-page-title)' }}>Activa la facturación</h2>
           <p className="mt-2 text-ink-2 max-w-md mx-auto">
             Emite tickets y facturas automáticamente con cada reserva confirmada. Exporta cada mes un CSV para tu gestor.
           </p>
@@ -175,17 +176,22 @@ export default async function FacturasPage({
           Colocado arriba para que barberos nuevos lo vean al entrar. */}
       <VerifactuHelpPanel />
 
-      {/* Stats */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Total facturado" value={`${formatEuros(stats.totalCents)} €`} hint={formatMonth(month)} />
-        <StatCard label="IVA recaudado" value={`${formatEuros(stats.ivaCents)} €`} hint={`${client.ivaRate}% aplicado`} />
-        <StatCard label="Documentos emitidos" value={stats.count.toString()} hint={stats.count === 1 ? 'factura' : 'facturas'} />
+      {/* Stats — tira densa, no grid de cards de revista */}
+      <div className="mt-6">
+        <StatStrip
+          ariaLabel="Resumen de facturación del mes"
+          stats={[
+            { label: 'Total facturado', value: `${formatEuros(stats.totalCents)} €`, hint: formatMonth(month) },
+            { label: 'IVA recaudado', value: `${formatEuros(stats.ivaCents)} €`, hint: `${client.ivaRate}% aplicado` },
+            { label: 'Documentos', value: stats.count.toString(), hint: stats.count === 1 ? 'factura' : 'facturas' },
+          ]}
+        />
       </div>
 
       {/* Primary action: new manual invoice / walk-in */}
       <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-brand-softer border border-brand/20 rounded-2xl p-4 md:p-5">
         <div>
-          <p className="font-display text-lg font-semibold text-ink">
+          <p className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
             Nueva factura o walk-in
           </p>
           <p className="text-sm text-ink-2 mt-0.5">
@@ -368,16 +374,6 @@ function FacturasMonthLine({ month }: { month: string }) {
     <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
       Tickets y facturas que emites a tus clientes · <span className="text-ink">{formatMonth(month)}</span>
     </p>
-  )
-}
-
-function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="bg-surface border border-line rounded-2xl p-5">
-      <p className="text-xs font-semibold uppercase tracking-widest text-ink-3">{label}</p>
-      <p className="font-display text-3xl font-semibold text-ink mt-2">{value}</p>
-      {hint && <p className="text-xs text-ink-2 mt-1">{hint}</p>}
-    </div>
   )
 }
 

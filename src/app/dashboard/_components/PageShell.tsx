@@ -58,51 +58,61 @@ export default function PageShell({
   children,
 }: Props) {
   return (
-    <div
-      className={`${MAX_W[maxWidth]} mx-auto`}
-      style={{ padding: 'var(--space-page)' }}
-    >
-      {/* Header de panel — sticky para que la acción primaria ancle la
-          pantalla aunque se haga scroll del contenido. */}
+    <div className="h-full flex flex-col overflow-hidden bg-canvas">
+      {/* Header de panel — viewport-locked: shrink-0, NUNCA scrollea.
+          Es el chrome fijo del control panel (Booksy 10.06.29): título
+          compacto + back + sub-tabs + acción primaria siempre visibles.
+          El scroll vive en el cuerpo de abajo, no en la página. */}
       <header
-        className="sticky top-0 z-20 -mx-[var(--space-page)] px-[var(--space-page)] bg-canvas/90 backdrop-blur-sm border-b border-line"
+        className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)]"
         style={{ paddingTop: 'var(--space-card)', paddingBottom: 'var(--space-card)' }}
       >
-        {back && (
-          <Link
-            href={back.href}
-            className="inline-flex items-center gap-1 text-meta text-ink-3 hover:text-ink transition-colors mb-1.5"
-          >
-            <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-            {back.label}
-          </Link>
-        )}
-
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1
-              className="font-semibold text-ink leading-tight truncate"
-              style={{ fontSize: 'var(--text-page-title)' }}
+        <div className={`${MAX_W[maxWidth]} mx-auto`}>
+          {back && (
+            <Link
+              href={back.href}
+              className="inline-flex items-center gap-1 text-meta text-ink-3 hover:text-ink transition-colors mb-1.5"
             >
-              {title}
-            </h1>
-            {subtitle && (
-              <p
-                className="text-ink-2 mt-0.5 truncate"
-                style={{ fontSize: 'var(--text-meta)' }}
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+              {back.label}
+            </Link>
+          )}
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1
+                className="font-semibold text-ink leading-tight truncate"
+                style={{ fontSize: 'var(--text-page-title)' }}
               >
-                {subtitle}
-              </p>
-            )}
+                {title}
+              </h1>
+              {subtitle && (
+                <p
+                  className="text-ink-2 mt-0.5 truncate"
+                  style={{ fontSize: 'var(--text-meta)' }}
+                >
+                  {subtitle}
+                </p>
+              )}
+            </div>
+
+            {action && <div className="shrink-0">{action}</div>}
           </div>
 
-          {action && <div className="shrink-0">{action}</div>}
+          {subTabs && <div className="mt-3">{subTabs}</div>}
         </div>
-
-        {subTabs && <div className="mt-3">{subTabs}</div>}
       </header>
 
-      <div style={{ marginTop: 'var(--space-section)' }}>{children}</div>
+      {/* Cuerpo — ÚNICA región scrolleable. flex-1 min-h-0 ocupa la altura
+          restante; el scroll es INTERNO (no de la página tipo revista). */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div
+          className={`${MAX_W[maxWidth]} mx-auto`}
+          style={{ padding: 'var(--space-page)' }}
+        >
+          {children}
+        </div>
+      </div>
     </div>
   )
 }

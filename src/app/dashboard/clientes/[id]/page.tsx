@@ -135,7 +135,11 @@ export default async function CustomerDetailPage({ params }: Props) {
   void barbersTable // imported for future use; suppress unused warning if any
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
+    <div className="h-full overflow-y-auto bg-canvas">
+    <div
+      className="max-w-4xl mx-auto"
+      style={{ padding: 'var(--space-page)' }}
+    >
       <Link
         href="/dashboard/clientes"
         className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink mb-4 transition-colors"
@@ -146,11 +150,14 @@ export default async function CustomerDetailPage({ params }: Props) {
 
       {/* Header — datos básicos + reputación */}
       <div className="bg-surface border border-line rounded-2xl p-5 md:p-6 mb-6 flex items-start gap-4 flex-wrap">
-        <div className="h-14 w-14 rounded-2xl bg-brand-softer text-brand-strong flex items-center justify-center font-display text-xl font-bold shrink-0">
+        <div className="h-14 w-14 rounded-2xl bg-brand-softer text-brand-strong flex items-center justify-center text-xl font-bold shrink-0">
           {(customer.name?.[0] ?? customer.phone[0]).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="font-display text-2xl md:text-3xl font-bold text-ink">
+          <h1
+            className="font-semibold text-ink leading-tight"
+            style={{ fontSize: 'var(--text-page-title)' }}
+          >
             {customer.name || 'Sin nombre'}
           </h1>
           <p className="text-sm text-ink-2 flex items-center gap-1.5 mt-1">
@@ -231,7 +238,7 @@ export default async function CustomerDetailPage({ params }: Props) {
 
       {/* Historial bookings */}
       <section className="mb-6">
-        <h2 className="font-display text-lg font-semibold text-ink mb-3">Historial de reservas</h2>
+        <h2 className="font-semibold text-ink mb-3" style={{ fontSize: 'var(--text-section-title)' }}>Historial de reservas</h2>
         {bookingRows.length === 0 ? (
           <div className="bg-surface border border-line rounded-xl p-6 text-center text-sm text-ink-3">
             Aún no tiene reservas registradas.
@@ -265,7 +272,7 @@ export default async function CustomerDetailPage({ params }: Props) {
       {/* Reseñas */}
       {ratingRows.length > 0 && (
         <section className="mb-6">
-          <h2 className="font-display text-lg font-semibold text-ink mb-3">Reseñas dejadas</h2>
+          <h2 className="font-semibold text-ink mb-3" style={{ fontSize: 'var(--text-section-title)' }}>Reseñas dejadas</h2>
           <ul className="space-y-2">
             {ratingRows.map((r) => (
               <li key={r.id} className="bg-surface border border-line rounded-xl p-4">
@@ -286,6 +293,7 @@ export default async function CustomerDetailPage({ params }: Props) {
           </ul>
         </section>
       )}
+    </div>
     </div>
   )
 }
@@ -343,7 +351,7 @@ function AttributionSection({
       <div className="bg-surface border border-line rounded-xl p-5 md:p-6">
         <div className="flex items-center gap-2 mb-3">
           <Compass className="h-4 w-4 text-ink-3" />
-          <h2 className="font-display text-base font-semibold text-ink">Atribución</h2>
+          <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Atribución</h2>
         </div>
 
         {/* First-touch — destacado */}

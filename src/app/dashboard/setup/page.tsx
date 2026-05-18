@@ -216,10 +216,14 @@ export default function SetupPage() {
   ]
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto">
+    <div className="h-full overflow-y-auto bg-canvas">
+    <div className="max-w-3xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {/* Hero */}
-      <div className="mb-6">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">
+      <div style={{ marginBottom: 'var(--space-section)' }}>
+        <h1
+          className="font-semibold text-ink leading-tight mb-1"
+          style={{ fontSize: 'var(--text-page-title)' }}
+        >
           Configura tu cuenta
         </h1>
         <p className="text-ink-2">
@@ -263,7 +267,7 @@ export default function SetupPage() {
         {step === 1 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-semibold text-ink">Tu negocio</h2>
+              <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Tu negocio</h2>
               <p className="text-sm text-ink-2 mt-1">
                 Los datos básicos. Usaremos este número de teléfono como WhatsApp
                 del bot y de tu dashboard.
@@ -320,7 +324,7 @@ export default function SetupPage() {
         {step === 2 && (
           <div className="space-y-7">
             <div>
-              <h2 className="text-xl font-semibold text-ink">Equipo y servicios</h2>
+              <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Equipo y servicios</h2>
               <p className="text-sm text-ink-2 mt-1">
                 Añade quiénes trabajan contigo y qué ofrecéis. Luego podrás
                 subirles foto desde el dashboard.
@@ -433,7 +437,7 @@ export default function SetupPage() {
         {step === 3 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-xl font-semibold text-ink">Horario semanal</h2>
+              <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Horario semanal</h2>
               <p className="text-sm text-ink-2 mt-1">
                 Horas de apertura por día. El bot solo ofrecerá huecos dentro
                 de este rango. Lo podrás refinar después (parada comida, barberos
@@ -474,7 +478,7 @@ export default function SetupPage() {
         {step === 4 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-semibold text-ink flex items-center gap-2">
+              <h2 className="font-semibold text-ink flex items-center gap-2" style={{ fontSize: 'var(--text-section-title)' }}>
                 <Globe className="h-5 w-5 text-brand" />
                 Tu app pública
               </h2>
@@ -571,7 +575,7 @@ export default function SetupPage() {
         {step === 5 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-semibold text-ink flex items-center gap-2">
+              <h2 className="font-semibold text-ink flex items-center gap-2" style={{ fontSize: 'var(--text-section-title)' }}>
                 <Receipt className="h-5 w-5 text-brand" />
                 Facturación
               </h2>
@@ -655,7 +659,7 @@ export default function SetupPage() {
         {step === 6 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-xl font-semibold text-ink">Todo listo</h2>
+              <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Todo listo</h2>
               <p className="text-sm text-ink-2 mt-1">
                 Revisa lo que has configurado y dale al botón. Todo es editable
                 después desde tu dashboard.
@@ -761,6 +765,7 @@ export default function SetupPage() {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

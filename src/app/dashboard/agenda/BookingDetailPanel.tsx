@@ -9,7 +9,7 @@ import RectificativaModal from '../facturas/_components/RectificativaModal';
 import NumberInput from '../_components/NumberInput';
 import { pushUndoToast } from '../_components/UndoToast';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
-import { useState, useTransition, useEffect, useCallback } from 'react';
+import { useState, useTransition, useEffect, useCallback, Fragment } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -508,9 +508,15 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const hasPendingLink = paymentData?.payment.status === 'pending' && paymentData?.payment.paymentUrl;
 
   return (
-    <AnimatePresence>
+    <>
+      {/* AnimatePresence solo envuelve el panel deslizante: sus hijos
+          directos DEBEN llevar key única. Antes envolvía también los dos
+          modales sin key → React/framer veía varios hijos con key ``
+          ("two children with the same key"). Los modales son siblings,
+          no entran/salen con la animación del panel. */}
+      <AnimatePresence>
       {booking && (
-        <>
+        <Fragment key="detail">
           {/* Backdrop for mobile */}
           <motion.div
             key="backdrop"
@@ -1051,9 +1057,13 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
               )}
             </div>
           </motion.div>
-        </>
+        </Fragment>
       )}
+      </AnimatePresence>
 
+      {/* Modales — siblings del panel, FUERA de AnimatePresence. No
+          comparten su key-set (cada uno gestiona su propio open/close);
+          meterlos dentro provocaba la colisión de key vacía. */}
       {booking && cancelOpen && (
         <CancelBookingModal
           booking={booking}
@@ -1132,7 +1142,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           onClose={() => setRectInvoice(null)}
         />
       )}
-    </AnimatePresence>
+    </>
   );
 }
 

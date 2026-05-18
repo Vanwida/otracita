@@ -211,7 +211,7 @@ function LoadedView({
           <p className="text-xs text-ink-3 mt-0.5">{customer.totalBookings} reservas totales</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-3xl font-display font-bold text-ink tabular-nums">{balance}</p>
+          <p className="font-bold text-ink tabular-nums leading-none" style={{ fontSize: 'var(--text-figure)' }}>{balance}</p>
           <p className="text-xs uppercase tracking-widest font-bold text-ink-3">
             {mode === 'stamps' ? 'sellos' : 'puntos'}
           </p>

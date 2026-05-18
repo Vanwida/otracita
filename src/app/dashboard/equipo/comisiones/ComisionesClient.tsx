@@ -715,7 +715,7 @@ function UpsellCard() {
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
           <Trophy className="h-4 w-4 text-brand" />
-          <p className="font-display text-base font-semibold text-ink">
+          <p className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>
             Comisiones y bonos del equipo
           </p>
           <span className="text-[10px] uppercase tracking-widest font-bold text-brand-strong bg-brand-softer px-1.5 py-0.5 rounded">

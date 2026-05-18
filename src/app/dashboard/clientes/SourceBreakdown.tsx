@@ -49,7 +49,7 @@ export default function SourceBreakdown({ items, windowLabel = 'Últimos 30 día
   if (total === 0 || items.length === 0) {
     return (
       <div className="bg-surface border border-line rounded-xl px-4 py-5 mb-6">
-        <p className="font-display text-sm font-semibold text-ink mb-1">¿Cómo llegan tus clientes?</p>
+        <p className="text-sm font-semibold text-ink mb-1">¿Cómo llegan tus clientes?</p>
         <p className="text-xs text-ink-3">
           Aún no hay datos de origen en los {windowLabel.toLowerCase()}. Comparte tu link <code className="text-brand">/b/tu-slug</code> con campañas en Instagram / Google para empezar a medir.
         </p>
@@ -63,7 +63,7 @@ export default function SourceBreakdown({ items, windowLabel = 'Últimos 30 día
   return (
     <div className="bg-surface border border-line rounded-xl px-4 py-4 mb-6">
       <div className="flex items-baseline justify-between mb-3 gap-3">
-        <p className="font-display text-sm font-semibold text-ink">¿Cómo llegan tus clientes?</p>
+        <p className="text-sm font-semibold text-ink">¿Cómo llegan tus clientes?</p>
         <p className="text-[11px] text-ink-3 shrink-0">{windowLabel} · {total} {total === 1 ? 'cliente nuevo' : 'clientes nuevos'}</p>
       </div>
 

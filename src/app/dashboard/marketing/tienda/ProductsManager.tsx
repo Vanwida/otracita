@@ -194,7 +194,7 @@ export default function ProductsManager({ initial }: Props) {
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
             <PackageOpen className="h-6 w-6 text-brand" />
           </div>
-          <h2 className="font-display text-xl font-semibold text-ink">Sin productos aún</h2>
+          <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Sin productos aún</h2>
           <p className="mt-2 text-ink-2 text-sm max-w-md mx-auto">
             Da de alta lo que vendes en mostrador (champú, ceras, peines...) y podrás
             registrar las ventas desde la agenda al cobrar.

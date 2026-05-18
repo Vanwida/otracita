@@ -1,0 +1,1368 @@
+'use client'
+
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  Banknote,
+  Check,
+  CreditCard,
+  Globe,
+  Lock,
+  Unlock,
+  Plus,
+  Loader2,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Receipt,
+  Heart,
+  Sliders,
+  X,
+} from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
+import {
+  MOVEMENT_KIND_LABELS,
+  PAYMENT_METHOD_LABELS,
+  isIncoming,
+  type MovementKind,
+  type PaymentMethod,
+} from '@/lib/cash/compute'
+import DataPanel from '../_components/DataPanel'
+import DataTable, { type Column } from '../_components/DataTable'
+import StatusBadge from '../_components/StatusBadge'
+
+// -----------------------------------------------------------------------------
+// CajaRegisters — "Cajas registradoras" con estructura Booksy (UI0).
+//
+// Reemplaza la card aislada `CashRegisterPanel` por el panel de control de
+// dos columnas del screenshot 10.06.29:
+//
+//   IZQUIERDA  · lista cronológica de cajas (histórico de cash_sessions):
+//                fecha + apertura + total + badge ABIERTO/CERRADO. La sesión
+//                abierta (si la hay) va arriba, seleccionada por defecto.
+//   DERECHA    · DataPanel acoplado con el detalle del registro seleccionado:
+//                TOTAL grande + estado + acciones, meta de apertura, tabs
+//                TRANSACCIONES/RESUMEN, tabla de movimientos con badge
+//                PAGADO, y barra de acción inferior (Apunte / Cerrar / PDF).
+//
+// LÓGICA DE SERVIDOR INTACTA: la sesión abierta sigue refrescándose vía
+// GET /api/cash/current cada 15s; abrir/cerrar/apuntar usan exactamente los
+// mismos endpoints (/api/cash/open|close|movements) y payloads que antes.
+// El histórico de sesiones cerradas lo pasa el server (read-only) en
+// `history` — no se añade lógica de negocio nueva.
+// -----------------------------------------------------------------------------
+
+interface SessionState {
+  id: string
+  openingCents: number
+  openedAt: string
+  openedByEmail: string
+}
+
+interface MovementRow {
+  id: string
+  kind: MovementKind
+  method: PaymentMethod
+  amountCents: number
+  notes: string | null
+  createdAt: string
+}
+
+interface ExpectedState {
+  cashExpectedCents: number
+  cardExpectedCents: number
+  onlineExpectedCents: number
+}
+
+interface ApiResponse {
+  session: SessionState | null
+  movements: MovementRow[]
+  expected: ExpectedState | null
+}
+
+/** Fila de histórico de caja cerrada — la pasa el server (read-only). */
+export interface ClosedRegister {
+  id: string
+  openingCents: number
+  openedAt: string
+  closedAt: string
+  closingCentsExpected: number | null
+  closingCentsCounted: number | null
+  cashDescuadreCents: number | null
+  cardTerminalExpectedCents: number | null
+  cardDescuadreCents: number | null
+}
+
+interface Props {
+  history: ClosedRegister[]
+}
+
+type Selected =
+  | { kind: 'open' }
+  | { kind: 'closed'; id: string }
+
+export default function CajaRegisters({ history }: Props) {
+  const router = useRouter()
+  const [, startTransition] = useTransition()
+  const [data, setData] = useState<ApiResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<Selected>({ kind: 'open' })
+  const [openModalOpen, setOpenModalOpen] = useState(false)
+  const [closeModalOpen, setCloseModalOpen] = useState(false)
+  const [movementModalOpen, setMovementModalOpen] = useState(false)
+
+  async function fetchCurrent() {
+    try {
+      const res = await fetch('/api/cash/current', { cache: 'no-store' })
+      if (!res.ok) return
+      const json = (await res.json()) as ApiResponse
+      setData(json)
+    } catch {
+      // ignore — siguiente poll lo intentará otra vez
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void fetchCurrent()
+    const id = setInterval(fetchCurrent, 15_000)
+    return () => clearInterval(id)
+  }, [])
+
+  function refresh() {
+    void fetchCurrent()
+    startTransition(() => router.refresh())
+  }
+
+  const session = data?.session ?? null
+  const expected = data?.expected ?? null
+  const movements = data?.movements ?? []
+
+  // Total esperado de la jornada = efectivo (que ya incluye la apertura) +
+  // tarjeta + online. computeExpectedClosing en el server ya suma la
+  // apertura dentro de cashExpectedCents, así que NO la volvemos a sumar.
+  const openTotalCents = useMemo(() => {
+    if (!expected) return 0
+    return (
+      expected.cashExpectedCents +
+      expected.cardExpectedCents +
+      expected.onlineExpectedCents
+    )
+  }, [expected])
+
+  // Si la sesión abierta desaparece (se cerró) y estábamos en 'open',
+  // saltamos al registro más reciente del histórico.
+  useEffect(() => {
+    if (!loading && !session && selected.kind === 'open' && history.length > 0) {
+      setSelected({ kind: 'closed', id: history[0].id })
+    }
+  }, [loading, session, selected, history])
+
+  const selectedClosed =
+    selected.kind === 'closed'
+      ? history.find((h) => h.id === selected.id) ?? null
+      : null
+
+  return (
+    <section>
+      <header className="mb-3 flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h2
+            className="font-semibold text-ink"
+            style={{ fontSize: 'var(--text-section-title)' }}
+          >
+            Cajas registradoras
+          </h2>
+          <p className="mt-0.5 text-[0.8125rem] text-ink-2">
+            El cuadre de hoy y el histórico de cierres.
+          </p>
+        </div>
+        {!session && !loading && (
+          <button
+            type="button"
+            onClick={() => setOpenModalOpen(true)}
+            className="btn-primary"
+          >
+            <Unlock className="h-4 w-4" />
+            Abrir caja
+          </button>
+        )}
+      </header>
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(260px,340px)_1fr] lg:items-start">
+        {/* ── Columna izquierda: lista de cajas ─────────────────────── */}
+        <RegisterList
+          loading={loading}
+          session={session}
+          openTotalCents={openTotalCents}
+          history={history}
+          selected={selected}
+          onSelect={setSelected}
+        />
+
+        {/* ── Columna derecha: detalle del registro seleccionado ────── */}
+        <div className="lg:sticky lg:top-[calc(var(--space-section)+1px)]">
+          {selected.kind === 'open' ? (
+            <OpenRegisterPanel
+              loading={loading}
+              session={session}
+              expected={expected}
+              movements={movements}
+              openTotalCents={openTotalCents}
+              onOpenRegister={() => setOpenModalOpen(true)}
+              onNewMovement={() => setMovementModalOpen(true)}
+              onCloseRegister={() => setCloseModalOpen(true)}
+            />
+          ) : selectedClosed ? (
+            <ClosedRegisterPanel register={selectedClosed} />
+          ) : (
+            <DataPanel title="Sin registro">
+              <p className="px-[var(--space-card)] py-8 text-center text-[0.8125rem] text-ink-2">
+                Selecciona una caja de la lista.
+              </p>
+            </DataPanel>
+          )}
+        </div>
+      </div>
+
+      {/* Modales — payloads idénticos a la versión anterior. */}
+      <OpenCashModal
+        open={openModalOpen}
+        onClose={() => setOpenModalOpen(false)}
+        onOpened={() => {
+          setSelected({ kind: 'open' })
+          refresh()
+        }}
+      />
+      {session && expected && (
+        <CloseCashModal
+          open={closeModalOpen}
+          session={session}
+          expected={expected}
+          onClose={() => setCloseModalOpen(false)}
+          onClosed={refresh}
+        />
+      )}
+      <NewMovementModal
+        open={movementModalOpen}
+        onClose={() => setMovementModalOpen(false)}
+        onCreated={refresh}
+      />
+    </section>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// RegisterList — columna izquierda: filas de caja (abierta + histórico).
+// -----------------------------------------------------------------------------
+
+function RegisterList({
+  loading,
+  session,
+  openTotalCents,
+  history,
+  selected,
+  onSelect,
+}: {
+  loading: boolean
+  session: SessionState | null
+  openTotalCents: number
+  history: ClosedRegister[]
+  selected: Selected
+  onSelect: (s: Selected) => void
+}) {
+  const hasAny = session || history.length > 0
+  return (
+    <div className="rounded-control border border-line bg-surface overflow-hidden">
+      <ul className="divide-y divide-line" role="list">
+        {session && (
+          <RegisterRow
+            active={selected.kind === 'open'}
+            onClick={() => onSelect({ kind: 'open' })}
+            dateLabel={format(parseISO(session.openedAt), "d MMM", { locale: es })}
+            byLine={`Apertura ${euros(session.openingCents)}`}
+            totalCents={openTotalCents}
+            status="open"
+          />
+        )}
+        {history.map((h) => (
+          <RegisterRow
+            key={h.id}
+            active={selected.kind === 'closed' && selected.id === h.id}
+            onClick={() => onSelect({ kind: 'closed', id: h.id })}
+            dateLabel={format(parseISO(h.openedAt), 'd MMM', { locale: es })}
+            byLine={`Apertura ${euros(h.openingCents)}`}
+            totalCents={h.closingCentsExpected ?? 0}
+            status="closed"
+          />
+        ))}
+        {!hasAny && (
+          <li className="px-[var(--space-card)] py-8 text-center">
+            <p className="text-[0.8125rem] text-ink-2">
+              {loading ? 'Cargando…' : 'Aún no has abierto ninguna caja.'}
+            </p>
+          </li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+function RegisterRow({
+  active,
+  onClick,
+  dateLabel,
+  byLine,
+  totalCents,
+  status,
+}: {
+  active: boolean
+  onClick: () => void
+  dateLabel: string
+  byLine: string
+  totalCents: number
+  status: 'open' | 'closed'
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-current={active ? 'true' : undefined}
+        className={`flex w-full items-center gap-3 px-[var(--space-card)] py-3 text-left transition-colors min-h-[48px] ${
+          active
+            ? 'bg-brand-softer border-l-2 border-brand'
+            : 'border-l-2 border-transparent hover:bg-[var(--row-hover)]'
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.8125rem] font-medium text-ink leading-tight">
+            {dateLabel}
+          </p>
+          <p className="mt-0.5 text-[0.75rem] text-ink-2 truncate">{byLine}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-[0.9375rem] font-bold text-ink tabular-nums leading-tight">
+            {euros(totalCents)}
+          </p>
+          <div className="mt-1 flex justify-end">
+            <StatusBadge variant={status} hideIcon />
+          </div>
+        </div>
+      </button>
+    </li>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// OpenRegisterPanel — detalle de la caja ABIERTA (live, polling).
+// -----------------------------------------------------------------------------
+
+function OpenRegisterPanel({
+  loading,
+  session,
+  expected,
+  movements,
+  openTotalCents,
+  onOpenRegister,
+  onNewMovement,
+  onCloseRegister,
+}: {
+  loading: boolean
+  session: SessionState | null
+  expected: ExpectedState | null
+  movements: MovementRow[]
+  openTotalCents: number
+  onOpenRegister: () => void
+  onNewMovement: () => void
+  onCloseRegister: () => void
+}) {
+  const [tab, setTab] = useState<'tx' | 'resumen'>('tx')
+
+  if (loading && !session) {
+    return (
+      <DataPanel title="Caja del día">
+        <div className="flex items-center gap-2 px-[var(--space-card)] py-8 text-[0.8125rem] text-ink-2">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Cargando caja…
+        </div>
+      </DataPanel>
+    )
+  }
+
+  if (!session || !expected) {
+    return (
+      <DataPanel title="Caja del día" headerAside={<StatusBadge variant="closed" label="Sin abrir" />}>
+        <div className="px-[var(--space-card)] py-8">
+          <p className="text-[0.8125rem] text-ink-2 leading-relaxed mb-4">
+            No hay caja abierta. Ábrela al empezar la jornada para llevar el
+            cuadre del efectivo y el datáfono.
+          </p>
+          <button type="button" onClick={onOpenRegister} className="btn-primary">
+            <Unlock className="h-4 w-4" />
+            Abrir caja
+          </button>
+        </div>
+      </DataPanel>
+    )
+  }
+
+  return (
+    <DataPanel
+      title={
+        <span
+          className="font-bold tabular-nums"
+          style={{ fontSize: 'var(--text-figure)' }}
+        >
+          {euros(openTotalCents)}
+        </span>
+      }
+      meta={
+        <>
+          Abierta a las {format(parseISO(session.openedAt), 'HH:mm', { locale: es })} ·
+          apertura {euros(session.openingCents)}
+        </>
+      }
+      headerAside={<StatusBadge variant="open" />}
+      footer={
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onNewMovement}
+            className="inline-flex flex-1 items-center justify-center gap-2 min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-semibold bg-surface text-ink border border-line hover:border-line-strong hover:bg-overlay transition-colors"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Apunte
+          </button>
+          <button
+            type="button"
+            onClick={onCloseRegister}
+            className="inline-flex flex-1 items-center justify-center gap-2 min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-semibold bg-ink text-surface hover:bg-ink/90 transition-colors"
+          >
+            <Lock className="h-4 w-4" aria-hidden="true" />
+            Cerrar caja
+          </button>
+        </div>
+      }
+    >
+      {/* Tabs TRANSACCIONES / RESUMEN — segmented control del sistema. */}
+      <div className="px-[var(--space-card)] pt-3">
+        <div
+          role="tablist"
+          aria-label="Vista del registro"
+          className="inline-flex items-center gap-1 bg-overlay border border-line rounded-control p-1"
+        >
+          <TabButton active={tab === 'tx'} onClick={() => setTab('tx')}>
+            Transacciones
+          </TabButton>
+          <TabButton active={tab === 'resumen'} onClick={() => setTab('resumen')}>
+            Resumen
+          </TabButton>
+        </div>
+      </div>
+
+      {tab === 'tx' ? (
+        <div className="mt-3">
+          <MovementsTable movements={movements} />
+        </div>
+      ) : (
+        <div className="px-[var(--space-card)] py-4">
+          <ExpectedSummary session={session} expected={expected} />
+        </div>
+      )}
+    </DataPanel>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+        active ? 'bg-surface shadow-sm text-ink' : 'text-ink-2 hover:text-ink'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function MovementsTable({ movements }: { movements: MovementRow[] }) {
+  const columns: Column<MovementRow>[] = [
+    {
+      key: 'time',
+      header: 'Hora',
+      numeric: true,
+      cell: (m) => (
+        <span className="text-ink-2">{format(parseISO(m.createdAt), 'HH:mm')}</span>
+      ),
+    },
+    {
+      key: 'concept',
+      header: 'Concepto',
+      cell: (m) => (
+        <div className="min-w-0">
+          <p className="font-medium text-ink truncate">
+            {MOVEMENT_KIND_LABELS[m.kind]}
+          </p>
+          {m.notes && (
+            <p className="text-[0.6875rem] text-ink-2 truncate">{m.notes}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'method',
+      header: 'Método',
+      className: 'hidden sm:table-cell',
+      cell: (m) => (
+        <span className="text-ink-2">{PAYMENT_METHOD_LABELS[m.method]}</span>
+      ),
+    },
+    {
+      key: 'state',
+      header: 'Estado',
+      align: 'center',
+      cell: (m) => (
+        <StatusBadge variant={isIncoming(m.kind) ? 'paid' : 'void'} hideIcon />
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Importe',
+      align: 'right',
+      numeric: true,
+      cell: (m) => {
+        const incoming = isIncoming(m.kind)
+        return (
+          <span className={`font-semibold ${incoming ? 'text-ink' : 'text-danger'}`}>
+            {incoming ? '+' : '−'}
+            {euros(m.amountCents)}
+          </span>
+        )
+      },
+    },
+  ]
+  return (
+    <DataTable
+      ariaLabel="Movimientos del día"
+      columns={columns}
+      rows={movements}
+      rowKey={(m) => m.id}
+      emptyLabel="Sin movimientos todavía. Las ventas y apuntes aparecerán aquí."
+    />
+  )
+}
+
+function ExpectedSummary({
+  session,
+  expected,
+}: {
+  session: SessionState
+  expected: ExpectedState
+}) {
+  const rows: { icon: typeof Banknote; label: string; cents: number; hint: string }[] = [
+    {
+      icon: Banknote,
+      label: 'Efectivo',
+      cents: expected.cashExpectedCents,
+      hint: `Apertura ${euros(session.openingCents)} + ventas`,
+    },
+    {
+      icon: CreditCard,
+      label: 'Tarjeta',
+      cents: expected.cardExpectedCents,
+      hint: 'Total datáfono esperado',
+    },
+    {
+      icon: Globe,
+      label: 'Online',
+      cents: expected.onlineExpectedCents,
+      hint: 'Stripe (informativo)',
+    },
+  ]
+  return (
+    <dl className="divide-y divide-line">
+      {rows.map((r) => {
+        const Icon = r.icon
+        return (
+          <div
+            key={r.label}
+            className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Icon className="h-4 w-4 text-ink-2 shrink-0" aria-hidden="true" />
+              <div className="min-w-0">
+                <dt className="text-[0.8125rem] font-medium text-ink">{r.label}</dt>
+                <p className="text-[0.6875rem] text-ink-2 truncate">{r.hint}</p>
+              </div>
+            </div>
+            <dd className="text-[0.9375rem] font-bold text-ink tabular-nums shrink-0">
+              {euros(r.cents)}
+            </dd>
+          </div>
+        )
+      })}
+    </dl>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// ClosedRegisterPanel — detalle de una caja CERRADA (snapshot del server).
+// -----------------------------------------------------------------------------
+
+function ClosedRegisterPanel({ register: r }: { register: ClosedRegister }) {
+  const cashDescuadre = r.cashDescuadreCents
+  const cardDescuadre = r.cardDescuadreCents
+  return (
+    <DataPanel
+      title={
+        <span
+          className="font-bold tabular-nums"
+          style={{ fontSize: 'var(--text-figure)' }}
+        >
+          {euros(r.closingCentsExpected ?? 0)}
+        </span>
+      }
+      meta={
+        <>
+          {format(parseISO(r.openedAt), "d MMM yyyy", { locale: es })} ·
+          cerrada a las {format(parseISO(r.closedAt), 'HH:mm', { locale: es })}
+        </>
+      }
+      headerAside={<StatusBadge variant="closed" />}
+      footer={
+        <a
+          href={`/api/cash/sessions/${r.id}/pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-full items-center justify-center gap-2 min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-semibold bg-surface text-ink border border-line hover:border-line-strong hover:bg-overlay transition-colors"
+        >
+          <Receipt className="h-4 w-4" aria-hidden="true" />
+          Descargar reporte PDF
+        </a>
+      }
+    >
+      <div className="px-[var(--space-card)] py-4 space-y-3">
+        <ClosedSummaryRow
+          label="Efectivo"
+          expectedCents={r.closingCentsExpected}
+          countedCents={r.closingCentsCounted}
+          descuadreCents={cashDescuadre}
+        />
+        <ClosedSummaryRow
+          label="Tarjeta (datáfono)"
+          expectedCents={r.cardTerminalExpectedCents}
+          countedCents={null}
+          descuadreCents={cardDescuadre}
+        />
+      </div>
+    </DataPanel>
+  )
+}
+
+function ClosedSummaryRow({
+  label,
+  expectedCents,
+  countedCents,
+  descuadreCents,
+}: {
+  label: string
+  expectedCents: number | null
+  countedCents: number | null
+  descuadreCents: number | null
+}) {
+  const tone =
+    descuadreCents === null
+      ? 'text-ink-2'
+      : descuadreCents === 0
+      ? 'text-success'
+      : 'text-warning'
+  const descuadreLabel =
+    descuadreCents === null
+      ? '—'
+      : descuadreCents === 0
+      ? 'Cuadra'
+      : `${descuadreCents > 0 ? '+' : ''}${euros(descuadreCents)}`
+  return (
+    <div className="rounded-control border border-line bg-overlay/40 px-3 py-2.5">
+      <p className="text-[0.625rem] uppercase tracking-[0.1em] text-ink-2 font-semibold mb-1.5">
+        {label}
+      </p>
+      <div className="grid grid-cols-3 gap-2 text-[0.75rem]">
+        <div>
+          <p className="text-ink-2">Esperado</p>
+          <p className="tabular-nums text-ink font-medium">
+            {expectedCents === null ? '—' : euros(expectedCents)}
+          </p>
+        </div>
+        <div>
+          <p className="text-ink-2">Contado</p>
+          <p className="tabular-nums text-ink font-medium">
+            {countedCents === null ? '—' : euros(countedCents)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-ink-2">Descuadre</p>
+          <p className={`tabular-nums font-semibold ${tone}`}>{descuadreLabel}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+/** Céntimos → "1.234,56 €" (convención castellana). */
+function euros(cents: number): string {
+  return `${(cents / 100).toLocaleString('es-ES', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} €`
+}
+
+// -----------------------------------------------------------------------------
+// Modales — abrir caja, cerrar caja, nuevo apunte. Payloads y endpoints
+// IDÉNTICOS a la versión CashRegisterPanel previa (lógica de negocio
+// intacta); solo el chrome se alinea al lenguaje denso.
+// -----------------------------------------------------------------------------
+
+function ModalShell({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: React.ReactNode
+}) {
+  if (!open) return null
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface border border-line rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-ink uppercase tracking-[0.08em]">
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded hover:bg-overlay text-ink-2 hover:text-ink transition-colors"
+            aria-label="Cerrar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function OpenCashModal({
+  open,
+  onClose,
+  onOpened,
+}: {
+  open: boolean
+  onClose: () => void
+  onOpened: () => void
+}) {
+  const [openingEur, setOpeningEur] = useState('50')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    setError(null)
+    const opening = Number(openingEur)
+    if (!Number.isFinite(opening) || opening < 0 || opening > 10000) {
+      setError('Importe inválido (0 – 10.000 €)')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/cash/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openingCents: Math.round(opening * 100) }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error || 'No se pudo abrir la caja')
+        return
+      }
+      const data = await res.json().catch(() => null)
+      if (data?.backfilled) {
+        const { bookings: nb, productSales: nps } = data.backfilled as {
+          bookings: number
+          productSales: number
+        }
+        if (nb + nps > 0) {
+          console.info(
+            `[caja] Backfill: ${nb} bookings + ${nps} ventas importados al cuadre del día.`,
+          )
+        }
+      }
+      onOpened()
+      onClose()
+    } catch {
+      setError('Error de red')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <ModalShell open={open} onClose={onClose} title="Abrir caja del día">
+      <p className="text-[0.8125rem] text-ink-2 mb-3 leading-relaxed">
+        Cuánto dinero hay en el cajón al empezar (cambio inicial).
+      </p>
+      <label
+        htmlFor="caja-opening"
+        className="text-xs font-medium text-ink-2"
+      >
+        Apertura (€)
+      </label>
+      <input
+        id="caja-opening"
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step="0.01"
+        value={openingEur}
+        onChange={(e) => setOpeningEur(e.target.value)}
+        autoFocus
+        className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors tabular-nums"
+      />
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
+      <button
+        type="button"
+        onClick={submit}
+        disabled={submitting}
+        className="btn-primary mt-4 w-full"
+      >
+        {submitting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Unlock className="h-4 w-4" />
+        )}
+        Abrir caja
+      </button>
+    </ModalShell>
+  )
+}
+
+function CloseCashModal({
+  open,
+  expected,
+  onClose,
+  onClosed,
+}: {
+  open: boolean
+  session: SessionState
+  expected: ExpectedState
+  onClose: () => void
+  onClosed: () => void
+}) {
+  const [cashCounted, setCashCounted] = useState('')
+  const [cardCounted, setCardCounted] = useState('')
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [closed, setClosed] = useState<null | {
+    sessionId: string
+    cashExpected: number
+    cashCounted: number
+    cashDescuadre: number | null
+    cardExpected: number
+    cardCounted: number | null
+    cardDescuadre: number | null
+  }>(null)
+
+  useEffect(() => {
+    if (open) {
+      setCashCounted((expected.cashExpectedCents / 100).toFixed(2))
+      setCardCounted('')
+      setNotes('')
+      setError(null)
+      setClosed(null)
+    }
+  }, [open, expected.cashExpectedCents])
+
+  const cashCountedNum = Number(cashCounted)
+  const cardCountedNum = cardCounted.trim() === '' ? null : Number(cardCounted)
+  const cashDescuadre = Number.isFinite(cashCountedNum)
+    ? Math.round(cashCountedNum * 100) - expected.cashExpectedCents
+    : null
+  const cardDescuadre =
+    cardCountedNum !== null && Number.isFinite(cardCountedNum)
+      ? Math.round(cardCountedNum * 100) - expected.cardExpectedCents
+      : null
+
+  async function submit() {
+    setError(null)
+    if (!Number.isFinite(cashCountedNum) || cashCountedNum < 0) {
+      setError('Importe contado inválido')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/cash/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          closingCentsCounted: Math.round(cashCountedNum * 100),
+          cardTerminalCountedCents:
+            cardCountedNum !== null && Number.isFinite(cardCountedNum)
+              ? Math.round(cardCountedNum * 100)
+              : null,
+          notes: notes.trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error || 'No se pudo cerrar la caja')
+        return
+      }
+      const data = (await res.json()) as {
+        session: { id: string }
+        summary: {
+          cashExpectedCents: number
+          cashCountedCents: number
+          cashDescuadreCents: number | null
+          cardExpectedCents: number
+          cardCountedCents: number | null
+          cardDescuadreCents: number | null
+        }
+      }
+      setClosed({
+        sessionId: data.session.id,
+        cashExpected: data.summary.cashExpectedCents,
+        cashCounted: data.summary.cashCountedCents,
+        cashDescuadre: data.summary.cashDescuadreCents,
+        cardExpected: data.summary.cardExpectedCents,
+        cardCounted: data.summary.cardCountedCents,
+        cardDescuadre: data.summary.cardDescuadreCents,
+      })
+    } catch {
+      setError('Error de red')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function finish() {
+    onClosed()
+    onClose()
+  }
+
+  if (closed) {
+    return (
+      <ModalShell open={open} onClose={finish} title="Caja cerrada">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-success/30 bg-success/10 p-3">
+            <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
+              <Check className="h-4 w-4" /> Cierre registrado
+            </p>
+            <p className="text-xs text-ink-2 mt-0.5">
+              Guarda el reporte para tu archivo o pásaselo al gestor si hay
+              descuadre.
+            </p>
+          </div>
+
+          <ClosedSummaryRow
+            label="Efectivo"
+            expectedCents={closed.cashExpected}
+            countedCents={closed.cashCounted}
+            descuadreCents={closed.cashDescuadre}
+          />
+          <ClosedSummaryRow
+            label="Tarjeta (datáfono)"
+            expectedCents={closed.cardExpected}
+            countedCents={closed.cardCounted}
+            descuadreCents={closed.cardDescuadre}
+          />
+
+          <a
+            href={`/api/cash/sessions/${closed.sessionId}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary w-full"
+          >
+            <Receipt className="h-4 w-4" />
+            Descargar reporte PDF
+          </a>
+
+          <button
+            type="button"
+            onClick={finish}
+            className="btn-secondary w-full"
+          >
+            Hecho
+          </button>
+        </div>
+      </ModalShell>
+    )
+  }
+
+  return (
+    <ModalShell open={open} onClose={onClose} title="Cerrar caja del día">
+      <div className="space-y-4">
+        <div className="rounded-xl border border-line bg-overlay/40 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-2 mb-1">
+            Esperado
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-ink-2">Efectivo</span>
+              <span className="tabular-nums font-medium text-ink">
+                {euros(expected.cashExpectedCents)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-ink-2">Tarjeta</span>
+              <span className="tabular-nums font-medium text-ink">
+                {euros(expected.cardExpectedCents)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label
+            htmlFor="caja-cash-counted"
+            className="text-xs font-medium text-ink-2"
+          >
+            Efectivo contado en cajón (€)
+          </label>
+          <input
+            id="caja-cash-counted"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={cashCounted}
+            onChange={(e) => setCashCounted(e.target.value)}
+            autoFocus
+            className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors tabular-nums"
+          />
+          {cashDescuadre !== null && (
+            <p
+              className={`text-xs mt-1 ${
+                cashDescuadre === 0 ? 'text-success' : 'text-warning'
+              }`}
+            >
+              {cashDescuadre === 0
+                ? 'Cuadra exacto'
+                : `Descuadre: ${cashDescuadre > 0 ? '+' : ''}${euros(cashDescuadre)}`}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="caja-card-counted"
+            className="text-xs font-medium text-ink-2"
+          >
+            Total datáfono / TPV (€){' '}
+            <span className="text-ink-2">(opcional)</span>
+          </label>
+          <input
+            id="caja-card-counted"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={cardCounted}
+            onChange={(e) => setCardCounted(e.target.value)}
+            placeholder="Si tienes datáfono, mete el total que dice"
+            className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors tabular-nums placeholder:text-ink-2"
+          />
+          {cardDescuadre !== null && (
+            <p
+              className={`text-xs mt-1 ${
+                cardDescuadre === 0 ? 'text-success' : 'text-warning'
+              }`}
+            >
+              {cardDescuadre === 0
+                ? 'Cuadra con la app'
+                : `Descuadre: ${cardDescuadre > 0 ? '+' : ''}${euros(cardDescuadre)}`}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="caja-close-notes"
+            className="text-xs font-medium text-ink-2"
+          >
+            Notas (opcional)
+          </label>
+          <textarea
+            id="caja-close-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            maxLength={500}
+            className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors resize-none"
+          />
+        </div>
+
+        {error && <p className="text-xs text-danger">{error}</p>}
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={submitting}
+          className="w-full inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-ink text-surface hover:bg-ink/90 px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60"
+        >
+          {submitting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Lock className="h-4 w-4" />
+          )}
+          Cerrar caja
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+interface NewMovementModalProps {
+  open: boolean
+  onClose: () => void
+  onCreated: () => void
+}
+
+const MOVEMENT_KINDS_FOR_MANUAL: Array<{
+  kind: Exclude<MovementKind, 'booking' | 'product_sale'>
+  label: string
+  description: string
+  defaultMethod: PaymentMethod
+  icon: typeof Banknote
+}> = [
+  {
+    kind: 'expense',
+    label: 'Gasto',
+    description: 'Pagado a proveedor / café / consumible',
+    defaultMethod: 'cash',
+    icon: Receipt,
+  },
+  {
+    kind: 'withdrawal',
+    label: 'Retirada',
+    description: 'Sacar dinero del cajón al banco / bolsillo',
+    defaultMethod: 'cash',
+    icon: ArrowUpFromLine,
+  },
+  {
+    kind: 'deposit',
+    label: 'Aporte',
+    description: 'Meter cambio extra al cajón',
+    defaultMethod: 'cash',
+    icon: ArrowDownToLine,
+  },
+  {
+    kind: 'tip_cash',
+    label: 'Propina (efectivo)',
+    description: 'El cliente dejó propina en mano',
+    defaultMethod: 'cash',
+    icon: Heart,
+  },
+  {
+    kind: 'adjustment',
+    label: 'Ajuste',
+    description: 'Corrección manual del cuadre',
+    defaultMethod: 'cash',
+    icon: Sliders,
+  },
+]
+
+function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
+  const [kind, setKind] = useState<MovementKind>('expense')
+  const [method, setMethod] = useState<PaymentMethod>('cash')
+  const [amountEur, setAmountEur] = useState('')
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setKind('expense')
+      setMethod('cash')
+      setAmountEur('')
+      setNotes('')
+      setError(null)
+    }
+  }, [open])
+
+  async function submit() {
+    setError(null)
+    const amount = Number(amountEur)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Importe inválido')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/cash/movements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind,
+          method,
+          amountCents: Math.round(amount * 100),
+          notes: notes.trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error || 'No se pudo registrar el apunte')
+        return
+      }
+      onCreated()
+      onClose()
+    } catch {
+      setError('Error de red')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <ModalShell open={open} onClose={onClose} title="Nuevo apunte de caja">
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-medium text-ink-2 mb-1">Tipo</p>
+          <div className="grid grid-cols-1 gap-1.5">
+            {MOVEMENT_KINDS_FOR_MANUAL.map((opt) => {
+              const selected = kind === opt.kind
+              return (
+                <button
+                  key={opt.kind}
+                  type="button"
+                  onClick={() => {
+                    setKind(opt.kind)
+                    setMethod(opt.defaultMethod)
+                  }}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-xs transition-colors ${
+                    selected
+                      ? 'border-brand bg-brand-softer/40 text-ink'
+                      : 'border-line bg-surface text-ink-2 hover:border-line-strong'
+                  }`}
+                >
+                  <opt.icon className="h-3.5 w-3.5 text-brand shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold">{opt.label}</p>
+                    <p className="text-[0.6875rem] text-ink-2 truncate">
+                      {opt.description}
+                    </p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-medium text-ink-2 mb-1">Método</p>
+          <div className="flex gap-1 bg-overlay border border-line rounded-lg p-1">
+            {(['cash', 'card', 'online'] as PaymentMethod[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMethod(m)}
+                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  method === m
+                    ? 'bg-surface shadow-sm text-ink'
+                    : 'text-ink-2 hover:text-ink'
+                }`}
+              >
+                {PAYMENT_METHOD_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label
+            htmlFor="caja-movement-amount"
+            className="text-xs font-medium text-ink-2"
+          >
+            Importe (€)
+          </label>
+          <input
+            id="caja-movement-amount"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={amountEur}
+            onChange={(e) => setAmountEur(e.target.value)}
+            autoFocus
+            className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors tabular-nums"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="caja-movement-notes"
+            className="text-xs font-medium text-ink-2"
+          >
+            Notas (opcional)
+          </label>
+          <input
+            id="caja-movement-notes"
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={500}
+            placeholder="Concepto del apunte"
+            className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors placeholder:text-ink-2"
+          />
+        </div>
+
+        {error && <p className="text-xs text-danger">{error}</p>}
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={submitting}
+          className="btn-primary w-full"
+        >
+          {submitting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          Registrar apunte
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
