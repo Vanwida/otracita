@@ -6,6 +6,7 @@ import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
+import { appointmentBlockStyle, statusBadge } from './_appointment-color';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
@@ -63,34 +64,9 @@ interface Props {
   ) => void;
 }
 
-// El FILL del bloque codifica el ESTADO de la cita (UI0 #3); la identidad
-// del barbero la lleva el borde-acento izquierdo (no el fondo). Tokens en
-// globals.css @theme. 'confirmed' es el caso normal (verde sage suave);
-// completed = slate frío; no_show = rojo; cancelled = casi-gris apagado.
-function statusBlockStyle(status: string): { bg: string; ink: string } {
-  switch (status) {
-    case 'completed':
-      return {
-        bg: 'var(--color-event-completed-bg)',
-        ink: 'var(--color-event-completed-ink)',
-      };
-    case 'no_show':
-      return {
-        bg: 'var(--color-event-noshow-bg)',
-        ink: 'var(--color-event-noshow-ink)',
-      };
-    case 'cancelled':
-      return {
-        bg: 'var(--color-event-cancelled-bg)',
-        ink: 'var(--color-event-cancelled-ink)',
-      };
-    default: // confirmed (y cualquier estado desconocido → tratar como activo)
-      return {
-        bg: 'var(--color-event-confirmed-bg)',
-        ink: 'var(--color-event-confirmed-ink)',
-      };
-  }
-}
+// El color de la cita = color del BARBERO (consistente Día/Semana/Mes); el
+// ESTADO se comunica con tratamiento + ícono + etiqueta, NO con otro tono.
+// Toda esa lógica vive en `_appointment-color.ts` (fuente única, fix #6).
 
 /** Iniciales de un nombre — máx 2 letras, mayúsculas. "José Ruiz" → "JR". */
 function initials(name: string): string {
@@ -404,7 +380,13 @@ export default function DayGrid({
                     const height = Math.max(event.duration * PX_PER_MIN, 24);
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    const { bg, ink } = statusBlockStyle(event.status);
+                    // Color = barbero de ESTA columna (consistente con
+                    // Semana/Mes). Estado por tratamiento + ícono + etiqueta.
+                    const { style: blockStyle, treatment } = appointmentBlockStyle(
+                      col.barber?.displayOrder ?? null,
+                      event.status,
+                    );
+                    const badge = statusBadge(event.status);
 
                     const endMin = startMin + event.duration;
                     const endH = Math.floor(endMin / 60);
@@ -447,24 +429,8 @@ export default function DayGrid({
                         }}
                         className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 overflow-hidden transition-opacity hover:opacity-80 ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                        } ${isCancelled ? 'line-through opacity-70' : ''} ${
-                          isDragging ? 'opacity-40' : ''
-                        }`}
-                        style={{
-                          top,
-                          height,
-                          backgroundColor: bg,
-                          color: ink,
-                          // Longhand, NO shorthand: `borderLeft: '4px solid
-                          // var(--color-barber-N)'` se descartaba entero en
-                          // motores que no parsean la var-con-oklch() dentro
-                          // del shorthand → la cita salía sin color. Separado
-                          // en width/style/color, el color del barbero ahora
-                          // sí pinta. 4px = barra-acento de DESIGN.md.
-                          borderLeftWidth: '4px',
-                          borderLeftStyle: 'solid',
-                          borderLeftColor: colColor,
-                        }}
+                        } ${treatment} ${isDragging ? 'opacity-40' : ''}`}
+                        style={{ top, height, ...blockStyle }}
                         title={event.title}
                       >
                         {/* Booksy lock icon */}
@@ -486,6 +452,16 @@ export default function DayGrid({
                         <p className="text-[10px] font-semibold leading-tight truncate">
                           {event.time}
                           <span className="opacity-60"> – {endTime}</span>
+                          {/* Estado por ícono + etiqueta (NUNCA solo color):
+                              confirmada no necesita decoración. */}
+                          {badge && (
+                            <span
+                              className={`ml-1 inline-flex items-center gap-0.5 font-bold ${badge.tone}`}
+                            >
+                              <badge.icon className="h-2.5 w-2.5" aria-hidden="true" />
+                              {height > 28 && <span>{badge.label}</span>}
+                            </span>
+                          )}
                         </p>
                         {height > 28 && (
                           <p className="text-[10px] leading-tight truncate font-medium">

@@ -10,7 +10,12 @@ import {
   isSameMonth,
   isSameDay,
 } from 'date-fns';
-import type { CalendarEvent } from './types';
+import type { CalendarEvent, Barber } from './types';
+import {
+  appointmentChipStyle,
+  statusBadge,
+  displayOrderForEventBarber,
+} from './_appointment-color';
 
 const DAY_HEADERS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MAX_VISIBLE = 3;
@@ -19,6 +24,8 @@ interface Props {
   monthStart: Date;
   events: CalendarEvent[];
   blockedDates: string[];
+  /** Equipo activo — color de cada cita por su barbero (fuente única). */
+  barbers: Barber[];
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
 }
@@ -27,6 +34,7 @@ export default function MonthGrid({
   monthStart,
   events,
   blockedDates,
+  barbers,
   onEventClick,
   onSlotClick,
 }: Props) {
@@ -96,18 +104,17 @@ export default function MonthGrid({
                 {/* Events */}
                 <div className="space-y-0.5">
                   {dayEvents.slice(0, MAX_VISIBLE).map(event => {
-                    const isBooksy = event.source === 'booksy';
-                    const isCancelledOrNoShow =
-                      event.status === 'cancelled' || event.status === 'no_show';
-
-                    let colorClass = '';
-                    if (isCancelledOrNoShow) {
-                      colorClass = 'bg-event-noshow/15 text-event-noshow';
-                    } else if (isBooksy) {
-                      colorClass = 'bg-event-booksy/20 text-event-booksy';
-                    } else {
-                      colorClass = 'bg-event-native/20 text-event-native';
-                    }
+                    // Color = barbero de la cita (mismo que Día/Semana).
+                    // Estado por tratamiento + ícono (fuente única, fix #6).
+                    const dispOrder = displayOrderForEventBarber(
+                      event.barber,
+                      barbers,
+                    );
+                    const { style: chipStyle, treatment } = appointmentChipStyle(
+                      dispOrder,
+                      event.status,
+                    );
+                    const badge = statusBadge(event.status);
 
                     return (
                       <div
@@ -117,9 +124,16 @@ export default function MonthGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${colorClass}`}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${treatment}`}
+                        style={chipStyle}
                         title={event.title}
                       >
+                        {badge && (
+                          <badge.icon
+                            className={`mr-0.5 inline-block h-2.5 w-2.5 align-[-1px] ${badge.tone}`}
+                            aria-label={badge.label}
+                          />
+                        )}
                         {event.time} {event.customerName || event.customerPhone}
                       </div>
                     );
