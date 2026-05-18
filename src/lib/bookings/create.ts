@@ -1,9 +1,10 @@
 import { db } from '@/db';
-import { appUsers, barbers as barbersTable, bookings, clients, customers } from '@/db/schema';
+import { appUsers, barbers as barbersTable, bookings, bookingServices, clients, customers } from '@/db/schema';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
 import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
 import { loadShopUnavailability } from '@/lib/unavailability-db';
+import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 
 // -----------------------------------------------------------------------------
@@ -52,6 +53,14 @@ export interface CreateBookingOptions {
   duration?: number;
   /** Euros, VAT-inclusive. Optional. */
   price?: number | null;
+  /** Servicios EXTRA además del principal (R7). Solo el caller del dashboard
+   *  los envía. Si está ausente/vacío, el comportamiento es IDÉNTICO al de
+   *  hoy (bot/voice/import/cron no lo pasan → 4 de 5 callers sin cambios).
+   *  Cuando hay extras: `bookings.duration` snapshot = principal + suma(extras)
+   *  para que el chequeo de solape reserve el hueco real, y la factura emite
+   *  una línea por servicio. `bookings.service`/`price` siguen siendo el
+   *  snapshot del PRINCIPAL (compat agenda/loyalty/followup). */
+  extraServices?: BookingServiceLine[] | null;
   /** Booking source tag — defaults to 'bot'. */
   source?: string;
   /** Last-touch attribution para ESTA reserva. Se guarda en bookings.referrer*.
@@ -175,6 +184,7 @@ export async function createBooking(
     barberId,
     date,
     time,
+    extraServices,
     source = 'bot',
     attribution,
   } = options;
@@ -195,12 +205,22 @@ export async function createBooking(
 
   // Derive duration/price from service config when caller didn't provide them.
   const configured = resolveServiceConfig(client, service);
-  const duration = options.duration ?? configured.duration;
+  const primaryDuration = options.duration ?? configured.duration;
   const price = options.price ?? configured.price;
 
-  if (!duration || duration <= 0) {
+  if (!primaryDuration || primaryDuration <= 0) {
     return { success: false, error: 'validation', message: 'duration must be greater than 0' };
   }
+
+  // Snapshot persistido en bookings.duration = principal + suma(extras).
+  // FOOT-GUN: este `duration` (no `primaryDuration`) es el que alimenta el
+  // chequeo de solape más abajo Y el que se guarda. Si guardáramos solo el
+  // principal, una cita multi-servicio reservaría un hueco demasiado corto y
+  // el motor permitiría doble-booking encima de su segunda mitad. Sin extras
+  // computeBookingSnapshot devuelve exactamente primaryDuration → 4 de 5
+  // callers (bot/voice/import/cron) no cambian de comportamiento.
+  const extras = extraServices && extraServices.length > 0 ? extraServices : null;
+  const { durationMin: duration } = computeBookingSnapshot(primaryDuration, extras);
 
   // --- Standards: lead time + horizon ---------------------------------------
   const now = new Date();
@@ -362,6 +382,27 @@ export async function createBooking(
       referrerCampaign: attribution?.campaign ?? null,
     })
     .returning();
+
+  // --- Servicios extra (R7) -------------------------------------------------
+  // Solo cuando el caller los envió (dashboard). Aditivo: el principal ya
+  // está en bookings.service/duration/price; estos son los EXTRA. Si esto
+  // falla no tumbamos la reserva (ya está creada) — log y seguimos; el
+  // barbero puede re-añadirlos editando la cita.
+  if (extras && extras.length > 0) {
+    try {
+      await db.insert(bookingServices).values(
+        extras.map((s, idx) => ({
+          bookingId: created.id,
+          name: s.name,
+          durationMin: s.durationMin,
+          priceEuros: s.priceEuros ?? null,
+          displayOrder: idx,
+        })),
+      );
+    } catch (err) {
+      console.error('[createBooking] booking_services insert failed:', err);
+    }
+  }
 
   // --- Upsert customer + increment counters -------------------------------
   // Every successful booking, regardless of source (web, bot, voice,

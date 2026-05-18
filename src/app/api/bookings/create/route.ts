@@ -7,6 +7,7 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
 import { createBooking } from '@/lib/bookings/create';
+import { sanitizeExtraServices } from '@/lib/bookings/duration';
 
 export async function POST(req: NextRequest) {
   const access = await requireClientAccess(req);
@@ -25,6 +26,9 @@ export async function POST(req: NextRequest) {
     time: string;
     duration: number;
     price?: number;
+    /** Servicios EXTRA (R7). Solo este caller (dashboard) los envía; los
+     *  otros 4 callers de createBooking no, así su comportamiento no cambia. */
+    extraServices?: unknown;
   };
 
   try {
@@ -34,6 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { customerName, customerPhone, service, barber, barberId: bodyBarberId, date, time, duration, price } = body;
+  const extraServices = sanitizeExtraServices(body.extraServices);
 
   if (!customerPhone || !service || !date || !time || !duration) {
     return NextResponse.json(
@@ -71,6 +76,7 @@ export async function POST(req: NextRequest) {
     time,
     duration,
     price,
+    extraServices: extraServices.length > 0 ? extraServices : undefined,
     source: 'bot',
   });
 

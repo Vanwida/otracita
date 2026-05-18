@@ -572,6 +572,35 @@ export const bookings = pgTable('bookings', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// -----------------------------------------------------------------------------
+// booking_services — servicios EXTRA de una cita multi-servicio (R7).
+//
+// Tabla ADITIVA. El servicio PRINCIPAL sigue viviendo en las columnas snapshot
+// de `bookings` (`service`/`duration`/`price`) — eso mantiene compatibles la
+// agenda, loyalty, followup y los 4 callers de createBooking que no envían
+// multi-servicio. Aquí solo se guardan los servicios añadidos por encima del
+// principal.
+//
+// `durationMin` se SUMA al snapshot `bookings.duration` al crear/editar
+// (ver src/lib/bookings/duration.ts) para que el chequeo de solape reserve el
+// hueco real. `priceEuros` es EUROS (igual que `bookings.price`, foot-gun del
+// schema) — la factura emite una línea por servicio (ver invoicing.ts).
+// `displayOrder` 0..n para pintar en orden estable.
+//
+// ON DELETE CASCADE: si se borra/cancela la cita, sus extras se van con ella.
+// -----------------------------------------------------------------------------
+export const bookingServices = pgTable('booking_services', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bookingId: uuid('booking_id')
+    .notNull()
+    .references(() => bookings.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  durationMin: integer('duration_min').notNull(), // minutos, > 0
+  priceEuros: integer('price_euros'),             // EUROS (no céntimos), null = cortesía
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Waitlist (customers waiting for a slot to open)
 export const waitlist = pgTable('waitlist', {
   id: uuid('id').defaultRandom().primaryKey(),

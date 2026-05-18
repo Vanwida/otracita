@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { X, Loader2, ShoppingBag, Plus, Minus, Check } from 'lucide-react'
+import NumberInput from '../_components/NumberInput'
 
 // -----------------------------------------------------------------------------
 // AddProductSaleModal — modal para registrar la venta de un producto desde
@@ -240,12 +241,18 @@ export default function AddProductSaleModal({
                     >
                       <Minus className="h-3.5 w-3.5" />
                     </button>
-                    <input
-                      type="number"
+                    <NumberInput
+                      value={quantity}
+                      onValueChange={(n) => {
+                        // R11: vacío permitido mientras se reescribe; el
+                        // clamp de NumberInput (min=1) restaura 1 al salir.
+                        // Solo actualizamos el contador con valores válidos.
+                        if (n !== null) setQuantity(Math.max(1, Math.min(99, n)))
+                      }}
                       min={1}
                       max={99}
-                      value={quantity}
-                      onChange={(e) => setQuantity(Math.max(1, Math.min(99, Number.parseInt(e.target.value, 10) || 1)))}
+                      decimals={0}
+                      aria-label="Cantidad"
                       className="w-16 text-center bg-surface border border-line rounded-lg py-2 text-sm font-semibold tabular-nums focus:border-brand outline-none"
                     />
                     <button
