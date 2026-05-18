@@ -12,9 +12,12 @@ import { NAV_ITEMS, isNavItemActive } from './nav-config'
 // `isNavItemActive` (en nav-config) mantiene DRY.
 //
 // variant="sidebar" → rail de iconos (UI0): icon-only, sin label visible.
-// El label se preserva como `aria-label` + `title` (a11y / tooltip) porque
-// el texto deja de mostrarse. Activo = barra indicadora brand a la
-// izquierda del icono (patrón Booksy, screenshots 09.48.41 / 10.17.08).
+// El label se preserva como `aria-label` + `title` (a11y) Y como tooltip
+// real en hover/focus (fix #8): al pasar de sidebar editorial a rail de
+// iconos se perdió la etiqueta y solo quedaba el `title` nativo (lento,
+// ~1s, inconsistente). Ahora hay un tooltip inmediato a la derecha del
+// icono, con el MISMO label (fuente única: area-config → nav-config).
+// Activo = barra indicadora brand a la izquierda (Booksy 09.48.41).
 // -----------------------------------------------------------------------------
 
 interface Props {
@@ -36,7 +39,7 @@ export default function DashboardSidebarNav({ variant }: Props) {
               aria-label={label}
               aria-current={active ? 'page' : undefined}
               title={label}
-              className={`relative flex h-10 w-10 items-center justify-center rounded-control transition-colors ${
+              className={`group relative flex h-10 w-10 items-center justify-center rounded-control transition-colors ${
                 active
                   ? 'bg-sidebar-hover text-ink'
                   : 'text-sidebar-text hover:text-ink hover:bg-sidebar-hover'
@@ -51,6 +54,16 @@ export default function DashboardSidebarNav({ variant }: Props) {
                 />
               )}
               <Icon className="h-5 w-5" />
+              {/* Tooltip inmediato (fix #8): mismo label que el aria/title,
+                  visible en hover Y en focus por teclado. Sin JS, sin
+                  retardo del title nativo. pointer-events-none para no
+                  robar el clic al Link. */}
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-[calc(100%+0.625rem)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                {label}
+              </span>
             </Link>
           )
         })}

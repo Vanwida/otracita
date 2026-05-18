@@ -6,6 +6,7 @@ import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
+import { appointmentBlockStyle, statusBadge } from './_appointment-color';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
@@ -51,6 +52,9 @@ interface Props {
   /** barberId is the canonical id of the clicked column (null for the
    *  "Sin asignar" fallback / single-column shops). */
   onSlotClick: (date: string, time: string, barberId: string | null) => void;
+  /** Clic en la CABECERA de una columna de barbero → menú de acciones
+   *  (editar horario · ausencia · falta disp. · qué ha hecho). Fix #2. */
+  onBarberClick: (barber: Barber) => void;
   /**
    * Drag&drop: el usuario soltó la cita `id` en una nueva (date,time) y/o
    * columna de barbero. barberId=null → columna "Sin asignar" (mantener
@@ -63,34 +67,9 @@ interface Props {
   ) => void;
 }
 
-// El FILL del bloque codifica el ESTADO de la cita (UI0 #3); la identidad
-// del barbero la lleva el borde-acento izquierdo (no el fondo). Tokens en
-// globals.css @theme. 'confirmed' es el caso normal (verde sage suave);
-// completed = slate frío; no_show = rojo; cancelled = casi-gris apagado.
-function statusBlockStyle(status: string): { bg: string; ink: string } {
-  switch (status) {
-    case 'completed':
-      return {
-        bg: 'var(--color-event-completed-bg)',
-        ink: 'var(--color-event-completed-ink)',
-      };
-    case 'no_show':
-      return {
-        bg: 'var(--color-event-noshow-bg)',
-        ink: 'var(--color-event-noshow-ink)',
-      };
-    case 'cancelled':
-      return {
-        bg: 'var(--color-event-cancelled-bg)',
-        ink: 'var(--color-event-cancelled-ink)',
-      };
-    default: // confirmed (y cualquier estado desconocido → tratar como activo)
-      return {
-        bg: 'var(--color-event-confirmed-bg)',
-        ink: 'var(--color-event-confirmed-ink)',
-      };
-  }
-}
+// El color de la cita = color del BARBERO (consistente Día/Semana/Mes); el
+// ESTADO se comunica con tratamiento + ícono + etiqueta, NO con otro tono.
+// Toda esa lógica vive en `_appointment-color.ts` (fuente única, fix #6).
 
 /** Iniciales de un nombre — máx 2 letras, mayúsculas. "José Ruiz" → "JR". */
 function initials(name: string): string {
@@ -110,6 +89,7 @@ export default function DayGrid({
   hours,
   onEventClick,
   onSlotClick,
+  onBarberClick,
   onEventMove,
 }: Props) {
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
@@ -129,19 +109,25 @@ export default function DayGrid({
   ) => {
     e.preventDefault();
     const drag = dragRef.current;
+    // Fallback: si el ref se perdió entre frames (Safari/FF nulan refs
+    // custom en algunos drags), recuperamos el id del dataTransfer que
+    // SIEMPRE seteamos en onDragStart. Sin offset → asumimos agarre por
+    // el borde superior del bloque (0px), suficiente con el snap de 5min.
+    const dragId = drag?.id ?? (e.dataTransfer.getData('text/plain') || null);
+    const grabOffsetPx = drag?.grabOffsetPx ?? 0;
     dragRef.current = null;
     setDraggingId(null);
-    if (!drag) return;
+    if (!dragId) return;
     const rect = e.currentTarget.getBoundingClientRect();
     // y del cursor → restamos el offset de agarre → top del bloque.
-    const topPx = e.clientY - rect.top - drag.grabOffsetPx;
+    const topPx = e.clientY - rect.top - grabOffsetPx;
     const startMinutes = Math.round(topPx / PX_PER_MIN) + GRID_START;
     const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
     const clamped = Math.max(GRID_START, Math.min(GRID_END - SNAP_MIN, snapped));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    onEventMove(drag.id, { date: dateStr, time, barberId });
+    onEventMove(dragId, { date: dateStr, time, barberId });
   };
 
   useEffect(() => {
@@ -264,7 +250,7 @@ export default function DayGrid({
             className="w-12 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
             style={{ height: TOTAL_HEIGHT + COL_HEADER_H }}
           >
-            <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-40" /> {/* header spacer — matches column header height */}
+            <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-50" /> {/* header spacer — z-50: esquina sup-izq por encima de las cabeceras de columna (z-40) al scrollear ambos ejes */}
             <div className="relative" style={{ height: TOTAL_HEIGHT }}>
               {currentTimePx !== null && (
                 <div
@@ -299,36 +285,61 @@ export default function DayGrid({
               >
                 {/* Column header — avatar + name + identity color spine
                     (Booksy-dense, A5). Sticky so it stays visible while
-                    scrolling the day. The 3px top spine + avatar ring carry
-                    the barber color; NO color column on the table — derived
-                    from displayOrder via barberColorVar(). */}
-                <div className="h-[var(--agenda-col-header-h)] flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-20">
-                  <span
-                    className="absolute top-0 left-0 right-0 h-[3px]"
-                    style={{ backgroundColor: colColor }}
-                    aria-hidden="true"
-                  />
-                  {col.barber?.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={col.barber.photoUrl}
-                      alt=""
-                      className="h-7 w-7 rounded-full object-cover ring-2 shrink-0"
-                      style={{ ['--tw-ring-color' as string]: colColor }}
-                    />
-                  ) : (
-                    <span
-                      className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: colColor }}
-                      aria-hidden="true"
+                    scrolling the day. z-40: por encima de los eventos (z-20)
+                    y de la línea "ahora" (z-30) — antes era z-20 y, al ser
+                    igual que los eventos, estos (más tarde en el DOM)
+                    pintaban POR ENCIMA al hacer scroll. El bg-overlay es
+                    opaco, así que ahora tapa correctamente las citas que
+                    suben. La esquina sup-izq (gutter spacer) va a z-50 para
+                    quedar sobre las cabeceras al scrollear en ambos ejes. */}
+                {(() => {
+                  const headerInner = (
+                    <>
+                      <span
+                        className="absolute top-0 left-0 right-0 h-[3px]"
+                        style={{ backgroundColor: colColor }}
+                        aria-hidden="true"
+                      />
+                      {col.barber?.photoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={col.barber.photoUrl}
+                          alt=""
+                          className="h-7 w-7 rounded-full object-cover ring-2 shrink-0"
+                          style={{ ['--tw-ring-color' as string]: colColor }}
+                        />
+                      ) : (
+                        <span
+                          className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                          style={{ backgroundColor: colColor }}
+                          aria-hidden="true"
+                        >
+                          {col.barber ? initials(col.barber.name) : '∅'}
+                        </span>
+                      )}
+                      <span className="text-[11px] font-bold text-ink-2 truncate max-w-full leading-none">
+                        {col.label}
+                      </span>
+                    </>
+                  );
+                  const headerClass =
+                    'h-[var(--agenda-col-header-h)] w-full flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-40';
+                  // Clic en la cabecera → menú de acciones del barbero
+                  // (fix #2). Solo si la columna mapea a un barbero real
+                  // (la fallback "Sin asignar"/"Todos" no es accionable).
+                  return col.barber ? (
+                    <button
+                      type="button"
+                      onClick={() => onBarberClick(col.barber!)}
+                      aria-label={`Acciones de ${col.barber.name}`}
+                      className={`${headerClass} cursor-pointer hover:bg-overlay/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand transition-colors`}
                     >
-                      {col.barber ? initials(col.barber.name) : '∅'}
-                    </span>
-                  )}
-                  <span className="text-[11px] font-bold text-ink-2 truncate max-w-full leading-none">
-                    {col.label}
-                  </span>
-                </div>
+                      {headerInner}
+                    </button>
+                  ) : (
+                    <div className={headerClass}>{headerInner}</div>
+                  );
+                })()}
 
                 {/* Column body — también drop target del drag&drop. */}
                 <div
@@ -336,8 +347,12 @@ export default function DayGrid({
                   style={{ height: TOTAL_HEIGHT }}
                   onClick={e => handleColumnClick(e, col.barber?.id ?? null)}
                   onDragOver={e => {
-                    // Permitir soltar SOLO si hay una cita arrastrándose.
-                    if (dragRef.current) {
+                    // Permitir soltar mientras haya una cita arrastrándose.
+                    // Comprobamos ref O estado: el ref es síncrono pero el
+                    // estado (draggingId) sobrevive a frames donde el ref se
+                    // limpia. preventDefault en dragover es OBLIGATORIO para
+                    // que el evento drop dispare (spec HTML5).
+                    if (dragRef.current || draggingId) {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = 'move';
                     }
@@ -404,7 +419,13 @@ export default function DayGrid({
                     const height = Math.max(event.duration * PX_PER_MIN, 24);
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    const { bg, ink } = statusBlockStyle(event.status);
+                    // Color = barbero de ESTA columna (consistente con
+                    // Semana/Mes). Estado por tratamiento + ícono + etiqueta.
+                    const { style: blockStyle, treatment } = appointmentBlockStyle(
+                      col.barber?.displayOrder ?? null,
+                      event.status,
+                    );
+                    const badge = statusBadge(event.status);
 
                     const endMin = startMin + event.duration;
                     const endH = Math.floor(endMin / 60);
@@ -447,24 +468,16 @@ export default function DayGrid({
                         }}
                         className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 overflow-hidden transition-opacity hover:opacity-80 ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                        } ${isCancelled ? 'line-through opacity-70' : ''} ${
-                          isDragging ? 'opacity-40' : ''
+                        } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
+                          // Mientras se arrastra CUALQUIER cita, las demás
+                          // dejan de capturar puntero/drop: así el dragover y
+                          // el drop SIEMPRE llegan al cuerpo de la columna,
+                          // incluso si sueltas encima de otra cita (era el
+                          // bug — soltar sobre una cita existente no hacía
+                          // nada porque el tile interceptaba el drop).
+                          draggingId ? 'pointer-events-none' : ''
                         }`}
-                        style={{
-                          top,
-                          height,
-                          backgroundColor: bg,
-                          color: ink,
-                          // Longhand, NO shorthand: `borderLeft: '4px solid
-                          // var(--color-barber-N)'` se descartaba entero en
-                          // motores que no parsean la var-con-oklch() dentro
-                          // del shorthand → la cita salía sin color. Separado
-                          // en width/style/color, el color del barbero ahora
-                          // sí pinta. 4px = barra-acento de DESIGN.md.
-                          borderLeftWidth: '4px',
-                          borderLeftStyle: 'solid',
-                          borderLeftColor: colColor,
-                        }}
+                        style={{ top, height, ...blockStyle }}
                         title={event.title}
                       >
                         {/* Booksy lock icon */}
@@ -486,6 +499,16 @@ export default function DayGrid({
                         <p className="text-[10px] font-semibold leading-tight truncate">
                           {event.time}
                           <span className="opacity-60"> – {endTime}</span>
+                          {/* Estado por ícono + etiqueta (NUNCA solo color):
+                              confirmada no necesita decoración. */}
+                          {badge && (
+                            <span
+                              className={`ml-1 inline-flex items-center gap-0.5 font-bold ${badge.tone}`}
+                            >
+                              <badge.icon className="h-2.5 w-2.5" aria-hidden="true" />
+                              {height > 28 && <span>{badge.label}</span>}
+                            </span>
+                          )}
                         </p>
                         {height > 28 && (
                           <p className="text-[10px] leading-tight truncate font-medium">

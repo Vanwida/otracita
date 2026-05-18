@@ -25,6 +25,7 @@ import BookingDetailPanel from './BookingDetailPanel';
 import NewBookingPanel from './NewBookingPanel';
 import PromosFillModal from './PromosFillModal';
 import SlotActionMenu from './SlotActionMenu';
+import BarberActionMenu from './BarberActionMenu';
 import type { CalendarEvent, Barber, SlotAction } from './types';
 import { barberColorVar } from './types';
 
@@ -79,6 +80,8 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     time: string;
     barberId: string | null;
   } | null>(null);
+  // Menú de acciones de barbero (fix #2). null = cerrado.
+  const [barberMenu, setBarberMenu] = useState<Barber | null>(null);
   // Error transitorio de un movimiento de cita (drag&drop / mover manual).
   // Se autolimpia; el rollback visual lo hace el revalidate de SWR.
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -429,6 +432,11 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             hours={hours}
             onEventClick={handleEventClick}
             onSlotClick={handleSlotClick}
+            onBarberClick={(b) => {
+              setSelectedBooking(null);
+              setSlotMenu(null);
+              setBarberMenu(b);
+            }}
             onEventMove={handleEventMove}
           />
         ) : viewMode === 'week' ? (
@@ -436,6 +444,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
             events={events}
             blockedDates={blockedDates}
+            barbers={barbers}
             onEventClick={handleEventClick}
             onSlotClick={handleSlotClick}
           />
@@ -444,6 +453,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             monthStart={startOfMonth(currentDay)}
             events={events}
             blockedDates={blockedDates}
+            barbers={barbers}
             onEventClick={handleEventClick}
             onSlotClick={handleSlotClick}
           />
@@ -476,6 +486,16 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         contextLabel={slotMenuLabel}
         onClose={() => setSlotMenu(null)}
         onAction={handleSlotAction}
+      />
+
+      {/* Menú de acciones del barbero (fix #2) — clic en su cabecera de
+          columna. Reusa AbsenceModal/BlockModal y los eventos ya cargados. */}
+      <BarberActionMenu
+        barber={barberMenu}
+        events={events}
+        dateStr={format(currentDay, 'yyyy-MM-dd')}
+        onClose={() => setBarberMenu(null)}
+        onChanged={() => refetch()}
       />
 
       {/* New booking panel */}

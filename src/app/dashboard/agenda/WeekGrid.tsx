@@ -4,7 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
-import type { CalendarEvent } from './types';
+import type { CalendarEvent, Barber } from './types';
+import {
+  appointmentBlockStyle,
+  statusBadge,
+  displayOrderForEventBarber,
+} from './_appointment-color';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;   // 08:00
@@ -30,6 +35,9 @@ interface Props {
   weekStart: Date;
   events: CalendarEvent[];
   blockedDates: string[];
+  /** Equipo activo — para resolver el color de cada cita por su barbero
+   *  (mismo color que en Día/Mes, fuente única `_appointment-color`). */
+  barbers: Barber[];
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
 }
@@ -38,6 +46,7 @@ export default function WeekGrid({
   weekStart,
   events,
   blockedDates,
+  barbers,
   onEventClick,
   onSlotClick,
 }: Props) {
@@ -184,17 +193,18 @@ export default function WeekGrid({
                     const top = (startMin - GRID_START) * PX_PER_MIN;
                     const height = Math.max(event.duration * PX_PER_MIN, 20);
                     const isBooksy = event.source === 'booksy';
-                    const isCancelledOrNoShow =
-                      event.status === 'cancelled' || event.status === 'no_show';
-
-                    let colorClass = '';
-                    if (isCancelledOrNoShow) {
-                      colorClass = 'bg-event-noshow/15 text-event-noshow border border-event-noshow/25';
-                    } else if (isBooksy) {
-                      colorClass = 'bg-event-booksy text-white';
-                    } else {
-                      colorClass = 'bg-event-native text-white';
-                    }
+                    const isCancelled = event.status === 'cancelled';
+                    // Color = barbero de la cita (mismo que Día/Mes). Estado
+                    // por tratamiento + ícono, nunca por otro tono (fix #6).
+                    const dispOrder = displayOrderForEventBarber(
+                      event.barber,
+                      barbers,
+                    );
+                    const { style: blockStyle, treatment } = appointmentBlockStyle(
+                      dispOrder,
+                      event.status,
+                    );
+                    const badge = statusBadge(event.status);
 
                     return (
                       <div
@@ -204,16 +214,24 @@ export default function WeekGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 rounded px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${colorClass}`}
-                        style={{ top, height }}
+                        className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${treatment}`}
+                        style={{ top, height, ...blockStyle }}
                         title={event.title}
                       >
                         {/* Booksy lock icon */}
-                        {isBooksy && !isCancelledOrNoShow && (
+                        {isBooksy && !isCancelled && (
                           <Lock className="absolute top-1 right-1 h-3 w-3 opacity-70" />
                         )}
                         <p className="text-[10px] font-semibold leading-tight truncate">
                           {event.time} {event.customerName || event.customerPhone}
+                          {badge && (
+                            <span
+                              className={`ml-1 inline-flex items-center gap-0.5 font-bold ${badge.tone}`}
+                            >
+                              <badge.icon className="h-2.5 w-2.5" aria-hidden="true" />
+                              {height > 28 && <span>{badge.label}</span>}
+                            </span>
+                          )}
                         </p>
                         {height > 28 && (
                           <p className="text-[9px] opacity-80 truncate">{event.service}</p>
