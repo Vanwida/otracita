@@ -66,6 +66,12 @@
   --color-event-cancelled-bg:    oklch(0.95 0.01 60);   /* near-grey — cancelled */
   --color-event-cancelled-ink:   oklch(0.60 0.02 60);
 
+  /* ─── Agenda density ───
+   * Column header is taller than legacy (40px) to fit avatar + name
+   * (Booksy-dense, A5). Shared by DayGrid column headers AND the time
+   * gutter spacer so hour labels stay aligned with event blocks. */
+  --agenda-col-header-h: 3.25rem;  /* 52px */
+
   /* ─── Barber identity palette (warm light, 8-deep, by displayOrder) ───
    * Deterministic: column N uses --color-barber-(N mod 8). Used for the
    * column spine, the avatar fallback chip, and the event left accent

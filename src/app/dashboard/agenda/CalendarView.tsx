@@ -120,10 +120,15 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     setCurrentDay(new Date());
   };
 
-  const handleSlotClick = (date: string, time: string) => {
+  // barberId opcional: DayGrid lo pasa (columna clicada); Week/Month no
+  // tienen columna por barbero y llaman con 2 args. El menú contextual de
+  // opciones (SlotActionMenu) se cablea en el commit 4 — aquí solo se
+  // propaga el slot a NewBookingPanel.
+  const handleSlotClick = (date: string, time: string, _barberId?: string | null) => {
     setNewBookingSlot({ date, time });
     setSelectedBooking(null);
     setIsNewBookingOpen(true);
+    void _barberId;
   };
 
   const handleEventClick = (event: CalendarEvent) => {

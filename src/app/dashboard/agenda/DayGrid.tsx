@@ -4,12 +4,16 @@ import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
-import type { CalendarEvent } from './types';
+import type { CalendarEvent, Barber } from './types';
+import { barberColorVar } from './types';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
 const GRID_END = 22 * 60;   // 22:00
 const TOTAL_HEIGHT = (GRID_END - GRID_START) * PX_PER_MIN; // 1680px
+// Must equal --agenda-col-header-h (52px). The gutter wrapper reserves
+// header + body so its scroll height matches the column bodies exactly.
+const COL_HEADER_H = 52;
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -36,11 +40,23 @@ function getCurrentTimeMinutes(): number {
 interface Props {
   date: Date;
   events: CalendarEvent[];
-  barbers: Array<{ name: string }>;
+  barbers: Barber[];
   blockedDates: string[];
   hours: Record<string, string> | null;
   onEventClick: (event: CalendarEvent) => void;
-  onSlotClick: (date: string, time: string) => void;
+  /** barberId is the canonical id of the clicked column (null for the
+   *  "Sin asignar" fallback / single-column shops). */
+  onSlotClick: (date: string, time: string, barberId: string | null) => void;
+}
+
+/** Iniciales de un nombre — máx 2 letras, mayúsculas. "José Ruiz" → "JR". */
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
 export default function DayGrid({
@@ -121,13 +137,19 @@ export default function DayGrid({
     barbers.length > 0 &&
     events.some((e) => e.date === dateStr && !isAssigned(e) && e.status !== 'cancelled');
 
-  const columns =
+  // Each column carries its Barber (when it maps to one) so the header can
+  // render avatar + identity color and slot-clicks can emit the real
+  // barberId. The "Sin asignar" / single-column fallbacks have barber=null.
+  type Column = { key: string; label: string; barber: Barber | null };
+  const columns: Column[] =
     barbers.length > 0
       ? [
-          ...barbers.map((b) => ({ key: b.name, label: b.name })),
-          ...(hasUnassigned ? [{ key: '__unassigned__', label: 'Sin asignar' }] : []),
+          ...barbers.map((b) => ({ key: b.name, label: b.name, barber: b })),
+          ...(hasUnassigned
+            ? [{ key: '__unassigned__', label: 'Sin asignar', barber: null }]
+            : []),
         ]
-      : [{ key: 'all', label: 'Todos' }];
+      : [{ key: 'all', label: 'Todos', barber: null }];
 
   const getEventsForColumn = (colKey: string) => {
     if (colKey === 'all') return events.filter((e) => e.date === dateStr);
@@ -138,18 +160,21 @@ export default function DayGrid({
     );
   };
 
-  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, colKey: string) => {
+  const handleColumnClick = (
+    e: React.MouseEvent<HTMLDivElement>,
+    barberId: string | null,
+  ) => {
     if ((e.target as HTMLElement).closest('[data-event]')) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const clickedMinutes = Math.floor(y / PX_PER_MIN) + GRID_START;
-    const rounded = Math.round(clickedMinutes / 30) * 30;
-    const clamped = Math.max(GRID_START, Math.min(GRID_END - 30, rounded));
+    // Snap a 5 min (R1/R3: ajustar minutos libremente, no solo medias horas).
+    const rounded = Math.round(clickedMinutes / 5) * 5;
+    const clamped = Math.max(GRID_START, Math.min(GRID_END - 5, rounded));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    onSlotClick(dateStr, time);
-    void colKey;
+    onSlotClick(dateStr, time, barberId);
   };
 
   return (
@@ -164,9 +189,9 @@ export default function DayGrid({
           {/* Time gutter (sticky left) */}
           <div
             className="w-12 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
-            style={{ height: TOTAL_HEIGHT + 40 }}
+            style={{ height: TOTAL_HEIGHT + COL_HEADER_H }}
           >
-            <div className="h-10 bg-overlay border-b border-line sticky top-0 z-40" /> {/* header spacer */}
+            <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-40" /> {/* header spacer — matches column header height */}
             <div className="relative" style={{ height: TOTAL_HEIGHT }}>
               {currentTimePx !== null && (
                 <div
@@ -190,23 +215,53 @@ export default function DayGrid({
 
           {columns.map(col => {
             const colEvents = getEventsForColumn(col.key);
+            const colColor = col.barber
+              ? barberColorVar(col.barber.displayOrder)
+              : 'var(--color-line-strong)';
 
             return (
               <div
                 key={col.key}
                 className="flex-1 flex flex-col border-r border-line last:border-r-0 min-w-0"
               >
-                {/* Column header — sticky top so it stays visible while
-                    scrolling through the day. */}
-                <div className="h-10 flex items-center justify-center px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-20">
-                  <span className="text-xs font-bold text-ink-2 truncate">{col.label}</span>
+                {/* Column header — avatar + name + identity color spine
+                    (Booksy-dense, A5). Sticky so it stays visible while
+                    scrolling the day. The 3px top spine + avatar ring carry
+                    the barber color; NO color column on the table — derived
+                    from displayOrder via barberColorVar(). */}
+                <div className="h-[var(--agenda-col-header-h)] flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-20">
+                  <span
+                    className="absolute top-0 left-0 right-0 h-[3px]"
+                    style={{ backgroundColor: colColor }}
+                    aria-hidden="true"
+                  />
+                  {col.barber?.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={col.barber.photoUrl}
+                      alt=""
+                      className="h-7 w-7 rounded-full object-cover ring-2 shrink-0"
+                      style={{ ['--tw-ring-color' as string]: colColor }}
+                    />
+                  ) : (
+                    <span
+                      className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                      style={{ backgroundColor: colColor }}
+                      aria-hidden="true"
+                    >
+                      {col.barber ? initials(col.barber.name) : '∅'}
+                    </span>
+                  )}
+                  <span className="text-[11px] font-bold text-ink-2 truncate max-w-full leading-none">
+                    {col.label}
+                  </span>
                 </div>
 
                 {/* Column body */}
                 <div
                   className="relative cursor-pointer"
                   style={{ height: TOTAL_HEIGHT }}
-                  onClick={e => handleColumnClick(e, col.key)}
+                  onClick={e => handleColumnClick(e, col.barber?.id ?? null)}
                 >
                   {/* Business hours dimming — before open */}
                   {businessHours && businessHours.open > GRID_START && (
