@@ -49,6 +49,35 @@ interface Props {
   onSlotClick: (date: string, time: string, barberId: string | null) => void;
 }
 
+// El FILL del bloque codifica el ESTADO de la cita (UI0 #3); la identidad
+// del barbero la lleva el borde-acento izquierdo (no el fondo). Tokens en
+// globals.css @theme. 'confirmed' es el caso normal (verde sage suave);
+// completed = slate frío; no_show = rojo; cancelled = casi-gris apagado.
+function statusBlockStyle(status: string): { bg: string; ink: string } {
+  switch (status) {
+    case 'completed':
+      return {
+        bg: 'var(--color-event-completed-bg)',
+        ink: 'var(--color-event-completed-ink)',
+      };
+    case 'no_show':
+      return {
+        bg: 'var(--color-event-noshow-bg)',
+        ink: 'var(--color-event-noshow-ink)',
+      };
+    case 'cancelled':
+      return {
+        bg: 'var(--color-event-cancelled-bg)',
+        ink: 'var(--color-event-cancelled-ink)',
+      };
+    default: // confirmed (y cualquier estado desconocido → tratar como activo)
+      return {
+        bg: 'var(--color-event-confirmed-bg)',
+        ink: 'var(--color-event-confirmed-ink)',
+      };
+  }
+}
+
 /** Iniciales de un nombre — máx 2 letras, mayúsculas. "José Ruiz" → "JR". */
 function initials(name: string): string {
   return name
@@ -315,23 +344,15 @@ export default function DayGrid({
                     </div>
                   )}
 
-                  {/* Events */}
+                  {/* Events — fill codifica ESTADO (UI0 #3); el borde-acento
+                      izquierdo lleva el color del barbero de la columna. */}
                   {colEvents.map(event => {
                     const startMin = toMinutes(event.time);
                     const top = (startMin - GRID_START) * PX_PER_MIN;
                     const height = Math.max(event.duration * PX_PER_MIN, 24);
                     const isBooksy = event.source === 'booksy';
-                    const isCancelledOrNoShow =
-                      event.status === 'cancelled' || event.status === 'no_show';
-
-                    let colorClass = '';
-                    if (isCancelledOrNoShow) {
-                      colorClass = 'bg-event-noshow/15 text-event-noshow border border-event-noshow/25';
-                    } else if (isBooksy) {
-                      colorClass = 'bg-event-booksy text-white';
-                    } else {
-                      colorClass = 'bg-event-native text-white';
-                    }
+                    const isCancelled = event.status === 'cancelled';
+                    const { bg, ink } = statusBlockStyle(event.status);
 
                     const endMin = startMin + event.duration;
                     const endH = Math.floor(endMin / 60);
@@ -346,16 +367,37 @@ export default function DayGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 rounded px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${colorClass}`}
-                        style={{ top, height }}
+                        className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${
+                          isCancelled ? 'line-through opacity-70' : ''
+                        }`}
+                        style={{
+                          top,
+                          height,
+                          backgroundColor: bg,
+                          color: ink,
+                          borderLeft: `3px solid ${colColor}`,
+                        }}
                         title={event.title}
                       >
                         {/* Booksy lock icon */}
-                        {isBooksy && !isCancelledOrNoShow && (
-                          <Lock className="absolute top-1 right-1 h-3 w-3 opacity-70" />
+                        {isBooksy && !isCancelled && (
+                          <Lock className="absolute top-1 right-1 h-3 w-3 opacity-60" />
+                        )}
+                        {/* A2 ♥ — cliente pidió este barbero explícitamente.
+                            Sólo se pinta en el tile cuando hay altura para
+                            no chocar con el candado de Booksy. */}
+                        {event.barberRequested && !isBooksy && height > 28 && (
+                          <span
+                            className="absolute top-1 right-1 text-[10px] leading-none"
+                            title="Solicitado por el cliente"
+                            aria-label="Solicitado por el cliente"
+                          >
+                            ♥
+                          </span>
                         )}
                         <p className="text-[10px] font-semibold leading-tight truncate">
-                          {event.time} – {endTime}
+                          {event.time}
+                          <span className="opacity-60"> – {endTime}</span>
                         </p>
                         {height > 28 && (
                           <p className="text-[10px] leading-tight truncate font-medium">
@@ -363,7 +405,7 @@ export default function DayGrid({
                           </p>
                         )}
                         {height > 44 && (
-                          <p className="text-[9px] leading-tight truncate opacity-80">
+                          <p className="text-[9px] leading-tight truncate opacity-75">
                             {event.service}
                           </p>
                         )}
