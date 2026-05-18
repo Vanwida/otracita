@@ -216,6 +216,7 @@ export default function SetupPage() {
   ]
 
   return (
+    <div className="h-full overflow-y-auto bg-canvas">
     <div className="max-w-3xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {/* Hero */}
       <div style={{ marginBottom: 'var(--space-section)' }}>
@@ -764,6 +765,7 @@ export default function SetupPage() {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

@@ -176,6 +176,7 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
   }, []);
 
   return (
+    <div className="h-full overflow-y-auto bg-canvas">
     <div className="max-w-2xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {/* Header */}
       <div
@@ -338,6 +339,7 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
           Horario: {client.hours.start} – {client.hours.end}
         </span>
       </div>
+    </div>
     </div>
   );
 }

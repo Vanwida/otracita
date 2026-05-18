@@ -30,7 +30,10 @@ export default async function NuevaFacturaPage() {
 
   if (!client.invoicingEnabled) {
     return (
-      <div className="p-4 md:p-8 max-w-3xl mx-auto">
+      <div
+        className="h-full overflow-y-auto bg-canvas"
+      >
+      <div className="max-w-3xl mx-auto" style={{ padding: 'var(--space-page)' }}>
         <div className="bg-surface border border-line rounded-2xl p-8 md:p-12 text-center">
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
             <Receipt className="h-6 w-6 text-brand" />
@@ -47,6 +50,7 @@ export default async function NuevaFacturaPage() {
           </Link>
         </div>
       </div>
+      </div>
     )
   }
 
@@ -59,7 +63,8 @@ export default async function NuevaFacturaPage() {
     : []
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto">
+    <div className="h-full overflow-y-auto bg-canvas">
+    <div className="max-w-3xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       <Link
         href="/dashboard/facturas"
         className="inline-flex items-center gap-2 text-sm text-ink-2 hover:text-ink transition-colors"
@@ -88,6 +93,7 @@ export default async function NuevaFacturaPage() {
           ivaRate={client.ivaRate}
         />
       </div>
+    </div>
     </div>
   )
 }

@@ -695,13 +695,19 @@ export default function FinanzasClient({
 
   return (
     <>
-    <div className="px-4 md:px-8 lg:px-12 max-w-2xl mx-auto pb-24 print:hidden">
+    {/* Viewport-locked: header compacto fijo (shrink-0) + cuerpo con
+        scroll INTERNO. Nada de scroll de página tipo revista. */}
+    <div className="h-full flex flex-col overflow-hidden bg-canvas print:hidden">
 
-      {/* HEADER */}
-      <header className="pt-10 lg:pt-14 pb-6">
+      {/* HEADER — shrink-0, NUNCA scrollea */}
+      <header
+        className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)]"
+        style={{ paddingTop: 'var(--space-card)', paddingBottom: 'var(--space-card)' }}
+      >
+        <div className="max-w-2xl mx-auto">
         <Link
           href="/dashboard/caja"
-          className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-6 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-1.5 transition-colors"
         >
           <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
           Caja
@@ -737,13 +743,17 @@ export default function FinanzasClient({
             Imprimir
           </button>
         </div>
+        </div>
       </header>
 
+      {/* Cuerpo — única región scrolleable */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-2xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {isLoading ? (
-        <div className="mt-4"><Skeleton /></div>
+        <div><Skeleton /></div>
       ) : (
         <>
-          <div className="mt-4 space-y-3">
+          <div className="space-y-3">
 
             {/* ── HERO — Te quedan limpios ──────────────────────────── */}
             <section className="bg-surface border border-line rounded-2xl px-5 py-6">
@@ -1651,6 +1661,8 @@ export default function FinanzasClient({
           </div>
         </>
       )}
+        </div>
+      </div>
 
     </div>
 

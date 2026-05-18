@@ -135,7 +135,11 @@ export default async function CustomerDetailPage({ params }: Props) {
   void barbersTable // imported for future use; suppress unused warning if any
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
+    <div className="h-full overflow-y-auto bg-canvas">
+    <div
+      className="max-w-4xl mx-auto"
+      style={{ padding: 'var(--space-page)' }}
+    >
       <Link
         href="/dashboard/clientes"
         className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink mb-4 transition-colors"
@@ -289,6 +293,7 @@ export default async function CustomerDetailPage({ params }: Props) {
           </ul>
         </section>
       )}
+    </div>
     </div>
   )
 }
