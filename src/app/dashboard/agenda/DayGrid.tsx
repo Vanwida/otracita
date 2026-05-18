@@ -240,7 +240,7 @@ export default function DayGrid({
             className="w-12 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
             style={{ height: TOTAL_HEIGHT + COL_HEADER_H }}
           >
-            <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-40" /> {/* header spacer — matches column header height */}
+            <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-50" /> {/* header spacer — z-50: esquina sup-izq por encima de las cabeceras de columna (z-40) al scrollear ambos ejes */}
             <div className="relative" style={{ height: TOTAL_HEIGHT }}>
               {currentTimePx !== null && (
                 <div
@@ -275,10 +275,14 @@ export default function DayGrid({
               >
                 {/* Column header — avatar + name + identity color spine
                     (Booksy-dense, A5). Sticky so it stays visible while
-                    scrolling the day. The 3px top spine + avatar ring carry
-                    the barber color; NO color column on the table — derived
-                    from displayOrder via barberColorVar(). */}
-                <div className="h-[var(--agenda-col-header-h)] flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-20">
+                    scrolling the day. z-40: por encima de los eventos (z-20)
+                    y de la línea "ahora" (z-30) — antes era z-20 y, al ser
+                    igual que los eventos, estos (más tarde en el DOM)
+                    pintaban POR ENCIMA al hacer scroll. El bg-overlay es
+                    opaco, así que ahora tapa correctamente las citas que
+                    suben. La esquina sup-izq (gutter spacer) va a z-50 para
+                    quedar sobre las cabeceras al scrollear en ambos ejes. */}
+                <div className="h-[var(--agenda-col-header-h)] flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-40">
                   <span
                     className="absolute top-0 left-0 right-0 h-[3px]"
                     style={{ backgroundColor: colColor }}
