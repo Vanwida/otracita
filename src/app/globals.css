@@ -328,10 +328,3 @@ body {
   border-color: rgba(244, 227, 212, 0.14);
 }
 
-/* Dashboard sidebar collapse — controlled by SidebarToggle client component.
- * Writes `data-sidebar="collapsed"` on <html>; we hide the aside on lg+
- * viewports. Mobile already hides the aside via `.hidden lg:flex` classes
- * so the collapse only applies to desktop/tablet. */
-html[data-sidebar="collapsed"] aside[data-dashboard-sidebar] {
-  display: none;
-}

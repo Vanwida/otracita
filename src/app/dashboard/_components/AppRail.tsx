@@ -29,7 +29,6 @@ interface Props {
 export default function AppRail({ email, isAdmin, needsSetup }: Props) {
   return (
     <aside
-      data-dashboard-sidebar
       className="hidden lg:flex lg:flex-col items-center shrink-0 border-r border-sidebar-line bg-sidebar py-4"
       style={{ width: 'var(--rail-width)' }}
       aria-label="Navegación principal"
