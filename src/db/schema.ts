@@ -336,23 +336,11 @@ export const barberBlocks = pgTable('barber_blocks', {
 // `target`: lo que hay que alcanzar para cobrar la recompensa.
 // `rewardCents`: lo que cobra QUIEN llegue al target (cada barbero
 // independientemente).
-//
-// `kind` (R9 — feedback de Reni: "bono por meta como UNA opción"):
-//   · 'meta'  → todo-o-nada: progreso ≥ target ⇒ cobra rewardCents íntegro
-//               (el ÚNICO modo que existía; default para filas legacy).
-//   · 'tramo' → por unidad: cobra rewardCents × (progreso / target), sin
-//               tope. Ej. "2 € por reseña" = target 1, rewardCents 200 →
-//               10 reseñas pagan 20 €. `target` actúa como tamaño del
-//               tramo, no como umbral. Ver computeBonusProgress.
-// Columna ADITIVA con default 'meta' — las filas existentes y todo el
-// código de pago (monthly.ts, BonusTracker) siguen funcionando sin tocar
-// nada: si nadie elige tipo, sigue siendo 'meta' = comportamiento previo.
 export const bonuses = pgTable('bonuses', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
   name: text('name').notNull(),                                       // p.ej. "Reseñas Google"
   unit: text('unit').notNull(),                                       // 'units' | 'euros'
-  kind: text('kind').default('meta').notNull(),                       // 'meta' | 'tramo'
   target: integer('target').notNull(),                                // si unit=euros, en cents
   rewardCents: integer('reward_cents').notNull(),                     // siempre cents
   active: boolean('active').default(true).notNull(),
@@ -378,91 +366,6 @@ export const bonusEntries = pgTable('bonus_entries', {
   note: text('note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
-
-// R8 — comisión de servicios POR-SERVICIO (override del % global).
-//
-// Hoy `barbers.commissionServicesPct` es UN % global por barbero aplicado a
-// TODOS sus servicios facturados. Reni pidió poder pagar distinto según el
-// servicio (un corte 40 %, una coloración 25 %). Esta tabla es un mapa de
-// overrides: cada fila dice "para ESTE barbero, ESTE servicio paga X %".
-//
-// Tabla ADITIVA y opt-in. Sin filas ⇒ payroll usa exactamente el % global
-// de antes (no-regresión, ver compute.test.ts). El servicio se referencia
-// por NOMBRE (`serviceName`) porque el catálogo vive como jsonb en
-// `clients.chatbotServices` sin ID estable, y `bookings.service` es texto
-// libre con ese mismo nombre — el join natural es por string normalizado.
-// Si el dueño renombra un servicio, el override deja de aplicar (cae al %
-// global) hasta que lo reconfigure; aceptable y predecible para v1.
-export const barberServiceCommissions = pgTable('barber_service_commissions', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  clientId: uuid('client_id').notNull().references(() => clients.id),
-  barberId: uuid('barber_id').notNull().references(() => barbers.id, { onDelete: 'cascade' }),
-  serviceName: text('service_name').notNull(),                        // = bookings.service / chatbotServices[].name
-  pct: integer('pct').notNull(),                                      // 0-100, override del % global
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => ({
-  barberServiceUnique: unique('barber_service_commissions_unique').on(
-    table.clientId, table.barberId, table.serviceName,
-  ),
-}));
-
-// R10 — competición SEMANAL de equipo (separada del bono mensual por barbero).
-//
-// El dueño define una competición: cada semana ISO el equipo compite por una
-// métrica, gana UNO (zero-sum) y cobra `rewardCentsPerWeek`. Si el MISMO
-// barbero gana `streakWeeksForBonus` semanas SEGUIDAS, cobra además
-// `streakBonusCents` (la mecánica "€25/sem, 4 seguidas = +€100" de Reni).
-//
-// `metric`:
-//   · 'services_products' → mayor suma de servicios facturados + productos
-//                           vendidos en la ventana semanal.
-//   · 'avg_ticket_lift'   → mayor subida del ticket medio respecto a la
-//                           semana anterior del propio barbero (premia
-//                           mejorar, no solo facturar mucho).
-// Payout STANDALONE v1 (decisión team-lead): NO entra en monthly.ts ni en
-// la línea P&L de nóminas — es un incentivo discrecional del local, se ve
-// en su propio panel del tab Comisiones. Estructura lista para fundirlo
-// después si se decide. UNA competición activa basta para v1 pero el
-// modelo permite varias (cada una su métrica).
-export const teamCompetitions = pgTable('team_competitions', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  clientId: uuid('client_id').notNull().references(() => clients.id),
-  name: text('name').notNull(),                                       // p.ej. "Reto semanal"
-  metric: text('metric').notNull(),                                   // 'services_products' | 'avg_ticket_lift'
-  rewardCentsPerWeek: integer('reward_cents_per_week').notNull(),     // lo que cobra el ganador de la semana
-  streakWeeksForBonus: integer('streak_weeks_for_bonus').default(4).notNull(),
-  streakBonusCents: integer('streak_bonus_cents').default(0).notNull(), // extra al encadenar la racha
-  active: boolean('active').default(true).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
-
-// Resultado CONGELADO de una semana ISO de una competición.
-//
-// Lazy-compute-but-FREEZE-ONCE (decisión team-lead): el ganador de la
-// semana en curso se calcula on-read desde bookings/productSales. La
-// PRIMERA lectura tras cerrar la semana ISO persiste aquí el ganador y NO
-// se recalcula jamás — blinda el resultado contra rectificativas de WS-C
-// que tocan ventas pasadas. Sin cron: la "congelación" la dispara la
-// propia lectura. UNA fila por (competición, semana ISO) = zero-sum.
-//
-// `isoWeekStart`: lunes (YYYY-MM-DD) de la semana ISO, clave canónica de
-// la ventana. `winnerBarberId` null ⇒ semana sin actividad (nadie facturó)
-// — congelada igualmente para no reabrir el cálculo.
-export const teamCompetitionWeeks = pgTable('team_competition_weeks', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  clientId: uuid('client_id').notNull().references(() => clients.id),
-  competitionId: uuid('competition_id').notNull().references(() => teamCompetitions.id, { onDelete: 'cascade' }),
-  isoWeekStart: text('iso_week_start').notNull(),                     // YYYY-MM-DD (lunes ISO)
-  winnerBarberId: uuid('winner_barber_id').references(() => barbers.id),
-  winnerMetricValue: integer('winner_metric_value'),                  // valor de la métrica del ganador (cents o ratio×100)
-  computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => ({
-  competitionWeekUnique: unique('team_competition_weeks_unique').on(
-    table.competitionId, table.isoWeekStart,
-  ),
-}));
 
 // Subscriptions tracking
 export const subscriptions = pgTable('subscriptions', {
