@@ -23,11 +23,11 @@ import DayGrid from './DayGrid';
 import BookingDetailPanel from './BookingDetailPanel';
 import NewBookingPanel from './NewBookingPanel';
 import PromosFillModal from './PromosFillModal';
-import type { CalendarEvent } from './types';
+import type { CalendarEvent, Barber } from './types';
 
 interface Props {
   services: Array<{ name: string; duration: number; price: number }>;
-  barbers: Array<{ name: string }>;
+  barbers: Barber[];
   blockedDates: string[];
   hours: Record<string, string> | null;
   /**

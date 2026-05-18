@@ -46,12 +46,18 @@ export async function GET(req: NextRequest) {
     time: b.time,
     duration: b.duration,
     barber: b.barber,
+    barberId: b.barberId,
     source: b.source,
     status: b.status,
     customerPhone: b.customerPhone,
     customerName: b.customerName,
     price: b.price,
     service: b.service,
+    paymentMethod: b.paymentMethod,
+    // Columna real cableada en el commit A2 (migración aditiva). `?? false`
+    // mantiene el contrato del tipo estable aunque la columna aún no exista
+    // en una DB sin migrar (se aplica lazy — ver convención #6 del repo).
+    barberRequested: b.barberRequested ?? false,
   }));
 
   return NextResponse.json(events);

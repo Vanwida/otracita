@@ -53,6 +53,33 @@
   --color-time-now:      oklch(0.58 0.22 29);
   --color-today-tint:    oklch(0.96 0.03 50);    /* warm cream — today column */
 
+  /* ─── Status-coded event blocks (Booksy-dense agenda, UI0 #3) ───
+   * Background = soft warm tint, text = saturated same-hue so the block
+   * reads at a glance on the bone canvas. The barber identity is carried
+   * by a left accent spine (--color-barber-*), NOT the fill — fill = STATE. */
+  --color-event-confirmed-bg:    oklch(0.93 0.05 155);  /* sage tint — confirmed */
+  --color-event-confirmed-ink:   oklch(0.42 0.10 155);
+  --color-event-completed-bg:    oklch(0.92 0.03 250);  /* cool slate tint — done */
+  --color-event-completed-ink:   oklch(0.45 0.06 250);
+  --color-event-noshow-bg:       oklch(0.93 0.06 29);   /* red tint — no-show */
+  --color-event-noshow-ink:      oklch(0.50 0.16 29);
+  --color-event-cancelled-bg:    oklch(0.95 0.01 60);   /* near-grey — cancelled */
+  --color-event-cancelled-ink:   oklch(0.60 0.02 60);
+
+  /* ─── Barber identity palette (warm light, 8-deep, by displayOrder) ───
+   * Deterministic: column N uses --color-barber-(N mod 8). Used for the
+   * column spine, the avatar fallback chip, and the event left accent
+   * border. NO color column on the barbers table — purely derived so
+   * adding/reordering staff never needs a migration. */
+  --color-barber-0: oklch(0.62 0.15 35);    /* terracotta */
+  --color-barber-1: oklch(0.60 0.13 200);   /* teal */
+  --color-barber-2: oklch(0.62 0.14 280);   /* indigo */
+  --color-barber-3: oklch(0.64 0.14 130);   /* olive green */
+  --color-barber-4: oklch(0.64 0.15 65);    /* amber */
+  --color-barber-5: oklch(0.60 0.15 350);   /* rose */
+  --color-barber-6: oklch(0.58 0.12 240);   /* steel blue */
+  --color-barber-7: oklch(0.60 0.13 100);   /* moss */
+
   /* ─── Typography ─── */
   /* Dashboard / product surfaces: Fraunces + IBM Plex Sans (cargadas via
    * next/font/google en layout.tsx). */
