@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Banknote, ChevronRight } from 'lucide-react'
 import AreaContent from '../../_components/AreaContent'
 import CajaRegisters from '../../caja/CajaRegisters'
+import CajaRollup from './CajaRollup'
 import { loadVentasData } from '../_data'
 
 // -----------------------------------------------------------------------------
@@ -59,10 +60,17 @@ export default async function VentasCajaPage({ searchParams }: PageProps) {
     )
   }
 
-  // CajaRegisters gestiona su propio layout master-detail y scroll interno;
-  // bleed quita el padding de columna para que ocupe todo el frame.
+  // Resumen del periodo (CajaRollup) encima del master-detail de
+  // CajaRegisters: el dueño ve de un vistazo cuánto cobró por método y si
+  // se le descuadró, sin abrir cierre por cierre. CajaRegisters gestiona su
+  // propio layout y scroll interno; ambos viven en la región scrollable.
   return (
     <AreaContent scroll="region" maxWidth="full">
+      <CajaRollup
+        clientId={d.client.id}
+        periodStartIso={d.periodStartIso}
+        periodLabel={d.periodLabel}
+      />
       <CajaRegisters history={d.registerHistory} />
     </AreaContent>
   )

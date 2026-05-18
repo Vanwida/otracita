@@ -11,6 +11,8 @@ import { TrendingUp } from 'lucide-react'
 import FinanzasClient from '../finanzas/FinanzasClient'
 import UpgradeRequired from '../_components/UpgradeRequired'
 import AreaTabs from '../_components/AreaTabs'
+import PanelSwitch from './PanelSwitch'
+import OperatorPanel from './OperatorPanel'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
 
 // -----------------------------------------------------------------------------
@@ -233,11 +235,20 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     createdAt: m.createdAt.toISOString(),
   }))
 
-  // Panel = el P&L (FinanzasClient autocontenido viewport-locked). No se
-  // envuelve en AreaShell para no duplicar su header/scroll; en su lugar se
-  // antepone una barra de pestañas fina (shrink-0) para que el contrato de
-  // IA (Panel·Ingresos·Citas·Clientes·Nóminas·Marketing) sea navegable, y
-  // FinanzasClient rellena el resto con su propio shell. LÓGICA INTACTA.
+  // Etiqueta legible del mes para el Panel del operador (ej. "mayo de 2026").
+  const [mlY, mlM] = month.split('-').map(Number)
+  const monthLabel = new Date(mlY, mlM - 1, 1).toLocaleDateString('es-ES', {
+    month: 'long',
+    year: 'numeric',
+  })
+
+  // Panel = lectura de 10 segundos (OperatorPanel, por defecto) CON el P&L
+  // completo a un clic (FinanzasClient, byte-idéntico). El conmutador
+  // (PanelSwitch) respeta el contrato de IA: las 6 pestañas de Informes no
+  // cambian; sólo "Panel" pasa a ser el resumen accionable que Booksy llama
+  // "Panel de control" sin perder ni romper el P&L. FinanzasClient sigue
+  // autocontenido viewport-locked; OperatorPanel es pura agregación sobre
+  // tablas existentes. LÓGICA DEL P&L INTACTA (mismos props, misma data).
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
       <div className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)] pt-[var(--space-card)]">
@@ -252,17 +263,29 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
         <AreaTabs area="informes" />
       </div>
       <div className="min-h-0 flex-1">
-        <FinanzasClient
-          initialMonth={month}
-          initialSummary={initialSummary}
-          initialExpenses={serializedExpenses}
-          initialFixedCosts={serializedFixedCosts}
-          initialWithdrawals={serializedWithdrawals}
-          initialManualIncomes={serializedManualIncomes}
-          initialServiciosCount={serviciosCount}
-          initialTicketMedioCents={ticketMedioCents}
-          initialCategoryTotals={categoryTotals}
-          initialPrevIngresosCents={prevIngresosCents}
+        <PanelSwitch
+          resumen={
+            <OperatorPanel
+              clientId={client.id}
+              start={start}
+              end={end}
+              monthLabel={monthLabel}
+            />
+          }
+          detalle={
+            <FinanzasClient
+              initialMonth={month}
+              initialSummary={initialSummary}
+              initialExpenses={serializedExpenses}
+              initialFixedCosts={serializedFixedCosts}
+              initialWithdrawals={serializedWithdrawals}
+              initialManualIncomes={serializedManualIncomes}
+              initialServiciosCount={serviciosCount}
+              initialTicketMedioCents={ticketMedioCents}
+              initialCategoryTotals={categoryTotals}
+              initialPrevIngresosCents={prevIngresosCents}
+            />
+          }
         />
       </div>
     </div>
