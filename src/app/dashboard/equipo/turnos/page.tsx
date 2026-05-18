@@ -6,14 +6,15 @@ import { db } from '@/db'
 import { clients, barbers, barberBreaks, barberBlocks } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import AreaContent from '../../_components/AreaContent'
 import TurnosManager, { type TurnosBarber } from './TurnosManager'
 
 // -----------------------------------------------------------------------------
 // /dashboard/equipo/turnos — pestaña "Turnos" (R12, R2).
 //
 // El chrome (título "Equipo" + barra de pestañas) vive en
-// `equipo/layout.tsx` (PageShell + SubTabs). Esta página solo aporta el
-// contenido — render desnudo, sin doble wrap.
+// `equipo/layout.tsx` (AreaShell). Esta página solo aporta el contenido,
+// envuelto en AreaContent (región de scroll interno, la página no scrollea).
 //
 // Server component: resuelve el tenant por sesión (mismo patrón que
 // equipo/page.tsx — nunca clientId del cliente, convención #1), carga los
@@ -84,5 +85,9 @@ export default async function EquipoTurnosPage() {
       })),
   }))
 
-  return <TurnosManager barbers={data} shopHours={shopHours} />
+  return (
+    <AreaContent scroll="region" maxWidth="full">
+      <TurnosManager barbers={data} shopHours={shopHours} />
+    </AreaContent>
+  )
 }

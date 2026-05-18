@@ -7,13 +7,14 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
+import AreaContent from '../../_components/AreaContent'
 import ComisionesClient from './ComisionesClient'
 
 // -----------------------------------------------------------------------------
 // /dashboard/equipo/comisiones — pestaña "Comisiones" (R8 + R9 + R10).
 //
 // El chrome (título "Equipo" + pestañas) lo da `equipo/layout.tsx` vía
-// PageShell + SubTabs — esta página SOLO aporta contenido (sin re-wrap).
+// AreaShell — esta página solo aporta contenido, envuelto en AreaContent.
 //
 // 3 bloques, todos Pro-gated por `teamBonuses` (igual que BonusesManager):
 //   · Comisión por servicio (R8) — override del % global por servicio.
@@ -48,5 +49,9 @@ export default async function EquipoComisionesPage() {
       )
     : []
 
-  return <ComisionesClient enabled={enabled} serviceNames={serviceNames} />
+  return (
+    <AreaContent scroll="region" maxWidth="6xl">
+      <ComisionesClient enabled={enabled} serviceNames={serviceNames} />
+    </AreaContent>
+  )
 }

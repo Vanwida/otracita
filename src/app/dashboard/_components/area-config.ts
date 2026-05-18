@@ -123,6 +123,8 @@ export const AREAS: Area[] = [
       { seg: null, label: 'Empleados', href: '/dashboard/equipo' },
       { seg: 'turnos', label: 'Turnos', href: '/dashboard/equipo/turnos' },
       { seg: 'comisiones', label: 'Comisiones', href: '/dashboard/equipo/comisiones' },
+      { seg: 'bonos', label: 'Bonos', href: '/dashboard/equipo/bonos' },
+      { seg: 'nominas', label: 'Nóminas', href: '/dashboard/equipo/nominas' },
     ],
     prefixes: ['/dashboard/equipo'],
   },

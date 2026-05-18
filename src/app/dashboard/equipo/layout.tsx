@@ -1,28 +1,26 @@
-import PageShell from '../_components/PageShell'
-import SubTabs from '../_components/SubTabs'
+import AreaShell from '../_components/AreaShell'
 
 // -----------------------------------------------------------------------------
-// Layout del hub Equipo — chrome compartido por las 3 sub-rutas:
+// Layout del área Equipo — chrome compartido por las pestañas:
 //
-//   /dashboard/equipo            → Empleados (ruta índice, pestaña por defecto)
-//   /dashboard/equipo/turnos     → Turnos    (shell; lo llena WS-B)
-//   /dashboard/equipo/comisiones → Comisiones (shell; lo llena WS-F)
+//   /dashboard/equipo            → Empleados  (ruta índice, por defecto)
+//   /dashboard/equipo/turnos     → Turnos
+//   /dashboard/equipo/comisiones → Comisiones
+//   /dashboard/equipo/bonos      → Bonos      (catálogo + progreso del mes)
+//   /dashboard/equipo/nominas    → Nóminas    (computadas del mes)
 //
-// Sustituye la nav de anclas (#barberos, #bonos…) de la antigua página
-// monolítica por pestañas reales con rutas anidadas (decisión de Alex):
-// deep-link y botón atrás del navegador funcionan. El título + la barra
-// de pestañas viven aquí (estables al cambiar de tab, sin reflow); cada
-// page.tsx hija solo aporta su contenido.
+// Patrón Booksy "Empleados / Turnos / Recursos / Comisiones" (10.17.08):
+// rail de iconos + BARRA DE PESTAÑAS, cada pestaña cabe en pantalla, la
+// página NO scrollea. Antes el índice apilaba Barberos+Bonos+Progreso+
+// Nóminas en una sola página larga (justo el anti-patrón) — ahora cada
+// bloque es su pestaña. Migrado de PageShell+SubTabs a AreaShell (shell
+// canónico, consistencia por construcción). Contenido/queries intactos.
 // -----------------------------------------------------------------------------
 
-export default function EquipoLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <PageShell
-      title="Equipo"
-      subtitle="Quién está, cómo cobra y qué tiene activo este mes."
-      subTabs={<SubTabs hub="equipo" />}
-    >
-      {children}
-    </PageShell>
-  )
+export default function EquipoLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return <AreaShell area="equipo">{children}</AreaShell>
 }
