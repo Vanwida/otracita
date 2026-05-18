@@ -44,10 +44,28 @@ import { Compass } from 'lucide-react'
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ t?: string }>
 }
 
-export default async function CustomerDetailPage({ params }: Props) {
+// Pestañas internas de la ficha (Booksy 09.53.25: la cabecera de identidad
+// se queda fija, debajo SERVICIOS/HORARIO en pestañas). URL-driven con
+// <Link> (server-safe, deep-linkable, botón atrás del navegador funciona —
+// mismo patrón que los filtros de Facturas).
+type DetailTab = 'info' | 'citas' | 'notas'
+const DETAIL_TABS: { key: DetailTab; label: string }[] = [
+  { key: 'info', label: 'Info' },
+  { key: 'citas', label: 'Citas' },
+  { key: 'notas', label: 'Notas' },
+]
+
+export default async function CustomerDetailPage({
+  params,
+  searchParams,
+}: Props) {
   const { id } = await params
+  const { t: rawTab } = await searchParams
+  const tab: DetailTab =
+    rawTab === 'citas' || rawTab === 'notas' ? rawTab : 'info'
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -179,6 +197,42 @@ export default async function CustomerDetailPage({ params }: Props) {
         <ReputationBadge reputation={(customer.reputation as 'good' | 'warning' | 'blocked' | null) ?? 'good'} />
       </div>
 
+      {/* Pestañas internas de la ficha — la cabecera de identidad de arriba
+          se queda fija; esto cambia solo el cuerpo (Booksy 09.53.25). */}
+      <div
+        role="tablist"
+        aria-label="Secciones de la ficha"
+        className="flex items-stretch gap-1 border-b border-line mb-6 overflow-x-auto"
+      >
+        {DETAIL_TABS.map((dt) => {
+          const active = dt.key === tab
+          return (
+            <Link
+              key={dt.key}
+              href={dt.key === 'info' ? `?` : `?t=${dt.key}`}
+              role="tab"
+              aria-selected={active}
+              aria-current={active ? 'page' : undefined}
+              scroll={false}
+              className={`relative whitespace-nowrap px-3 pb-2.5 pt-1 text-[0.8125rem] font-medium transition-colors ${
+                active ? 'font-semibold text-ink' : 'text-ink-3 hover:text-ink-2'
+              }`}
+            >
+              {dt.label}
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-x-2 -bottom-px h-0.5 rounded-full transition-colors ${
+                  active ? 'bg-brand' : 'bg-transparent'
+                }`}
+              />
+            </Link>
+          )
+        })}
+      </div>
+
+      {/* ── Pestaña INFO ──────────────────────────────────────────────── */}
+      {tab === 'info' && (
+        <>
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <Stat icon={Wallet} label="Gastado" value={spentEur > 0 ? `${spentEur.toFixed(0)} €` : '—'} hint={completedCount > 0 ? `${completedCount} servicios` : undefined} />
@@ -230,13 +284,50 @@ export default async function CustomerDetailPage({ params }: Props) {
       <div className="mb-6">
         <CustomerEmailEditor customerId={customer.id} initialEmail={customer.email ?? ''} />
       </div>
+        </>
+      )}
 
+      {/* ── Pestaña NOTAS ─────────────────────────────────────────────── */}
+      {tab === 'notas' && (
+        <>
       {/* Notas del barbero */}
       <div className="mb-6">
         <CustomerNotesEditor customerId={customer.id} initialNotes={customer.barberNotes ?? ''} />
       </div>
 
-      {/* Historial bookings */}
+      {/* Reseñas que dejó el cliente */}
+      {ratingRows.length > 0 ? (
+        <section className="mb-6">
+          <h2 className="font-semibold text-ink mb-3" style={{ fontSize: 'var(--text-section-title)' }}>Reseñas dejadas</h2>
+          <ul className="space-y-2">
+            {ratingRows.map((r) => (
+              <li key={r.id} className="bg-surface border border-line rounded-xl p-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <Stars value={r.rating} />
+                  <p className="text-xs text-ink-3">
+                    {formatDate(r.createdAt)}
+                    {r.barberName && <span> · {r.barberName}</span>}
+                  </p>
+                </div>
+                {r.comment && (
+                  <p className="mt-2 text-sm text-ink-2 leading-relaxed" style={{ whiteSpace: 'pre-wrap' }}>
+                    {r.comment}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <p className="text-sm text-ink-3">
+          Este cliente todavía no ha dejado ninguna reseña.
+        </p>
+      )}
+        </>
+      )}
+
+      {/* ── Pestaña CITAS ─────────────────────────────────────────────── */}
+      {tab === 'citas' && (
       <section className="mb-6">
         <h2 className="font-semibold text-ink mb-3" style={{ fontSize: 'var(--text-section-title)' }}>Historial de reservas</h2>
         {bookingRows.length === 0 ? (
@@ -268,30 +359,6 @@ export default async function CustomerDetailPage({ params }: Props) {
           </ul>
         )}
       </section>
-
-      {/* Reseñas */}
-      {ratingRows.length > 0 && (
-        <section className="mb-6">
-          <h2 className="font-semibold text-ink mb-3" style={{ fontSize: 'var(--text-section-title)' }}>Reseñas dejadas</h2>
-          <ul className="space-y-2">
-            {ratingRows.map((r) => (
-              <li key={r.id} className="bg-surface border border-line rounded-xl p-4">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <Stars value={r.rating} />
-                  <p className="text-xs text-ink-3">
-                    {formatDate(r.createdAt)}
-                    {r.barberName && <span> · {r.barberName}</span>}
-                  </p>
-                </div>
-                {r.comment && (
-                  <p className="mt-2 text-sm text-ink-2 leading-relaxed" style={{ whiteSpace: 'pre-wrap' }}>
-                    {r.comment}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
       )}
     </div>
     </div>

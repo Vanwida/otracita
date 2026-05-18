@@ -7,7 +7,8 @@ import { clients, ratings } from '@/db/schema'
 import { desc, eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { Star, MessageSquare, MessageCircle, Smartphone } from 'lucide-react'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import StatStrip from '@/app/dashboard/_components/StatStrip'
 import RatingsToggle from './RatingsToggle'
 import TipsSettings from '@/app/dashboard/_components/TipsSettings'
@@ -67,16 +68,13 @@ export default async function ReseñasPage() {
   ]
 
   return (
-    <PageShell
-      title="Reseñas"
-      subtitle={
-        client.ratingsEnabled
+    <AreaShell area="clientes">
+      <AreaContent scroll="region" maxWidth="5xl">
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        {client.ratingsEnabled
           ? 'Lo que tus clientes opinan tras cada servicio. Las pedimos automáticamente al terminar la cita.'
-          : 'Activa el sistema y el bot pedirá valoración tras cada cita.'
-      }
-      maxWidth="4xl"
-      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
-    >
+          : 'Activa el sistema y el bot pedirá valoración tras cada cita.'}
+      </p>
 
       <div className="mb-4">
         <RatingsToggle
@@ -197,7 +195,8 @@ export default async function ReseñasPage() {
           </div>
         </>
       )}
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
 

@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useSelectedLayoutSegment } from 'next/navigation'
-import { AREA_BY_KEY, isAreaTabActive } from './area-config'
+import { usePathname } from 'next/navigation'
+import { AREA_BY_KEY, type AreaTab } from './area-config'
 
 // -----------------------------------------------------------------------------
 // AreaTabs — barra de pestañas horizontal nivel-2 (patrón Booksy literal:
@@ -13,9 +13,12 @@ import { AREA_BY_KEY, isAreaTabActive } from './area-config'
 // bold con SUBRAYADO terracota, hairline inferior que recorre todo el ancho.
 // Copiado de los screenshots 09.46.25 / 10.17.08 — no se reinventa.
 //
-// El estado activo viene de `useSelectedLayoutSegment()` (Next 16): devuelve
-// el segmento de la ruta hija activa, o `null` en la ruta índice del área
-// (la pestaña por defecto). Navegación real vía <Link> a rutas anidadas.
+// Estado activo por `usePathname()` + match de href (no por
+// useSelectedLayoutSegment): así funciona tanto si las pestañas son rutas
+// ANIDADAS (ej. Ventas: /ventas, /ventas/caja) como si son rutas HERMANAS
+// legacy aún sin migrar (ej. Clientes: /clientes, /fidelidad, /resenas).
+// La pestaña activa = el tab cuyo href hace mejor prefix-match del pathname
+// (el más específico gana, p.ej. /ventas/caja no activa "Resumen" /ventas).
 // -----------------------------------------------------------------------------
 
 interface Props {
@@ -23,10 +26,23 @@ interface Props {
   area: string
 }
 
+/** Tab cuyo href hace el match más específico (largo) con el pathname. */
+function activeTab(tabs: AreaTab[], pathname: string): AreaTab | null {
+  let best: AreaTab | null = null
+  for (const t of tabs) {
+    if (pathname === t.href || pathname.startsWith(`${t.href}/`)) {
+      if (!best || t.href.length > best.href.length) best = t
+    }
+  }
+  return best
+}
+
 export default function AreaTabs({ area }: Props) {
-  const segment = useSelectedLayoutSegment()
+  const pathname = usePathname()
   const def = AREA_BY_KEY[area]
   if (!def || def.tabs.length < 2) return null
+
+  const current = activeTab(def.tabs, pathname)
 
   return (
     <div
@@ -35,7 +51,7 @@ export default function AreaTabs({ area }: Props) {
       className="flex items-stretch gap-1 overflow-x-auto border-b border-line -mx-[var(--space-page)] px-[var(--space-page)]"
     >
       {def.tabs.map((tab) => {
-        const active = isAreaTabActive(tab, segment)
+        const active = current?.href === tab.href
         return (
           <Link
             key={tab.href}

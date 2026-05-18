@@ -20,7 +20,8 @@ import {
 } from 'lucide-react'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import SearchAndSort from './SearchAndSort'
 import CustomerContactActions from './CustomerContactActions'
@@ -222,13 +223,11 @@ export default async function ClientesPage({ searchParams }: Props) {
   const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
 
   return (
-    <PageShell
-      title="Clientes"
-      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
-    >
+    <AreaShell area="clientes">
+      <AreaContent scroll="region" maxWidth="7xl">
       <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
         Quién no viene · quién falla · quién está bloqueado.{' '}
-        <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Caja.</span>
+        <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Ventas.</span>
       </p>
 
       {/* Breakdown de origen — accionable: "¿de dónde me vienen los clientes
@@ -439,7 +438,8 @@ export default async function ClientesPage({ searchParams }: Props) {
           </div>
         )}
       </div>
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
 
