@@ -6,8 +6,7 @@ import { db } from '@/db'
 import { clients, products } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { ShoppingBag } from 'lucide-react'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 import ProductsManager from './ProductsManager'
 
 // -----------------------------------------------------------------------------
@@ -37,19 +36,16 @@ export default async function TiendaPage() {
     .orderBy(asc(products.displayOrder), asc(products.createdAt))
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <HubBreadcrumb current="Tienda de productos" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
-      <header className="mb-6">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-          <ShoppingBag className="h-7 w-7 text-brand" />
-          Tienda de productos
-        </h1>
-        <p className="text-ink-2">
-          Da de alta los productos que vendes. Al cobrar un corte, podrás añadir
-          la venta desde la agenda con un click. Cada venta se atribuye al barbero
-          que la registra para el desglose en Caja.
-        </p>
-      </header>
+    <PageShell
+      title="Tienda de productos"
+      maxWidth="4xl"
+      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+    >
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Da de alta los productos que vendes. Al cobrar un corte, podrás añadir
+        la venta desde la agenda con un click. Cada venta se atribuye al barbero
+        que la registra para el desglose en Caja.
+      </p>
 
       <ProductsManager initial={initialProducts.map((p) => ({
         id: p.id,
@@ -60,6 +56,6 @@ export default async function TiendaPage() {
         stockQuantity: p.stockQuantity,
         displayOrder: p.displayOrder,
       }))} />
-    </div>
+    </PageShell>
   )
 }

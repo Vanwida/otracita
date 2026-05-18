@@ -4,11 +4,10 @@ import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { LogOut, Shield } from "lucide-react"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import { ConfirmDialogHost } from "./_components/ConfirmDialog"
 import { UndoToastHost } from "./_components/UndoToast"
-import SidebarToggle from "./_components/SidebarToggle"
+import AppRail from "@/app/dashboard/_components/AppRail"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
 import { Wordmark } from "@/components/brand"
 import { db } from "@/db"
@@ -45,85 +44,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <MobileSidebar email={email} isAdmin={isAdmin} needsSetup={needsSetup} />
       </div>
 
-      {/* Sidebar — hidden on mobile, shown on lg+. data-dashboard-sidebar
-          marca el elemento para que CSS global lo oculte cuando el usuario
-          colapsa vía SidebarToggle (html[data-sidebar="collapsed"]). */}
-      <aside
-        data-dashboard-sidebar
-        className="hidden lg:flex lg:flex-col w-60 border-r border-sidebar-line bg-sidebar p-5 shrink-0"
-      >
-        <Link href="/dashboard" className="flex items-center mb-8 text-ink">
-          <Wordmark height={30} />
-        </Link>
-
-        <nav className="flex-1 space-y-1">
-          <DashboardSidebarNav variant="sidebar" />
-
-          {isAdmin && (
-            <div className="pt-3 mt-2 border-t border-sidebar-line">
-              <Link
-                href="/admin"
-                className="flex items-center gap-3 rounded-lg border border-sidebar-line px-3 py-2.5 text-sm font-medium text-sidebar-text hover:text-ink hover:bg-sidebar-hover hover:border-line-strong transition-colors"
-              >
-                <Shield className="h-4 w-4" />
-                <span className="font-semibold">Panel admin</span>
-              </Link>
-            </div>
-          )}
-        </nav>
-
-        {needsSetup && (
-          <div className="bg-sidebar-card border border-sidebar-line rounded-xl p-4 mb-4">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">Configuración pendiente</p>
-            <p className="text-xs text-ink-2 leading-relaxed">Termina de configurar tu bot para empezar a agendar.</p>
-            <Link
-              href="/dashboard/setup"
-              className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-brand hover:text-brand-strong transition-colors"
-            >
-              Continuar →
-            </Link>
-          </div>
-        )}
-
-        <div className="border-t border-sidebar-line pt-4 mt-4">
-          <div className="flex items-center gap-3 mb-3 rounded-lg bg-sidebar-card border border-sidebar-line p-3">
-            <div className="h-7 w-7 rounded-full bg-brand-softer border border-line text-brand flex items-center justify-center font-bold text-xs shrink-0">
-              {session.user.email?.charAt(0).toUpperCase()}
-            </div>
-            <div className="truncate text-xs text-sidebar-text font-medium" title={session.user.email || ""}>
-              {session.user.email}
-            </div>
-          </div>
-          <form
-            action={async () => {
-              "use server"
-              const { auth: serverAuth } = await import("@/lib/auth/server")
-              const { headers: getHeaders } = await import("next/headers")
-              await serverAuth.api.signOut({ headers: await getHeaders() });
-              const { redirect: nav } = await import("next/navigation")
-              nav("/login");
-            }}
-          >
-            <button
-              type="submit"
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-danger hover:bg-sidebar-hover transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              Cerrar sesión
-            </button>
-          </form>
-        </div>
-      </aside>
+      {/* Nivel-1 nav: rail de iconos (UI0). Sustituye al <aside w-60>
+          editorial. Chrome extraído a AppRail para que el layout sea
+          puro ensamblador. */}
+      <AppRail email={email} isAdmin={isAdmin} needsSetup={needsSetup} />
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-14 pb-16 lg:pt-0 lg:pb-0 relative">
-        {/* Sidebar toggle — solo desktop/tablet (lg+). En mobile el sidebar
-            ya se oculta vía `hidden lg:flex` y se accede con MobileSidebar. */}
-        <div className="hidden lg:block sticky top-0 z-30 bg-canvas/80 backdrop-blur-sm border-b border-line">
-          <div className="px-3 py-2">
-            <SidebarToggle />
-          </div>
-        </div>
         {children}
       </main>
 

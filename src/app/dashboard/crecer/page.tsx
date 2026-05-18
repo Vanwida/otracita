@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import type { LoyaltyConfig, LoyaltyReward } from '@/lib/loyalty/types'
 import { HubCard, HubCardLine, HubChipRow, HubChip } from '../_components/HubCard'
+import PageShell from '../_components/PageShell'
 
 // -----------------------------------------------------------------------------
 // /dashboard/crecer — hub de features de crecimiento.
@@ -79,12 +80,10 @@ export default async function CrecerPage() {
   const loyaltyHeadline = formatLoyaltyHeadline(client.loyaltyEnabled, client.loyaltyMode, loyaltyConfig)
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">Crecer</h1>
-        <p className="text-ink-2">Lo que hace que vuelvan: reseñas, fidelidad y promos para llenar huecos.</p>
-      </div>
-
+    <PageShell
+      title="Crecer"
+      subtitle="Lo que hace que vuelvan: reseñas, fidelidad y promos para llenar huecos."
+    >
       <div className="grid gap-4 md:grid-cols-2">
         {/* Clientes — accionable: inactivos · no-shows · bloqueados.
             No mostramos "Total clientes" como hero; el valor está en los
@@ -188,7 +187,7 @@ export default async function CrecerPage() {
           </HubChipRow>
         </HubCard>
       </div>
-    </div>
+    </PageShell>
   )
 }
 

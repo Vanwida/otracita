@@ -9,7 +9,7 @@ import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import LoyaltySettings from '../_components/LoyaltySettings'
 import LoyaltyCustomerLookup from '../_components/LoyaltyCustomerLookup'
-import HubBreadcrumb from '../_components/HubBreadcrumb'
+import PageShell from '../_components/PageShell'
 import UpgradeRequired from '../_components/UpgradeRequired'
 import { Gift } from 'lucide-react'
 import type { LoyaltyConfig } from '@/lib/loyalty/types'
@@ -55,17 +55,15 @@ export default async function FidelidadPage() {
     : []
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <HubBreadcrumb current="Tarjeta de fidelización" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
-      <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">
-          Tarjeta de fidelización
-        </h1>
-        <p className="text-ink-2">
-          Premia a tus clientes recurrentes. Tú eliges las reglas: al décimo
-          corte, puntos por euro gastado, lo que funcione en tu barbería.
-        </p>
-      </div>
+    <PageShell
+      title="Tarjeta de fidelización"
+      maxWidth="4xl"
+      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+    >
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Premia a tus clientes recurrentes. Tú eliges las reglas: al décimo
+        corte, puntos por euro gastado, lo que funcione en tu barbería.
+      </p>
 
       <LoyaltySettings
         initial={{
@@ -77,6 +75,6 @@ export default async function FidelidadPage() {
       />
 
       <LoyaltyCustomerLookup enabled={client.loyaltyEnabled} />
-    </div>
+    </PageShell>
   )
 }

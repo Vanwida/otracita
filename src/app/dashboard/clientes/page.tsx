@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import SearchAndSort from './SearchAndSort'
 import CustomerContactActions from './CustomerContactActions'
@@ -218,16 +218,14 @@ export default async function ClientesPage({ searchParams }: Props) {
   const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto">
-      <HubBreadcrumb current="Clientes" parent={{ label: 'Crecer', href: '/dashboard/crecer' }} />
-
-      <div className="mb-6">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-1">Clientes</h1>
-        <p className="text-ink-2 text-sm">
-          Quién no viene · quién falla · quién está bloqueado.{' '}
-          <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Caja.</span>
-        </p>
-      </div>
+    <PageShell
+      title="Clientes"
+      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
+    >
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Quién no viene · quién falla · quién está bloqueado.{' '}
+        <span className="text-ink-3">Para gastado/propinas/ticket medio, ve a Caja.</span>
+      </p>
 
       {/* Breakdown de origen — accionable: "¿de dónde me vienen los clientes
           nuevos?" → decide en qué canal invertir. */}
@@ -425,7 +423,7 @@ export default async function ClientesPage({ searchParams }: Props) {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   )
 }
 

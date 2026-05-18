@@ -7,7 +7,7 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import {
   Bot,
@@ -105,19 +105,12 @@ export default async function BotPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <HubBreadcrumb current="Asistente WhatsApp" />
-      <div className="mb-8">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-          <Bot className="h-7 w-7 text-brand" />
-          Asistente WhatsApp
-        </h1>
-        <p className="text-ink-2 text-sm max-w-2xl">
-          Cómo se presenta y responde por WhatsApp. Todo aplica a partir del
-          siguiente mensaje que reciba.
-        </p>
-      </div>
-
+    <PageShell
+      title="Asistente WhatsApp"
+      subtitle="Cómo se presenta y responde por WhatsApp. Todo aplica a partir del siguiente mensaje que reciba."
+      maxWidth="4xl"
+      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+    >
       <form action={saveBotSettings} className="space-y-6">
         {/* ─── Identidad ───────────────────────────────────────── */}
         <Card icon={User} title="Identidad">
@@ -193,7 +186,7 @@ export default async function BotPage() {
           </button>
         </div>
       </form>
-    </div>
+    </PageShell>
   )
 }
 

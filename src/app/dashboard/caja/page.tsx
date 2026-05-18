@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Suspense } from 'react'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
+import PageShell from '../_components/PageShell'
 import ConnectSettings from '../_components/ConnectSettings'
 import InvoicingSettings from '../_components/InvoicingSettings'
 import CashRegisterPanel from '../_components/CashRegisterPanel'
@@ -151,24 +152,15 @@ export default async function CajaPage({ searchParams }: PageProps) {
   const billedTrend = computeTrend(billedEur, billedPrev)
 
   return (
-    <div className="px-4 md:px-8 lg:px-12 max-w-4xl mx-auto pb-16">
-      {/* max-w-4xl es la baseline de páginas operativas. /dashboard (home)
-          queda max-w-3xl por elección editorial — el masthead Fraunces
-          respira mejor en una columna más estrecha. */}
-      {/* Header — título + period tabs. Caja es un tab top-level, el usuario
-          vuelve al Inicio desde el logo o desde el bottom-nav. Un back-link
-          aquí sería redundante. */}
-      <header className="pt-10 lg:pt-14 pb-8 border-b border-line">
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-tight">
-            Caja
-          </h1>
-          <Suspense>
-            <StatsPeriodTabs />
-          </Suspense>
-        </div>
-      </header>
-
+    <PageShell
+      title="Caja"
+      maxWidth="4xl"
+      action={
+        <Suspense>
+          <StatsPeriodTabs />
+        </Suspense>
+      }
+    >
       {/* Cuadre del día — solo si activado. La operativa AHORA va arriba. */}
       {client.cashRegisterEnabled && (
         <section className="mt-8">
@@ -320,7 +312,7 @@ export default async function CajaPage({ searchParams }: PageProps) {
           />
         </div>
       </section>
-    </div>
+    </PageShell>
   )
 }
 

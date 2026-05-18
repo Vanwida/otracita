@@ -8,9 +8,9 @@ import { clients, invoices } from '@/db/schema'
 import { eq, and, gte, lt, desc, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { monthRangeInclusive } from '@/lib/invoicing'
-import { FileText, Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
+import { Download, ChevronRight, Receipt, AlertCircle, FileSpreadsheet, BookOpen, Plus } from 'lucide-react'
 import { MonthSelect, TypeSelect, VoidedToggle } from './FiltersBar'
-import HubBreadcrumb from '@/app/dashboard/_components/HubBreadcrumb'
+import PageShell from '@/app/dashboard/_components/PageShell'
 import VerifactuBadge, { type VerifactuStatus } from './_components/VerifactuBadge'
 import VerifactuHelpPanel from './_components/VerifactuHelpPanel'
 
@@ -67,8 +67,8 @@ export default async function FacturasPage({
   // Empty state if invoicing disabled
   if (!client.invoicingEnabled) {
     return (
-      <div className="p-4 md:p-8 max-w-4xl mx-auto">
-        <Header month={month} />
+      <PageShell title="Facturación" maxWidth="4xl" back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}>
+        <FacturasMonthLine month={month} />
         <div className="mt-8 bg-surface border border-line rounded-2xl p-8 md:p-12 text-center">
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
             <Receipt className="h-6 w-6 text-brand" />
@@ -85,18 +85,18 @@ export default async function FacturasPage({
             <ChevronRight className="h-4 w-4" />
           </Link>
         </div>
-      </div>
+      </PageShell>
     )
   }
 
   if (!range) {
     return (
-      <div className="p-4 md:p-8 max-w-4xl mx-auto">
-        <Header month={currentMonth()} />
+      <PageShell title="Facturación" maxWidth="4xl" back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}>
+        <FacturasMonthLine month={currentMonth()} />
         <div className="mt-8 bg-surface border border-line rounded-2xl p-8 text-center text-ink-2">
           Mes inválido. <Link href="/dashboard/facturas" className="text-brand hover:underline">Ver mes actual</Link>.
         </div>
-      </div>
+      </PageShell>
     )
   }
 
@@ -168,8 +168,8 @@ export default async function FacturasPage({
   const verifactuErrorCount = Number(errStatsRow?.n ?? 0)
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto">
-      <Header month={month} />
+    <PageShell title="Facturación" back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}>
+      <FacturasMonthLine month={month} />
 
       {/* Panel educativo VeriFactu — da contexto, tranquilidad y valor.
           Colocado arriba para que barberos nuevos lo vean al entrar. */}
@@ -357,22 +357,17 @@ export default async function FacturasPage({
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
 
-function Header({ month }: { month: string }) {
+// Línea de contexto del mes. El título "Facturación" + back-affordance los
+// pone PageShell (header de panel); aquí solo el sub-contexto del periodo.
+function FacturasMonthLine({ month }: { month: string }) {
   return (
-    <div>
-      <HubBreadcrumb current="Facturación" />
-      <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2 flex items-center gap-3">
-        <FileText className="h-7 w-7 text-brand" />
-        Facturación
-      </h1>
-      <p className="text-ink-2">
-        Tickets y facturas que emites a tus clientes · <span className="text-ink">{formatMonth(month)}</span>
-      </p>
-    </div>
+    <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+      Tickets y facturas que emites a tus clientes · <span className="text-ink">{formatMonth(month)}</span>
+    </p>
   )
 }
 
