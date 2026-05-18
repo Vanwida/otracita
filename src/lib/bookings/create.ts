@@ -2,6 +2,8 @@ import { db } from '@/db';
 import { barbers as barbersTable, bookings, clients, customers } from '@/db/schema';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
+import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
+import { loadShopUnavailability } from '@/lib/unavailability-db';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 
 // -----------------------------------------------------------------------------
@@ -226,6 +228,22 @@ export async function createBooking(
     });
   };
 
+  // Recurring breaks (R12) + ad-hoc blocks/absences (R2) — a manual booking
+  // with an explicit barber must not land inside one either. The "any
+  // available" path already enforces this via pickBarberForCustomer; this
+  // covers the explicit-barberId path. Wide clamp [0,1440) so the raw
+  // break/block ranges come back unclipped for the overlap test.
+  const unavailMap = await loadShopUnavailability(client.id, date);
+  const hitsBreakOrBlock = (barber: BarberConfig): boolean => {
+    const intervals = unavailabilityIntervals(
+      date,
+      0,
+      24 * 60,
+      unavailabilityFor(unavailMap, barber.id),
+    );
+    return intervals.some((iv) => newStart < iv.end && newEnd > iv.start);
+  };
+
   // --- Barber resolution ----------------------------------------------------
   let resolved: BarberConfig | null = null;
   if (barberId) {
@@ -242,6 +260,13 @@ export async function createBooking(
         success: false,
         error: 'overlap',
         message: 'Ya hay una reserva en ese horario.',
+      };
+    }
+    if (hitsBreakOrBlock(requested)) {
+      return {
+        success: false,
+        error: 'overlap',
+        message: 'El profesional no está disponible en ese horario (descanso o ausencia).',
       };
     }
     resolved = requested;
