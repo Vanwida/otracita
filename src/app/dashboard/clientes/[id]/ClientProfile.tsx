@@ -1,12 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Phone,
   Mail,
-  Calendar,
-  Wallet,
-  Heart,
   Star,
   Award,
   Scissors,
@@ -15,33 +12,41 @@ import {
   CheckCircle2,
   AlertTriangle,
   Compass,
+  RotateCw,
 } from 'lucide-react'
 import CustomerNotesEditor from './CustomerNotesEditor'
 import CustomerEmailEditor from './CustomerEmailEditor'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
-import type { ClientProfileData } from '@/lib/clients/profile'
+import type {
+  ClientProfileData,
+  ClientProfileBooking,
+} from '@/lib/clients/profile'
 
 // -----------------------------------------------------------------------------
 // <ClientProfile> — ÚNICO componente de ficha de cliente (fix #1, pedido 3+
 // veces). Presentación pura sobre ClientProfileData (cero queries aquí).
 //
-// Se renderiza en:
-//   · variant="page"  → la ruta /dashboard/clientes/[id] (cabecera + tabs).
-//   · variant="panel" → overlay desde la agenda (clic en el nombre del
-//                        cliente en el detalle de la reserva) y cualquier
-//                        otro sitio donde se clique un cliente.
+// IA CALCADA DE BOOKSY (goal rector — el barbero que viene de Booksy lo
+// reconoce sin pensar; solo cambian los colores). Screenshots
+// 10.04.36 / .41 / .46:
+//   · Cabecera: avatar (iniciales) + nombre + teléfono.
+//   · Tira de 4 KPIs horizontales.
+//   · Tabs: CITAS · FIDELIDAD · INFORMACIÓN DEL CLIENTE  (mayúsculas).
+//   · CITAS → sub-tabs "Próximas (N)" / "Pasadas (N)", lista con bloque
+//     de fecha a la izquierda + servicio + precio + acción "Repetir".
+//   · INFORMACIÓN DEL CLIENTE → contacto + origen + notas privadas.
+//   · FIDELIDAD → saldo de sellos/puntos.
 //
-// Mismo contenido (info · histórico · lo comprado · citas · notas ·
-// atribución · reputación) en los dos modos: NO se duplica UI de cliente
-// en ningún sitio. La diferencia entre variantes es solo el chrome
-// (ancho, padding, si la cabecera incluye volver a la lista).
+// Se renderiza en variant="page" (ruta) y variant="panel" (overlay desde
+// la agenda). Misma IA en ambos: cero UI de cliente duplicada.
 // -----------------------------------------------------------------------------
 
-type DetailTab = 'info' | 'citas' | 'notas'
+type DetailTab = 'citas' | 'fidelidad' | 'info'
+// Etiquetas EXACTAS de Booksy (mayúsculas, "INFORMACIÓN DEL CLIENTE").
 const DETAIL_TABS: { key: DetailTab; label: string }[] = [
-  { key: 'info', label: 'Info' },
-  { key: 'citas', label: 'Citas' },
-  { key: 'notas', label: 'Notas' },
+  { key: 'citas', label: 'CITAS' },
+  { key: 'fidelidad', label: 'FIDELIDAD' },
+  { key: 'info', label: 'INFORMACIÓN DEL CLIENTE' },
 ]
 
 interface Props {
@@ -51,54 +56,89 @@ interface Props {
 }
 
 export default function ClientProfile({ data, variant = 'page' }: Props) {
-  const [tab, setTab] = useState<DetailTab>('info')
+  // Booksy abre la ficha en CITAS (es lo que el barbero mira al instante).
+  const [tab, setTab] = useState<DetailTab>('citas')
+  const [citasView, setCitasView] = useState<'proximas' | 'pasadas'>('proximas')
   const { customer, stats } = data
 
   const loyaltyUnit = data.loyaltyMode === 'points' ? 'puntos' : 'sellos'
 
+  // Próximas vs Pasadas (Booksy parte el historial en dos sub-pestañas).
+  // "Próxima" = confirmada y aún no pasada; el resto va a Pasadas.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const bookings = data.bookings
+  const { proximas, pasadas } = useMemo(() => {
+    const up: ClientProfileBooking[] = []
+    const past: ClientProfileBooking[] = []
+    for (const b of bookings) {
+      if (b.status === 'confirmed' && b.date >= todayIso) up.push(b)
+      else past.push(b)
+    }
+    // Próximas en orden ascendente (la más cercana primero, como Booksy).
+    up.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    return { proximas: up, pasadas: past }
+  }, [bookings, todayIso])
+
+  const visibleBookings = citasView === 'proximas' ? proximas : pasadas
+
   return (
     <div className="w-full">
-      {/* Header — datos básicos + reputación */}
-      <div className="bg-surface border border-line rounded-2xl p-5 mb-6 flex items-start gap-4 flex-wrap">
-        <div className="h-14 w-14 rounded-2xl bg-brand-softer text-brand-strong flex items-center justify-center text-xl font-bold shrink-0">
+      {/* Cabecera — avatar + nombre + teléfono (Booksy: centrado en el
+          panel, alineado a la izquierda en página). */}
+      <div
+        className={`bg-surface border border-line rounded-2xl p-5 mb-4 flex gap-4 ${
+          variant === 'panel'
+            ? 'flex-col items-center text-center'
+            : 'items-start flex-wrap'
+        }`}
+      >
+        <div className="h-16 w-16 rounded-full bg-brand-softer text-brand-strong flex items-center justify-center text-2xl font-bold shrink-0">
           {(customer.name?.[0] ?? customer.phone[0]).toUpperCase()}
         </div>
-        <div className="flex-1 min-w-0">
+        <div className={`min-w-0 ${variant === 'panel' ? '' : 'flex-1'}`}>
           <h2
             className="font-semibold text-ink leading-tight"
             style={{ fontSize: 'var(--text-page-title)' }}
           >
             {customer.name || 'Sin nombre'}
           </h2>
-          <p className="text-sm text-ink-2 flex items-center gap-1.5 mt-1">
+          <p
+            className={`text-sm text-ink-2 flex items-center gap-1.5 mt-1 ${
+              variant === 'panel' ? 'justify-center' : ''
+            }`}
+          >
             <Phone className="h-3.5 w-3.5 text-ink-3" />
             {customer.phone}
           </p>
-          {customer.email && (
-            <p className="text-sm text-ink-2 flex items-center gap-1.5 mt-1">
-              <Mail className="h-3.5 w-3.5 text-ink-3" />
-              <a
-                href={`mailto:${customer.email}`}
-                className="hover:text-brand transition-colors break-all"
-              >
-                {customer.email}
-              </a>
-            </p>
-          )}
-          <p className="text-xs text-ink-3 mt-1">
-            Cliente desde {formatDate(customer.createdAt)}
-          </p>
+          <div
+            className={`mt-2 flex ${variant === 'panel' ? 'justify-center' : ''}`}
+          >
+            <ReputationBadge reputation={customer.reputation} />
+          </div>
         </div>
-        <ReputationBadge reputation={customer.reputation} />
       </div>
 
-      {/* Pestañas internas de la ficha (Booksy 09.53.25). En panel/overlay
-          el botón atrás del navegador no aplica → estado local en vez de
-          <Link> con URL; mismo set de tabs en ambos modos. */}
+      {/* Tira de 4 KPIs horizontales (Booksy 10.04.36: fila de números
+          grandes con label corto debajo). Datos reales de otracita. */}
+      <div className="grid grid-cols-4 gap-px bg-line rounded-xl overflow-hidden border border-line mb-4">
+        <Kpi value={`${stats.spentEur.toFixed(0)}€`} label="Gastado" />
+        <Kpi value={String(stats.completedCount)} label="Citas" />
+        <Kpi
+          value={String(customer.noShows)}
+          label="No-shows"
+          tone={customer.noShows > 0 ? 'danger' : 'default'}
+        />
+        <Kpi
+          value={stats.avgRating !== null ? stats.avgRating.toFixed(1) : '—'}
+          label="Nota"
+        />
+      </div>
+
+      {/* Tabs CITAS · FIDELIDAD · INFORMACIÓN DEL CLIENTE (Booksy exacto). */}
       <div
         role="tablist"
         aria-label="Secciones de la ficha"
-        className="flex items-stretch gap-1 border-b border-line mb-6 overflow-x-auto"
+        className="flex items-stretch gap-4 border-b border-line mb-5 overflow-x-auto"
       >
         {DETAIL_TABS.map((dt) => {
           const active = dt.key === tab
@@ -109,14 +149,14 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
               onClick={() => setTab(dt.key)}
               role="tab"
               aria-selected={active}
-              className={`relative whitespace-nowrap px-3 pb-2.5 pt-1 text-[0.8125rem] font-medium transition-colors ${
-                active ? 'font-semibold text-ink' : 'text-ink-3 hover:text-ink-2'
+              className={`relative whitespace-nowrap pb-2.5 pt-1 text-[0.6875rem] font-bold uppercase tracking-[0.08em] transition-colors ${
+                active ? 'text-ink' : 'text-ink-3 hover:text-ink-2'
               }`}
             >
               {dt.label}
               <span
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-x-2 -bottom-px h-0.5 rounded-full transition-colors ${
+                className={`pointer-events-none absolute inset-x-0 -bottom-px h-0.5 rounded-full transition-colors ${
                   active ? 'bg-brand' : 'bg-transparent'
                 }`}
               />
@@ -125,61 +165,145 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
         })}
       </div>
 
-      {/* ── Pestaña INFO ──────────────────────────────────────────────── */}
-      {tab === 'info' && (
-        <>
-          <div
-            className={`grid gap-3 mb-6 ${
-              variant === 'panel'
-                ? 'grid-cols-2'
-                : 'grid-cols-2 md:grid-cols-4'
-            }`}
-          >
-            <Stat
-              icon={Wallet}
-              label="Gastado"
-              value={stats.spentEur > 0 ? `${stats.spentEur.toFixed(0)} €` : '—'}
-              hint={
-                stats.completedCount > 0
-                  ? `${stats.completedCount} servicios`
-                  : undefined
-              }
-            />
-            <Stat
-              icon={Calendar}
-              label="Ticket medio"
-              value={
-                stats.completedCount > 0
-                  ? `${stats.avgTicketEur.toFixed(2)} €`
-                  : '—'
-              }
-            />
-            <Stat
-              icon={Heart}
-              label="Propinas"
-              value={stats.tipsEur > 0 ? `${stats.tipsEur.toFixed(2)} €` : '—'}
-            />
-            <Stat
-              icon={Star}
-              label="Nota media"
-              value={
-                stats.avgRating !== null
-                  ? `${stats.avgRating.toFixed(1)} / 5`
-                  : '—'
-              }
-              hint={
-                stats.ratingCount > 0
-                  ? `${stats.ratingCount} ${
-                      stats.ratingCount === 1 ? 'reseña' : 'reseñas'
-                    }`
-                  : undefined
-              }
-            />
+      {/* ── CITAS ─────────────────────────────────────────────────────── */}
+      {tab === 'citas' && (
+        <section className="mb-6">
+          {/* Sub-tabs Próximas / Pasadas con contador, igual que Booksy. */}
+          <div className="flex items-center gap-4 mb-4">
+            {(
+              [
+                ['proximas', 'Próximas', proximas.length],
+                ['pasadas', 'Pasadas', pasadas.length],
+              ] as const
+            ).map(([key, label, count]) => {
+              const active = citasView === key
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCitasView(key)}
+                  className={`text-sm font-medium transition-colors ${
+                    active
+                      ? 'text-ink'
+                      : 'text-ink-3 hover:text-ink-2'
+                  }`}
+                >
+                  {label}{' '}
+                  <span
+                    className={`tabular-nums ${
+                      active ? 'text-brand-strong' : 'text-ink-3'
+                    }`}
+                  >
+                    ({count})
+                  </span>
+                </button>
+              )
+            })}
           </div>
 
+          {visibleBookings.length === 0 ? (
+            <div className="bg-surface border border-line rounded-xl p-6 text-center text-sm text-ink-3">
+              {citasView === 'proximas'
+                ? 'No tiene próximas reservas.'
+                : 'Aún no tiene reservas pasadas.'}
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {visibleBookings.map((b) => (
+                <li
+                  key={b.id}
+                  className="bg-surface border border-line rounded-xl p-3 flex items-center gap-3"
+                >
+                  {/* Bloque de fecha a la izquierda (Booksy: día + mes). */}
+                  <DateBlock date={b.date} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-ink text-sm truncate">
+                      {b.service}
+                    </p>
+                    <p className="text-xs text-ink-3 mt-0.5">
+                      {b.time}
+                      {b.barber && <span> · {b.barber}</span>}
+                    </p>
+                    <BookingStatusLabel status={b.status} />
+                  </div>
+                  <div className="text-right shrink-0">
+                    {b.price !== null && b.price !== undefined && b.price > 0 && (
+                      <p className="font-semibold text-ink text-sm tabular-nums">
+                        {b.price} €
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {/* ── FIDELIDAD ─────────────────────────────────────────────────── */}
+      {tab === 'fidelidad' && (
+        <section className="mb-6">
+          {data.loyaltyMode ? (
+            <div className="bg-surface border border-line rounded-xl p-5 flex items-center gap-4">
+              <div className="h-12 w-12 rounded-xl bg-gold-soft text-ink flex items-center justify-center shrink-0">
+                <Award className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold">
+                  Saldo en {loyaltyUnit}
+                </p>
+                <p className="text-2xl font-bold text-ink tabular-nums leading-tight">
+                  {Math.max(0, stats.loyaltyBalance)}
+                </p>
+                <p className="text-xs text-ink-3 mt-0.5">
+                  {stats.completedCount}{' '}
+                  {stats.completedCount === 1 ? 'servicio' : 'servicios'} ·{' '}
+                  {stats.tipsEur > 0
+                    ? `${stats.tipsEur.toFixed(2)} € en propinas`
+                    : 'sin propinas'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-surface border border-line rounded-xl p-6 text-center text-sm text-ink-3">
+              La fidelidad no está activada para esta barbería.
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── INFORMACIÓN DEL CLIENTE ───────────────────────────────────── */}
+      {tab === 'info' && (
+        <>
+          {/* Contacto */}
+          <div className="bg-surface border border-line rounded-xl p-5 mb-4 space-y-2">
+            <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-2">
+              Contacto
+            </p>
+            <p className="text-sm text-ink-2 flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5 text-ink-3" />
+              {customer.phone}
+            </p>
+            {customer.email && (
+              <p className="text-sm text-ink-2 flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-ink-3" />
+                <a
+                  href={`mailto:${customer.email}`}
+                  className="hover:text-brand transition-colors break-all"
+                >
+                  {customer.email}
+                </a>
+              </p>
+            )}
+            <p className="text-xs text-ink-3">
+              Cliente desde {formatDate(customer.createdAt)}
+            </p>
+          </div>
+
+          {/* Servicio / barbero favorito */}
           <div
-            className={`grid gap-3 mb-6 ${
-              variant === 'panel' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'
+            className={`grid gap-3 mb-4 ${
+              variant === 'panel' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'
             }`}
           >
             <Insight
@@ -192,20 +316,6 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
               label="Barbero favorito"
               value={data.topBarber ?? '—'}
             />
-            {data.loyaltyMode ? (
-              <Insight
-                icon={Award}
-                label={`Saldo en ${loyaltyUnit}`}
-                value={String(Math.max(0, stats.loyaltyBalance))}
-              />
-            ) : (
-              <Insight
-                icon={AlertTriangle}
-                label="No-shows"
-                value={String(customer.noShows)}
-                tone={customer.noShows > 0 ? 'danger' : 'default'}
-              />
-            )}
           </div>
 
           {customer.firstSource && (
@@ -217,26 +327,24 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
             />
           )}
 
-          <div className="mb-6">
+          {/* Email editable */}
+          <div className="mb-4">
             <CustomerEmailEditor
               customerId={customer.id}
               initialEmail={customer.email ?? ''}
             />
           </div>
-        </>
-      )}
 
-      {/* ── Pestaña NOTAS ─────────────────────────────────────────────── */}
-      {tab === 'notas' && (
-        <>
-          <div className="mb-6">
+          {/* Notas privadas del barbero */}
+          <div className="mb-4">
             <CustomerNotesEditor
               customerId={customer.id}
               initialNotes={customer.barberNotes ?? ''}
             />
           </div>
 
-          {data.ratings.length > 0 ? (
+          {/* Reseñas dejadas */}
+          {data.ratings.length > 0 && (
             <section className="mb-6">
               <h3
                 className="font-semibold text-ink mb-3"
@@ -269,67 +377,59 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
                 ))}
               </ul>
             </section>
-          ) : (
-            <p className="text-sm text-ink-3">
-              Este cliente todavía no ha dejado ninguna reseña.
-            </p>
           )}
         </>
-      )}
-
-      {/* ── Pestaña CITAS ─────────────────────────────────────────────── */}
-      {tab === 'citas' && (
-        <section className="mb-6">
-          <h3
-            className="font-semibold text-ink mb-3"
-            style={{ fontSize: 'var(--text-section-title)' }}
-          >
-            Historial de reservas
-          </h3>
-          {data.bookings.length === 0 ? (
-            <div className="bg-surface border border-line rounded-xl p-6 text-center text-sm text-ink-3">
-              Aún no tiene reservas registradas.
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {data.bookings.map((b) => (
-                <li
-                  key={b.id}
-                  className="bg-surface border border-line rounded-xl p-4 flex items-start gap-3"
-                >
-                  <BookingStatusIcon status={b.status} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-ink text-sm">
-                      {b.service}
-                      {b.barber && (
-                        <span className="text-ink-3 font-normal"> · {b.barber}</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-ink-3 mt-0.5">
-                      {formatBookingDate(b.date, b.time)}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    {b.price !== null && b.price !== undefined && b.price > 0 && (
-                      <p className="font-medium text-ink text-sm tabular-nums">
-                        {b.price} €
-                      </p>
-                    )}
-                    <BookingStatusLabel status={b.status} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       )}
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-componentes + helpers (idénticos a los que vivían inline en la ruta).
+// Sub-componentes + helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+function Kpi({
+  value,
+  label,
+  tone = 'default',
+}: {
+  value: string
+  label: string
+  tone?: 'default' | 'danger'
+}) {
+  return (
+    <div className="bg-surface px-2 py-3 text-center">
+      <p
+        className={`text-xl font-bold tabular-nums leading-none ${
+          tone === 'danger' ? 'text-danger' : 'text-ink'
+        }`}
+      >
+        {value}
+      </p>
+      <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold mt-1.5 truncate">
+        {label}
+      </p>
+    </div>
+  )
+}
+
+function DateBlock({ date }: { date: string }) {
+  const [y, m, d] = date.split('-').map(Number)
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1)
+  const month = new Intl.DateTimeFormat('es-ES', { month: 'short' })
+    .format(dt)
+    .replace('.', '')
+  return (
+    <div className="h-12 w-12 rounded-lg bg-overlay flex flex-col items-center justify-center shrink-0">
+      <span className="text-base font-bold text-ink leading-none tabular-nums">
+        {d}
+      </span>
+      <span className="text-[10px] uppercase tracking-wide text-ink-3 font-semibold mt-0.5">
+        {month}
+      </span>
+    </div>
+  )
+}
 
 interface AttributionSectionProps {
   firstSource: string
@@ -347,7 +447,7 @@ function AttributionSection({
   const hasLastTouchData = recentBookings.some((b) => b.referrerSource !== null)
 
   return (
-    <section className="mb-6">
+    <section className="mb-4">
       <div className="bg-surface border border-line rounded-xl p-5">
         <div className="flex items-center gap-2 mb-3">
           <Compass className="h-4 w-4 text-ink-3" />
@@ -423,51 +523,18 @@ function formatBookingDateShort(date: string): string {
   return `${m[3]}/${m[2]}`
 }
 
-function Stat({
-  icon: Icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: typeof Wallet
-  label: string
-  value: string
-  hint?: string
-}) {
-  return (
-    <div className="bg-surface border border-line rounded-xl p-3 md:p-4">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon className="h-3.5 w-3.5 text-ink-3" />
-        <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">
-          {label}
-        </p>
-      </div>
-      <p className="text-lg md:text-xl font-bold text-ink tabular-nums">{value}</p>
-      {hint && <p className="text-[10px] text-ink-3 mt-1">{hint}</p>}
-    </div>
-  )
-}
-
 function Insight({
   icon: Icon,
   label,
   value,
-  tone = 'default',
 }: {
   icon: typeof Scissors
   label: string
   value: string
-  tone?: 'default' | 'danger'
 }) {
   return (
-    <div className="bg-surface border border-line rounded-xl p-3 md:p-4 flex items-center gap-3">
-      <div
-        className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
-          tone === 'danger'
-            ? 'bg-danger/10 text-danger'
-            : 'bg-overlay text-ink-2'
-        }`}
-      >
+    <div className="bg-surface border border-line rounded-xl p-4 flex items-center gap-3">
+      <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-overlay text-ink-2">
         <Icon className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
@@ -506,30 +573,28 @@ function ReputationBadge({
   )
 }
 
-function BookingStatusIcon({ status }: { status: string }) {
-  if (status === 'completed')
-    return <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
-  if (status === 'cancelled')
-    return <XCircle className="h-4 w-4 text-ink-3 mt-0.5 shrink-0" />
-  if (status === 'no_show')
-    return <AlertTriangle className="h-4 w-4 text-danger mt-0.5 shrink-0" />
-  return <Calendar className="h-4 w-4 text-brand mt-0.5 shrink-0" />
-}
-
 function BookingStatusLabel({ status }: { status: string }) {
-  const map: Record<string, { label: string; className: string }> = {
-    completed: { label: 'Hecha', className: 'text-success' },
-    confirmed: { label: 'Confirmada', className: 'text-ink-2' },
-    cancelled: { label: 'Cancelada', className: 'text-ink-3' },
-    no_show: { label: 'No-show', className: 'text-danger' },
+  const map: Record<
+    string,
+    { label: string; className: string; Icon: typeof CheckCircle2 }
+  > = {
+    completed: { label: 'Hecha', className: 'text-success', Icon: CheckCircle2 },
+    confirmed: { label: 'Confirmada', className: 'text-ink-2', Icon: RotateCw },
+    cancelled: { label: 'Cancelada', className: 'text-ink-3', Icon: XCircle },
+    no_show: { label: 'No vino', className: 'text-danger', Icon: AlertTriangle },
   }
-  const m = map[status] ?? { label: status, className: 'text-ink-3' }
+  const m = map[status] ?? {
+    label: status,
+    className: 'text-ink-3',
+    Icon: RotateCw,
+  }
   return (
-    <p
-      className={`text-[10px] uppercase tracking-widest font-semibold mt-0.5 ${m.className}`}
+    <span
+      className={`mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-widest font-semibold ${m.className}`}
     >
+      <m.Icon className="h-3 w-3" aria-hidden="true" />
       {m.label}
-    </p>
+    </span>
   )
 }
 
@@ -562,15 +627,4 @@ function formatDate(d: string | null | undefined): string {
     month: 'short',
     year: 'numeric',
   }).format(dt)
-}
-
-function formatBookingDate(date: string, time: string): string {
-  const [y, m, d] = date.split('-').map(Number)
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1)
-  const formatted = new Intl.DateTimeFormat('es-ES', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(dt)
-  return `${formatted} · ${time}`
 }
