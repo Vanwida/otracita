@@ -9,6 +9,8 @@ import RectificativaModal from '../facturas/_components/RectificativaModal';
 import NumberInput from '../_components/NumberInput';
 import { pushUndoToast } from '../_components/UndoToast';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
+import ClientProfile from '../clientes/[id]/ClientProfile';
+import type { ClientProfileData } from '@/lib/clients/profile';
 import { useState, useTransition, useEffect, useCallback, Fragment } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -400,6 +402,51 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     }
   }, [booking]);
 
+  // Ficha de cliente en overlay (fix #1) — al clicar el nombre del cliente
+  // se abre <ClientProfile> (el MISMO componente que /clientes/[id]) sin
+  // salir de la agenda. Datos vía /api/customers/[id]/profile?phone=…
+  // (loadClientProfile, fuente única). Cero UI de cliente duplicada.
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileData, setProfileData] = useState<ClientProfileData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  // Resetea la ficha al cambiar de reserva (evita ver el cliente anterior).
+  useEffect(() => {
+    setProfileOpen(false);
+    setProfileData(null);
+    setProfileError(null);
+  }, [booking?.id]);
+
+  const openClientProfile = useCallback(async () => {
+    if (!booking) return;
+    setProfileOpen(true);
+    // Si ya lo cargamos para esta reserva, no re-pedimos.
+    if (profileData) return;
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const res = await fetch(
+        `/api/customers/by-phone/profile?phone=${encodeURIComponent(booking.customerPhone)}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProfileError(
+          data?.error ||
+            (res.status === 404
+              ? 'Este cliente todavía no tiene ficha.'
+              : 'No se pudo cargar la ficha.'),
+        );
+        return;
+      }
+      setProfileData(data.profile as ClientProfileData);
+    } catch {
+      setProfileError('Error de red.');
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [booking, profileData]);
+
   const copyPhone = () => {
     if (!booking) return;
     navigator.clipboard.writeText(booking.customerPhone);
@@ -561,9 +608,22 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   Sube al top con peso visual; source y status quedan como
                   metadata muteada debajo (no pills, solo tipografía). */}
               <div className="space-y-2">
-                <h2 className="text-xl font-semibold text-ink leading-tight break-words">
-                  {booking.customerName?.trim() || 'Sin nombre'}
-                </h2>
+                {/* Nombre del cliente → abre su ficha completa (fix #1).
+                    El mismo <ClientProfile> que /clientes/[id], en overlay,
+                    sin salir de la agenda. */}
+                <button
+                  type="button"
+                  onClick={openClientProfile}
+                  className="group text-left -m-1 p-1 rounded-lg hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand transition-colors"
+                  aria-label={`Ver ficha de ${booking.customerName?.trim() || 'este cliente'}`}
+                >
+                  <span className="text-xl font-semibold text-ink leading-tight break-words group-hover:text-brand transition-colors">
+                    {booking.customerName?.trim() || 'Sin nombre'}
+                  </span>
+                  <span className="block text-[11px] font-medium text-ink-3 group-hover:text-brand-strong transition-colors">
+                    Ver ficha del cliente →
+                  </span>
+                </button>
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm text-ink-2 tabular-nums">{booking.customerPhone}</p>
                   <button
@@ -1147,6 +1207,62 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           onClose={() => setRectInvoice(null)}
         />
       )}
+
+      {/* Ficha de cliente en overlay (fix #1) — slide-over sobre el panel
+          de detalle. Mismo <ClientProfile> que /clientes/[id], variant
+          panel. z-[60] para quedar sobre el panel de detalle (z-50). */}
+      <AnimatePresence>
+        {profileOpen && booking && (
+          <Fragment key="client-profile">
+            <motion.div
+              key="cp-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setProfileOpen(false)}
+              className="fixed inset-0 z-[60] bg-[var(--color-scrim-light)]"
+            />
+            <motion.div
+              key="cp-panel"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed right-0 top-0 z-[60] h-full w-[480px] max-w-[94vw] bg-canvas border-l border-line flex flex-col shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Ficha del cliente"
+            >
+              <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-surface shrink-0">
+                <span className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2">
+                  Ficha del cliente
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  aria-label="Cerrar ficha"
+                  className="inline-flex items-center justify-center h-11 w-11 -mr-3 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5">
+                {profileLoading ? (
+                  <div className="flex items-center justify-center py-16 text-ink-3">
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                  </div>
+                ) : profileError ? (
+                  <div className="rounded-xl border border-line bg-surface p-6 text-center text-sm text-ink-2">
+                    {profileError}
+                  </div>
+                ) : profileData ? (
+                  <ClientProfile data={profileData} variant="panel" />
+                ) : null}
+              </div>
+            </motion.div>
+          </Fragment>
+        )}
+      </AnimatePresence>
     </>
   );
 }
