@@ -181,81 +181,87 @@ export default async function DashboardOverview({ searchParams }: PageProps) {
     .where(eq(subscriptions.clientId, client.id))
 
   return (
-    <div
-      className="max-w-5xl mx-auto"
-      style={{ padding: 'var(--space-page)' }}
-    >
-      {/* Header compacto de panel — fecha + negocio + plan/estado como
-          metadata de utilidad. Sin titular de revista. */}
+    <div className="h-full flex flex-col overflow-hidden bg-canvas">
+      {/* Header compacto de panel — viewport-locked, shrink-0, NUNCA
+          scrollea. Fecha + negocio + plan/estado como metadata de
+          utilidad. Sin titular de revista. */}
       <header
-        className="flex items-start justify-between gap-4 border-b border-line"
-        style={{ paddingBottom: 'var(--space-card)' }}
+        className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)]"
+        style={{ paddingTop: 'var(--space-card)', paddingBottom: 'var(--space-card)' }}
       >
-        <div className="min-w-0">
-          <p className="text-[0.6875rem] uppercase tracking-[0.1em] font-semibold text-ink-2 tabular-nums">
-            {formatDateline(now)}
-          </p>
-          {client.businessName && (
-            <h1
-              className="mt-0.5 font-semibold text-ink leading-tight truncate"
-              style={{ fontSize: 'var(--text-page-title)' }}
-              title={client.businessName}
-            >
-              {client.businessName}
-            </h1>
-          )}
-        </div>
-        <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end text-[0.6875rem]">
-          <span className="uppercase tracking-[0.1em] font-semibold text-ink-2">
-            {planLabel(client.plan)}
-          </span>
-          <span
-            className={`uppercase tracking-[0.1em] font-semibold ${
-              client.status === 'active'
-                ? 'text-success'
-                : client.status === 'pending'
-                ? 'text-warning'
-                : 'text-ink-2'
-            }`}
-          >
-            {clientStatusLabel(client.status)}
-          </span>
-          {subscription && (
-            <span className="tabular-nums text-ink-2">
-              {(subscription.amount / 100).toFixed(2).replace('.', ',')} €/mes
+        <div className="max-w-5xl mx-auto flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[0.6875rem] uppercase tracking-[0.1em] font-semibold text-ink-2 tabular-nums">
+              {formatDateline(now)}
+            </p>
+            {client.businessName && (
+              <h1
+                className="mt-0.5 font-semibold text-ink leading-tight truncate"
+                style={{ fontSize: 'var(--text-page-title)' }}
+                title={client.businessName}
+              >
+                {client.businessName}
+              </h1>
+            )}
+          </div>
+          <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end text-[0.6875rem]">
+            <span className="uppercase tracking-[0.1em] font-semibold text-ink-2">
+              {planLabel(client.plan)}
             </span>
-          )}
-          <Link
-            href="/dashboard/mi-plan"
-            className="text-brand hover:text-brand-strong font-semibold transition-colors"
-          >
-            Mi plan
-          </Link>
+            <span
+              className={`uppercase tracking-[0.1em] font-semibold ${
+                client.status === 'active'
+                  ? 'text-success'
+                  : client.status === 'pending'
+                  ? 'text-warning'
+                  : 'text-ink-2'
+              }`}
+            >
+              {clientStatusLabel(client.status)}
+            </span>
+            {subscription && (
+              <span className="tabular-nums text-ink-2">
+                {(subscription.amount / 100).toFixed(2).replace('.', ',')} €/mes
+              </span>
+            )}
+            <Link
+              href="/dashboard/mi-plan"
+              className="text-brand hover:text-brand-strong font-semibold transition-colors"
+            >
+              Mi plan
+            </Link>
+          </div>
         </div>
       </header>
 
-      <div style={{ marginTop: 'var(--space-section)' }} className="space-y-4">
-        {/* Intro card — primera visita, dismissable, jamás vuelve. */}
-        <HomeIntroCard />
+      {/* Cuerpo — única región scrolleable. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div
+          className="max-w-5xl mx-auto space-y-4"
+          style={{ padding: 'var(--space-page)' }}
+        >
+          {/* Intro card — primera visita, dismissable, jamás vuelve. */}
+          <HomeIntroCard />
 
-        {/* AttentionPanel — solo si hay alertas reales */}
-        {alerts.length > 0 && <AttentionPanel alerts={alerts} />}
+          {/* AttentionPanel — solo si hay alertas reales */}
+          {alerts.length > 0 && <AttentionPanel alerts={alerts} />}
 
-        {/* StatusLine — la respuesta del state machine, densa */}
-        <StatusLine state={state} />
+          {/* StatusLine — la respuesta del state machine, densa */}
+          <StatusLine state={state} />
 
-        {/* Bloque secundario por estado */}
-        <SecondaryBand
-          state={state}
-          pendingClosure={pendingClosure}
-          todayStr={todayStr}
-          yesterdayStr={yesterdayStr}
-          cashRegisterEnabled={Boolean(client.cashRegisterEnabled)}
-          sumupReaderConnected={Boolean(
-            client.sumupAccessToken && client.sumupMerchantCode && client.sumupReaderId,
-          )}
-          clientForActivation={client}
-        />
+          {/* Bloque secundario por estado */}
+          <SecondaryBand
+            state={state}
+            pendingClosure={pendingClosure}
+            todayStr={todayStr}
+            yesterdayStr={yesterdayStr}
+            cashRegisterEnabled={Boolean(client.cashRegisterEnabled)}
+            sumupReaderConnected={Boolean(
+              client.sumupAccessToken && client.sumupMerchantCode && client.sumupReaderId,
+            )}
+            clientForActivation={client}
+          />
+        </div>
       </div>
     </div>
   )

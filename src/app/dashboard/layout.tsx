@@ -49,9 +49,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
           puro ensamblador. */}
       <AppRail email={email} isAdmin={isAdmin} needsSetup={needsSetup} />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pt-14 pb-16 lg:pt-0 lg:pb-0 relative">
-        {children}
+      {/* Main Content — región viewport-locked. NO scrollea como artículo:
+          es flex column con overflow-hidden; cada superficie es h-full y
+          gestiona su PROPIO scroll interno (tabla/lista/panel). Booksy-style
+          (10.06.29 / 09.46.25): header compacto fijo + área de trabajo a
+          altura de pantalla, el chrome nunca se mueve. El padding de la
+          barra móvil (top 14 / bottom 16) se mantiene fuera del área de
+          scroll para que el header de cada surface ancle bajo la top-bar. */}
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden pt-14 pb-16 lg:pt-0 lg:pb-0 relative">
+        {/* Slot de página — flex-1 min-h-0 garantiza que toda surface
+            (PageShell o wrapper propio) reciba una región de altura
+            acotada para hacer su scroll interno. min-h-0 es lo que evita
+            que un hijo alto fuerce scroll de la página entera. */}
+        <div className="flex-1 min-h-0 flex flex-col">{children}</div>
       </main>
 
       <DashboardChatWidget />
