@@ -1,14 +1,16 @@
 import { db } from '@/db'
 import { barbers as barbersTable, bookings, productSales, ratings, tips } from '@/db/schema'
 import { sql } from 'drizzle-orm'
-import { Wallet, Receipt, CalendarCheck, Heart, Star, User, ShoppingBag } from 'lucide-react'
+import { Wallet, Receipt, CalendarCheck, Heart, Star, User, ShoppingBag, Trophy } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
 // BarberBreakdown — desglose de la actividad financiera por barbero.
 //
-// Vive en /dashboard/caja debajo de los KPIs globales. Útil para barberías
-// con equipo: ver quién factura más, quién recibe más propinas, quién tiene
-// mejor nota.
+// Se renderiza en dos sitios (mismo componente, misma query — no se
+// duplica): el Resumen de Ventas (debajo de los KPIs globales) y la pestaña
+// Equipo > Empleados (rendimiento del equipo: el barbero abre Equipo y ve
+// quién tira del carro). Útil para barberías con equipo: ver quién factura
+// más, quién recibe más propinas, quién tiene mejor nota.
 //
 // Solo se renderiza si hay ≥2 barberos activos (con 1 es redundante con
 // los KPIs globales). El parent decide si pasarlo o no.
@@ -29,6 +31,12 @@ interface Props {
   clientId: string
   /** YYYY-MM-DD inclusive. null = sin filtro (lifetime). */
   periodStartIso: string | null
+  /** Override del título de sección (default "Por barbero"). */
+  title?: string
+  /** Texto bajo el título (default el resumen de Ventas). */
+  subtitle?: string
+  /** Marca con badge TOP al barbero que más factura (≥2 con ventas). */
+  highlightTop?: boolean
 }
 
 interface BarberRow {
@@ -44,7 +52,13 @@ interface BarberRow {
   upsells_count: number
 }
 
-export default async function BarberBreakdown({ clientId, periodStartIso }: Props) {
+export default async function BarberBreakdown({
+  clientId,
+  periodStartIso,
+  title = 'Por barbero',
+  subtitle = 'Quién factura más, quién recibe más propinas, quién tiene mejor nota.',
+  highlightTop = false,
+}: Props) {
   // Necesitamos contar barberos activos primero — si <2, no renderizamos.
   const activeBarbers = await db
     .select({ id: barbersTable.id })
@@ -156,13 +170,21 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
   // Total para % de cuota.
   const grandTotalEur = rows.reduce((acc, r) => acc + Number(r.billed_eur), 0)
 
+  // TOP = el que más factura. Las filas YA vienen ordenadas por
+  // (billed + upsells) desc desde SQL: el TOP es la primera fila asignada
+  // con facturación > 0. Pura UI sobre el orden existente — no re-ordena ni
+  // añade query. Solo se marca con ≥2 barberos facturando (con 1 es obvio).
+  const billingRows = rows.filter(
+    (r) => r.barber_key !== '__unassigned__' && Number(r.billed_eur) > 0,
+  )
+  const topBarberKey =
+    highlightTop && billingRows.length >= 2 ? billingRows[0].barber_key : null
+
   return (
     <section className="bg-surface border border-line rounded-2xl overflow-hidden">
       <header className="px-5 py-4 border-b border-line">
-        <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">Por barbero</h2>
-        <p className="text-xs text-ink-3 mt-0.5">
-          Quién factura más, quién recibe más propinas, quién tiene mejor nota.
-        </p>
+        <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">{title}</h2>
+        <p className="text-xs text-ink-3 mt-0.5">{subtitle}</p>
       </header>
 
       <div className="overflow-x-auto">
@@ -198,6 +220,7 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
               const tipsEur = Number(r.tips_cents) / 100
               const sharePct = grandTotalEur > 0 ? Math.round((billed / grandTotalEur) * 100) : 0
               const isUnassigned = r.barber_key === '__unassigned__'
+              const isTop = topBarberKey === r.barber_key
               return (
                 <tr key={r.barber_key} className="hover:bg-canvas/40 transition-colors">
                   <td className="px-4 py-3">
@@ -208,7 +231,15 @@ export default async function BarberBreakdown({ clientId, periodStartIso }: Prop
                         <User className="h-3.5 w-3.5" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-ink truncate">{r.barber_name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-ink truncate">{r.barber_name}</p>
+                          {isTop && (
+                            <span className="inline-flex items-center gap-0.5 shrink-0 rounded-full border border-brand/30 bg-brand-softer px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-brand-strong">
+                              <Trophy className="h-2.5 w-2.5" aria-hidden="true" />
+                              Top
+                            </span>
+                          )}
+                        </div>
                         {r.active === false && (
                           <span className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Inactivo</span>
                         )}
