@@ -360,7 +360,7 @@ function BarberCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={barber.photoUrl} alt={barber.name} className="h-full w-full object-cover" />
           ) : (
-            <span className="text-xs font-display font-bold text-ink-2">
+            <span className="text-xs font-bold text-ink-2">
               {barber.name.slice(0, 1).toUpperCase()}
             </span>
           )}
