@@ -31,6 +31,15 @@ import BonusesManager from '../../_components/BonusesManager'
 interface Props {
   enabled: boolean
   serviceNames: string[]
+  /**
+   * Qué bloque renderizar (contrato de IA: Comisiones y Competición son
+   * pestañas distintas del área Equipo).
+   *   'comisiones' (default) → R8 comisión por servicio + R9 tipos de bono
+   *   'competicion'          → R10 competición semanal
+   * El componente sigue siendo uno solo (no se duplica la lógica) — solo
+   * cambia qué Section pinta.
+   */
+  view?: 'comisiones' | 'competicion'
 }
 
 const EUR = new Intl.NumberFormat('es-ES', {
@@ -43,8 +52,26 @@ function eur(cents: number): string {
   return EUR.format(cents / 100)
 }
 
-export default function ComisionesClient({ enabled, serviceNames }: Props) {
+export default function ComisionesClient({
+  enabled,
+  serviceNames,
+  view = 'comisiones',
+}: Props) {
   if (!enabled) return <UpsellCard />
+
+  if (view === 'competicion') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-section)' }}>
+        <Section
+          icon={Trophy}
+          title="Competición semanal"
+          desc="Pique sano del equipo: cada semana gana quien más factura (o más citas hace). El ganador cobra un fijo; si encadena varias semanas, bono de racha. Pago aparte de la nómina."
+        >
+          <Competitions />
+        </Section>
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-section)' }}>
@@ -63,15 +90,6 @@ export default function ComisionesClient({ enabled, serviceNames }: Props) {
         bordered
       >
         <BonusesManager enabled={enabled} />
-      </Section>
-
-      <Section
-        icon={Trophy}
-        title="Competición semanal"
-        desc="Pique sano del equipo: cada semana gana quien más factura (o más citas hace). El ganador cobra un fijo; si encadena varias semanas, bono de racha. Pago aparte de la nómina."
-        bordered
-      >
-        <Competitions />
       </Section>
     </div>
   )
