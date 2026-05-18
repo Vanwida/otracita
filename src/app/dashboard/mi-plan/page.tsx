@@ -10,7 +10,8 @@ import { auth } from '@/lib/auth/server'
 import { CreditCard, Calendar, Receipt, AlertCircle, FileText, ArrowRight, Clock } from 'lucide-react'
 import OpenStripePortalButton from '@/app/dashboard/_components/OpenStripePortalButton'
 import OnlinePaymentsSummary from '@/app/dashboard/_components/OnlinePaymentsSummary'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import UpgradeToProButton from './UpgradeToProButton'
 import { stripe } from '@/lib/stripe'
 import { PLANS } from '@/lib/stripe'
@@ -82,12 +83,11 @@ export default async function MiPlanPage() {
   const daysLeft = trialDaysLeft(client)
 
   return (
-    <PageShell
-      title="Tu suscripción"
-      subtitle="Tu suscripción a otracita: plan, próximos cobros y facturas pasadas."
-      maxWidth="4xl"
-      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
-    >
+    <AreaShell area="ajustes">
+      <AreaContent scroll="region" maxWidth="5xl">
+      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+        Tu suscripción a otracita: plan, próximos cobros y facturas pasadas.
+      </p>
 
       {/* Tier + trial banner — single source of truth para el barbero sobre
           dónde está y qué pasa el día X. */}
@@ -211,7 +211,8 @@ export default async function MiPlanPage() {
       {/* Online payments (Stripe Connect) summary — what the barber receives
           from THEIR customers. Distinct from the subscription they pay us. */}
       <OnlinePaymentsSummary connectStatus={client.stripeConnectStatus} />
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
 

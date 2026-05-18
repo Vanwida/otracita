@@ -6,7 +6,8 @@ import { db } from '@/db'
 import { clients, products } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import ProductsManager from './ProductsManager'
 
 // -----------------------------------------------------------------------------
@@ -36,26 +37,29 @@ export default async function TiendaPage() {
     .orderBy(asc(products.displayOrder), asc(products.createdAt))
 
   return (
-    <PageShell
-      title="Tienda de productos"
-      maxWidth="4xl"
-      back={{ label: 'Crecer', href: '/dashboard/crecer' }}
-    >
-      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
-        Da de alta los productos que vendes. Al cobrar un corte, podrás añadir
-        la venta desde la agenda con un click. Cada venta se atribuye al barbero
-        que la registra para el desglose en Caja.
-      </p>
+    <AreaShell area="marketing">
+      <AreaContent scroll="region" maxWidth="5xl">
+        <p
+          className="text-ink-2 mb-4"
+          style={{ fontSize: 'var(--text-meta)' }}
+        >
+          Da de alta los productos que vendes. Al cobrar un corte, podrás
+          añadir la venta desde la agenda con un click. Cada venta se atribuye
+          al barbero que la registra para el desglose en Ventas.
+        </p>
 
-      <ProductsManager initial={initialProducts.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description ?? '',
-        imageUrl: p.imageUrl ?? '',
-        priceCents: p.priceCents,
-        stockQuantity: p.stockQuantity,
-        displayOrder: p.displayOrder,
-      }))} />
-    </PageShell>
+        <ProductsManager
+          initial={initialProducts.map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description ?? '',
+            imageUrl: p.imageUrl ?? '',
+            priceCents: p.priceCents,
+            stockQuantity: p.stockQuantity,
+            displayOrder: p.displayOrder,
+          }))}
+        />
+      </AreaContent>
+    </AreaShell>
   )
 }

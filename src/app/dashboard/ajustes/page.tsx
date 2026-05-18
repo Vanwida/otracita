@@ -26,7 +26,8 @@ import {
 } from 'lucide-react'
 import { PLANS, type PlanId } from '@/lib/stripe'
 import { HubCard, HubCardLine, HubChipRow, HubChip, type HubTone } from '../_components/HubCard'
-import PageShell from '../_components/PageShell'
+import AreaShell from '../_components/AreaShell'
+import AreaContent from '../_components/AreaContent'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ajustes — hub de configuración del negocio.
@@ -103,10 +104,8 @@ export default async function AjustesPage() {
   const planPriceEur = planMeta ? planMeta.price / 100 : null
 
   return (
-    <PageShell
-      title="Ajustes"
-      subtitle="Configuración del negocio. Lo defines una vez y se queda así."
-    >
+    <AreaShell area="ajustes">
+      <AreaContent scroll="region" maxWidth="6xl">
       <div className="grid gap-4 md:grid-cols-2">
         {/* Tu barbería — card "ancla" del negocio */}
         <HubCard href="/dashboard/negocio" icon={Store} title="Tu barbería" status={{ tone: 'ok', label: 'Configurado' }}>
@@ -183,7 +182,7 @@ export default async function AjustesPage() {
 
         {/* Facturación — VeriFactu + tickets emitidos */}
         <HubCard
-          href="/dashboard/facturas"
+          href="/dashboard/ventas/facturas"
           icon={FileText}
           title="Facturación"
           status={
@@ -240,7 +239,8 @@ export default async function AjustesPage() {
           </HubChipRow>
         </HubCard>
       </div>
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
 

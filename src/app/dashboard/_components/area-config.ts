@@ -153,7 +153,7 @@ export const AREAS: Area[] = [
     subtitle: 'Promociones, bot de WhatsApp y tienda online.',
     tabs: [
       { seg: null, label: 'Promociones', href: '/dashboard/marketing' },
-      { seg: 'bot', label: 'Bot WhatsApp', href: '/dashboard/marketing/bot' },
+      { seg: 'bot', label: 'Bot WhatsApp', href: '/dashboard/bot' },
       { seg: 'tienda', label: 'Tienda', href: '/dashboard/marketing/tienda' },
     ],
     prefixes: [
@@ -167,13 +167,16 @@ export const AREAS: Area[] = [
     label: 'Ajustes',
     icon: Settings,
     href: '/dashboard/ajustes',
-    subtitle: 'Datos del negocio, facturación, app y plan.',
+    subtitle: 'Configuración del negocio. Lo defines una vez y se queda así.',
+    // Hrefs = rutas reales (no nested aún). El índice es una rejilla de
+    // cards Booksy (09.53.25) que funciona como drill-down; las pestañas
+    // dan navegación directa al mismo destino.
     tabs: [
       { seg: null, label: 'General', href: '/dashboard/ajustes' },
-      { seg: 'negocio', label: 'Negocio', href: '/dashboard/ajustes/negocio' },
-      { seg: 'facturacion', label: 'Facturación', href: '/dashboard/ajustes/facturacion' },
-      { seg: 'app', label: 'App', href: '/dashboard/ajustes/app' },
-      { seg: 'plan', label: 'Plan', href: '/dashboard/ajustes/plan' },
+      { seg: 'negocio', label: 'Negocio', href: '/dashboard/negocio' },
+      { seg: 'app', label: 'App', href: '/dashboard/app' },
+      { seg: 'plan', label: 'Plan', href: '/dashboard/mi-plan' },
+      { seg: 'ayuda', label: 'Ayuda', href: '/dashboard/ayuda' },
     ],
     prefixes: [
       '/dashboard/ajustes',

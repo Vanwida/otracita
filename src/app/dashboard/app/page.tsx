@@ -15,7 +15,8 @@ import {
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import PublicPageSettings from '@/app/dashboard/_components/PublicPageSettings'
-import PageShell from '@/app/dashboard/_components/PageShell'
+import AreaShell from '@/app/dashboard/_components/AreaShell'
+import AreaContent from '@/app/dashboard/_components/AreaContent'
 import GtmSettings from './GtmSettings'
 import Link from 'next/link'
 import { hasFeature } from '@/lib/billing/tier'
@@ -57,11 +58,8 @@ export default async function AppPage() {
   const readyForApp = Boolean(url && client.publicEnabled)
 
   return (
-    <PageShell
-      title="App para clientes"
-      maxWidth="5xl"
-      back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
-    >
+    <AreaShell area="ajustes">
+      <AreaContent scroll="region" maxWidth="5xl">
       <div className="space-y-6">
       <p className="text-ink-2 max-w-2xl" style={{ fontSize: 'var(--text-meta)' }}>
         La app de tu barbería en el móvil de tus clientes. Instalable desde Safari y Chrome (sin App Store),
@@ -212,6 +210,7 @@ export default async function AppPage() {
       {/* Promos contextuales se gestionan ahora en /dashboard/marketing —
           conceptualmente son marketing, no configuración de la app. */}
       </div>
-    </PageShell>
+      </AreaContent>
+    </AreaShell>
   )
 }
