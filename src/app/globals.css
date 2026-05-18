@@ -81,6 +81,37 @@
   --color-scrim:        rgba(42, 29, 20, 0.40);
   --color-scrim-light:  rgba(42, 29, 20, 0.20);
   --color-scrim-strong: rgba(42, 29, 20, 0.60);
+
+  /* ─── Density (control-panel shell) ─────────────────────────────
+   * UI0 north star: el dashboard es un panel de control denso (Booksy),
+   * no una revista. Estos tokens centralizan el ritmo compacto que
+   * sustituye al editorial `p-4 md:p-8 max-w-5xl` + `font-display text-4xl`.
+   * Solo aditivos — ningún color existente cambia. Consumidos por
+   * PageShell, AppRail y SubTabs. */
+
+  /* Rail de iconos a la izquierda (nivel-1 nav). 64px = icono 20px
+   * cómodo + área táctil de 44px+ centrada. */
+  --rail-width: 64px;
+
+  /* Espaciado del shell. `page` = padding exterior del contenido,
+   * `section` = separación entre bloques, `card` = padding interno
+   * de tarjetas. Más apretado que el editorial anterior. */
+  --space-page:    1.5rem;   /* 24px — antes p-4/p-8 (16/32) */
+  --space-section: 1.5rem;   /* 24px — antes mb-12 (48) */
+  --space-card:    1rem;     /* 16px — padding interno tarjeta */
+
+  /* Escala tipográfica del panel — sans (IBM Plex), NUNCA Fraunces.
+   * El header de cada pantalla deja de ser un titular de revista. */
+  --text-page-title:    1.125rem;  /* 18px — título de pantalla */
+  --text-section-title: 0.9375rem; /* 15px — título de bloque */
+  --text-meta:          0.8125rem;  /* 13px — subtítulo/meta */
+
+  /* Radios más sobrios — tarjetas rounded-lg/xl, no 2xl. */
+  --radius-control: 0.625rem;  /* 10px */
+
+  /* Sombra de control: más plana que el `shadow-lg` editorial.
+   * Cálida (espresso-tinted) por coherencia con DESIGN.md. */
+  --shadow-control: 0 1px 2px rgba(42, 29, 20, 0.06);
 }
 
 /* Foco accesible global. PRODUCT.md compromete WCAG AAA donde sea posible:
