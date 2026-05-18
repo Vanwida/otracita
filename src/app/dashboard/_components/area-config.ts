@@ -72,9 +72,14 @@ export const AREAS: Area[] = [
     icon: Calendar,
     href: '/dashboard/agenda',
     subtitle: 'Tu día y tu semana de un vistazo.',
+    // Día/Semana/Mes ya viven como conmutador NATIVO dentro de
+    // CalendarView (calendario operativo con drag&drop + SWR keyed por
+    // vista): es la misma funcionalidad "Día · Semana" del contrato,
+    // renderizada como toggle in-component, no como rutas (forzar rutas
+    // rompería el estado/DnD de un componente de ~1850 líneas). La barra
+    // de pestañas del área solo añade Importar como hermano navegable.
     tabs: [
-      { seg: null, label: 'Día', href: '/dashboard/agenda' },
-      { seg: 'semana', label: 'Semana', href: '/dashboard/agenda?v=week' },
+      { seg: null, label: 'Calendario', href: '/dashboard/agenda' },
       { seg: 'importar', label: 'Importar', href: '/dashboard/agenda/importar' },
     ],
     prefixes: ['/dashboard/agenda'],
