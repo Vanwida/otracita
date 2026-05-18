@@ -10,6 +10,7 @@ import { requireFeature } from '@/lib/billing/tier'
 // -----------------------------------------------------------------------------
 
 const VALID_UNITS = new Set(['units', 'euros'])
+const VALID_KINDS = new Set(['meta', 'tramo'])
 
 export async function PATCH(
   request: Request,
@@ -30,6 +31,10 @@ export async function PATCH(
 
   const updates: Record<string, string | number | boolean> = {}
   if (typeof body.name === 'string') updates.name = body.name.trim().slice(0, 80)
+  if (typeof body.kind === 'string') {
+    if (!VALID_KINDS.has(body.kind)) return Response.json({ error: 'kind inválido' }, { status: 400 })
+    updates.kind = body.kind
+  }
   if (typeof body.unit === 'string') {
     if (!VALID_UNITS.has(body.unit)) return Response.json({ error: 'unit inválido' }, { status: 400 })
     updates.unit = body.unit

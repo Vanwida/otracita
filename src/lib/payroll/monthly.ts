@@ -6,11 +6,17 @@ import {
   tips,
   bonuses,
   bonusEntries,
+  barberServiceCommissions,
 } from '@/db/schema'
 import { and, eq, gte, lt, sum, sql } from 'drizzle-orm'
 import { computeBarberPayroll, isProfileConfigured } from './compute'
 import type { BarberSalaryProfile, BarberMonthRaw, PayrollBreakdown, SalaryType } from './types'
-import { computeBonusProgress, type BonusUnit } from '@/lib/bonuses/progress'
+import { computeBonusProgress, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
+import {
+  computeServicesCommissionCents,
+  type ServiceRevenueRow,
+  type ServiceCommissionOverride,
+} from './services-commission'
 
 // -----------------------------------------------------------------------------
 // computeMonthlyPayroll — agregación DB-pesada del payroll por barbero para
@@ -78,6 +84,53 @@ export async function computeMonthlyPayroll(
   for (const row of servicesByBarber) {
     if (!row.barberId) continue
     servicesRevenueMap.set(row.barberId, Math.round(parseFloat(row.totalEur ?? '0') * 100))
+  }
+
+  // 2b) R8 — facturación de servicios partida por (barbero, servicio) para
+  // poder aplicar overrides de comisión por-servicio. bookings.price EUROS → ×100.
+  const serviceRevByBarberService = await db
+    .select({
+      barberId: bookings.barberId,
+      serviceName: bookings.service,
+      totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+    })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, clientId),
+        eq(bookings.status, 'completed'),
+        gte(bookings.date, bounds.start),
+        lt(bookings.date, bounds.end),
+      ),
+    )
+    .groupBy(bookings.barberId, bookings.service)
+
+  const serviceRowsByBarber = new Map<string, ServiceRevenueRow[]>()
+  for (const row of serviceRevByBarberService) {
+    if (!row.barberId || !row.serviceName) continue
+    const cents = Math.round(parseFloat(row.totalEur ?? '0') * 100)
+    const list = serviceRowsByBarber.get(row.barberId) ?? []
+    list.push({ serviceName: row.serviceName, revenueCents: cents })
+    serviceRowsByBarber.set(row.barberId, list)
+  }
+
+  // 2c) R8 — overrides de comisión por (barbero, servicio). Sin filas para
+  // un barbero ⇒ su comisión de servicios se calcula con el % global de
+  // siempre (no-regresión, ver computeServicesCommissionCents).
+  const overrideRows = await db
+    .select({
+      barberId: barberServiceCommissions.barberId,
+      serviceName: barberServiceCommissions.serviceName,
+      pct: barberServiceCommissions.pct,
+    })
+    .from(barberServiceCommissions)
+    .where(eq(barberServiceCommissions.clientId, clientId))
+
+  const overridesByBarber = new Map<string, ServiceCommissionOverride[]>()
+  for (const row of overrideRows) {
+    const list = overridesByBarber.get(row.barberId) ?? []
+    list.push({ serviceName: row.serviceName, pct: row.pct })
+    overridesByBarber.set(row.barberId, list)
   }
 
   // 3) Productos vendidos por barbero.
@@ -162,6 +215,7 @@ export async function computeMonthlyPayroll(
       const progress = progressMap.get(`${bonus.id}|${barber.id}`) ?? 0
       const r = computeBonusProgress({
         unit: bonus.unit as BonusUnit,
+        kind: bonus.kind as BonusKind,
         target: bonus.target,
         rewardCents: bonus.rewardCents,
         entries: [progress],
@@ -189,13 +243,23 @@ export async function computeMonthlyPayroll(
       tipsCents: tipsMap.get(barber.id) ?? 0,
       bonusesPayoutCents: bonusesPayoutMap.get(barber.id) ?? 0,
     }
+
+    // R8 — comisión de servicios con overrides por-servicio. Sin overrides
+    // para este barbero ⇒ esto da exactamente revenue×globalPct (idéntico
+    // al camino histórico que aplicaría compute.ts por sí solo).
+    const servicesCommissionCents = computeServicesCommissionCents({
+      rows: serviceRowsByBarber.get(barber.id) ?? [],
+      overrides: overridesByBarber.get(barber.id) ?? [],
+      globalPct: profile.commissionServicesPct,
+    })
+
     items.push({
       barberId: barber.id,
       barberName: barber.name,
       salaryType: profile.salaryType,
       profile,
       raw,
-      breakdown: computeBarberPayroll(profile, raw),
+      breakdown: computeBarberPayroll(profile, raw, servicesCommissionCents),
     })
   }
 
