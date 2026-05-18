@@ -704,7 +704,10 @@ export default function FinanzasClient({
         className="shrink-0 border-b border-line bg-canvas px-[var(--space-page)]"
         style={{ paddingTop: 'var(--space-card)', paddingBottom: 'var(--space-card)' }}
       >
-        <div className="max-w-2xl mx-auto">
+        {/* Ancho denso del panel de control (5xl, igual que el resto del
+            dashboard) — antes era max-w-2xl: columna de revista. Solo
+            presentación; la lógica fiscal/IVA/beneficio NO se toca. */}
+        <div className="max-w-5xl mx-auto">
         <Link
           href="/dashboard/ventas"
           className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink mb-1.5 transition-colors"
@@ -748,22 +751,25 @@ export default function FinanzasClient({
 
       {/* Cuerpo — única región scrolleable */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-2xl mx-auto" style={{ padding: 'var(--space-page)' }}>
+        <div className="max-w-5xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {isLoading ? (
         <div><Skeleton /></div>
       ) : (
         <>
           <div className="space-y-3">
 
-            {/* ── HERO — Te quedan limpios ──────────────────────────── */}
-            <section className="bg-surface border border-line rounded-2xl px-5 py-6">
-              <p className="text-xs font-medium text-ink-3 uppercase tracking-[0.12em]">
+            {/* ── Resumen — Te quedan limpios ───────────────────────── */}
+            {/* De-editorializado (fix #9): panel denso consistente con los
+                KpiTile de abajo (rounded-xl, padding apretado, sin la
+                cifra a escala de revista). LÓGICA Y DATOS INTACTOS — solo
+                cambian clases de presentación. */}
+            <section className="bg-surface border border-line rounded-xl px-4 py-4">
+              <p className="text-[11px] font-semibold text-ink-3 uppercase tracking-[0.1em]">
                 Te quedan limpios
               </p>
-              <div className="flex items-baseline gap-3 mt-2">
+              <div className="flex items-baseline gap-2 mt-1">
                 <span
-                  className={`tabular-nums font-bold leading-none ${quedanLimpiosCents < 0 ? 'text-danger' : 'text-ink'}`}
-                  style={{ fontSize: 'var(--text-figure)' }}
+                  className={`tabular-nums text-2xl font-bold leading-tight ${quedanLimpiosCents < 0 ? 'text-danger' : 'text-ink'}`}
                 >
                   {formatCents(quedanLimpiosCents)}
                 </span>
@@ -778,14 +784,14 @@ export default function FinanzasClient({
                   )
                 })()}
               </div>
-              <p className="text-sm text-ink-3 mt-2">
+              <p className="text-xs text-ink-3 mt-1">
                 {quedanLimpiosCents < 0
                   ? 'Este mes te has llevado más de lo que puedes — revísalo.'
                   : 'después de Hacienda y de los retiros que ya te has llevado'}
               </p>
 
               {/* Comparativas */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
                 {(() => {
                   const t = trendPct(summary.ingresosCents, prevIngresosCents)
                   if (!t) return null
@@ -811,7 +817,7 @@ export default function FinanzasClient({
 
               {/* Sparkline 6 meses */}
               {trendLoaded && trendData.length >= 2 && (
-                <div className="mt-5 pt-5 border-t border-line">
+                <div className="mt-3 pt-3 border-t border-line">
                   <Sparkline data={trendData.map((d) => d.beneficioBrutoCents / 100)} height={36} />
                   <div className="flex justify-between mt-2">
                     {trendData.map((d) => (
