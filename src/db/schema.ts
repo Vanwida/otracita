@@ -275,6 +275,58 @@ export const barbers = pgTable('barbers', {
   clientNameUnique: unique('barbers_client_name_unique').on(table.clientId, table.name),
 }));
 
+// Descansos recurrentes (semanales) por barbero — el "Descanso" inset bajo
+// cada día en el editor de turnos (screenshots 10.17.35 / 10.18.21). UNA fila
+// por (barbero, weekday, franja): un barbero puede tener varios descansos el
+// mismo día (p.ej. 13:00-14:00 comida + 17:00-17:15 café).
+//
+// IMPORTANTE: tabla ADITIVA. El campo `barbers.hours` (string legacy
+// "10:00-20:00") NO se toca jamás — sigue siendo la fuente del horario de
+// apertura. La disponibilidad RESTA estas franjas del rango abierto. Un
+// barbero sin filas aquí produce exactamente los mismos slots que antes
+// (no-regresión, ver availability.test.ts).
+//
+// `weekday`: 0=domingo … 6=sábado (mismo índice que Date.getUTCDay(), el que
+// ya usa hoursForDate en availability.ts — un solo convenio en todo el motor).
+export const barberBreaks = pgTable('barber_breaks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  barberId: uuid('barber_id').notNull().references(() => barbers.id, { onDelete: 'cascade' }),
+  weekday: integer('weekday').notNull(),                              // 0=dom … 6=sáb
+  startTime: text('start_time').notNull(),                            // HH:MM
+  endTime: text('end_time').notNull(),                                // HH:MM
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Bloqueos puntuales por barbero — "Falta de disponibilidad" (franja de un
+// día concreto, screenshot 09.39.52) y "Ausencias" de día completo
+// (vacaciones / enfermedad / formación, screenshot 10.22.23). A diferencia de
+// barberBreaks (recurrente semanal), esto es EXCEPCIONAL: una fecha concreta.
+//
+// `startTime`/`endTime` null ⇒ día completo (ausencia "Todo el día"). Con
+// valores ⇒ franja parcial de ese día ("Falta de disponibilidad" 16:00-16:15).
+// `kind`: 'block' = falta de disponibilidad ad-hoc · 'absence' = ausencia con
+// motivo. `reason` solo aplica a 'absence' (Día personal/Enfermedad/
+// Vacaciones/Formación). `note` es texto libre opcional (campo "Nota" de
+// 09.39.52). También aditiva — la disponibilidad la resta igual que los
+// breaks; `barbers.blockedDates` (días completos legacy) sigue funcionando
+// en paralelo sin cambios.
+export const barberBlocks = pgTable('barber_blocks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  barberId: uuid('barber_id').notNull().references(() => barbers.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),                                       // YYYY-MM-DD
+  startTime: text('start_time'),                                      // HH:MM · null = todo el día
+  endTime: text('end_time'),                                          // HH:MM · null = todo el día
+  kind: text('kind').notNull(),                                       // 'block' | 'absence'
+  reason: text('reason'),                                             // solo absence: 'personal'|'enfermedad'|'vacaciones'|'formacion'|null
+  note: text('note'),                                                 // texto libre opcional
+  approved: boolean('approved').default(true).notNull(),              // toggle "Aprobado" de 10.22.23
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Bonos del local. UN catálogo por barbería: el dueño define qué bonos
 // existen (reseñas, upsell, cortes, etc.) y cualquier barbero puede
 // acumular progreso hacia ellos. Manual-only v1 — el dueño teclea desde

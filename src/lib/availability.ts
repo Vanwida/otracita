@@ -2,6 +2,8 @@ import { db } from '@/db';
 import { bookings } from '@/db/schema';
 import { and, eq, ne } from 'drizzle-orm';
 import type { BarberConfig } from '@/lib/whatsapp/config';
+import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
+import { loadShopUnavailability } from '@/lib/unavailability-db';
 
 // -----------------------------------------------------------------------------
 // Availability engine — the single source of truth for "when can a customer
@@ -199,6 +201,11 @@ export async function getAvailableSlotsFromDB(
     ...(busyByBarberName.get(barber.name.trim().toLowerCase()) ?? []),
   ];
 
+  // Recurring breaks (R12) + ad-hoc blocks/absences (R2) for the day. These
+  // SUBTRACT from each barber's open window — the `hours` resolution above is
+  // untouched. Empty map ⇒ no extra intervals ⇒ identical slots to before.
+  const unavailMap = await loadShopUnavailability(clientId, date);
+
   // Lead time cutoff — slots starting before this on "today" are excluded.
   let leadCutoff = -Infinity;
   if (date === todayMadrid) {
@@ -218,7 +225,15 @@ export async function getAvailableSlotsFromDB(
   for (const { barber, hours } of openCandidates) {
     const bhStart = parseMinutes(hours.start);
     const bhEnd = parseMinutes(hours.end);
-    const busy = busyForBarber(barber);
+    const busy = [
+      ...busyForBarber(barber),
+      ...unavailabilityIntervals(
+        date,
+        bhStart,
+        bhEnd,
+        unavailabilityFor(unavailMap, barber.id),
+      ),
+    ];
     for (let slotStart = bhStart; slotStart + serviceDuration <= bhEnd; slotStart += step) {
       if (slotStart < leadCutoff) continue;
       const slotEnd = slotStart + serviceDuration;
@@ -285,12 +300,18 @@ export async function pickBarberForCustomer(args: {
       ),
     );
 
+  // Recurring breaks + ad-hoc blocks/absences for this date. Same additive
+  // treatment as getAvailableSlotsFromDB — `hours` resolution untouched.
+  const unavailMap = await loadShopUnavailability(clientId, date);
+
   const isFree = (barber: BarberConfig): boolean => {
     // 1. Barber must have hours today.
     if (barberIsBlocked(barber, date, shopBlockedDates)) return false;
     const hours = barberHoursForDate(barber, date, shopHours);
     if (!hours) return false;
-    if (newStart < parseMinutes(hours.start) || newEnd > parseMinutes(hours.end)) return false;
+    const bhStart = parseMinutes(hours.start);
+    const bhEnd = parseMinutes(hours.end);
+    if (newStart < bhStart || newEnd > bhEnd) return false;
     // 2. No overlapping booking (considering buffer).
     for (const b of dayBookings) {
       const isSameBarber =
@@ -300,6 +321,16 @@ export async function pickBarberForCustomer(args: {
       const bStart = parseMinutes(b.time);
       const bEnd = bStart + b.duration + serviceBufferMinutes;
       if (newStart < bEnd && newEnd > bStart) return false;
+    }
+    // 3. No overlapping break / block / absence for this barber on this date.
+    const intervals = unavailabilityIntervals(
+      date,
+      bhStart,
+      bhEnd,
+      unavailabilityFor(unavailMap, barber.id),
+    );
+    for (const iv of intervals) {
+      if (newStart < iv.end && newEnd > iv.start) return false;
     }
     return true;
   };
