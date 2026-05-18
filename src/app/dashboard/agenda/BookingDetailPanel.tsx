@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Trash2, FileWarning } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Trash2, FileWarning, Phone } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
@@ -520,22 +520,6 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const sourceLabel = (source: string) =>
     source === 'booksy' ? 'Booksy' : 'WhatsApp Bot';
 
-  // Tono inline (no pill) para el status. 'confirmed' se mezcla con el
-  // metadata muteado; 'no_show' / 'cancelled' / 'completed' añaden un
-  // toque de color para que el estado sea legible sin sobrecargar.
-  const statusToneClass = (status: string): string => {
-    switch (status) {
-      case 'no_show':
-        return 'text-danger font-semibold';
-      case 'completed':
-        return 'text-success font-semibold';
-      case 'cancelled':
-        return 'text-ink-3';
-      default:
-        return 'text-ink-2';
-    }
-  };
-
   const statusLabel = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -548,6 +532,26 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         return 'Cancelada';
       default:
         return status;
+    }
+  };
+
+  // Booksy abre el panel con una BANDA DE ESTADO de color a todo el ancho
+  // (verde "CONFIRMADO", screenshot 09.58.37). Mismo patrón con tokens
+  // otracita: el estado lo lleva la banda, no metadata gris perdida en el
+  // cuerpo. Texto sobre fondo de color saturado → usamos los tokens
+  // success/danger/ink al ~12% para fondo + el sólido para el texto, AAA.
+  const statusBanner = (
+    status: string,
+  ): { bg: string; fg: string } => {
+    switch (status) {
+      case 'no_show':
+        return { bg: 'bg-danger', fg: 'text-white' };
+      case 'completed':
+        return { bg: 'bg-success', fg: 'text-white' };
+      case 'cancelled':
+        return { bg: 'bg-overlay', fg: 'text-ink-2' };
+      default: // confirmed → verde, igual que Booksy
+        return { bg: 'bg-success', fg: 'text-white' };
     }
   };
 
@@ -587,20 +591,37 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             // ancho concreto.
             className="fixed right-0 top-0 z-50 h-full w-[440px] max-w-[90vw] bg-surface border-l border-line flex flex-col shadow-xl"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-line">
-              <span className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2">
-                Reserva
-              </span>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Cerrar detalle"
-                className="inline-flex items-center justify-center h-11 w-11 -mr-3 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-              >
-                <X className="h-5 w-5" aria-hidden="true" />
-              </button>
-            </div>
+            {/* Banda de estado a todo el ancho (Booksy 09.58.37): ✕ a la
+                izquierda, estado en mayúsculas al centro, "Llamar" a la
+                derecha. El color de la banda comunica el estado. */}
+            {(() => {
+              const sb = statusBanner(booking.status);
+              return (
+                <div
+                  className={`flex items-center justify-between px-3 py-2.5 ${sb.bg} ${sb.fg}`}
+                >
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Cerrar detalle"
+                    className="inline-flex items-center justify-center h-10 w-10 rounded-lg hover:bg-black/10 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  >
+                    <X className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                  <span className="text-xs uppercase tracking-[0.18em] font-bold">
+                    {statusLabel(booking.status)}
+                    {booking.source === 'booksy' && ' · Booksy'}
+                  </span>
+                  <a
+                    href={`tel:${booking.customerPhone}`}
+                    className="inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-black/10 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  >
+                    <Phone className="h-4 w-4" aria-hidden="true" />
+                    Llamar
+                  </a>
+                </div>
+              );
+            })()}
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -639,12 +660,10 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     )}
                   </button>
                 </div>
+                {/* El estado ya lo lleva la banda superior (Booksy no lo
+                    repite); aquí solo el origen + aviso solo-lectura. */}
                 <p className="text-xs text-ink-2">
                   {sourceLabel(booking.source)}
-                  {' · '}
-                  <span className={statusToneClass(booking.status)}>
-                    {statusLabel(booking.status)}
-                  </span>
                   {booking.source === 'booksy' && (
                     <span className="text-ink-3"> · solo lectura</span>
                   )}
@@ -1121,6 +1140,20 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
             </div>
+
+            {/* Footer fijo con el TOTAL (Booksy 09.58.37: barra inferior
+                con "Total" grande). Sticky shrink-0 fuera del scroll. Solo
+                cuando la cita tiene precio. */}
+            {booking.price !== null && booking.price !== undefined && (
+              <div className="shrink-0 border-t border-line bg-surface px-5 py-3 flex items-baseline justify-between">
+                <span className="text-xs font-bold uppercase tracking-[0.16em] text-ink-2">
+                  Total
+                </span>
+                <span className="text-2xl font-bold text-ink tabular-nums leading-none">
+                  {booking.price} €
+                </span>
+              </div>
+            )}
           </motion.div>
         </Fragment>
       )}
