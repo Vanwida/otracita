@@ -138,6 +138,25 @@
   --text-page-title:    1.125rem;  /* 18px — título de pantalla */
   --text-section-title: 0.9375rem; /* 15px — título de bloque */
   --text-meta:          0.8125rem;  /* 13px — subtítulo/meta */
+  /* Datos densos: la celda de tabla y la cifra grande de un KPI/panel.
+   * `data` es el cuerpo de toda fila multi-columna; `figure` es la cifra
+   * protagonista de un panel acoplado (Booksy: el TOTAL del cajón). NO es
+   * un titular editorial — es sans bold tabular, peso de utilidad. */
+  --text-data:    0.8125rem;  /* 13px — celda de tabla / lista densa */
+  --text-figure:  1.75rem;    /* 28px — cifra protagonista de panel/KPI */
+
+  /* Ritmo apretado interno de tabla/lista. Más fino que --space-card:
+   * es el padding de una celda y el gap de una fila densa, no de una
+   * tarjeta editorial. 4pt base (spatial-design.md). */
+  --space-tight:  0.5rem;     /* 8px — padding vertical de celda densa */
+  --space-cell-x: 0.75rem;    /* 12px — padding horizontal de celda */
+
+  /* Tonos de fila para tablas densas (zebra + hover + header). Derivados
+   * de los neutros existentes — NINGÚN color nuevo, solo alias semánticos
+   * para que DataTable no hardcode `bg-overlay/40` disperso. */
+  --row-zebra:        rgba(240, 235, 227, 0.45);  /* overlay @ ~45% — fila par */
+  --row-hover:        rgba(244, 227, 212, 0.40);  /* brand-softer @ 40% — hover */
+  --table-head-bg:    var(--color-overlay);       /* cabecera de tabla sticky */
 
   /* Radios más sobrios — tarjetas rounded-lg/xl, no 2xl. */
   --radius-control: 0.625rem;  /* 10px */
@@ -207,6 +226,17 @@ body {
         oklch(0 0 0 / 0.04) 6px,
         oklch(0 0 0 / 0.04) 12px
       );
+  }
+
+  /* DataTable: fila densa con zebra + hover por tokens. La regla CSS
+     resuelve la precedencia (hover gana a zebra) que el style inline no
+     puede; el JSX solo marca `data-zebra` en filas pares. Coherente con
+     spatial-design.md ("variety creates hierarchy") sin colores nuevos. */
+  .dtable-row[data-zebra='true'] {
+    background: var(--row-zebra);
+  }
+  .dtable-row:hover {
+    background: var(--row-hover);
   }
 
   /* Warm card with terracotta hover ring */
