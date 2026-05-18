@@ -1,32 +1,52 @@
 export const dynamic = 'force-dynamic'
 
-import { Coins } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
+import { db } from '@/db'
+import { clients } from '@/db/schema'
+import { eq } from 'drizzle-orm'
+import { auth } from '@/lib/auth/server'
+import { hasFeature } from '@/lib/billing/tier'
+import ComisionesClient from './ComisionesClient'
 
 // -----------------------------------------------------------------------------
-// /dashboard/equipo/comisiones — pestaña "Comisiones" (shell).
+// /dashboard/equipo/comisiones — pestaña "Comisiones" (R8 + R9 + R10).
 //
-// WS-0 solo crea la ruta y la pestaña. La gestión de comisiones por
-// servicio / tipos de bono / competición semanal (R8, R9, R10 —
-// screenshots 09.46.25, 10.16.45) la construye WS-F. Placeholder hasta
-// entonces para que la pestaña navegue y el deep-link funcione.
+// El chrome (título "Equipo" + pestañas) lo da `equipo/layout.tsx` vía
+// PageShell + SubTabs — esta página SOLO aporta contenido (sin re-wrap).
+//
+// 3 bloques, todos Pro-gated por `teamBonuses` (igual que BonusesManager):
+//   · Comisión por servicio (R8) — override del % global por servicio.
+//   · Tipos de bono (R9)         — meta | tramo en el catálogo de bonos.
+//   · Competición semanal (R10)  — payout standalone, leaderboard por semana.
+//
+// Los nombres de servicio salen de clients.chatbotServices (catálogo jsonb,
+// sin ID estable — mismo criterio de match por nombre que loyalty/promos).
 // -----------------------------------------------------------------------------
 
-export default function EquipoComisionesPage() {
-  return (
-    <div className="rounded-control border border-line bg-surface p-8 text-center">
-      <Coins className="h-6 w-6 text-ink-3 mx-auto mb-3" />
-      <h2
-        className="font-semibold text-ink"
-        style={{ fontSize: 'var(--text-section-title)' }}
-      >
-        Comisiones
-      </h2>
-      <p
-        className="text-ink-2 mt-1 max-w-md mx-auto"
-        style={{ fontSize: 'var(--text-meta)' }}
-      >
-        La configuración de comisiones y bonos del equipo llega pronto.
-      </p>
-    </div>
-  )
+interface ServiceRow {
+  name?: unknown
+}
+
+export default async function EquipoComisionesPage() {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.email) redirect('/login')
+
+  const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
+  if (!client) redirect('/dashboard/setup')
+
+  const enabled = hasFeature(client, 'teamBonuses')
+
+  const rawServices = (client.chatbotServices ?? []) as ServiceRow[]
+  const serviceNames = Array.isArray(rawServices)
+    ? Array.from(
+        new Set(
+          rawServices
+            .map((s) => (typeof s?.name === 'string' ? s.name.trim() : ''))
+            .filter((n): n is string => n.length > 0),
+        ),
+      )
+    : []
+
+  return <ComisionesClient enabled={enabled} serviceNames={serviceNames} />
 }
