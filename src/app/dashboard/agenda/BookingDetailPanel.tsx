@@ -470,6 +470,14 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     Barbero
                   </p>
                   <p className="text-sm font-medium text-ink-2">{booking.barber}</p>
+                  {/* A2: el cliente pidió a este barbero explícitamente
+                      (vs auto-asignado). Driven by bookings.barberRequested. */}
+                  {booking.barberRequested && (
+                    <p className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-strong">
+                      <span aria-hidden="true">♥</span>
+                      Solicitado por el cliente
+                    </p>
+                  )}
                 </div>
               )}
 

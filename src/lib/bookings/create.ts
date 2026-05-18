@@ -227,6 +227,10 @@ export async function createBooking(
   };
 
   // --- Barber resolution ----------------------------------------------------
+  // `barberWasRequested` = el caller pasó un barberId explícito (el cliente
+  // PIDIÓ a esa persona) vs lo elegimos nosotros con pickBarberForCustomer.
+  // Alimenta bookings.barberRequested → ♥ "Solicitado por el cliente" (A2).
+  const barberWasRequested = Boolean(barberId);
   let resolved: BarberConfig | null = null;
   if (barberId) {
     const requested = activeBarbers.find((b) => b.id === barberId);
@@ -278,6 +282,8 @@ export async function createBooking(
       // Persist BOTH the id (canonical) and the name (snapshot, survives renames).
       barberId: resolved.id,
       barber: resolved.name,
+      // A2: true solo si el cliente pidió a este barbero explícitamente.
+      barberRequested: barberWasRequested,
       date,
       time,
       duration,
