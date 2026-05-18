@@ -8,6 +8,7 @@ import { desc, eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { Star, MessageSquare, MessageCircle, Smartphone } from 'lucide-react'
 import PageShell from '@/app/dashboard/_components/PageShell'
+import StatStrip from '@/app/dashboard/_components/StatStrip'
 import RatingsToggle from './RatingsToggle'
 import TipsSettings from '@/app/dashboard/_components/TipsSettings'
 
@@ -103,7 +104,7 @@ export default async function ReseñasPage() {
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-softer border border-brand/20 flex items-center justify-center">
             <Star className="h-6 w-6 text-brand" />
           </div>
-          <h2 className="font-display text-xl font-semibold text-ink">Aún no tienes reseñas</h2>
+          <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Aún no tienes reseñas</h2>
           <p className="mt-2 text-ink-2 text-sm max-w-md mx-auto">
             {client.ratingsEnabled
               ? 'En cuanto un cliente termine un servicio, recibirá la solicitud y aparecerá aquí.'
@@ -112,27 +113,43 @@ export default async function ReseñasPage() {
         </div>
       ) : (
         <>
-          {/* Stats */}
-          <div className="grid gap-4 sm:grid-cols-3 mb-6">
-            <div className="bg-surface border border-line rounded-2xl p-5 text-center">
-              <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-2">
-                Nota media
-              </p>
-              <p className="font-display text-4xl font-bold text-ink">{avg.toFixed(1)}</p>
-              <Stars value={avg} className="justify-center mt-2" />
-            </div>
-            <div className="bg-surface border border-line rounded-2xl p-5 text-center">
-              <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-2">
-                Total
-              </p>
-              <p className="font-display text-4xl font-bold text-ink">{total}</p>
-              <p className="text-xs text-ink-3 mt-2">{total === 1 ? 'valoración' : 'valoraciones'}</p>
-            </div>
-            <div className="bg-surface border border-line rounded-2xl p-5 sm:col-span-1 col-span-1">
-              <p className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-3">
-                Distribución
-              </p>
-              <div className="space-y-1.5">
+          {/* Stats — tira densa + panel de distribución (no grid de cards
+              editoriales con cifras text-4xl). */}
+          <div className="mb-6 space-y-4">
+            <StatStrip
+              ariaLabel="Resumen de reseñas"
+              stats={[
+                {
+                  label: 'Nota media',
+                  value: avg.toFixed(1),
+                  icon: Star,
+                  hint: `sobre ${total} ${total === 1 ? 'valoración' : 'valoraciones'}`,
+                },
+                {
+                  label: 'Total',
+                  value: String(total),
+                  hint: total === 1 ? 'valoración' : 'valoraciones',
+                },
+                {
+                  label: '5 estrellas',
+                  value:
+                    total > 0
+                      ? `${Math.round(((statsRow?.s5 ?? 0) / total) * 100)}%`
+                      : '0%',
+                  hint: `${Number(statsRow?.s5 ?? 0)} reseñas`,
+                },
+              ]}
+            />
+            <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <header
+                className="border-b border-line px-[var(--space-card)] py-2"
+                style={{ background: 'var(--table-head-bg)' }}
+              >
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-ink-2">
+                  Distribución
+                </p>
+              </header>
+              <div className="p-[var(--space-card)] space-y-1.5">
                 {distribution.map(({ stars, count }) => (
                   <DistributionRow
                     key={stars}
@@ -142,7 +159,7 @@ export default async function ReseñasPage() {
                   />
                 ))}
               </div>
-            </div>
+            </section>
           </div>
 
           {/* List */}

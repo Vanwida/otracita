@@ -32,17 +32,26 @@ export default function UpgradeRequired({ feature, title, icon: Icon, back }: Pr
             {back.label}
           </Link>
         )}
-        <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-tight">
+        <h1
+          className="font-semibold text-ink leading-tight"
+          style={{ fontSize: 'var(--text-page-title)' }}
+        >
           {title}
         </h1>
       </header>
 
-      <section className="mt-16 flex flex-col items-center text-center max-w-sm mx-auto gap-6">
+      <section
+        className="flex flex-col items-center text-center max-w-sm mx-auto gap-5"
+        style={{ marginTop: 'var(--space-section)' }}
+      >
         <div className="w-14 h-14 rounded-2xl bg-brand-softer flex items-center justify-center">
           <Icon className="h-7 w-7 text-brand" aria-hidden="true" />
         </div>
         <div>
-          <h2 className="font-display text-2xl font-semibold text-ink mb-2">{msg.title}</h2>
+          <h2
+            className="font-semibold text-ink mb-2"
+            style={{ fontSize: 'var(--text-section-title)' }}
+          >{msg.title}</h2>
           <p className="text-sm text-ink-2 leading-relaxed">{msg.body}</p>
         </div>
         <Link href="/dashboard/mi-plan" className="btn-primary inline-flex items-center gap-2">

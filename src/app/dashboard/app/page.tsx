@@ -89,7 +89,7 @@ export default async function AppPage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-display text-xl font-semibold text-ink">Compártela con tus clientes</h2>
+            <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Compártela con tus clientes</h2>
             <p className="text-sm text-ink-2 mt-1">
               Pega este enlace en tu biografía de Instagram, en la ficha de Google Business Profile, en flyers
               del local, o escanea el QR desde el móvil del cliente directamente.

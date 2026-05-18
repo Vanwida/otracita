@@ -396,7 +396,7 @@ export default function ImportFlow() {
               <Check className="h-5 w-5 text-success" />
             </div>
             <div>
-              <h2 className="font-display text-xl font-semibold">Importación completada</h2>
+              <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Importación completada</h2>
               <p className="text-sm text-ink-2">
                 {result.created} creada{result.created === 1 ? '' : 's'} · {result.failed} fallida
                 {result.failed === 1 ? '' : 's'} · {result.total} total

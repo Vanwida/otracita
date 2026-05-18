@@ -72,7 +72,10 @@ export default function MobileAppConnect() {
               <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-2">
                 Tu PIN de emparejamiento
               </p>
-              <p className="text-4xl font-bold text-ink tabular-nums tracking-widest text-center py-2">
+              <p
+                className="font-bold text-ink tabular-nums tracking-widest text-center py-2"
+                style={{ fontSize: 'var(--text-figure)' }}
+              >
                 {pin.pin.split('').join(' ')}
               </p>
               <p className="text-xs text-ink-3 text-center mt-2 leading-relaxed">

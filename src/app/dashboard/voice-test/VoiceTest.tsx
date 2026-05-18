@@ -176,10 +176,16 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
   }, []);
 
   return (
-    <div className="p-4 md:p-6 lg:p-10 max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold text-ink mb-1">
+      <div
+        className="border-b border-line"
+        style={{ paddingBottom: 'var(--space-card)', marginBottom: 'var(--space-section)' }}
+      >
+        <h1
+          className="font-semibold text-ink leading-tight mb-0.5"
+          style={{ fontSize: 'var(--text-page-title)' }}
+        >
           Recepcionista de Voz
         </h1>
         <p className="text-ink-2 text-sm">

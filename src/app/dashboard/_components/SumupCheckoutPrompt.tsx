@@ -189,7 +189,10 @@ export default function SumupCheckoutPrompt({
           {state.kind === 'idle' && (
             <div className="space-y-4">
               <div className="text-center py-3">
-                <p className="text-4xl font-bold text-ink tabular-nums">
+                <p
+                  className="font-bold text-ink tabular-nums"
+                  style={{ fontSize: 'var(--text-figure)' }}
+                >
                   {(amountCents / 100).toFixed(2)} €
                 </p>
                 <p className="text-xs text-ink-3 mt-1">Importe a cobrar</p>
@@ -249,7 +252,10 @@ export default function SumupCheckoutPrompt({
                 <Check className="h-8 w-8 text-success" />
               </div>
               <p className="text-base font-semibold text-success">Cobro completado</p>
-              <p className="text-2xl font-bold text-ink mt-2 tabular-nums">
+              <p
+                className="font-bold text-ink mt-2 tabular-nums"
+                style={{ fontSize: 'var(--text-figure)' }}
+              >
                 {(state.amountCents / 100).toFixed(2)} €
               </p>
               <p className="text-xs text-ink-3 mt-1">Cita cerrada y factura emitida</p>

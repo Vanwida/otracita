@@ -15,17 +15,23 @@ export default async function ImportPage() {
   if (!client) redirect('/dashboard/setup')
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="font-display text-3xl md:text-4xl font-bold text-ink mb-2">
+    <div className="max-w-4xl mx-auto" style={{ padding: 'var(--space-page)' }}>
+      <header
+        className="border-b border-line"
+        style={{ paddingBottom: 'var(--space-card)', marginBottom: 'var(--space-section)' }}
+      >
+        <h1
+          className="font-semibold text-ink leading-tight"
+          style={{ fontSize: 'var(--text-page-title)' }}
+        >
           Importar reservas
         </h1>
-        <p className="text-ink-2 text-sm max-w-2xl">
-          Sube capturas de pantalla de tu agenda actual (Booksy, Treatwell, la libreta de papel — lo
-          que sea). La IA extrae las citas, revisas, confirmas y quedan en tu agenda otracita.
-          Útil cuando empiezas con nosotros y ya tienes reservas pendientes en otro sitio.
+        <p className="text-ink-2 mt-0.5" style={{ fontSize: 'var(--text-meta)' }}>
+          Sube capturas de tu agenda actual (Booksy, Treatwell, la libreta de papel). La IA
+          extrae las citas, revisas, confirmas y quedan en tu agenda otracita. Útil cuando
+          empiezas y ya tienes reservas pendientes en otro sitio.
         </p>
-      </div>
+      </header>
       <ImportFlow />
     </div>
   )

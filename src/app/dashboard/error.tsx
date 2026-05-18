@@ -26,7 +26,7 @@ export default function DashboardError({ error, reset }: Props) {
         <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-danger/10 border border-danger/20 flex items-center justify-center">
           <AlertTriangle className="h-6 w-6 text-danger" />
         </div>
-        <h1 className="font-display text-2xl font-semibold text-ink">Algo ha fallado</h1>
+        <h1 className="font-semibold text-ink" style={{ fontSize: 'var(--text-page-title)' }}>Algo ha fallado</h1>
         <p className="mt-2 text-sm text-ink-2 max-w-md mx-auto">
           La pantalla no se ha podido cargar. Vuelve a intentarlo. Si sigue pasando, escríbenos.
         </p>

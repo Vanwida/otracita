@@ -37,7 +37,7 @@ export default function KpiCard({ icon: Icon, label, value, trend, hint }: Props
         </p>
       </div>
       <div className="flex items-baseline gap-2">
-        <p className="text-xl md:text-2xl font-bold text-ink tabular-nums">{value}</p>
+        <p className="font-bold text-ink tabular-nums leading-none" style={{ fontSize: 'var(--text-figure)' }}>{value}</p>
         {trend && trend.direction !== 'none' && <TrendChip trend={trend} />}
       </div>
       {hint && <p className="text-xs text-ink-2 mt-1">{hint}</p>}
