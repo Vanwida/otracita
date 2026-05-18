@@ -332,18 +332,18 @@ function RegisterRow({
         aria-current={active ? 'true' : undefined}
         className={`flex w-full items-center gap-3 px-[var(--space-card)] py-3 text-left transition-colors min-h-[48px] ${
           active
-            ? 'bg-brand-softer/50 border-l-2 border-brand'
+            ? 'bg-brand-softer border-l-2 border-brand'
             : 'border-l-2 border-transparent hover:bg-[var(--row-hover)]'
         }`}
       >
         <div className="min-w-0 flex-1">
-          <p className="text-[0.8125rem] font-semibold text-ink leading-tight">
+          <p className="text-[0.8125rem] font-medium text-ink leading-tight">
             {dateLabel}
           </p>
           <p className="mt-0.5 text-[0.75rem] text-ink-2 truncate">{byLine}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-[0.8125rem] font-bold text-ink tabular-nums leading-tight">
+          <p className="text-[0.9375rem] font-bold text-ink tabular-nums leading-tight">
             {euros(totalCents)}
           </p>
           <div className="mt-1 flex justify-end">
@@ -411,13 +411,11 @@ function OpenRegisterPanel({
   return (
     <DataPanel
       title={
-        <span className="flex items-baseline gap-2">
-          <span
-            className="font-bold tabular-nums"
-            style={{ fontSize: 'var(--text-figure)' }}
-          >
-            {euros(openTotalCents)}
-          </span>
+        <span
+          className="font-bold tabular-nums"
+          style={{ fontSize: 'var(--text-figure)' }}
+        >
+          {euros(openTotalCents)}
         </span>
       }
       meta={
@@ -432,17 +430,17 @@ function OpenRegisterPanel({
           <button
             type="button"
             onClick={onNewMovement}
-            className="btn-secondary btn-sm flex-1"
+            className="inline-flex flex-1 items-center justify-center gap-2 min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-semibold bg-surface text-ink border border-line hover:border-line-strong hover:bg-overlay transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" aria-hidden="true" />
             Apunte
           </button>
           <button
             type="button"
             onClick={onCloseRegister}
-            className="inline-flex flex-1 items-center justify-center gap-2 min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold bg-ink text-surface hover:bg-ink/90 transition-colors"
+            className="inline-flex flex-1 items-center justify-center gap-2 min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-semibold bg-ink text-surface hover:bg-ink/90 transition-colors"
           >
-            <Lock className="h-3.5 w-3.5" />
+            <Lock className="h-4 w-4" aria-hidden="true" />
             Cerrar caja
           </button>
         </div>
@@ -650,9 +648,9 @@ function ClosedRegisterPanel({ register: r }: { register: ClosedRegister }) {
           href={`/api/cash/sessions/${r.id}/pdf`}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn-secondary btn-sm w-full"
+          className="inline-flex w-full items-center justify-center gap-2 min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-semibold bg-surface text-ink border border-line hover:border-line-strong hover:bg-overlay transition-colors"
         >
-          <Receipt className="h-3.5 w-3.5" />
+          <Receipt className="h-4 w-4" aria-hidden="true" />
           Descargar reporte PDF
         </a>
       }
@@ -1141,7 +1139,7 @@ function CloseCashModal({
           type="button"
           onClick={submit}
           disabled={submitting}
-          className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl bg-ink text-surface hover:bg-ink/90 px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60"
+          className="w-full inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-ink text-surface hover:bg-ink/90 px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60"
         >
           {submitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
