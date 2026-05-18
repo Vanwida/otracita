@@ -82,3 +82,71 @@ export function sanitizeExtraServices(input: unknown): BookingServiceLine[] {
   }
   return out
 }
+
+// -----------------------------------------------------------------------------
+// Solape de citas — predicado puro reutilizable. La lógica de clash vivía
+// duplicada en create.ts y en el PATCH de reasignación; al editar la duración
+// de una cita (A3) hace falta otra vez. Esta es la fuente pura testeable: dos
+// minutos [start, end) solapan teniendo en cuenta el buffer del cliente, y el
+// match de barbero es por id O por nombre (case-insensitive), como en
+// create.ts (no infra-detecta cuando barberId es null en filas legacy).
+// -----------------------------------------------------------------------------
+
+/** Cita existente, mínima para el chequeo de solape. */
+export interface OverlapBooking {
+  id: string
+  time: string // HH:MM
+  duration: number // min (snapshot, ya incluye extras)
+  barberId: string | null
+  barber: string | null
+  status: string
+}
+
+/** La cita que se está creando/editando. */
+export interface OverlapCandidate {
+  /** id de la propia cita al EDITAR (se excluye de la comparación). null al crear. */
+  selfId: string | null
+  startMinutes: number
+  durationMin: number
+  barberId: string | null
+  barber: string | null
+}
+
+/** "HH:MM" 24h → minutos desde medianoche. Compartido (route + helper). */
+export function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+/**
+ * ¿La cita candidata pisa alguna existente del MISMO barbero?
+ *
+ * - Ignora canceladas y la propia cita (`selfId`).
+ * - Barbero igual = mismo barberId O mismo nombre (trim+lowercase) — idéntico
+ *   a create.ts para no divergir.
+ * - Solape de intervalos con buffer del cliente al final de la existente:
+ *   `newStart < bEnd && newEnd > bStart`.
+ *
+ * Puro (sin I/O) → unit-testeable. El caller hace el SELECT y pasa las filas.
+ */
+export function hasBookingOverlap(
+  candidate: OverlapCandidate,
+  existing: OverlapBooking[],
+  serviceBufferMinutes: number,
+): boolean {
+  const newStart = candidate.startMinutes
+  const newEnd = newStart + candidate.durationMin
+  return existing.some((b) => {
+    if (b.status === 'cancelled') return false
+    if (candidate.selfId && b.id === candidate.selfId) return false
+    const sameBarber =
+      (candidate.barberId && b.barberId && b.barberId === candidate.barberId) ||
+      (!!candidate.barber &&
+        !!b.barber &&
+        b.barber.trim().toLowerCase() === candidate.barber.trim().toLowerCase())
+    if (!sameBarber) return false
+    const bStart = hhmmToMinutes(b.time)
+    const bEnd = bStart + b.duration + serviceBufferMinutes
+    return newStart < bEnd && newEnd > bStart
+  })
+}

@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { bookings, bookingServices } from '@/db/schema'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import {
   requireClientAccess,
   accessErrorResponse,
@@ -8,6 +8,8 @@ import {
 import {
   computeBookingSnapshot,
   sanitizeExtraServices,
+  hasBookingOverlap,
+  hhmmToMinutes,
 } from '@/lib/bookings/duration'
 
 // -----------------------------------------------------------------------------
@@ -26,6 +28,11 @@ import {
 // bookings.duration = principal + suma(extras) o el chequeo de solape del
 // motor reservaría un hueco incorrecto. Reusa computeBookingSnapshot — la
 // MISMA fuente que create.ts — para que no diverjan.
+//
+// SOLAPE: alargar una cita confirmada puede pisar la siguiente del mismo
+// barbero. Tras recalcular la duración FINAL re-validamos solape (misma
+// lógica que create.ts: match por barberId o nombre + buffer del cliente,
+// excluyendo la propia cita). Si solapa → 409, no se escribe nada.
 //
 // Tenant-scoped vía requireClientAccess. NUNCA se acepta clientId del body.
 // -----------------------------------------------------------------------------
@@ -118,6 +125,45 @@ export async function PUT(
     primaryDuration,
     extras.length > 0 ? extras : null,
   )
+
+  // ── Re-validación de solape ────────────────────────────────────────────
+  // Alargar una cita (más duración / más extras) puede pisar la siguiente
+  // del mismo barbero. La fecha/hora/barbero no cambian aquí, solo la
+  // duración FINAL — pero eso basta para crear un solape nuevo. Reusa el
+  // predicado puro compartido (mismo match barberId-o-nombre + buffer que
+  // create.ts), excluyendo ESTA cita y las canceladas. Si solapa → 409 y NO
+  // se escribe nada (el barbero acorta el servicio o mueve la otra cita).
+  const sameDay = await db
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.clientId, access.client.id),
+        eq(bookings.date, booking.date),
+        ne(bookings.status, 'cancelled'),
+        ne(bookings.id, id),
+      ),
+    )
+  const clash = hasBookingOverlap(
+    {
+      selfId: id,
+      startMinutes: hhmmToMinutes(booking.time),
+      durationMin,
+      barberId: booking.barberId,
+      barber: booking.barber,
+    },
+    sameDay,
+    access.client.serviceBufferMinutes,
+  )
+  if (clash) {
+    return Response.json(
+      {
+        error:
+          'La nueva duración pisa otra cita del mismo barbero. Acorta el servicio o mueve la otra cita antes de guardar.',
+      },
+      { status: 409 },
+    )
+  }
 
   // Reescribe el snapshot del booking + reemplaza la lista de extras
   // (delete-all + re-insert: simple y correcto para una lista corta editada

@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import {
   computeBookingSnapshot,
   sanitizeExtraServices,
+  hasBookingOverlap,
+  hhmmToMinutes,
   type BookingServiceLine,
+  type OverlapBooking,
 } from './duration.ts'
 
 // -----------------------------------------------------------------------------
@@ -75,4 +78,130 @@ test('no-array → []', () => {
   assert.deepEqual(sanitizeExtraServices(undefined), [])
   assert.deepEqual(sanitizeExtraServices(null), [])
   assert.deepEqual(sanitizeExtraServices('x'), [])
+})
+
+// -----------------------------------------------------------------------------
+// hasBookingOverlap — el bug que el cold review encontró: editar una cita
+// (A3) recalcula la duración pero hay que re-validar solape o se acepta un
+// doble-booking en silencio.
+// -----------------------------------------------------------------------------
+
+const BARBER_A = 'b-aaaa'
+
+/** Cita existente a las 11:00, 30 min, barbero A. */
+const next1130: OverlapBooking = {
+  id: 'next',
+  time: '11:30',
+  duration: 30, // 11:30–12:00
+  barberId: BARBER_A,
+  barber: 'Dani',
+  status: 'confirmed',
+}
+
+test('editar extiende duración → pisa la siguiente cita → solape detectado', () => {
+  // Cita propia 11:00, originalmente 30 min (acababa 11:30, justo antes de
+  // la de las 11:30). Se edita a 60 min → 11:00–12:00 → pisa next1130.
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'self',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 60,
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [next1130],
+    0, // sin buffer
+  )
+  assert.equal(clash, true)
+})
+
+test('editar SIN extender de más → no pisa (30 min cabe antes de 11:30)', () => {
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'self',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 30, // 11:00–11:30, justo hasta el inicio de la otra
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [next1130],
+    0,
+  )
+  assert.equal(clash, false)
+})
+
+test('buffer del cliente empuja el final de la existente → solape', () => {
+  // next1130 ocupa 11:30–12:00; con buffer 15 min su fin efectivo es 12:15.
+  // Una cita 12:00–12:10 NO solaparía sin buffer, pero CON buffer sí.
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'self',
+      startMinutes: hhmmToMinutes('12:00'),
+      durationMin: 10,
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [next1130],
+    15,
+  )
+  assert.equal(clash, true)
+})
+
+test('excluye la propia cita (selfId) y las canceladas', () => {
+  const self: OverlapBooking = { ...next1130, id: 'self', status: 'confirmed' }
+  const cancelled: OverlapBooking = {
+    ...next1130,
+    id: 'x',
+    status: 'cancelled',
+  }
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'self',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 120, // solaparía con self y cancelled si contaran
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [self, cancelled],
+    0,
+  )
+  assert.equal(clash, false)
+})
+
+test('otro barbero no cuenta como solape', () => {
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'self',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 120,
+      barberId: 'b-bbbb',
+      barber: 'Pablo',
+    },
+    [next1130],
+    0,
+  )
+  assert.equal(clash, false)
+})
+
+test('match por NOMBRE cuando barberId es null (filas legacy)', () => {
+  const legacy: OverlapBooking = {
+    id: 'legacy',
+    time: '11:30',
+    duration: 30,
+    barberId: null, // fila antigua sin id
+    barber: 'Dani',
+    status: 'confirmed',
+  }
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'self',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 60,
+      barberId: null,
+      barber: 'dani', // case-insensitive
+    },
+    [legacy],
+    0,
+  )
+  assert.equal(clash, true)
 })
