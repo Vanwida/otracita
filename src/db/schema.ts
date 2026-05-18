@@ -288,6 +288,11 @@ export const bonuses = pgTable('bonuses', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
   name: text('name').notNull(),                                       // p.ej. "Reseñas Google"
+  // Tipo de bono (R9). 'meta' = todo-o-nada (comportamiento histórico,
+  // único hasta ahora). 'tramo' = pago proporcional al progreso (cobras
+  // la fracción alcanzada del objetivo, capada a la recompensa total).
+  // DEFAULT 'meta' → filas existentes y el cálculo previo intactos.
+  kind: text('kind').default('meta').notNull(),                       // 'meta' | 'tramo'
   unit: text('unit').notNull(),                                       // 'units' | 'euros'
   target: integer('target').notNull(),                                // si unit=euros, en cents
   rewardCents: integer('reward_cents').notNull(),                     // siempre cents
@@ -314,6 +319,74 @@ export const bonusEntries = pgTable('bonus_entries', {
   note: text('note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// R8 — comisión de servicios POR-SERVICIO (override del % global).
+//
+// La base Pro tiene UN `barbers.commissionServicesPct` global por barbero.
+// Esta tabla permite afinar: "Dani cobra 50% en cortes pero 30% en barba".
+// Sin fila para (barbero, servicio) ⇒ se usa el % global de antes (no hay
+// regresión: un local que nunca toque esto calcula la nómina igual).
+//
+// `serviceName` = nombre del servicio. El catálogo es jsonb sin ID estable
+// (`clients.chatbotServices`) y `bookings.service` es texto libre, así que
+// el match es por NOMBRE exacto — mismo patrón que loyalty/promos.
+export const barberServiceCommissions = pgTable('barber_service_commissions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  barberId: uuid('barber_id').notNull().references(() => barbers.id, { onDelete: 'cascade' }),
+  serviceName: text('service_name').notNull(),
+  pct: integer('pct').notNull(),                                      // 0-100
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniquePerService: unique('barber_service_commissions_unique').on(
+    table.clientId, table.barberId, table.serviceName,
+  ),
+}));
+
+// R10 — competición semanal de equipo. El local define UNA competición
+// (o varias) con una métrica; cada semana ISO hay UN ganador zero-sum que
+// cobra `rewardCentsPerWeek`. Si el mismo barbero gana `streakWeeksForBonus`
+// semanas seguidas, cobra además `streakBonusCents`.
+//
+// Payout STANDALONE v1: no entra en la nómina mensual ni en el P&L —
+// vive en su propio panel en la pestaña Comisiones. Estructura preparada
+// para plegarlo a nóminas más adelante sin migración destructiva.
+export const teamCompetitions = pgTable('team_competitions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  name: text('name').notNull(),
+  // Métrica que decide el ganador de la semana.
+  //   'revenue'  → € facturados (bookings.price completados)
+  //   'bookings' → nº de citas completadas
+  metric: text('metric').notNull(),                                   // 'revenue' | 'bookings'
+  rewardCentsPerWeek: integer('reward_cents_per_week').notNull(),
+  streakWeeksForBonus: integer('streak_weeks_for_bonus').default(4).notNull(),
+  streakBonusCents: integer('streak_bonus_cents').default(0).notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Resultado CONGELADO de una semana ISO (lazy-compute-but-freeze-once).
+// El ganador se computa al LEER; la PRIMERA lectura tras cerrarse la
+// semana ISO persiste aquí `winnerBarberId` + `computedAt` y nunca se
+// recomputa — blinda el histórico contra ediciones retroactivas de
+// ventas o rectificativas. UNA fila por (competición, semana) = zero-sum.
+export const teamCompetitionWeeks = pgTable('team_competition_weeks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  competitionId: uuid('competition_id').notNull()
+    .references(() => teamCompetitions.id, { onDelete: 'cascade' }),
+  isoWeekStart: text('iso_week_start').notNull(),                     // YYYY-MM-DD (lunes ISO)
+  winnerBarberId: uuid('winner_barber_id').references(() => barbers.id),
+  winnerMetricValue: integer('winner_metric_value'),                  // € en cents o nº citas
+  computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniquePerWeek: unique('team_competition_weeks_unique').on(
+    table.competitionId, table.isoWeekStart,
+  ),
+}));
 
 // Subscriptions tracking
 export const subscriptions = pgTable('subscriptions', {
