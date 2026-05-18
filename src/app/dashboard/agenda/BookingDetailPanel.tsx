@@ -529,11 +529,16 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
           <motion.div
             key="panel"
-            initial={{ x: 320 }}
+            initial={{ x: '100%' }}
             animate={{ x: 0 }}
-            exit={{ x: 320 }}
+            exit={{ x: '100%' }}
             transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed right-0 top-0 z-50 h-full w-80 bg-surface border-l border-line flex flex-col shadow-xl"
+            // Ancho tipo Booksy (panel de detalle ~440px, no la columna
+            // estrecha de 320 de antes — se perdía información y obligaba a
+            // scrollear). max-w-[90vw] lo mantiene dentro del viewport en
+            // pantallas pequeñas; x:'100%' hace el slide independiente del
+            // ancho concreto.
+            className="fixed right-0 top-0 z-50 h-full w-[440px] max-w-[90vw] bg-surface border-l border-line flex flex-col shadow-xl"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-line">
