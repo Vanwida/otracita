@@ -113,7 +113,9 @@ export default function SlotActionMenu({
                       <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-ink">
+                      {/* Booksy muestra estas acciones en MAYÚSCULAS en el
+                          popup del hueco (09.39.31) — mismo casing aquí. */}
+                      <span className="block text-sm font-semibold uppercase tracking-wide text-ink">
                         {label}
                       </span>
                       <span className="block text-xs text-ink-2 truncate">

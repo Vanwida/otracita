@@ -234,7 +234,7 @@ export default function BarberActionMenu({
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-ink">
-                        Falta de disponibilidad
+                        Añadir falta de disponibilidad
                       </span>
                       <span className="block text-xs text-ink-2 truncate">
                         Bloquear una franja de un día concreto
