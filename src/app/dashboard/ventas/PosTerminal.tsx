@@ -136,6 +136,8 @@ interface Props {
 }
 
 interface ReceiptSnapshot {
+  /** Reserva sintética de la venta — para "Generar factura" on-demand. */
+  bookingId: string | null
   lines: { name: string; qty: number; totalCents: number }[]
   /** Total IVA incluido (lo que paga el cliente). */
   totalCents: number
@@ -172,6 +174,15 @@ export default function PosTerminal({
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<CartLine | null>(null)
   const [receipt, setReceipt] = useState<ReceiptSnapshot | null>(null)
+  // Estado fiscal del recibo: 'ticket' = venta registrada sin factura (por
+  // defecto); 'facturando' = emitiendo VeriFactu; 'facturada' = factura
+  // emitida (guarda el número). El barbero decide explícitamente.
+  const [fiscalState, setFiscalState] = useState<
+    | { kind: 'ticket' }
+    | { kind: 'facturando' }
+    | { kind: 'facturada'; number: string }
+  >({ kind: 'ticket' })
+  const [fiscalError, setFiscalError] = useState<string | null>(null)
   // SumUp Reader: cuando se prepara una venta para cobro con datáfono,
   // guardamos el bookingId+importe y abrimos SumupCheckoutPrompt (reusado
   // tal cual de la agenda). El snapshot del recibo se guarda aparte para
@@ -348,7 +359,40 @@ export default function PosTerminal({
     setStage('cart')
     setError(null)
     setReceipt(null)
+    setFiscalState({ kind: 'ticket' })
+    setFiscalError(null)
     setCategory('rapida')
+  }
+
+  // "Generar factura" (Booksy recibo 10.01.18): declarar esta venta a
+  // Hacienda explícitamente. Reusa el endpoint on-demand que envuelve
+  // generateInvoiceFromBooking (idempotente). Solo desde el recibo, una
+  // vez cobrada, si el barbero lo decide.
+  async function generarFactura() {
+    if (!receipt?.bookingId) return
+    setFiscalError(null)
+    setFiscalState({ kind: 'facturando' })
+    try {
+      const res = await fetch('/api/invoices/from-booking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: receipt.bookingId }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        number?: string
+        error?: string
+      }
+      if (!res.ok || !data.number) {
+        setFiscalError(data.error ?? 'No se pudo emitir la factura.')
+        setFiscalState({ kind: 'ticket' })
+        return
+      }
+      setFiscalState({ kind: 'facturada', number: data.number })
+      router.refresh()
+    } catch {
+      setFiscalError('Sin conexión. Inténtalo otra vez.')
+      setFiscalState({ kind: 'ticket' })
+    }
   }
 
   function attachCustomer(c: { name: string; phone: string }) {
@@ -395,8 +439,12 @@ export default function PosTerminal({
     }
   }
 
-  function buildSnapshot(methodLabel: string): ReceiptSnapshot {
+  function buildSnapshot(
+    methodLabel: string,
+    bookingId: string | null,
+  ): ReceiptSnapshot {
     return {
+      bookingId,
       lines: lines.map((l) => ({
         name: l.name,
         qty: l.quantity,
@@ -437,7 +485,7 @@ export default function PosTerminal({
         setSumupCheckout({
           bookingId: data.bookingId,
           amountCents: data.amountCents,
-          snapshot: buildSnapshot(method.label),
+          snapshot: buildSnapshot(method.label, data.bookingId),
         })
       } catch {
         setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.')
@@ -461,6 +509,7 @@ export default function PosTerminal({
         }),
       })
       const data = (await res.json().catch(() => ({}))) as {
+        bookingId?: string
         totalCents?: number
         error?: string
       }
@@ -469,7 +518,7 @@ export default function PosTerminal({
         setStage('cart')
         return
       }
-      const snap = buildSnapshot(method.label)
+      const snap = buildSnapshot(method.label, data.bookingId ?? null)
       setReceipt({ ...snap, totalCents: data.totalCents ?? totalCents })
       setStage('done')
       // Refresca datos del dashboard (caja, transacciones) en segundo plano.
@@ -552,10 +601,24 @@ export default function PosTerminal({
           {/* Tarjeta-ticket */}
           <div className="overflow-hidden rounded-control border border-line bg-surface">
             <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-[0.6875rem] font-bold uppercase tracking-widest text-success">
-                <Check className="h-3 w-3" aria-hidden="true" />
-                Pagado
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-[0.6875rem] font-bold uppercase tracking-widest text-success">
+                  <Check className="h-3 w-3" aria-hidden="true" />
+                  Pagado
+                </span>
+                {/* Estado fiscal explícito (Booksy 10.01.18): por defecto
+                    TICKET interno; FACTURADA solo si el barbero la declaró. */}
+                {fiscalState.kind === 'facturada' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-softer px-2.5 py-1 text-[0.6875rem] font-bold uppercase tracking-widest text-brand-strong">
+                    <Receipt className="h-3 w-3" aria-hidden="true" />
+                    Facturada
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-overlay px-2.5 py-1 text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+                    Ticket
+                  </span>
+                )}
+              </div>
               {receipt.customerName && (
                 <span className="truncate text-[0.8125rem] font-semibold text-ink">
                   {receipt.customerName}
@@ -604,31 +667,69 @@ export default function PosTerminal({
               </div>
               <p className="pt-1 text-[0.75rem] text-ink-3">
                 Cobrado en {receipt.methodLabel}
-                {invoicingEnabled
-                  ? ' · factura emitida automáticamente'
-                  : ''}
+                {fiscalState.kind === 'facturada'
+                  ? ` · factura ${fiscalState.number}`
+                  : ' · ticket interno, sin factura'}
               </p>
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {fiscalError && (
+            <p className="mt-3 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-[0.75rem] text-danger">
+              {fiscalError}
+            </p>
+          )}
+
+          {/* Generar factura = acción EXPLÍCITA. Solo si el negocio tiene
+              VeriFactu activo, hay reserva enlazada y aún no se facturó.
+              Por defecto la venta se queda como ticket interno. */}
+          {invoicingEnabled &&
+            receipt.bookingId &&
+            fiscalState.kind !== 'facturada' && (
+              <button
+                type="button"
+                onClick={() => void generarFactura()}
+                disabled={fiscalState.kind === 'facturando'}
+                className="btn-primary mt-4 w-full justify-center"
+              >
+                {fiscalState.kind === 'facturando' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Emitiendo factura…
+                  </>
+                ) : (
+                  <>
+                    <Receipt className="h-4 w-4" aria-hidden="true" />
+                    Generar factura
+                  </>
+                )}
+              </button>
+            )}
+
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={resetSale}
-              className="btn-primary w-full justify-center"
+              className={
+                fiscalState.kind === 'facturada' || !invoicingEnabled
+                  ? 'btn-primary w-full justify-center'
+                  : 'inline-flex w-full items-center justify-center rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-brand'
+              }
             >
               Nueva venta
             </button>
             <a
               href={
-                invoicingEnabled
+                fiscalState.kind === 'facturada'
                   ? '/dashboard/ventas/facturas'
                   : '/dashboard/ventas/transacciones'
               }
               className="inline-flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
             >
               <Receipt className="h-4 w-4" aria-hidden="true" />
-              {invoicingEnabled ? 'Ver factura' : 'Ver transacciones'}
+              {fiscalState.kind === 'facturada'
+                ? 'Ver factura'
+                : 'Ver transacciones'}
             </a>
           </div>
         </div>
