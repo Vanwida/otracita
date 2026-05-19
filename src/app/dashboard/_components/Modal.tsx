@@ -166,11 +166,15 @@ export default function Modal({
                 <p className="mt-0.5 text-xs text-ink-2">{subtitle}</p>
               )}
             </div>
+            {/* WCAG 2.2 SC 2.5.8 (AA ≥24×24) / 2.5.5 (AAA 44×44): hit
+                area 44×44 (h-11 w-11 flex-centred), glyph stays 16px —
+                se acolcha el target, no se encoge el icono. -mr-2 recupera
+                el espacio óptico para no desalinear el header. */}
             <button
               type="button"
               onClick={onClose}
               aria-label="Cerrar"
-              className="shrink-0 p-1 -m-1 rounded-lg text-ink-3 hover:text-ink-2 hover:bg-overlay transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              className="shrink-0 -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink-3 hover:text-ink-2 hover:bg-overlay transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
