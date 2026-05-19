@@ -10,6 +10,8 @@ import AreaContent from '../../_components/AreaContent'
 import StatsPeriodTabs from '../../_components/StatsPeriodTabs'
 import StatStrip, { type Stat } from '../../_components/StatStrip'
 import DataTable, { type Column } from '../../_components/DataTable'
+import ReportLayout from '../_components/ReportLayout'
+import { MARKETING_RAIL } from '../_components/report-rail-config'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -342,7 +344,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
+          <ReportLayout rail={MARKETING_RAIL}>
             <StatStrip
               stats={stats}
               ariaLabel={`Resumen de marketing · ${periodLabel}`}
@@ -551,7 +553,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
                 </ul>
               </section>
             )}
-          </div>
+          </ReportLayout>
         )}
       </AreaContent>
     </AreaShell>
