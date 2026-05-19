@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { X, Loader2, Calendar, Users, Tag, Check, AlertCircle } from 'lucide-react'
+import { Loader2, Calendar, Users, Tag, Check, AlertCircle } from 'lucide-react'
+import Modal from '../_components/Modal'
 import { DISCOUNT_STOPS, DEFAULT_DISCOUNT_PCT } from '@/lib/promos/defaults'
 import type { WindowPreset } from '@/lib/promos/detect-gaps'
 
@@ -181,30 +182,13 @@ export default function PromosFillModal({ isOpen, onClose }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 overflow-y-auto"
-      onClick={onClose}
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Llenar huecos"
+      subtitle="Avisa a tus clientes habituales con un descuento."
+      size="lg"
     >
-      <div
-        className="bg-surface border border-line rounded-2xl w-full max-w-lg my-8 max-h-[calc(100vh-4rem)] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between rounded-t-2xl">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Llenar huecos</h2>
-            <p className="text-xs text-ink-3 mt-0.5">Avisa a tus clientes habituales con un descuento.</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 -mr-2 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink transition-colors"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
         {/* Done summary */}
         {doneSummary ? (
           <div className="p-5 space-y-4">
@@ -423,7 +407,6 @@ export default function PromosFillModal({ isOpen, onClose }: Props) {
             )}
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }
