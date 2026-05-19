@@ -25,9 +25,11 @@ import type { TurnosBarber } from './TurnosManager'
 //   · "+ Añadir descanso" → filas indentadas con Inicio/Fin + papelera
 //
 // "Periodo de tiempo" del screenshot 10.18.57 (Inmediatamente / Semana que
-// viene / A partir del día): **v1 solo Inmediatamente** — el brief lo limita
-// explícitamente. Se deja el selector visible pero fijo para no mentir sobre
-// scope futuro; los demás valores quedan deshabilitados.
+// viene / A partir del día): se muestran las 3 opciones para paridad visual
+// con Booksy, pero `barbers.hours` es un único mapa actual sin fecha-efectiva
+// (FLAG a team-lead). Solo "Inmediatamente" persiste; las otras dos quedan
+// deshabilitadas con motivo explícito — no mentimos sobre scope y, en cuanto
+// haya schema de programación, se activan sin tocar el layout.
 //
 // Guarda en DOS llamadas atómicas a APIs ya existentes:
 //   1. PATCH /api/barbers/[id]  body { hours }   → ventana abierta por día
@@ -304,17 +306,32 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
             )
           })}
 
-          {/* Periodo de tiempo — v1: solo "Inmediatamente" (brief). */}
+          {/* Periodo de tiempo (Booksy 10.18.57). `barbers.hours` es un
+              único mapa actual, sin fecha-efectiva — las opciones futuras
+              necesitan schema (FLAG a team-lead). Mostramos las 3 opciones
+              para paridad visual con Booksy; solo "Inmediatamente" persiste,
+              las demás deshabilitadas con motivo claro (no mentimos sobre
+              scope: en cuanto haya schema se activan sin tocar el layout). */}
           <div className="flex items-center gap-3 pt-1">
-            <label className="text-xs font-medium text-ink-2">Periodo de tiempo</label>
+            <label htmlFor="periodo-tiempo" className="text-xs font-medium text-ink-2">
+              Periodo de tiempo
+            </label>
             <select
+              id="periodo-tiempo"
               value="inmediatamente"
-              disabled
-              className="bg-overlay border border-line rounded-lg px-2 py-1.5 text-sm text-ink-2 outline-none cursor-not-allowed"
+              onChange={() => {
+                /* solo "Inmediatamente" es seleccionable hoy */
+              }}
+              className="bg-surface border border-line rounded-lg px-2 py-1.5 text-sm text-ink outline-none focus:border-brand transition-colors"
             >
               <option value="inmediatamente">Inmediatamente</option>
+              <option value="semana-que-viene" disabled>
+                La semana que viene (próximamente)
+              </option>
+              <option value="a-partir-del-dia" disabled>
+                A partir del día… (próximamente)
+              </option>
             </select>
-            <span className="text-[11px] text-ink-3">Programar a futuro: próximamente.</span>
           </div>
 
           {error && (
