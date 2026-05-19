@@ -5,7 +5,6 @@ import { sendWhatsAppButtons } from '@/lib/whatsapp/sender';
 import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
 import { dispatchUserNotification } from '@/lib/notifications/dispatch';
-import { tryAutoInvoiceForCompletedBooking } from '@/lib/invoicing';
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
 
 type Lang = 'es' | 'en';
@@ -120,20 +119,18 @@ export async function GET(request: Request) {
   //
   // Margen de 3 días (no 1) → el barbero tiene tiempo real de cerrar
   // manualmente desde Inicio sin que el sistema le haga el trabajo
-  // silenciosamente. Esto es importante porque al completar una cita
-  // se DISPARA LA AUTO-FACTURACIÓN — si el cron lo hace prematuramente,
-  // el barbero pierde la oportunidad de añadir productos vendidos antes
-  // de que se emita el ticket.
+  // silenciosamente.
   //
   // Acciones por cada booking que cerramos:
   //   1. UPDATE bookings.status = 'completed'
   //   2. Decrementar noShows del customer (min 0) — recompensa por
   //      cliente fiable que no falló esta cita
-  //   3. Disparar tryAutoInvoiceForCompletedBooking (incluye productos
-  //      vendidos durante la cita) — si invoicingEnabled
   //
-  // Importante: el LOOKUP de clients para invoicingEnabled se cachea por
-  // clientId para evitar N queries en una barbería con muchos bookings.
+  // La cita queda como TICKET interno (cuenta para caja/ingresos/BI). NO
+  // se factura a Hacienda: facturar VeriFactu es una acción explícita del
+  // barbero (POST /api/invoices/from-booking) — el cron jamás declara por
+  // él. `autoInvoiced` se mantiene en la respuesta (siempre 0) para no
+  // romper el contrato del cron / monitorización existente.
   // ────────────────────────────────────────────────────────────────────────
   const SAFETY_NET_DAYS = 3;
   const safetyCutoff = new Date(Date.now() - SAFETY_NET_DAYS * 86400000)
@@ -141,7 +138,9 @@ export async function GET(request: Request) {
 
   let completedCount = 0;
   let decrementedCount = 0;
-  let autoInvoicedCount = 0;
+  // Siempre 0 desde que la facturación dejó de ser automática. Se mantiene
+  // en la respuesta para no romper el contrato del cron / monitorización.
+  const autoInvoicedCount = 0;
   try {
     const toClose = await db
       .select({
@@ -152,20 +151,8 @@ export async function GET(request: Request) {
       .from(bookings)
       .where(and(lt(bookings.date, safetyCutoff), eq(bookings.status, 'confirmed')));
 
-    // Cache de invoicingEnabled por clientId para no hacer N queries.
-    const invoicingEnabledByClient = new Map<string, boolean>();
-    async function isInvoicingEnabled(clientId: string): Promise<boolean> {
-      if (invoicingEnabledByClient.has(clientId)) {
-        return invoicingEnabledByClient.get(clientId)!;
-      }
-      const [row] = await db
-        .select({ enabled: clients.invoicingEnabled })
-        .from(clients)
-        .where(eq(clients.id, clientId));
-      const enabled = !!row?.enabled;
-      invoicingEnabledByClient.set(clientId, enabled);
-      return enabled;
-    }
+    // (Antes había un cache de invoicingEnabled para auto-facturar al
+    // cerrar por sweep. Eliminado: la facturación ya no es automática.)
 
     for (const row of toClose) {
       await db
@@ -187,11 +174,12 @@ export async function GET(request: Request) {
         .returning({ id: customers.id });
       if (upd.length > 0) decrementedCount++;
 
-      // Auto-facturar si el tenant tiene invoicing activo.
-      if (await isInvoicingEnabled(row.clientId)) {
-        tryAutoInvoiceForCompletedBooking(row.id);
-        autoInvoicedCount++;
-      }
+      // Facturación VeriFactu: NUNCA automática (decisión de producto).
+      // El sweep cierra la cita olvidada y la deja como TICKET interno
+      // (cuenta para caja/ingresos/BI). Declararla a Hacienda es una
+      // acción explícita del barbero — el cron jamás factura por él.
+      // isInvoicingEnabled ya no se usa aquí; se mantiene la variable de
+      // conteo a 0 para no romper el shape de la respuesta del cron.
 
       // Push solicitud de reseña — el helper internamente comprueba
       // ratingsEnabled e idempotencia (followupSentAt). El cron viejo

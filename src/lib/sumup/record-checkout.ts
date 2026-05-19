@@ -7,10 +7,8 @@ import {
   clients,
 } from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
-import {
-  shouldAutoInvoiceBooking,
-  tryAutoInvoiceForCompletedBooking,
-} from '@/lib/invoicing'
+// Facturar VeriFactu ya NO es automático tras un cobro SumUp — es
+// on-demand (POST /api/invoices/from-booking). Solo queda el followup.
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 
 // -----------------------------------------------------------------------------
@@ -134,19 +132,14 @@ export async function recordSumupCheckoutResult(
         .set({ status: 'completed', paymentMethod: 'card' })
         .where(eq(bookings.id, input.bookingId))
 
+      // Facturación VeriFactu: NUNCA automática (decisión de producto). El
+      // cobro con datáfono registra la venta (cash_movement arriba) y cierra
+      // la cita, pero NO declara a Hacienda. Facturar es una acción explícita
+      // del barbero (POST /api/invoices/from-booking). El followup de reseña
+      // sí sigue: es atención al cliente, no fiscal.
       const [clientRow] = await db.select().from(clients).where(eq(clients.id, input.clientId))
-      if (clientRow) {
-        const updatedBooking = {
-          ...booking,
-          status: 'completed' as const,
-          paymentMethod: 'card' as const,
-        }
-        if (shouldAutoInvoiceBooking(updatedBooking) && clientRow.invoicingEnabled) {
-          tryAutoInvoiceForCompletedBooking(input.bookingId)
-        }
-        if (clientRow.ratingsEnabled) {
-          tryRatingFollowupForCompletedBooking(input.bookingId)
-        }
+      if (clientRow?.ratingsEnabled) {
+        tryRatingFollowupForCompletedBooking(input.bookingId)
       }
     }
   }

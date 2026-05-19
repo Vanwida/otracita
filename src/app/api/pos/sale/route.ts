@@ -7,10 +7,8 @@ import {
 } from '@/lib/auth/require-client-access'
 import { createBooking } from '@/lib/bookings/create'
 import type { BookingServiceLine } from '@/lib/bookings/duration'
-import {
-  shouldAutoInvoiceBooking,
-  tryAutoInvoiceForCompletedBooking,
-} from '@/lib/invoicing'
+// La factura VeriFactu ya NO se emite al cobrar — es on-demand (POST
+// /api/invoices/from-booking). Este endpoint solo registra la venta.
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 
@@ -359,13 +357,11 @@ export async function POST(req: Request) {
     .from(bookings)
     .where(eq(bookings.id, booking.id))
 
-  if (
-    updated &&
-    shouldAutoInvoiceBooking(updated) &&
-    client.invoicingEnabled
-  ) {
-    tryAutoInvoiceForCompletedBooking(updated.id)
-  }
+  // Facturación VeriFactu: NUNCA automática. La venta queda como TICKET
+  // interno (registrada para caja/ingresos/BI igual que antes); declararla
+  // a Hacienda es una acción explícita del barbero en el recibo post-pago
+  // (POST /api/invoices/from-booking). Patrón Booksy: venta → recibo,
+  // "Generar factura" aparte.
 
   if (updated && client.ratingsEnabled) {
     tryRatingFollowupForCompletedBooking(updated.id)
