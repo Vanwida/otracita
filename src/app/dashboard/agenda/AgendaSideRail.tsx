@@ -234,11 +234,23 @@ export default function AgendaSideRail({
           Estado de la cita
         </span>
         <ul className="space-y-1">
-          {STATUS_LEGEND.map(({ icon: Icon, label, tone }) => (
+          {STATUS_LEGEND.map(({ icon: Icon, label, tone, swatchBg, swatchAccent }) => (
             <li
               key={label}
               className="flex items-center gap-1.5 text-[0.75rem] text-ink"
             >
+              {/* Muestra = mini-bloque: mismo relleno tintado + acento
+                  izquierdo 4px que pinta el calendario para este estado
+                  (color de `statusColors`, fuente única). Sin esto la
+                  leyenda no decía que Confirmada=verde y Hecha=slate. */}
+              <span
+                className="h-3.5 w-4 rounded-sm shrink-0"
+                style={{
+                  backgroundColor: swatchBg,
+                  borderLeft: `4px solid ${swatchAccent}`,
+                }}
+                aria-hidden="true"
+              />
               <Icon className={`h-3.5 w-3.5 shrink-0 ${tone}`} aria-hidden="true" />
               {label}
             </li>

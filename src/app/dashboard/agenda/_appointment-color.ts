@@ -174,20 +174,42 @@ export function statusBadge(
   }
 }
 
-/**
- * Leyenda "Estado de la cita" — panel lateral del rail (paridad Booksy
- * 09.39.31), aplica a Día/Semana/Mes. DERIVA por completo de `statusBadge`
- * (misma fuente que pinta cada tile) para que la leyenda NUNCA mienta: si
- * cambia el ícono/etiqueta/tono de un estado, la leyenda cambia con él.
- * Orden Booksy: confirmada → sin confirmar → hecha → no vino → cancelada. */
-export const STATUS_LEGEND: ReadonlyArray<{
+/** Una entrada de la leyenda: ícono+etiqueta+tono de `statusBadge` MÁS la
+ *  muestra de color (fondo + acento) EXACTA del bloque, derivada de la
+ *  MISMA `statusColors` que pinta el calendario. No hay segunda paleta. */
+export interface StatusLegendItem {
   icon: LucideIcon;
   label: string;
   tone: string;
-}> = [
-  statusBadge('confirmed'),
-  statusBadge('pending'),
-  statusBadge('completed'),
-  statusBadge('no_show'),
-  statusBadge('cancelled'),
+  /** Fondo del bloque para este estado (idéntico a `appointmentBlockStyle`). */
+  swatchBg: string;
+  /** Acento (borde izq. 4px) del bloque para este estado. */
+  swatchAccent: string;
+}
+
+/** Construye una fila de leyenda combinando `statusBadge` (icon/label/tone)
+ *  con `statusColors` (bg/accent). El color de la muestra ES, byte a byte,
+ *  el color con que se pinta ese estado en Día/Semana/Mes — si cambia
+ *  `statusColors`, la leyenda cambia con él (cero divergencia posible). */
+function legendItem(status: AppointmentStatus): StatusLegendItem {
+  const badge = statusBadge(status);
+  const { bg, accent } = statusColors(status);
+  return { ...badge, swatchBg: bg, swatchAccent: accent };
+}
+
+/**
+ * Leyenda "Estado de la cita" — panel lateral del rail (paridad Booksy
+ * 09.39.31), aplica a Día/Semana/Mes. DERIVA por completo de `statusBadge`
+ * (ícono/etiqueta/tono) + `statusColors` (color de la muestra) — las MISMAS
+ * fuentes que pintan cada tile — para que la leyenda NUNCA mienta: si
+ * cambia el color, el ícono o la etiqueta de un estado, la leyenda cambia
+ * con él. Antes la leyenda solo tenía ícono+etiqueta y "Confirmada"/"Hecha"
+ * compartían el check verde sin comunicar que el bloque es verde vs slate.
+ * Orden Booksy: confirmada → sin confirmar → hecha → no vino → cancelada. */
+export const STATUS_LEGEND: ReadonlyArray<StatusLegendItem> = [
+  legendItem('confirmed'),
+  legendItem('pending'),
+  legendItem('completed'),
+  legendItem('no_show'),
+  legendItem('cancelled'),
 ];
