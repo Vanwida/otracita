@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   Phone,
   Mail,
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   Compass,
   RotateCw,
+  CalendarPlus,
 } from 'lucide-react'
 import CustomerNotesEditor from './CustomerNotesEditor'
 import CustomerEmailEditor from './CustomerEmailEditor'
@@ -30,10 +32,15 @@ import type {
 // reconoce sin pensar; solo cambian los colores). Screenshots
 // 10.04.36 / .41 / .46:
 //   · Cabecera: avatar (iniciales) + nombre + teléfono.
-//   · Tira de 4 KPIs horizontales.
+//   · Fila contador EXACTA de Booksy: TOTAL · COMPLETADAS · CANCELADAS ·
+//     INASISTENCIAS (estado de las citas del cliente, de un vistazo).
+//   · Tira de KPIs de valor (Gastado · Nota) — edge deliberado nuestro
+//     que Booksy no tiene; el barbero ve cuánto vale el cliente, no solo
+//     cuántas veces vino. No-vanity, accionable.
 //   · Tabs: CITAS · FIDELIDAD · INFORMACIÓN DEL CLIENTE  (mayúsculas).
 //   · CITAS → sub-tabs "Próximas (N)" / "Pasadas (N)", lista con bloque
-//     de fecha a la izquierda + servicio + precio + acción "Repetir".
+//     de fecha + servicio + precio + acción inline "Reagendar" (Booksy
+//     10.04.x: botón por fila que lleva a la agenda a recolocar la cita).
 //   · INFORMACIÓN DEL CLIENTE → contacto + origen + notas privadas.
 //   · FIDELIDAD → saldo de sellos/puntos.
 //
@@ -59,7 +66,7 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
   // Booksy abre la ficha en CITAS (es lo que el barbero mira al instante).
   const [tab, setTab] = useState<DetailTab>('citas')
   const [citasView, setCitasView] = useState<'proximas' | 'pasadas'>('proximas')
-  const { customer, stats } = data
+  const { customer, stats, counters } = data
 
   const loyaltyUnit = data.loyaltyMode === 'points' ? 'puntos' : 'sellos'
 
@@ -118,16 +125,32 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
         </div>
       </div>
 
-      {/* Tira de 4 KPIs horizontales (Booksy 10.04.36: fila de números
-          grandes con label corto debajo). Datos reales de otracita. */}
-      <div className="grid grid-cols-4 gap-px bg-line rounded-xl overflow-hidden border border-line mb-4">
-        <Kpi value={`${stats.spentEur.toFixed(0)}€`} label="Gastado" />
-        <Kpi value={String(stats.completedCount)} label="Citas" />
+      {/* Fila contador EXACTA de Booksy (10.04.36/.46): TOTAL ·
+          COMPLETADAS · CANCELADAS · INASISTENCIAS. El barbero que viene
+          de Booksy ve el estado de las citas del cliente sin pensar. */}
+      <div className="grid grid-cols-4 gap-px bg-line rounded-xl overflow-hidden border border-line mb-3">
+        <Kpi value={String(counters.total)} label="Total" />
         <Kpi
-          value={String(customer.noShows)}
-          label="No-shows"
-          tone={customer.noShows > 0 ? 'danger' : 'default'}
+          value={String(counters.completed)}
+          label="Completadas"
+          tone={counters.completed > 0 ? 'success' : 'default'}
         />
+        <Kpi
+          value={String(counters.cancelled)}
+          label="Canceladas"
+          tone={counters.cancelled > 0 ? 'muted' : 'default'}
+        />
+        <Kpi
+          value={String(counters.noShow)}
+          label="Inasistencias"
+          tone={counters.noShow > 0 ? 'danger' : 'default'}
+        />
+      </div>
+
+      {/* KPIs de VALOR — edge deliberado nuestro (Booksy no lo tiene):
+          cuánto vale el cliente, no solo cuántas veces vino. No-vanity. */}
+      <div className="grid grid-cols-2 gap-px bg-line rounded-xl overflow-hidden border border-line mb-4">
+        <Kpi value={`${stats.spentEur.toFixed(0)}€`} label="Gastado" />
         <Kpi
           value={stats.avgRating !== null ? stats.avgRating.toFixed(1) : '—'}
           label="Nota"
@@ -226,12 +249,22 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
                     </p>
                     <BookingStatusLabel status={b.status} />
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
                     {b.price !== null && b.price !== undefined && b.price > 0 && (
                       <p className="font-semibold text-ink text-sm tabular-nums">
                         {b.price} €
                       </p>
                     )}
+                    {/* Acción inline por fila (Booksy 10.04.x: "REAGENDAR").
+                        Lleva a la agenda con los datos del cliente +
+                        servicio en query para recolocar la cita. */}
+                    <Link
+                      href={rebookHref(customer.phone, customer.name, b.service)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-line bg-overlay px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2 transition-colors hover:bg-brand-softer hover:text-brand-strong hover:border-brand/30"
+                    >
+                      <CalendarPlus className="h-3 w-3" aria-hidden="true" />
+                      Reagendar
+                    </Link>
                   </div>
                 </li>
               ))}
@@ -388,6 +421,28 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
 // Sub-componentes + helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Deep-link "Reagendar" → agenda con el cliente + servicio en query. La
+// agenda siempre resuelve la ruta; los params son un handshake opcional
+// que el calendario puede leer para precargar NewBookingPanel. Mantener
+// el contrato de params estable: phone, name, service.
+function rebookHref(
+  phone: string,
+  name: string | null,
+  service: string,
+): string {
+  const params = new URLSearchParams({ prefill: '1', phone })
+  if (name) params.set('name', name)
+  if (service) params.set('service', service)
+  return `/dashboard/agenda?${params.toString()}`
+}
+
+const KPI_TONE: Record<'default' | 'danger' | 'success' | 'muted', string> = {
+  default: 'text-ink',
+  danger: 'text-danger',
+  success: 'text-success',
+  muted: 'text-ink-2',
+}
+
 function Kpi({
   value,
   label,
@@ -395,14 +450,12 @@ function Kpi({
 }: {
   value: string
   label: string
-  tone?: 'default' | 'danger'
+  tone?: 'default' | 'danger' | 'success' | 'muted'
 }) {
   return (
     <div className="bg-surface px-2 py-3 text-center">
       <p
-        className={`text-xl font-bold tabular-nums leading-none ${
-          tone === 'danger' ? 'text-danger' : 'text-ink'
-        }`}
+        className={`text-xl font-bold tabular-nums leading-none ${KPI_TONE[tone]}`}
       >
         {value}
       </p>
