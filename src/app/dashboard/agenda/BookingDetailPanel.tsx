@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Trash2, FileWarning, Phone } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
+import RightSlideOver from './_RightSlideOver';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
 import RectificativaModal from '../facturas/_components/RectificativaModal';
@@ -560,37 +561,17 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
   return (
     <>
-      {/* AnimatePresence solo envuelve el panel deslizante: sus hijos
-          directos DEBEN llevar key única. Antes envolvía también los dos
-          modales sin key → React/framer veía varios hijos con key ``
-          ("two children with the same key"). Los modales son siblings,
-          no entran/salen con la animación del panel. */}
-      <AnimatePresence>
-      {booking && (
-        <Fragment key="detail">
-          {/* Backdrop for mobile */}
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-[var(--color-scrim-light)] lg:hidden"
-          />
-
-          <motion.div
-            key="panel"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-            // Ancho tipo Booksy (panel de detalle ~440px, no la columna
-            // estrecha de 320 de antes — se perdía información y obligaba a
-            // scrollear). max-w-[90vw] lo mantiene dentro del viewport en
-            // pantallas pequeñas; x:'100%' hace el slide independiente del
-            // ancho concreto.
-            className="fixed right-0 top-0 z-50 h-full w-[440px] max-w-[90vw] bg-surface border-l border-line flex flex-col shadow-xl"
-          >
+      {/* Slide-over compartido (mismo chasis que NewBookingPanel: ancho,
+          scrim, animación — fuente única en _RightSlideOver). Los modales
+          y overlays de abajo son SIBLINGS suyos, no entran aquí: tienen su
+          propio ciclo de vida y no comparten su key-set. */}
+      <RightSlideOver
+        isOpen={!!booking}
+        onClose={onClose}
+        ariaLabel="Detalle de la reserva"
+      >
+        {booking && (
+          <>
             {/* Banda de estado a todo el ancho (Booksy 09.58.37): ✕ a la
                 izquierda, estado en mayúsculas al centro, "Llamar" a la
                 derecha. El color de la banda comunica el estado. */}
@@ -1154,13 +1135,12 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </span>
               </div>
             )}
-          </motion.div>
-        </Fragment>
-      )}
-      </AnimatePresence>
+          </>
+        )}
+      </RightSlideOver>
 
-      {/* Modales — siblings del panel, FUERA de AnimatePresence. No
-          comparten su key-set (cada uno gestiona su propio open/close);
+      {/* Modales — siblings del panel, FUERA del slide-over. No comparten
+          su ciclo de vida (cada uno gestiona su propio open/close);
           meterlos dentro provocaba la colisión de key vacía. */}
       {booking && cancelOpen && (
         <CancelBookingModal

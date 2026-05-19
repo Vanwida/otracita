@@ -1,8 +1,8 @@
 'use client';
 
-import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import RightSlideOver from './_RightSlideOver';
 import NumberInput from '../_components/NumberInput';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 
@@ -163,27 +163,7 @@ export default function NewBookingPanel({
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop for mobile */}
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-[var(--color-scrim-light)] lg:hidden"
-          />
-
-          <motion.div
-            key="panel"
-            initial={{ x: 320 }}
-            animate={{ x: 0 }}
-            exit={{ x: 320 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed right-0 top-0 z-50 h-full w-80 bg-surface border-l border-line flex flex-col shadow-xl"
-          >
+    <RightSlideOver isOpen={isOpen} onClose={onClose} ariaLabel="Nueva reserva">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-line">
               <span className="text-sm font-semibold text-ink">Nueva Reserva</span>
@@ -427,9 +407,6 @@ export default function NewBookingPanel({
                 {loading ? 'Creando...' : 'Crear Reserva'}
               </button>
             </form>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+    </RightSlideOver>
   );
 }
