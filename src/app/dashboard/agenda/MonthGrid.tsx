@@ -10,12 +10,8 @@ import {
   isSameMonth,
   isSameDay,
 } from 'date-fns';
-import type { CalendarEvent, Barber } from './types';
-import {
-  appointmentChipStyle,
-  statusBadge,
-  displayOrderForEventBarber,
-} from './_appointment-color';
+import type { CalendarEvent } from './types';
+import { appointmentChipStyle, statusBadge } from './_appointment-color';
 
 const DAY_HEADERS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MAX_VISIBLE = 3;
@@ -24,8 +20,6 @@ interface Props {
   monthStart: Date;
   events: CalendarEvent[];
   blockedDates: string[];
-  /** Equipo activo — color de cada cita por su barbero (fuente única). */
-  barbers: Barber[];
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
 }
@@ -34,7 +28,6 @@ export default function MonthGrid({
   monthStart,
   events,
   blockedDates,
-  barbers,
   onEventClick,
   onSlotClick,
 }: Props) {
@@ -106,13 +99,9 @@ export default function MonthGrid({
                   {dayEvents.slice(0, MAX_VISIBLE).map(event => {
                     // Color = ESTADO de la cita (Booksy-exact, igual que
                     // Día/Semana) + ícono/etiqueta (fuente única, fix #6).
-                    // `dispOrder` se mantiene por compat; ya no tinta el chip.
-                    const dispOrder = displayOrderForEventBarber(
-                      event.barber,
-                      barbers,
-                    );
+                    // El chip ya NO se tinta por barbero.
                     const { style: chipStyle, treatment } = appointmentChipStyle(
-                      dispOrder,
+                      null,
                       event.status,
                     );
                     const badge = statusBadge(event.status);

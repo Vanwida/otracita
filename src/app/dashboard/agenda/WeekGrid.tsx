@@ -4,12 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
-import type { CalendarEvent, Barber } from './types';
-import {
-  appointmentBlockStyle,
-  statusBadge,
-  displayOrderForEventBarber,
-} from './_appointment-color';
+import type { CalendarEvent } from './types';
+import { appointmentBlockStyle, statusBadge } from './_appointment-color';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;   // 08:00
@@ -35,9 +31,6 @@ interface Props {
   weekStart: Date;
   events: CalendarEvent[];
   blockedDates: string[];
-  /** Equipo activo — para resolver el color de cada cita por su barbero
-   *  (mismo color que en Día/Mes, fuente única `_appointment-color`). */
-  barbers: Barber[];
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
 }
@@ -46,7 +39,6 @@ export default function WeekGrid({
   weekStart,
   events,
   blockedDates,
-  barbers,
   onEventClick,
   onSlotClick,
 }: Props) {
@@ -196,14 +188,10 @@ export default function WeekGrid({
                     const isCancelled = event.status === 'cancelled';
                     // Color = ESTADO de la cita (Booksy-exact, mismo que
                     // Día/Mes) + ícono/etiqueta, nunca solo color (fix #6).
-                    // `dispOrder` se mantiene por compat de firma; el bloque
-                    // ya no se tinta por barbero.
-                    const dispOrder = displayOrderForEventBarber(
-                      event.barber,
-                      barbers,
-                    );
+                    // El bloque ya NO se tinta por barbero (la identidad del
+                    // barbero vive solo en la cabecera de columna de Día).
                     const { style: blockStyle, treatment } = appointmentBlockStyle(
-                      dispOrder,
+                      null,
                       event.status,
                     );
                     const badge = statusBadge(event.status);

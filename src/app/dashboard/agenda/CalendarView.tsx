@@ -422,7 +422,6 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
               events={events}
               blockedDates={blockedDates}
-              barbers={barbers}
               onEventClick={handleEventClick}
               onSlotClick={handleSlotClick}
             />
@@ -431,7 +430,6 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               monthStart={startOfMonth(currentDay)}
               events={events}
               blockedDates={blockedDates}
-              barbers={barbers}
               onEventClick={handleEventClick}
               onSlotClick={handleSlotClick}
             />
