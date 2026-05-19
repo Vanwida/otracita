@@ -69,6 +69,20 @@ export interface ClientProfileData {
     avgTicketEur: number
     loyaltyBalance: number
   }
+  /**
+   * Contador de citas por estado — la fila superior de la ficha de Booksy
+   * (10.04.36/.46): TOTAL · COMPLETADAS · CANCELADAS · INASISTENCIAS. Se
+   * deriva de `bookings` (no de los contadores denormalizados de
+   * customers) para ser coherente con el split Próximas/Pasadas, que usa
+   * la misma fuente. `total` = todas las citas registradas (cualquier
+   * estado). Es paridad calcada de Booksy, no inventa dato nuevo.
+   */
+  counters: {
+    total: number
+    completed: number
+    cancelled: number
+    noShow: number
+  }
   /** Modo de fidelidad del tenant: 'points' | 'stamps' | null (desactivado). */
   loyaltyMode: 'points' | 'stamps' | null
   topService: string | null
@@ -132,6 +146,14 @@ export async function loadClientProfile(
         (SELECT COUNT(*) FROM ${bookings}
           WHERE client_id = ${clientId} AND customer_phone = ${customer.phone}
           AND status = 'completed')::int AS completed_count,
+        (SELECT COUNT(*) FROM ${bookings}
+          WHERE client_id = ${clientId} AND customer_phone = ${customer.phone})::int AS total_count,
+        (SELECT COUNT(*) FROM ${bookings}
+          WHERE client_id = ${clientId} AND customer_phone = ${customer.phone}
+          AND status = 'cancelled')::int AS cancelled_count,
+        (SELECT COUNT(*) FROM ${bookings}
+          WHERE client_id = ${clientId} AND customer_phone = ${customer.phone}
+          AND status = 'no_show')::int AS no_show_count,
         (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
           WHERE client_id = ${clientId} AND customer_phone = ${customer.phone}
           AND status = 'paid')::bigint AS tips_cents,
@@ -162,6 +184,9 @@ export async function loadClientProfile(
     rows: Array<{
       spent_eur: number | string
       completed_count: number
+      total_count: number
+      cancelled_count: number
+      no_show_count: number
       tips_cents: number | string
       avg_rating: number | null
       rating_count: number
@@ -178,6 +203,15 @@ export async function loadClientProfile(
   const ratingCount = Number(stats?.rating_count ?? 0)
   const avgTicketEur = completedCount > 0 ? spentEur / completedCount : 0
   const loyaltyBalance = Number(loyaltyRow?.balance ?? 0)
+
+  // Contador de Booksy (10.04.36/.46) — derivado de bookings, misma
+  // fuente que el split Próximas/Pasadas (coherencia garantizada).
+  const counters = {
+    total: Number(stats?.total_count ?? 0),
+    completed: completedCount,
+    cancelled: Number(stats?.cancelled_count ?? 0),
+    noShow: Number(stats?.no_show_count ?? 0),
+  }
 
   const topService = topByCount(
     bookingRows
@@ -217,6 +251,7 @@ export async function loadClientProfile(
       avgTicketEur,
       loyaltyBalance,
     },
+    counters,
     loyaltyMode: opts.loyaltyEnabled ? opts.loyaltyMode : null,
     topService,
     topBarber,
