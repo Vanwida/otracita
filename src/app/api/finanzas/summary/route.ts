@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { bookings, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
+import { bookings, bookingServices, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
 import { and, eq, gte, lt, lte, sql, inArray } from 'drizzle-orm'
 import {
   requireClientAccess,
@@ -63,16 +63,25 @@ export async function GET(request: Request) {
 
   const [
     ingresosResult,
+    extrasResult,
     gastosResult,
     fixedResult,
     gastosConIvaResult,
     fixedConIvaResult,
     retirosResult,
     prevYearResult,
+    prevYearExtrasResult,
     manualIngresosResult,
   ] = await Promise.all([
     db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
       .from(bookings)
+      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
+    // Servicios EXTRA (R7) — booking_services.priceEuros (EUROS, foot-gun).
+    // Query separada (no LEFT JOIN) para no inflar SUM(bookings.price) por
+    // fan-out cuando una cita tiene varios extras. Mismo filtro tenant/estado.
+    db.select({ total: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .from(bookingServices)
+      .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
     db.select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
       .from(expenses)
@@ -92,12 +101,20 @@ export async function GET(request: Request) {
     db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
       .from(bookings)
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, prevYearBounds.start), lt(bookings.date, prevYearBounds.end))),
+    db.select({ total: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .from(bookingServices)
+      .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
+      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, prevYearBounds.start), lt(bookings.date, prevYearBounds.end))),
     db.select({ total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)` })
       .from(manualIncomes)
       .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end))),
   ])
 
-  const bookingIngresosCents = Math.round(parseFloat(ingresosResult[0]?.total ?? '0') * 100)
+  // Principal + extras (R7) en EUROS → ×100 una sola vez sobre la suma,
+  // mismo boundary de redondeo que bookingTotalCents y la factura.
+  const bookingIngresosEuros =
+    parseFloat(ingresosResult[0]?.total ?? '0') + parseFloat(extrasResult[0]?.total ?? '0')
+  const bookingIngresosCents = Math.round(bookingIngresosEuros * 100)
   const manualIngresosCents = parseInt(manualIngresosResult[0]?.total ?? '0', 10)
   const ingresosCents = bookingIngresosCents + manualIngresosCents
   const gastosVariablesCents = parseInt(gastosResult[0]?.total ?? '0', 10)
@@ -105,7 +122,9 @@ export async function GET(request: Request) {
   const gastosVariablesConIvaCents = parseInt(gastosConIvaResult[0]?.total ?? '0', 10)
   const fixedConIvaCents = parseInt(fixedConIvaResult[0]?.total ?? '0', 10)
   const retirosCents = parseInt(retirosResult[0]?.total ?? '0', 10)
-  const prevYearIngresosCents = Math.round(parseFloat(prevYearResult[0]?.total ?? '0') * 100)
+  const prevYearIngresosEuros =
+    parseFloat(prevYearResult[0]?.total ?? '0') + parseFloat(prevYearExtrasResult[0]?.total ?? '0')
+  const prevYearIngresosCents = Math.round(prevYearIngresosEuros * 100)
 
   // Nóminas del equipo — coste real para el local. Mismo helper que
   // /api/finanzas/payroll para asegurar coherencia entre lo que ve el
@@ -113,12 +132,21 @@ export async function GET(request: Request) {
   const payroll = await computeMonthlyPayroll(clientId, { start, end })
   const nominasCents = Math.max(0, payroll.totalCents)
 
+  // IVA configurable por tenant (clients.ivaRate, Spain default 21). El P&L
+  // usaba el literal 21 y contradecía la factura, que ya respeta ivaRate
+  // (ver invoicing-math.ts calculateAmounts). Para un tenant al 21% el
+  // resultado es idéntico al de antes (21/121, 100/121) — sin regresión.
+  // Importes son IVA-incluido (convención retail): base = total*100/(100+r),
+  // IVA repercutido = total*r/(100+r).
+  const ivaRate = access.client.ivaRate
+  const ivaDenom = 100 + ivaRate
+
   const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
-  const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
+  const ivaRepercutidoCents = Math.round((ingresosCents * ivaRate) / ivaDenom)
   const gastosConIvaTotalCents = gastosVariablesConIvaCents + fixedConIvaCents
-  const ivaSoportadoCents = Math.round((gastosConIvaTotalCents * 21) / 121)
+  const ivaSoportadoCents = Math.round((gastosConIvaTotalCents * ivaRate) / ivaDenom)
   const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
-  const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
+  const ingresosNetosCents = Math.round((ingresosCents * 100) / ivaDenom)
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const beneficioRealCents = beneficioBrutoCents - retirosCents
   const irpfEstimadoCents = Math.max(0, Math.round((beneficioBrutoCents * 20) / 100))

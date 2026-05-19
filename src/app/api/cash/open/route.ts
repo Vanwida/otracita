@@ -120,7 +120,18 @@ async function backfillTodayMovements(
       ${sessionId}::uuid,
       'booking',
       b.payment_method,
-      b.price * 100,
+      -- Principal (bookings.price) + servicios EXTRA (R7, booking_services.
+      -- price_euros). Ambos en EUROS (foot-gun) → sumar en euros y ×100 una
+      -- sola vez, idéntico a bookingTotalCents. Cita simple ⇒ subquery 0.
+      round((
+        b.price
+        + COALESCE((
+            SELECT SUM(bs.price_euros)
+            FROM booking_services bs
+            WHERE bs.booking_id = b.id
+              AND bs.price_euros IS NOT NULL
+          ), 0)
+      ) * 100),
       'booking',
       b.id,
       'Importado al abrir caja (cita completada antes de la apertura).',

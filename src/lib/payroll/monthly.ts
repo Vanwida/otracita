@@ -2,6 +2,7 @@ import { db } from '@/db'
 import {
   barbers as barbersTable,
   bookings,
+  bookingServices,
   productSales,
   tips,
   bonuses,
@@ -109,6 +110,46 @@ export async function computeMonthlyPayroll(
   for (const row of serviceRevByBarberService) {
     if (!row.barberId || !row.serviceName) continue
     const cents = Math.round(parseFloat(row.totalEur ?? '0') * 100)
+    const list = serviceRowsByBarber.get(row.barberId) ?? []
+    list.push({ serviceName: row.serviceName, revenueCents: cents })
+    serviceRowsByBarber.set(row.barberId, list)
+  }
+
+  // 2d) Servicios EXTRA (R7) — booking_services.priceEuros. Sin esto el
+  // barbero cobra comisión SOLO del servicio principal y se le infrapaga
+  // toda cita multi-servicio. El barbero lo hereda del booking padre
+  // (FK bookingId). priceEuros EUROS (foot-gun) → ×100. Se agrupa por
+  // (barbero, nombre del extra) para que un override por-servicio del
+  // extra aplique igual que al principal (computeServicesCommissionCents).
+  const extraRevByBarberService = await db
+    .select({
+      barberId: bookings.barberId,
+      serviceName: bookingServices.name,
+      totalEur: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)`,
+    })
+    .from(bookingServices)
+    .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
+    .where(
+      and(
+        eq(bookings.clientId, clientId),
+        eq(bookings.status, 'completed'),
+        gte(bookings.date, bounds.start),
+        lt(bookings.date, bounds.end),
+      ),
+    )
+    .groupBy(bookings.barberId, bookingServices.name)
+
+  for (const row of extraRevByBarberService) {
+    if (!row.barberId || !row.serviceName) continue
+    const cents = Math.round(parseFloat(row.totalEur ?? '0') * 100)
+    if (cents <= 0) continue
+    // 2a — sube también el total mostrado del barbero.
+    servicesRevenueMap.set(
+      row.barberId,
+      (servicesRevenueMap.get(row.barberId) ?? 0) + cents,
+    )
+    // 2b — fila propia para que la comisión del extra se calcule con su
+    // override si existe, o el % global del barbero si no.
     const list = serviceRowsByBarber.get(row.barberId) ?? []
     list.push({ serviceName: row.serviceName, revenueCents: cents })
     serviceRowsByBarber.set(row.barberId, list)

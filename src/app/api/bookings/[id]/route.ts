@@ -10,6 +10,7 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 // acción explícita por venta (POST /api/invoices/from-booking). Por eso
 // este endpoint ya no importa los helpers de invoicing.
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
+import { bookingTotalCents } from '@/lib/bookings/total'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 
 // -----------------------------------------------------------------------------
@@ -257,22 +258,20 @@ export async function PATCH(
 
   // ── Cash movement enlazado al booking completado ─────────────────────
   // Si el barbero eligió método de pago y hay sesión de caja abierta,
-  // alimentamos el cuadre del día. bookings.price está en EUROS (foot-gun
-  // del schema) — convertir a céntimos antes.
-  if (
-    patch.status === 'completed' &&
-    paymentMethodToRecord &&
-    updated?.price != null &&
-    updated.price > 0
-  ) {
-    recordMovementInBackground({
-      clientId: access.client.id,
-      referenceType: 'booking',
-      referenceId: updated.id,
-      method: paymentMethodToRecord,
-      amountCents: Math.round(updated.price * 100),
-      createdByEmail: access.user.email,
-    })
+  // alimentamos el cuadre del día. Suma principal + servicios EXTRA (R7)
+  // vía bookingTotalCents — cita simple ⇒ idéntico al price*100 de antes.
+  if (patch.status === 'completed' && paymentMethodToRecord && updated) {
+    const serviceTotalCents = await bookingTotalCents(updated.id)
+    if (serviceTotalCents > 0) {
+      recordMovementInBackground({
+        clientId: access.client.id,
+        referenceType: 'booking',
+        referenceId: updated.id,
+        method: paymentMethodToRecord,
+        amountCents: serviceTotalCents,
+        createdByEmail: access.user.email,
+      })
+    }
   }
 
   // ── Aviso opcional por WhatsApp (solo al cancelar) ──────────────────

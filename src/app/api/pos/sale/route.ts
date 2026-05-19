@@ -6,6 +6,7 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { createBooking } from '@/lib/bookings/create'
+import { bookingTotalCents } from '@/lib/bookings/total'
 import type { BookingServiceLine } from '@/lib/bookings/duration'
 // La factura VeriFactu ya NO se emite al cobrar — es on-demand (POST
 // /api/invoices/from-booking). Este endpoint solo registra la venta.
@@ -368,20 +369,20 @@ export async function POST(req: Request) {
   }
 
   // Cash movement del SERVICIO (los de productos los emite recordMovement
-  // abajo). bookings.price está en EUROS (foot-gun del schema) → ×100.
-  if (
-    recordServicePayment &&
-    updated?.price != null &&
-    updated.price > 0
-  ) {
-    recordMovementInBackground({
-      clientId: client.id,
-      referenceType: 'booking',
-      referenceId: updated.id,
-      method: effectiveMethod,
-      amountCents: Math.round(updated.price * 100),
-      createdByEmail: access.user.email,
-    })
+  // abajo). Suma principal + servicios EXTRA (R7) vía bookingTotalCents —
+  // si la cita es simple es idéntico al price*100 de antes.
+  if (recordServicePayment && updated) {
+    const serviceTotalCents = await bookingTotalCents(updated.id)
+    if (serviceTotalCents > 0) {
+      recordMovementInBackground({
+        clientId: client.id,
+        referenceType: 'booking',
+        referenceId: updated.id,
+        method: effectiveMethod,
+        amountCents: serviceTotalCents,
+        createdByEmail: access.user.email,
+      })
+    }
   }
 
   // Cash movement por cada venta de producto — igual que /api/products/sales.
