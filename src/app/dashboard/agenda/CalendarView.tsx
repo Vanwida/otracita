@@ -427,6 +427,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
               events={events}
               blockedDates={blockedDates}
+              hours={hours}
               onEventClick={handleEventClick}
               onSlotClick={handleSlotClick}
             />

@@ -1,36 +1,31 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
 import type { CalendarEvent } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
+import { computeAgendaWindow, toMinutes, PX_PER_MIN } from './_agenda-window';
+import { hoursForDate } from '@/lib/availability-hours';
 
-const PX_PER_MIN = 2;
-const GRID_START = 8 * 60;   // 08:00
-const GRID_END = 22 * 60;    // 22:00
-const TOTAL_HEIGHT = (GRID_END - GRID_START) * PX_PER_MIN; // 1680px
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
+// La ventana temporal ya NO es fija — se deriva de los datos de la SEMANA
+// visible en `_agenda-window` (misma fuente que DayGrid). Antes
+// GRID_START/END estaban hardcodeados a 08:00–22:00 y una tienda que abría
+// a las 07:00 perdía esa hora también en Semana.
 
 function getCurrentTimeMinutes(): number {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes();
 }
 
-const HOUR_LABELS = Array.from({ length: GRID_END / 60 - GRID_START / 60 }, (_, i) => {
-  const h = GRID_START / 60 + i;
-  return { label: `${String(h).padStart(2, '0')}:00`, top: i * 60 * PX_PER_MIN };
-});
-
 interface Props {
   weekStart: Date;
   events: CalendarEvent[];
   blockedDates: string[];
+  /** Horario semanal de la tienda — alimenta la ventana dinámica y el
+   *  sombreado fuera-de-horario, consistente con la vista Día. */
+  hours: Record<string, string> | null;
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
 }
@@ -39,6 +34,7 @@ export default function WeekGrid({
   weekStart,
   events,
   blockedDates,
+  hours,
   onEventClick,
   onSlotClick,
 }: Props) {
@@ -47,6 +43,27 @@ export default function WeekGrid({
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const dayStrs = useMemo(
+    () => days.map((d) => format(d, 'yyyy-MM-dd')),
+    [days],
+  );
+
+  // Ventana DINÁMICA de la semana (fuente única _agenda-window): unión del
+  // horario de tienda + citas reales en los 7 días visibles.
+  const { startMin, endMin, totalHeight, hourLabels } = useMemo(
+    () =>
+      computeAgendaWindow({
+        dates: dayStrs,
+        hours,
+        events: events.map((e) => ({
+          date: e.date,
+          time: e.time,
+          duration: e.duration,
+        })),
+      }),
+    [dayStrs, hours, events],
+  );
+
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTimeMin(getCurrentTimeMinutes());
@@ -54,18 +71,22 @@ export default function WeekGrid({
     return () => clearInterval(interval);
   }, []);
 
-  // Scroll to current time on mount
+  // Auto-scroll inicial: a "ahora" si cae en la ventana (la semana suele
+  // contener hoy), si no al inicio de la ventana. Re-corre al cambiar de
+  // semana/ventana. Scroll interno — la página nunca scrollea.
   useEffect(() => {
-    if (scrollRef.current) {
-      const offset = Math.max(0, (currentTimeMin - GRID_START) * PX_PER_MIN - 100);
-      scrollRef.current.scrollTop = offset;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const nowInWindow =
+      currentTimeMin >= startMin && currentTimeMin <= endMin;
+    const targetMin = nowInWindow ? currentTimeMin : startMin;
+    el.scrollTop = Math.max(0, (targetMin - startMin) * PX_PER_MIN - 100);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dayStrs[0], startMin, endMin]);
 
   const currentTimePx =
-    currentTimeMin >= GRID_START && currentTimeMin <= GRID_END
-      ? (currentTimeMin - GRID_START) * PX_PER_MIN
+    currentTimeMin >= startMin && currentTimeMin <= endMin
+      ? (currentTimeMin - startMin) * PX_PER_MIN
       : null;
 
   const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
@@ -73,9 +94,9 @@ export default function WeekGrid({
 
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const clickedMinutes = Math.floor(y / PX_PER_MIN) + GRID_START;
+    const clickedMinutes = Math.floor(y / PX_PER_MIN) + startMin;
     const rounded = Math.round(clickedMinutes / 30) * 30;
-    const clamped = Math.max(GRID_START, Math.min(GRID_END - 30, rounded));
+    const clamped = Math.max(startMin, Math.min(endMin - 30, rounded));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -88,9 +109,9 @@ export default function WeekGrid({
   return (
     <div className="flex flex-1 overflow-hidden bg-surface">
       {/* Time gutter */}
-      <div className="w-12 shrink-0 relative bg-surface border-r border-line" style={{ height: TOTAL_HEIGHT + 32 }}>
+      <div className="w-12 shrink-0 relative bg-surface border-r border-line" style={{ height: totalHeight + 32 }}>
         <div className="h-8" /> {/* header spacer */}
-        <div className="relative" style={{ height: TOTAL_HEIGHT }}>
+        <div className="relative" style={{ height: totalHeight }}>
           {/* Current time dot in gutter */}
           {currentTimePx !== null && (
             <div
@@ -100,7 +121,7 @@ export default function WeekGrid({
               <div className="h-2.5 w-2.5 rounded-full bg-time-now translate-x-1/2" />
             </div>
           )}
-          {HOUR_LABELS.map(({ label, top }) => (
+          {hourLabels.map(({ label, top }) => (
             <div
               key={label}
               className="absolute right-2 text-[10px] text-ink-2 select-none"
@@ -143,16 +164,44 @@ export default function WeekGrid({
                 {/* Column body */}
                 <div
                   className="relative cursor-pointer"
-                  style={{ height: TOTAL_HEIGHT }}
+                  style={{ height: totalHeight }}
                   onClick={e => handleColumnClick(e, dateStr)}
                 >
+                  {/* Fuera de horario de ESE día (consistente con la vista
+                      Día): tinte + trama contra la ventana dinámica. */}
+                  {(() => {
+                    const dh = hoursForDate(dateStr, hours);
+                    if (!dh) return null;
+                    const open = toMinutes(dh.start);
+                    const close = toMinutes(dh.end);
+                    return (
+                      <>
+                        {open > startMin && (
+                          <div
+                            className="absolute left-0 right-0 top-0 offhours-overlay pointer-events-none z-10"
+                            style={{ height: (open - startMin) * PX_PER_MIN }}
+                          />
+                        )}
+                        {close < endMin && (
+                          <div
+                            className="absolute left-0 right-0 offhours-overlay pointer-events-none z-10"
+                            style={{
+                              top: (close - startMin) * PX_PER_MIN,
+                              height: (endMin - close) * PX_PER_MIN,
+                            }}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
+
                   {/* Blocked overlay */}
                   {isBlocked && (
                     <div className="absolute inset-0 z-10 pointer-events-none blocked-overlay" />
                   )}
 
                   {/* Hour lines */}
-                  {HOUR_LABELS.map(({ top }, i) => (
+                  {hourLabels.map(({ top }, i) => (
                     <div
                       key={i}
                       className="absolute left-0 right-0 border-t border-line"
@@ -160,8 +209,9 @@ export default function WeekGrid({
                     />
                   ))}
 
-                  {/* Half-hour lines */}
-                  {HOUR_LABELS.map(({ top }, i) => (
+                  {/* Half-hour lines — sin la última (su +30min saldría de
+                      la ventana, que siempre cierra en hora en punto). */}
+                  {hourLabels.slice(0, -1).map(({ top }, i) => (
                     <div
                       key={`half-${i}`}
                       className="absolute left-0 right-0 border-t border-canvas"
@@ -181,8 +231,8 @@ export default function WeekGrid({
 
                   {/* Events */}
                   {dayEvents.map(event => {
-                    const startMin = toMinutes(event.time);
-                    const top = (startMin - GRID_START) * PX_PER_MIN;
+                    const evStartMin = toMinutes(event.time);
+                    const top = (evStartMin - startMin) * PX_PER_MIN;
                     const height = Math.max(event.duration * PX_PER_MIN, 20);
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';

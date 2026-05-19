@@ -1,42 +1,22 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { Lock, ChevronDown } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
+import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-window';
 
-const PX_PER_MIN = 2;
-const GRID_START = 8 * 60;  // 08:00
-const GRID_END = 22 * 60;   // 22:00
-const TOTAL_HEIGHT = (GRID_END - GRID_START) * PX_PER_MIN; // 1680px
+// La VENTANA temporal (inicio/fin/alto/etiquetas) ya NO es fija — se deriva
+// de los datos del día visible en `_agenda-window` (fuente única, también
+// la usa WeekGrid). Antes GRID_START/END estaban hardcodeados a 08:00–22:00
+// y una tienda que abría a las 07:00 no veía esa hora.
+
 // Must equal --agenda-col-header-h (60px). The gutter wrapper reserves
 // header + body so its scroll height matches the column bodies exactly.
 const COL_HEADER_H = 60;
-// Drag&drop / click-to-create se ajustan a esta rejilla de minutos. 5 min
-// = "ajustar minutos libremente" sin que un pixel mal puesto deje 10:03
-// (R1/R3). El servidor acepta cualquier HH:MM; el snap es UX del cliente.
-const SNAP_MIN = 5;
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
-const HOUR_LABELS = Array.from({ length: GRID_END / 60 - GRID_START / 60 }, (_, i) => {
-  const h = GRID_START / 60 + i;
-  return { label: `${String(h).padStart(2, '0')}:00`, top: i * 60 * PX_PER_MIN };
-});
-
-function parseBusinessHours(hoursStr: string | undefined): { open: number; close: number } | null {
-  if (!hoursStr || hoursStr === 'Cerrado') return null;
-  const match = hoursStr.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
-  if (!match) return null;
-  return { open: toMinutes(match[1]), close: toMinutes(match[2]) };
-}
 
 function getCurrentTimeMinutes(): number {
   const now = new Date();
@@ -120,6 +100,34 @@ export default function DayGrid({
   const dragRef = useRef<{ id: string; grabOffsetPx: number } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
+  const dateStr = format(date, 'yyyy-MM-dd');
+  const isBlocked = blockedDates.includes(dateStr);
+  const isToday = dateStr === format(new Date(), 'yyyy-MM-dd');
+
+  // Ventana temporal DINÁMICA del día (fuente única _agenda-window):
+  // derivada del horario de tienda + citas reales de ESTE día, nunca
+  // recorta una hora abierta ni un evento. startMin/endMin/totalHeight/
+  // hourLabels sustituyen a los antiguos GRID_START/END/TOTAL_HEIGHT
+  // hardcodeados. Se recalcula sólo si cambian fecha/horario/eventos.
+  const { startMin, endMin, totalHeight, hourLabels } = useMemo(
+    () =>
+      computeAgendaWindow({
+        dates: [dateStr],
+        hours,
+        events: events
+          .filter((e) => e.date === dateStr)
+          .map((e) => ({ date: e.date, time: e.time, duration: e.duration })),
+      }),
+    [dateStr, hours, events],
+  );
+
+  // Horario de tienda del día para el sombreado fuera-de-horario. Usa la
+  // fuente canónica `hoursForDate` (EN/ES + "Cerrado"), no un parser ad-hoc.
+  const dayHours = hoursForDate(dateStr, hours);
+  const businessHours = dayHours
+    ? { open: toMinutes(dayHours.start), close: toMinutes(dayHours.end) }
+    : null;
+
   // Soltar una cita en una columna: calcula la (date,time,barberId)
   // destino y delega en el padre (update optimista + PATCH + revalida).
   const handleColumnDrop = (
@@ -140,9 +148,9 @@ export default function DayGrid({
     const rect = e.currentTarget.getBoundingClientRect();
     // y del cursor → restamos el offset de agarre → top del bloque.
     const topPx = e.clientY - rect.top - grabOffsetPx;
-    const startMinutes = Math.round(topPx / PX_PER_MIN) + GRID_START;
+    const startMinutes = Math.round(topPx / PX_PER_MIN) + startMin;
     const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
-    const clamped = Math.max(GRID_START, Math.min(GRID_END - SNAP_MIN, snapped));
+    const clamped = Math.max(startMin, Math.min(endMin - SNAP_MIN, snapped));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -156,15 +164,25 @@ export default function DayGrid({
     return () => clearInterval(interval);
   }, []);
 
-  // Scroll to current time on mount — puts "ahora" ~100px from the top so
-  // the barber lands on the live portion of the day.
+  // Auto-scroll inicial (patrón Google Calendar / Cal.com / FullCalendar
+  // `scrollTime`): si es HOY y "ahora" cae dentro de la ventana → llevar a
+  // ~100px sobre "ahora"; si no → llevar a la apertura de la tienda (o al
+  // inicio de la ventana). Re-corre al cambiar de día/ventana (como
+  // `scrollTimeReset`). El scroll vive en este contenedor interno — la
+  // PÁGINA nunca scrollea (viewport-lock intacto).
   useEffect(() => {
-    if (scrollRef.current) {
-      const offset = Math.max(0, (currentTimeMin - GRID_START) * PX_PER_MIN - 100);
-      scrollRef.current.scrollTop = offset;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const nowInWindow =
+      isToday && currentTimeMin >= startMin && currentTimeMin <= endMin;
+    const targetMin = nowInWindow
+      ? currentTimeMin
+      : businessHours?.open ?? startMin;
+    el.scrollTop = Math.max(0, (targetMin - startMin) * PX_PER_MIN - 100);
+  // Sólo en cambio de día/ventana, no en cada tick del reloj (eso lo
+  // gestiona el efecto "follow the clock" de abajo).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dateStr, startMin, endMin]);
 
   // Follow the clock. Every minute (when currentTimeMin ticks), if "ahora"
   // is still inside the visible area we slide the view so it stays around
@@ -173,12 +191,11 @@ export default function DayGrid({
   // different hour, we leave their position alone until they come back.
   useEffect(() => {
     const el = scrollRef.current;
-    const dateStr = format(date, 'yyyy-MM-dd');
     const isTodayLive = dateStr === format(new Date(), 'yyyy-MM-dd');
     if (!el || !isTodayLive) return;
-    if (currentTimeMin < GRID_START || currentTimeMin > GRID_END) return;
+    if (currentTimeMin < startMin || currentTimeMin > endMin) return;
 
-    const nowPx = (currentTimeMin - GRID_START) * PX_PER_MIN;
+    const nowPx = (currentTimeMin - startMin) * PX_PER_MIN;
     const viewportTop = el.scrollTop;
     const viewportBottom = viewportTop + el.clientHeight;
     const nowIsVisible = nowPx >= viewportTop && nowPx <= viewportBottom;
@@ -186,21 +203,12 @@ export default function DayGrid({
 
     const target = Math.max(0, nowPx - el.clientHeight / 3);
     el.scrollTo({ top: target, behavior: 'smooth' });
-  }, [currentTimeMin, date]);
+  }, [currentTimeMin, dateStr, startMin, endMin]);
 
-  const dateStr = format(date, 'yyyy-MM-dd');
-  const isBlocked = blockedDates.includes(dateStr);
-  const dayOfWeek = format(date, 'EEEE', { locale: es }).toLowerCase();
-
-  // Parse business hours for today
-  const todayHoursStr = hours?.[dayOfWeek];
-  const businessHours = parseBusinessHours(todayHoursStr);
-
-  // Current time indicator position
-  const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+  // Current time indicator position (dentro de la ventana dinámica).
   const currentTimePx =
-    isToday && currentTimeMin >= GRID_START && currentTimeMin <= GRID_END
-      ? (currentTimeMin - GRID_START) * PX_PER_MIN
+    isToday && currentTimeMin >= startMin && currentTimeMin <= endMin
+      ? (currentTimeMin - startMin) * PX_PER_MIN
       : null;
 
   // Columns: one per configured barber, plus a fallback "Sin asignar" for
@@ -245,10 +253,10 @@ export default function DayGrid({
     if ((e.target as HTMLElement).closest('[data-event]')) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const clickedMinutes = Math.floor(y / PX_PER_MIN) + GRID_START;
+    const clickedMinutes = Math.floor(y / PX_PER_MIN) + startMin;
     // Snap a SNAP_MIN (R1/R3: ajustar minutos libremente, no solo medias horas).
     const rounded = Math.round(clickedMinutes / SNAP_MIN) * SNAP_MIN;
-    const clamped = Math.max(GRID_START, Math.min(GRID_END - SNAP_MIN, rounded));
+    const clamped = Math.max(startMin, Math.min(endMin - SNAP_MIN, rounded));
     const h = Math.floor(clamped / 60);
     const m = clamped % 60;
     const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -267,10 +275,10 @@ export default function DayGrid({
           {/* Time gutter (sticky left) */}
           <div
             className="w-12 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
-            style={{ height: TOTAL_HEIGHT + COL_HEADER_H }}
+            style={{ height: totalHeight + COL_HEADER_H }}
           >
             <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-50" /> {/* header spacer — z-50: esquina sup-izq por encima de las cabeceras de columna (z-40) al scrollear ambos ejes */}
-            <div className="relative" style={{ height: TOTAL_HEIGHT }}>
+            <div className="relative" style={{ height: totalHeight }}>
               {currentTimePx !== null && (
                 <div
                   className="absolute right-0 z-20"
@@ -279,7 +287,7 @@ export default function DayGrid({
                   <div className="h-2.5 w-2.5 rounded-full bg-time-now translate-x-1/2" />
                 </div>
               )}
-              {HOUR_LABELS.map(({ label, top }) => (
+              {hourLabels.map(({ label, top }) => (
                 <div
                   key={label}
                   className="absolute right-2 text-[10px] text-ink-2 select-none"
@@ -385,7 +393,7 @@ export default function DayGrid({
                 {/* Column body — también drop target del drag&drop. */}
                 <div
                   className="relative cursor-pointer"
-                  style={{ height: TOTAL_HEIGHT }}
+                  style={{ height: totalHeight }}
                   onClick={e => handleColumnClick(e, col.barber?.id ?? null)}
                   onDragOver={e => {
                     // Permitir soltar mientras haya una cita arrastrándose.
@@ -404,20 +412,20 @@ export default function DayGrid({
                       (FIX 3): tinte cálido + trama diagonal → "cerrado" se
                       lee de un vistazo sin pisar el acento de barbero (barra
                       sólida saturada, nunca compite con el tinte). */}
-                  {businessHours && businessHours.open > GRID_START && (
+                  {businessHours && businessHours.open > startMin && (
                     <div
                       className="absolute left-0 right-0 top-0 offhours-overlay pointer-events-none z-10"
-                      style={{ height: (businessHours.open - GRID_START) * PX_PER_MIN }}
+                      style={{ height: (businessHours.open - startMin) * PX_PER_MIN }}
                     />
                   )}
 
                   {/* Fuera de horario — tras cerrar. */}
-                  {businessHours && businessHours.close < GRID_END && (
+                  {businessHours && businessHours.close < endMin && (
                     <div
                       className="absolute left-0 right-0 offhours-overlay pointer-events-none z-10"
                       style={{
-                        top: (businessHours.close - GRID_START) * PX_PER_MIN,
-                        height: (GRID_END - businessHours.close) * PX_PER_MIN,
+                        top: (businessHours.close - startMin) * PX_PER_MIN,
+                        height: (endMin - businessHours.close) * PX_PER_MIN,
                       }}
                     />
                   )}
@@ -428,7 +436,7 @@ export default function DayGrid({
                   )}
 
                   {/* Hour lines */}
-                  {HOUR_LABELS.map(({ top }, i) => (
+                  {hourLabels.map(({ top }, i) => (
                     <div
                       key={i}
                       className="absolute left-0 right-0 border-t border-line"
@@ -436,8 +444,10 @@ export default function DayGrid({
                     />
                   ))}
 
-                  {/* Half-hour lines */}
-                  {HOUR_LABELS.map(({ top }, i) => (
+                  {/* Half-hour lines — saltamos la última etiqueta: su +30min
+                      caería fuera de la ventana (el rango siempre cierra en
+                      hora en punto). */}
+                  {hourLabels.slice(0, -1).map(({ top }, i) => (
                     <div
                       key={`half-${i}`}
                       className="absolute left-0 right-0 border-t border-canvas"
@@ -458,8 +468,8 @@ export default function DayGrid({
                   {/* Events — fill codifica ESTADO (UI0 #3); el borde-acento
                       izquierdo lleva el color del barbero de la columna. */}
                   {colEvents.map(event => {
-                    const startMin = toMinutes(event.time);
-                    const top = (startMin - GRID_START) * PX_PER_MIN;
+                    const evStartMin = toMinutes(event.time);
+                    const top = (evStartMin - startMin) * PX_PER_MIN;
                     const height = Math.max(event.duration * PX_PER_MIN, 24);
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
@@ -472,9 +482,9 @@ export default function DayGrid({
                     );
                     const badge = statusBadge(event.status);
 
-                    const endMin = startMin + event.duration;
-                    const endH = Math.floor(endMin / 60);
-                    const endM = endMin % 60;
+                    const evEndMin = evStartMin + event.duration;
+                    const endH = Math.floor(evEndMin / 60);
+                    const endM = evEndMin % 60;
                     const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 
                     // Booksy = solo lectura (lo gestiona Booksy); las
