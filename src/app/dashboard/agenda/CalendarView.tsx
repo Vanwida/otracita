@@ -451,6 +451,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         cashRegisterEnabled={cashRegisterEnabled}
         sumupReaderConnected={sumupReaderConnected}
         barbers={barbers}
+        services={services}
         onMoved={() => refetch()}
       />
 

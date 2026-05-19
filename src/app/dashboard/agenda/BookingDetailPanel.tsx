@@ -1,8 +1,9 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Trash2, FileWarning, Phone } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import SlideOver from '../_components/SlideOver';
+import ServiceLinePicker from '../_components/ServiceLinePicker';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
 import RectificativaModal from '../facturas/_components/RectificativaModal';
@@ -38,6 +39,10 @@ interface Props {
   /** Equipo activo — para el selector de barbero del editor "mover cita"
    *  (R3: mover sin entrar en Horarios y cambios). */
   barbers?: Barber[];
+  /** Catálogo de servicios de la tienda — el editor "Editar servicio o
+   *  precio" lo usa para el picker (FIX C: principal+extras = dropdown,
+   *  no texto libre). Mismo shape que recibe NewBookingPanel. */
+  services?: Array<{ name: string; duration: number; price: number }>;
   /** Se invoca tras un movimiento exitoso (date/time/barber). El padre
    *  revalida la agenda. */
   onMoved?: () => void;
@@ -63,7 +68,7 @@ interface PaymentLinkData {
 const MIN_AMOUNT_EUROS = 0.5;
 const MAX_AMOUNT_EUROS = 5000;
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false, barbers = [], onMoved }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false, barbers = [], services = [], onMoved }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -1198,6 +1203,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       {booking && editOpen && (
         <EditServiceModal
           booking={booking}
+          services={services}
           onClose={() => setEditOpen(false)}
           onSaved={() => {
             setEditOpen(false);
@@ -1276,10 +1282,12 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 // -----------------------------------------------------------------------------
 function EditServiceModal({
   booking,
+  services,
   onClose,
   onSaved,
 }: {
   booking: CalendarEvent;
+  services: Array<{ name: string; duration: number; price: number }>;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1349,8 +1357,6 @@ function EditServiceModal({
     }
   };
 
-  const INPUT =
-    'w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors';
 
   return (
     <div
@@ -1388,52 +1394,26 @@ function EditServiceModal({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5">
-              Servicio principal
-            </label>
-            <input
-              type="text"
-              value={service}
-              onChange={(e) => setService(e.target.value)}
-              disabled={submitting}
-              className={INPUT}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5">
-                Duración (min)
-              </label>
-              <NumberInput
-                value={duration}
-                onValueChange={setDuration}
-                min={5}
-                max={480}
-                decimals={0}
-                disabled={submitting}
-                className={INPUT}
-                aria-label="Duración del servicio principal en minutos"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5">
-                Precio (€)
-              </label>
-              <NumberInput
-                value={price}
-                onValueChange={setPrice}
-                min={0}
-                decimals={2}
-                step="0.01"
-                placeholder="0"
-                disabled={submitting}
-                className={INPUT}
-                aria-label="Precio del servicio principal en euros"
-              />
-            </div>
-          </div>
+          {/* Servicio principal — picker compartido (catálogo →
+              autorrellena duración/precio, editables). MISMA pieza que
+              "Nueva cita" (FIX C: ya no se teclea el nombre a mano). */}
+          <ServiceLinePicker
+            services={services}
+            value={{
+              name: service,
+              durationMin: duration ?? 0,
+              priceEuros: price,
+            }}
+            onChange={(v) => {
+              setService(v.name);
+              setDuration(v.durationMin || null);
+              setPrice(v.priceEuros);
+            }}
+            label="Servicio principal"
+            required
+            disabled={submitting}
+            ariaSuffix="servicio principal"
+          />
 
           {/* Servicios extra (R7) */}
           <div className="space-y-2">
@@ -1449,68 +1429,19 @@ function EditServiceModal({
                 {extras.map((extra, idx) => (
                   <div
                     key={idx}
-                    className="rounded-lg border border-line bg-overlay/40 p-3 space-y-2"
+                    className="rounded-lg border border-line bg-overlay/40 p-3"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        value={extra.name}
-                        onChange={(e) =>
-                          updateExtra(idx, { name: e.target.value })
-                        }
-                        placeholder="Nombre del servicio"
-                        disabled={submitting}
-                        className={INPUT}
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExtras((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        disabled={submitting}
-                        aria-label={`Quitar servicio extra ${idx + 1}`}
-                        className="inline-flex items-center justify-center h-8 w-8 shrink-0 rounded-md text-ink-3 hover:text-danger hover:bg-danger/10 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[11px] text-ink-2 mb-1 block">
-                          Duración (min)
-                        </label>
-                        <NumberInput
-                          value={extra.durationMin}
-                          onValueChange={(n) =>
-                            updateExtra(idx, { durationMin: n ?? 0 })
-                          }
-                          min={0}
-                          max={480}
-                          decimals={0}
-                          disabled={submitting}
-                          className={INPUT}
-                          aria-label={`Duración servicio extra ${idx + 1}`}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[11px] text-ink-2 mb-1 block">
-                          Precio (€)
-                        </label>
-                        <NumberInput
-                          value={extra.priceEuros}
-                          onValueChange={(n) =>
-                            updateExtra(idx, { priceEuros: n })
-                          }
-                          min={0}
-                          decimals={2}
-                          step="0.01"
-                          placeholder="0"
-                          disabled={submitting}
-                          className={INPUT}
-                          aria-label={`Precio servicio extra ${idx + 1}`}
-                        />
-                      </div>
-                    </div>
+                    <ServiceLinePicker
+                      services={services}
+                      value={extra}
+                      onChange={(v) => updateExtra(idx, v)}
+                      onRemove={() =>
+                        setExtras((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      label={`Servicio extra ${idx + 1}`}
+                      disabled={submitting}
+                      ariaSuffix={`servicio extra ${idx + 1}`}
+                    />
                   </div>
                 ))}
                 <button
