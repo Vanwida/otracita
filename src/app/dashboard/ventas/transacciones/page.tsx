@@ -3,11 +3,12 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { bookings, clients, products, productSales } from '@/db/schema'
-import { and, desc, eq, ne } from 'drizzle-orm'
+import { bookings, clients, invoices, products, productSales } from '@/db/schema'
+import { and, desc, eq, inArray, ne } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import AreaContent from '../../_components/AreaContent'
 import DataTable, { type Column } from '../../_components/DataTable'
+import InvoiceCell from './InvoiceCell'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ventas/transacciones — pestaña TRANSACCIONES (Booksy literal:
@@ -37,6 +38,11 @@ interface LedgerRow {
   method: Method
   amountCents: number
   kind: 'servicio' | 'producto'
+  /** Reserva enlazada (servicios y productos vendidos en una cita). Null
+   *  para ventas de producto sueltas → no hay cita que facturar aquí. */
+  bookingId: string | null
+  /** Número de la factura si esta venta YA se declaró; null = ticket. */
+  invoiceNumber: string | null
 }
 
 const METHOD_LABEL: Record<'cash' | 'card' | 'online', string> = {
@@ -98,6 +104,7 @@ export default async function VentasTransaccionesPage() {
   const productRows = await db
     .select({
       id: productSales.id,
+      bookingId: productSales.bookingId,
       name: products.name,
       quantity: productSales.quantity,
       totalCents: productSales.totalCents,
@@ -111,6 +118,36 @@ export default async function VentasTransaccionesPage() {
     .orderBy(desc(productSales.soldAt))
     .limit(200)
 
+  // Estado fiscal: una venta está FACTURADA si su reserva tiene factura
+  // emitida. Lookup batch (1 query) de invoices.bookingId → number para
+  // todas las reservas listadas (servicios + productos atados a cita).
+  const bookingIds = [
+    ...new Set([
+      ...bookingRows.map((b) => b.id),
+      ...productRows
+        .map((p) => p.bookingId)
+        .filter((v): v is string => v != null),
+    ]),
+  ]
+  const invoiceByBooking = new Map<string, string>()
+  if (bookingIds.length > 0) {
+    const invRows = await db
+      .select({
+        bookingId: invoices.bookingId,
+        number: invoices.number,
+      })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.clientId, client.id),
+          inArray(invoices.bookingId, bookingIds),
+        ),
+      )
+    for (const r of invRows) {
+      if (r.bookingId) invoiceByBooking.set(r.bookingId, r.number)
+    }
+  }
+
   const rows: LedgerRow[] = [
     ...bookingRows
       .filter((b) => b.price != null && b.price > 0)
@@ -122,6 +159,8 @@ export default async function VentasTransaccionesPage() {
         method: (b.paymentMethod as Method) ?? null,
         amountCents: Math.round((b.price ?? 0) * 100),
         kind: 'servicio',
+        bookingId: b.id,
+        invoiceNumber: invoiceByBooking.get(b.id) ?? null,
       })),
     ...productRows.map<LedgerRow>((p) => ({
       id: `p-${p.id}`,
@@ -132,6 +171,10 @@ export default async function VentasTransaccionesPage() {
       method: (p.paymentMethod as Method) ?? null,
       amountCents: p.totalCents,
       kind: 'producto',
+      bookingId: p.bookingId,
+      invoiceNumber: p.bookingId
+        ? invoiceByBooking.get(p.bookingId) ?? null
+        : null,
     })),
   ]
     .sort((a, b) => b.soldAt.getTime() - a.soldAt.getTime())
@@ -179,6 +222,17 @@ export default async function VentasTransaccionesPage() {
       className: 'hidden md:table-cell',
     },
     {
+      key: 'fiscal',
+      header: 'Factura',
+      cell: (r) => (
+        <InvoiceCell
+          bookingId={r.bookingId}
+          invoiceNumber={r.invoiceNumber}
+          invoicingEnabled={client.invoicingEnabled}
+        />
+      ),
+    },
+    {
       key: 'amount',
       header: 'Importe',
       align: 'right',
@@ -197,7 +251,8 @@ export default async function VentasTransaccionesPage() {
           style={{ fontSize: 'var(--text-meta)' }}
         >
           Todas las ventas cobradas (servicios y productos), de cualquier
-          método. Las últimas 200.
+          método. Cada una es un ticket interno; pulsa Generar factura
+          cuando quieras declararla. Las últimas 200.
         </p>
         <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
           Total{' '}
