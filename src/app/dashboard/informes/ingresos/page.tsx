@@ -11,6 +11,7 @@ import StatsPeriodTabs from '../../_components/StatsPeriodTabs'
 import DataTable, { type Column } from '../../_components/DataTable'
 import ReportLayout from '../_components/ReportLayout'
 import { INGRESOS_RAIL } from '../_components/report-rail-config'
+import BarberBreakdown from '../../caja/BarberBreakdown'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -362,6 +363,20 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
                 />
               </section>
             </div>
+
+            {/* Ingresos por empleado — el barbero que viene de Booksy
+                espera las stats del equipo dentro de Estadísticas (es la
+                pestaña "Empleados" de Booksy 09.46.25). Reusamos
+                BarberBreakdown (mismo componente/query que Ventas y
+                Equipo, cero duplicación). Se autooculta con <2 barberos
+                activos. */}
+            <BarberBreakdown
+              clientId={client.id}
+              periodStartIso={periodStartIso}
+              title="Por empleado"
+              subtitle="Quién factura más, quién recibe más propinas, quién tiene mejor nota — este periodo."
+              highlightTop
+            />
 
             {/* Evolución mensual de ingresos por servicios. */}
             {monthly.length >= 2 && (
