@@ -23,6 +23,12 @@ test('signedAmount: ingresos suman, egresos restan', () => {
   assert.equal(signedAmount({ kind: 'adjustment', amountCents: 300 }), 300)
 })
 
+test('signedAmount: refund RESTA (devolución al cliente sale del cajón)', () => {
+  // amount_cents siempre positivo; el signo negativo lo pone el kind.
+  // Sin esto un reembolso sumaba al esperado y descuadraba al revés.
+  assert.equal(signedAmount({ kind: 'refund', amountCents: 2500 }), -2500)
+})
+
 test('isIncoming flags positive vs negative kinds', () => {
   assert.equal(isIncoming('booking'), true)
   assert.equal(isIncoming('product_sale'), true)
@@ -31,6 +37,25 @@ test('isIncoming flags positive vs negative kinds', () => {
   assert.equal(isIncoming('adjustment'), true)
   assert.equal(isIncoming('expense'), false)
   assert.equal(isIncoming('withdrawal'), false)
+  assert.equal(isIncoming('refund'), false)
+})
+
+test('refund reduces expected closing (cash y card)', () => {
+  // Venta de 25€ + reembolso de 10€ → esperado neto +15€ por método.
+  const movs: MovementForCompute[] = [
+    { kind: 'booking', method: 'cash', amountCents: 2500 },
+    { kind: 'refund', method: 'cash', amountCents: 1000 },
+    { kind: 'booking', method: 'card', amountCents: 3000 },
+    { kind: 'refund', method: 'card', amountCents: 1000 },
+  ]
+  const totals = sumByMethod(movs)
+  assert.equal(totals.cashCents, 2500 - 1000) // 1500
+  assert.equal(totals.cardCents, 3000 - 1000) // 2000
+
+  // opening 50€ + 15€ cash neto = 65€; card neto 20€ (sin opening).
+  const expected = computeExpectedClosing(5000, movs)
+  assert.equal(expected.cashExpectedCents, 6500)
+  assert.equal(expected.cardExpectedCents, 2000)
 })
 
 // -----------------------------------------------------------------------------

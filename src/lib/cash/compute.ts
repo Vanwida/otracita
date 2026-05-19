@@ -30,7 +30,8 @@ export type MovementKind =
   | 'expense'
   | 'withdrawal'
   | 'deposit'
-  | 'adjustment';
+  | 'adjustment'
+  | 'refund';
 
 export type PaymentMethod = 'cash' | 'card' | 'online';
 
@@ -40,8 +41,15 @@ export interface MovementForCompute {
   amountCents: number;
 }
 
-/** Egresos: resto. Resto: suma. */
-const NEGATIVE_KINDS: ReadonlySet<MovementKind> = new Set(['expense', 'withdrawal']);
+/** Egresos: resto. Resto: suma. `refund` SALE del cajón/datáfono (devolución
+ *  al cliente) — se escribe como apunte positivo (amount_cents siempre > 0)
+ *  y el signo lo pone aquí, igual que expense/withdrawal. Sin esto un
+ *  reembolso SUMABA al esperado y descuadraba la caja en sentido contrario. */
+const NEGATIVE_KINDS: ReadonlySet<MovementKind> = new Set([
+  'expense',
+  'withdrawal',
+  'refund',
+]);
 
 /**
  * Aplica signo según kind. Devuelve un valor con signo: positivo si ingresa
@@ -126,7 +134,19 @@ export const MOVEMENT_KIND_LABELS: Record<MovementKind, string> = {
   withdrawal: 'Retirada',
   deposit: 'Aporte',
   adjustment: 'Ajuste',
+  refund: 'Reembolso',
 };
+
+/**
+ * TODOS los kinds, derivados de las claves de MOVEMENT_KIND_LABELS (que es
+ * `Record<MovementKind, …>` → TS obliga a tener una entrada por kind). Single
+ * source of truth: añadir un kind al type fuerza un label y este array se
+ * actualiza solo. Consumido por la UI (ej. CajaRollup) para no re-listar
+ * kinds a mano y divergir del signo de `isIncoming`/`NEGATIVE_KINDS`.
+ */
+export const ALL_MOVEMENT_KINDS = Object.keys(
+  MOVEMENT_KIND_LABELS,
+) as MovementKind[];
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
