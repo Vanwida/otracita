@@ -335,10 +335,11 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
                   style={{ background: 'var(--table-head-bg)' }}
                 >
                   <h2 className="text-[0.8125rem] font-semibold text-ink">
-                    Clientes con más no-shows
+                    Clientes con más no-shows · histórico
                   </h2>
                   <p className="mt-0.5 text-[0.75rem] text-ink-2">
-                    Histórico de cartera — los que más huecos te dejan.
+                    Acumulado de toda su vida como cliente, no de este periodo
+                    — no cuadra con la tasa de arriba a propósito.
                   </p>
                 </header>
                 <DataTable

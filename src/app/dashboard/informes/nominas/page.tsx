@@ -7,29 +7,32 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
-import { Coins, Lock } from 'lucide-react'
+import { Lock } from 'lucide-react'
+import { parseMonth } from '@/lib/dashboard/month'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
-import Payroll from '../../finanzas/Payroll'
+import PayrollMonthView from './PayrollMonthView'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/nominas — pestaña NÓMINAS del área Informes.
 //
 // Contrato de IA: las Nóminas (lo que cobra cada barbero, parte del P&L)
-// viven en Informes, no en Equipo. Movido 1:1 desde equipo/nominas — misma
-// query (computeMonthlyPayroll vía /api/finanzas/payroll), mismo gate
-// `controlFinanciero`, mismo mes Madrid. /dashboard/equipo/nominas redirige
-// aquí. LÓGICA DE SERVIDOR INTACTA.
+// viven en Informes, no en Equipo. Misma query (computeMonthlyPayroll vía
+// /api/finanzas/payroll), mismo gate `controlFinanciero`.
+// /dashboard/equipo/nominas redirige aquí. LÓGICA DE SERVIDOR INTACTA.
+//
+// El mes ya NO está clavado al actual: se navega con MonthStepper en
+// PayrollMonthView (mismo patrón que el resto de Informes/Finanzas). El
+// servidor solo resuelve el mes inicial desde `?month` (o mes Madrid).
 // -----------------------------------------------------------------------------
 
-function currentMonthMadrid(): string {
-  const iso = new Date().toLocaleDateString('en-CA', {
-    timeZone: 'Europe/Madrid',
-  })
-  return iso.slice(0, 7)
+interface PageProps {
+  searchParams: Promise<{ month?: string }>
 }
 
-export default async function InformesNominasPage() {
+export default async function InformesNominasPage({ searchParams }: PageProps) {
+  const { month: rawMonth } = await searchParams
+
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -40,7 +43,7 @@ export default async function InformesNominasPage() {
   if (!client) redirect('/dashboard/setup')
 
   const payrollEnabled = hasFeature(client, 'controlFinanciero')
-  const month = currentMonthMadrid()
+  const initialMonth = parseMonth(rawMonth)
 
   if (!payrollEnabled) {
     return (
@@ -72,24 +75,7 @@ export default async function InformesNominasPage() {
   return (
     <AreaShell area="informes">
       <AreaContent scroll="region" maxWidth="6xl">
-        <div className="mb-3">
-          <h2
-            className="flex items-center gap-2 font-semibold text-ink"
-            style={{ fontSize: 'var(--text-section-title)' }}
-          >
-            <Coins className="h-4 w-4 text-brand" />
-            Nóminas del mes
-          </h2>
-          <p
-            className="mt-0.5 text-ink-2"
-            style={{ fontSize: 'var(--text-meta)' }}
-          >
-            Lo que cobra cada barbero este mes, desde servicios facturados,
-            productos, propinas y bonos. Plegado por barbero — click para el
-            desglose línea por línea.
-          </p>
-        </div>
-        <Payroll month={month} />
+        <PayrollMonthView initialMonth={initialMonth} />
       </AreaContent>
     </AreaShell>
   )

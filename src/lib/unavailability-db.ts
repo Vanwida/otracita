@@ -21,12 +21,25 @@ export async function loadShopUnavailability(
   clientId: string,
   date: string,
 ): Promise<Map<string, BarberUnavailability>> {
+  // `approved` gatea de verdad el bloqueo: una ausencia NO aprobada no debe
+  // sacar al barbero del motor de reservas (el toggle "Aprobada" del modal
+  // era decorativo — escribía la columna pero nadie la leía). Solo bloquean
+  // las ausencias aprobadas. Backward-compat sin migración: la columna es
+  // `boolean('approved').default(true).notNull()` ⇒ toda fila existente vale
+  // `true` (sigue bloqueando como antes) y no hay NULLs posibles. Solo deja
+  // de bloquear lo que el dueño marcó explícitamente como no aprobado.
   const [breakRows, blockRows] = await Promise.all([
     db.select().from(barberBreaks).where(eq(barberBreaks.clientId, clientId)),
     db
       .select()
       .from(barberBlocks)
-      .where(and(eq(barberBlocks.clientId, clientId), eq(barberBlocks.date, date))),
+      .where(
+        and(
+          eq(barberBlocks.clientId, clientId),
+          eq(barberBlocks.date, date),
+          eq(barberBlocks.approved, true),
+        ),
+      ),
   ]);
 
   const map = new Map<string, BarberUnavailability>();

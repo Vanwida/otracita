@@ -509,7 +509,7 @@ function BarberListItem({
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium text-ink">{barber.name}</span>
             <span className="block truncate text-[11px] uppercase tracking-wide text-ink-3">
-              Profesional
+              {barber.role?.trim() || 'Profesional'}
             </span>
           </span>
         </button>
@@ -1278,8 +1278,14 @@ function BarberServicesEditor({
 
       {catalog.length === 0 ? (
         <p className="text-xs text-ink-3">
-          Aún no hay servicios en el catálogo. Créalos en Ajustes &gt; Reservas
-          online y vuelve para asignarlos.
+          Aún no hay servicios en el catálogo. Créalos en{' '}
+          <Link
+            href="/dashboard/ajustes"
+            className="font-medium text-brand hover:text-brand-strong"
+          >
+            Ajustes › Negocio
+          </Link>{' '}
+          y vuelve para asignarlos.
         </p>
       ) : isLoading ? (
         <p className="text-xs text-ink-3">Cargando servicios…</p>
