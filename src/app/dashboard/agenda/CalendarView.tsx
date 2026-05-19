@@ -21,13 +21,13 @@ import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X } from 'lucide-r
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
 import DayGrid from './DayGrid';
+import AgendaSideRail from './AgendaSideRail';
 import BookingDetailPanel from './BookingDetailPanel';
 import NewBookingPanel from './NewBookingPanel';
 import PromosFillModal from './PromosFillModal';
 import SlotActionMenu from './SlotActionMenu';
 import BarberActionMenu from './BarberActionMenu';
 import type { CalendarEvent, Barber, SlotAction } from './types';
-import { barberColorVar } from './types';
 
 interface Props {
   services: Array<{ name: string; duration: number; price: number }>;
@@ -121,14 +121,16 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
 
   const rangeLabel = () => {
     if (viewMode === 'day') {
-      return format(currentDay, "EEEE, d 'de' MMMM yyyy", { locale: es });
+      // Formato Booksy literal: "Lun., 18 May." (día abreviado + número +
+      // mes abreviado). date-fns 'EEE' ya capitaliza con locale es.
+      return format(currentDay, "EEE, d MMM", { locale: es });
     }
     if (viewMode === 'week') {
       const ws = startOfWeek(currentDay, { weekStartsOn: 1 });
       const we = endOfWeek(currentDay, { weekStartsOn: 1 });
       const startDay = format(ws, 'd');
       const endFull = format(we, "d MMM yyyy", { locale: es });
-      return `${startDay}–${endFull}`;
+      return `${startDay} a ${endFull}`;
     }
     return format(currentDay, 'MMMM yyyy', { locale: es });
   };
@@ -324,21 +326,10 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           ))}
         </div>
 
-        {/* Barber select */}
-        {barbers.length > 0 && (
-          <select
-            value={selectedBarber}
-            onChange={e => setSelectedBarber(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink-2 hover:border-line-strong focus:outline-none focus:border-brand transition-colors"
-          >
-            <option value="all">Todos los barberos</option>
-            {barbers.map(b => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        )}
+        {/* El filtro de barbero ya NO vive aquí: el control PRIMARIo de
+            "quién" son las columnas paralelas (vista día). Aislar a uno
+            solo es secundario y vive en el rail izquierdo ("Empleados y
+            recursos"), igual que en Booksy (screenshot 09.39.31). */}
 
         {/* Promos + import + new booking */}
         {promosEnabled && (
@@ -394,70 +385,58 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         </div>
       )}
 
-      {/* Leyenda de barberos — mismo color determinista por displayOrder
-          que pinta la barra-acento de cada cita (DayGrid). Booksy lo tiene
-          en el panel "Destacar"; aquí va como tira densa bajo los controles.
-          Solo en vista día (las columnas por barbero solo existen ahí) y
-          con equipo configurado. color + nombre = AAA (no solo color). */}
-      {viewMode === 'day' && barbers.length > 0 && (
-        <div
-          role="group"
-          aria-label="Leyenda de colores por barbero"
-          className="flex items-center gap-x-4 gap-y-1 flex-wrap px-4 py-2 border-b border-line bg-overlay/60 shrink-0"
-        >
-          <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-ink-2">
-            Equipo
-          </span>
-          {barbers.map((b) => (
-            <span key={b.id} className="inline-flex items-center gap-1.5 min-w-0">
-              <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: barberColorVar(b.displayOrder) }}
-                aria-hidden="true"
-              />
-              <span className="text-xs font-medium text-ink truncate">{b.name}</span>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Grid */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {viewMode === 'day' ? (
-          <DayGrid
-            date={currentDay}
-            events={events}
+      {/* Cuerpo: rail izquierdo (nav firma de Booksy) + rejilla. El rail
+          solo en Día/Semana — Mes YA es un calendario, un mini-mes al lado
+          sería redundante. La leyenda de equipo y el filtro de barbero
+          viven ahora DENTRO del rail (fuente única, no duplicar). */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {viewMode !== 'month' && (
+          <AgendaSideRail
+            currentDay={currentDay}
+            onSelectDate={(d) => setCurrentDay(d)}
             barbers={barbers}
-            blockedDates={blockedDates}
-            hours={hours}
-            onEventClick={handleEventClick}
-            onSlotClick={handleSlotClick}
-            onBarberClick={(b) => {
-              setSelectedBooking(null);
-              setSlotMenu(null);
-              setBarberMenu(b);
-            }}
-            onEventMove={handleEventMove}
-          />
-        ) : viewMode === 'week' ? (
-          <WeekGrid
-            weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
-            events={events}
-            blockedDates={blockedDates}
-            barbers={barbers}
-            onEventClick={handleEventClick}
-            onSlotClick={handleSlotClick}
-          />
-        ) : (
-          <MonthGrid
-            monthStart={startOfMonth(currentDay)}
-            events={events}
-            blockedDates={blockedDates}
-            barbers={barbers}
-            onEventClick={handleEventClick}
-            onSlotClick={handleSlotClick}
+            selectedBarber={selectedBarber}
+            onSelectBarber={setSelectedBarber}
           />
         )}
+
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+          {viewMode === 'day' ? (
+            <DayGrid
+              date={currentDay}
+              events={events}
+              barbers={barbers}
+              blockedDates={blockedDates}
+              hours={hours}
+              onEventClick={handleEventClick}
+              onSlotClick={handleSlotClick}
+              onBarberClick={(b) => {
+                setSelectedBooking(null);
+                setSlotMenu(null);
+                setBarberMenu(b);
+              }}
+              onEventMove={handleEventMove}
+            />
+          ) : viewMode === 'week' ? (
+            <WeekGrid
+              weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
+              events={events}
+              blockedDates={blockedDates}
+              barbers={barbers}
+              onEventClick={handleEventClick}
+              onSlotClick={handleSlotClick}
+            />
+          ) : (
+            <MonthGrid
+              monthStart={startOfMonth(currentDay)}
+              events={events}
+              blockedDates={blockedDates}
+              barbers={barbers}
+              onEventClick={handleEventClick}
+              onSlotClick={handleSlotClick}
+            />
+          )}
+        </div>
       </div>
 
       {/* Detail panel */}
