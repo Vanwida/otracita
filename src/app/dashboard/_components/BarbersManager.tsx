@@ -509,7 +509,7 @@ function BarberListItem({
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium text-ink">{barber.name}</span>
             <span className="block truncate text-[11px] uppercase tracking-wide text-ink-3">
-              Profesional
+              {barber.role?.trim() || 'Profesional'}
             </span>
           </span>
         </button>
