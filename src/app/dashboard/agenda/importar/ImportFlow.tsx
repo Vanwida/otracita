@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Upload, Loader2, Check, Trash2, AlertCircle, ChevronRight } from 'lucide-react'
+import NumberInput from '../../_components/NumberInput'
 
 // -----------------------------------------------------------------------------
 // ImportFlow — 3 steps:
@@ -145,6 +146,16 @@ export default function ImportFlow() {
                     : value,
             }
           : b,
+      ),
+    )
+  }
+
+  // durationMinutes via NumberInput: ya llega parseado a entero|null. Preserva
+  // la semántica vieja `Number(value) || null` (0 y vacío → null).
+  const updateDuration = (i: number, n: number | null) => {
+    setBookings((prev) =>
+      prev.map((b, idx) =>
+        idx === i ? { ...b, durationMinutes: n || null } : b,
       ),
     )
   }
@@ -330,10 +341,12 @@ export default function ImportFlow() {
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        value={b.durationMinutes ?? ''}
-                        onChange={(e) => updateField(i, 'durationMinutes', e.target.value)}
+                      <NumberInput
+                        value={b.durationMinutes ?? null}
+                        onValueChange={(n) => updateDuration(i, n)}
+                        decimals={0}
+                        min={0}
+                        aria-label="Duración en minutos"
                         className="w-14 bg-transparent border-b border-line focus:border-brand outline-none text-xs font-mono"
                       />
                     </td>

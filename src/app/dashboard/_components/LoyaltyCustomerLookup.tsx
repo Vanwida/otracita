@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Search, Loader2, Gift, Plus, Minus, Check } from 'lucide-react'
 import type { LoyaltyProgress, LoyaltyReward } from '@/lib/loyalty/types'
+import NumberInput from './NumberInput'
 
 // -----------------------------------------------------------------------------
 // LoyaltyCustomerLookup — panel del barbero en /dashboard/fidelidad para
@@ -241,10 +242,14 @@ function LoadedView({
             >
               <Minus className="h-4 w-4" />
             </button>
-            <input
-              type="number"
-              value={adjustDelta}
-              onChange={(e) => setAdjustDelta(e.target.value)}
+            {/* state sigue siendo string: los botones ± y el apply
+                (Number.parseInt) operan sobre el string sin cambios.
+                Sin min/max — el delta admite negativos (restar). */}
+            <NumberInput
+              value={adjustDelta === '' ? null : Number(adjustDelta)}
+              onValueChange={(n) => setAdjustDelta(n === null ? '' : String(n))}
+              decimals={0}
+              aria-label="Ajuste de saldo (positivo regala, negativo resta)"
               className="w-24 bg-surface border border-line rounded-lg px-3 py-2 text-sm font-mono text-center"
             />
             <button
