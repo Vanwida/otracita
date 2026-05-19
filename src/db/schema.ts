@@ -564,6 +564,18 @@ export const customers = pgTable('customers', {
   firstSourceMedium: text('first_source_medium'),     // cpc | organic | social | referral | none
   firstSourceCampaign: text('first_source_campaign'), // utm_campaign si vino vía ads
   firstSourceCapturedAt: timestamp('first_source_captured_at', { withTimezone: true }),
+  // Tarjeta guardada + consentimiento para la tarifa de no-show. Se rellena
+  // SOLO cuando el negocio tiene `clients.noShowFeeCents > 0` y el cliente
+  // reserva por web/PWA (el bot WhatsApp está EXENTO — no hay superficie de
+  // tarjeta). El Customer y el PaymentMethod viven en la cuenta PLATAFORMA
+  // (no en la Connect del barbero): el cobro off-session se hace como
+  // destination charge igual que el resto. Null = sin tarjeta consentida →
+  // no-show no cobra (motivo 'no_card_on_file'). Único registro de
+  // consentimiento explícito del cliente (timestamp + origen del checkbox).
+  stripeCustomerId: text('stripe_customer_id'),
+  defaultPaymentMethodId: text('default_payment_method_id'),
+  cardConsentAt: timestamp('card_consent_at', { withTimezone: true }),
+  cardConsentSource: text('card_consent_source'),      // 'web' | 'pwa'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
