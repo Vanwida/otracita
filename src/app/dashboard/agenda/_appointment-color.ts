@@ -85,7 +85,9 @@ function statusColors(s: AppointmentStatus): {
         accent: 'var(--color-event-native)',
       };
     case 'cancelled':
-      // Cancelada: casi gris, atenuada (el tachado lo añade `treatment`).
+      // Cancelada: casi gris (el tachado lo añade `treatment`). El ink se
+      // oscureció en globals (L0.60→0.45) para PASAR cuerpo AA 4.5:1 sobre
+      // este tinte — antes 3.42:1, único estado que fallaba.
       return {
         bg: 'var(--color-event-cancelled-bg)',
         ink: 'var(--color-event-cancelled-ink)',
@@ -125,7 +127,10 @@ export function appointmentBlockStyle(
       borderLeftStyle: 'solid',
       borderLeftColor: accent,
     },
-    treatment: s === 'cancelled' ? 'line-through opacity-70' : '',
+    // opacity-90 (no 70): a 0.70 el texto compuesto sobre el lienzo caía a
+    // ~3.1:1 aun con el ink oscurecido — fallaba cuerpo AA. A 0.90 da
+    // 4.97:1 (PASA) y el tachado + bg gris + badge siguen marcando "void".
+    treatment: s === 'cancelled' ? 'line-through opacity-90' : '',
   };
 }
 
@@ -146,7 +151,9 @@ export function appointmentChipStyle(
       color: ink,
       boxShadow: `inset 2px 0 0 0 ${accent}`,
     },
-    treatment: s === 'cancelled' ? 'line-through opacity-70' : '',
+    // Ver nota en appointmentBlockStyle: 0.90, no 0.70, para no romper
+    // el contraste AA del texto cancelado.
+    treatment: s === 'cancelled' ? 'line-through opacity-90' : '',
   };
 }
 

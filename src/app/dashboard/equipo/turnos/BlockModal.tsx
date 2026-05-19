@@ -7,14 +7,16 @@ import { HHMM_RE, toMinutes } from './weekdays'
 import type { TurnosBarber } from './TurnosManager'
 
 // -----------------------------------------------------------------------------
-// BlockModal — "Añadir falta de disponibilidad" (screenshot 09.39.52).
+// BlockModal — "Descanso / bloquear hueco" (screenshot 09.39.52).
 //
-// Falta de disponibilidad = bloqueo AD-HOC de una franja concreta de un día
-// (ej. 16:00–16:15), SIN motivo de catálogo — campo Nota libre. A diferencia
-// de la ausencia (día completo + motivo), aquí siempre hay rango horario.
+// Lenguaje de barbero: tapar una franja de un día (ej. 16:00–16:15) para
+// que nadie reserve ahí — un descanso, un recado, una pausa. SIN motivo
+// de catálogo (eso es el "día libre" de AbsenceModal); aquí solo Nota
+// libre y siempre hay rango horario.
 //
-// Escribe vía POST /api/barbers/[id]/blocks con kind:'block'. El motor de
-// disponibilidad y bookings/create ya restan / rechazan esta franja.
+// Escribe vía POST /api/barbers/[id]/blocks con kind:'block' (NO cambia —
+// esto es copy). El motor de disponibilidad y bookings/create ya restan /
+// rechazan esta franja.
 // -----------------------------------------------------------------------------
 
 interface Props {
@@ -74,7 +76,7 @@ export default function BlockModal({ barber, defaultDate, onClose, onSaved }: Pr
     <Modal
       open
       onClose={onClose}
-      title="Añadir falta de disponibilidad"
+      title="Descanso / bloquear hueco"
       subtitle={barber.name}
       size="md"
       footer={

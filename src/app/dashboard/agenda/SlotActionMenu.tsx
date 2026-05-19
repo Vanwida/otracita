@@ -7,13 +7,15 @@ import type { SlotAction } from './types';
 // -----------------------------------------------------------------------------
 // SlotActionMenu — chooser que aparece al clicar un hueco vacío de la agenda
 // (feedback A7, screenshot 10.22.09). Tres acciones sobre la agenda atenuada:
-//   · NUEVA CITA                  → abre NewBookingPanel prefilled
-//   · AÑADIR FALTA DE DISPONIBILIDAD → intent a WS-B (panel slide-in)
-//   · AÑADIR AUSENCIA             → intent a WS-B (modal)
+//   · NUEVA CITA            → abre NewBookingPanel prefilled
+//   · DESCANSO / BLOQUEAR   → intent 'unavailability' (BlockModal)
+//   · AUSENCIA (DÍA LIBRE)  → intent 'absence' (AbsenceModal)
 //
-// Este componente NO sabe qué hace cada acción: emite la SlotAction y
-// CalendarView decide. Las dos últimas hoy van a callbacks stub — WS-B es
-// dueño de esos paneles; aquí sólo se deja la costura limpia.
+// Lenguaje de barbero, no de software: el peluquero piensa "me tomo un
+// descanso" / "libro el día", no "añado una falta de disponibilidad". El
+// `type` de la SlotAction (unavailability/absence/new_booking) y los
+// payloads NO cambian — esto es SOLO copy. Este componente NO sabe qué
+// hace cada acción: emite la SlotAction y CalendarView decide.
 // -----------------------------------------------------------------------------
 
 interface Props {
@@ -40,14 +42,14 @@ const ROWS: Array<{
   },
   {
     type: 'unavailability',
-    label: 'Añadir falta de disponibilidad',
-    hint: 'Bloquear esta franja (no se podrá reservar)',
+    label: 'Descanso / bloquear hueco',
+    hint: 'Tapa esta franja: nadie podrá reservarla',
     Icon: CalendarClock,
   },
   {
     type: 'absence',
-    label: 'Añadir ausencia',
-    hint: 'Marcar al barbero como ausente',
+    label: 'Ausencia (día libre)',
+    hint: 'El barbero no trabaja ese día',
     Icon: CalendarOff,
   },
 ];
