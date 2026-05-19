@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import Modal from '../_components/Modal';
 import {
   CalendarClock,
   CalendarOff,
@@ -107,30 +107,23 @@ export default function BarberActionMenu({
 
   return (
     <>
-      <AnimatePresence>
-        {barber && !absenceOpen && !blockOpen && (
+      <Modal
+        open={!!barber && !absenceOpen && !blockOpen}
+        onClose={onClose}
+        ariaLabel={barber ? `Acciones para ${barber.name}` : 'Acciones del barbero'}
+        size="md"
+        footer={
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full text-center text-xs font-medium text-ink-2 hover:text-ink py-1.5 transition-colors"
+          >
+            Cerrar
+          </button>
+        }
+      >
+        {barber && (
           <>
-            <motion.div
-              key="barber-menu-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              onClick={onClose}
-              className="fixed inset-0 z-[60] bg-[var(--color-scrim)]"
-              aria-hidden="true"
-            />
-            <motion.div
-              key="barber-menu"
-              role="dialog"
-              aria-modal="true"
-              aria-label={`Acciones para ${barber.name}`}
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed left-1/2 top-1/2 z-[61] w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-surface border border-line shadow-2xl overflow-hidden"
-            >
               {/* Cabecera con identidad del barbero */}
               <div className="flex items-center gap-3 px-5 py-4 border-b border-line">
                 <span
@@ -243,20 +236,9 @@ export default function BarberActionMenu({
                   </button>
                 </li>
               </ul>
-
-              <div className="px-5 py-2.5 bg-overlay/40 border-t border-line">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full text-center text-xs font-medium text-ink-2 hover:text-ink py-1.5 transition-colors"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </motion.div>
           </>
         )}
-      </AnimatePresence>
+      </Modal>
 
       {/* Modales reusados de Equipo › Turnos — mismo endpoint, misma
           validación. Al guardar, revalidamos la agenda. */}
