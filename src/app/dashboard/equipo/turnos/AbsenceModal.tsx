@@ -7,15 +7,23 @@ import type { TurnosBarber } from './TurnosManager'
 // -----------------------------------------------------------------------------
 // AbsenceModal — "Añadir ausencia · <barbero>" (screenshot 10.22.23).
 //
-// Ausencia = bloqueo con MOTIVO. v1: "Todo el día" / un día concreto, motivo
-// de un catálogo cerrado (los 4 que valida la API: personal/enfermedad/
-// vacaciones/formacion) y toggle "Aprobado". "Repetir" del screenshot queda
-// fuera de v1 (no hay backend de recurrencia para blocks) — no se pinta para
-// no prometer scope inexistente.
+// Estructura espejo de Booksy:
+//   · "Todo el día" (toggle) + recuento de días.
+//   · "Seleccionar fecha": Fecha + "Repetir".
+//   · Franja horaria SI "Todo el día" está desmarcado (la API y el motor de
+//     disponibilidad ya soportan ausencias parciales vía startTime/endTime).
+//   · "Seleccionar motivo": catálogo cerrado (personal/enfermedad/
+//     vacaciones/formacion — los 4 que valida la API).
+//   · "Aprobado" (toggle).
 //
-// Escribe vía POST /api/barbers/[id]/blocks con kind:'absence'. Día completo
-// ⇒ startTime/endTime omitidos (la API los interpreta como null = todo el
-// día). El motor de disponibilidad ya resta estos bloqueos.
+// Escribe vía POST /api/barbers/[id]/blocks con kind:'absence'. "Todo el día"
+// ⇒ startTime/endTime omitidos (la API los trata como null = día completo);
+// franja ⇒ se envían HH:MM.
+//
+// "Repetir": `barber_blocks` NO tiene columna de recurrencia (FLAG a
+// team-lead). El control se muestra para paridad visual pero deshabilitado
+// con motivo explícito — no mentimos sobre scope; cuando haya schema se
+// activa sin tocar el layout.
 // -----------------------------------------------------------------------------
 
 interface Props {
@@ -32,8 +40,13 @@ const REASONS = [
   { value: 'formacion', label: 'Formación' },
 ] as const
 
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
 export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: Props) {
+  const [allDay, setAllDay] = useState(true)
   const [date, setDate] = useState(defaultDate)
+  const [startTime, setStartTime] = useState('10:00')
+  const [endTime, setEndTime] = useState('14:00')
   const [reason, setReason] = useState<string>('personal')
   const [note, setNote] = useState('')
   const [approved, setApproved] = useState(true)
@@ -44,6 +57,16 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       setError('Selecciona una fecha válida.')
       return
+    }
+    if (!allDay) {
+      if (!HHMM_RE.test(startTime) || !HHMM_RE.test(endTime)) {
+        setError('Las horas deben tener formato HH:MM.')
+        return
+      }
+      if (startTime >= endTime) {
+        setError('La hora de fin debe ser posterior a la de inicio.')
+        return
+      }
     }
     setSaving(true)
     setError(null)
@@ -57,6 +80,7 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
           reason,
           note: note.trim() || undefined,
           approved,
+          ...(allDay ? {} : { startTime, endTime }),
         }),
       })
       if (!res.ok) {
@@ -80,10 +104,9 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-line px-5 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Añadir ausencia</h2>
-            <p className="text-xs text-ink-3 mt-0.5">{barber.name} · todo el día</p>
-          </div>
+          <h2 className="text-lg font-semibold text-ink">
+            Añadir ausencia <span className="text-ink-3">· {barber.name}</span>
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -94,22 +117,74 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-2 mb-1.5">Fecha</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors"
-            />
+        <div className="px-5 py-4 space-y-5">
+          {/* Todo el día */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allDay}
+                onChange={(e) => setAllDay(e.target.checked)}
+                className="h-4 w-4 accent-[var(--color-brand)]"
+              />
+              <span className="text-sm font-medium text-ink">Todo el día</span>
+            </label>
+            <span className="text-xs text-ink-3">{allDay ? '1 día completo' : 'Franja parcial'}</span>
           </div>
 
+          {/* Seleccionar fecha */}
           <div>
-            <label className="block text-xs font-semibold text-ink-2 mb-1.5">Motivo</label>
+            <span className="block text-xs font-semibold uppercase tracking-wide text-ink-3 mb-2">
+              Seleccionar fecha
+            </span>
+            <div className="flex items-center gap-3">
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                aria-label="Fecha de la ausencia"
+                className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors"
+              />
+              {/* Repetir — sin schema de recurrencia (FLAG). Visible para
+                  paridad, deshabilitado con motivo claro. */}
+              <label
+                className="flex items-center gap-1.5 text-xs text-ink-3 cursor-not-allowed"
+                title="Programar repeticiones: próximamente"
+              >
+                <input type="checkbox" disabled className="h-4 w-4" />
+                Repetir
+              </label>
+            </div>
+            {!allDay && (
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  aria-label="Hora de inicio"
+                  className="bg-surface border border-line rounded-lg px-2 py-1.5 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
+                />
+                <span className="text-ink-3 text-sm">-</span>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  aria-label="Hora de fin"
+                  className="bg-surface border border-line rounded-lg px-2 py-1.5 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Seleccionar motivo */}
+          <div>
+            <span className="block text-xs font-semibold uppercase tracking-wide text-ink-3 mb-2">
+              Seleccionar motivo
+            </span>
             <select
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              aria-label="Motivo de la ausencia"
               className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors"
             >
               {REASONS.map((r) => (
@@ -121,8 +196,8 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-ink-2 mb-1.5">
-              Nota <span className="font-normal text-ink-3">(opcional)</span>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-ink-3 mb-2">
+              Nota <span className="font-normal normal-case text-ink-3">(opcional)</span>
             </label>
             <textarea
               value={note}
