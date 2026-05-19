@@ -4,7 +4,11 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
 import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
 import { loadShopUnavailability } from '@/lib/unavailability-db';
-import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
+import {
+  computeBookingSnapshot,
+  hasBookingOverlap,
+  type BookingServiceLine,
+} from '@/lib/bookings/duration';
 import { canonicalPhone } from '@/lib/phone';
 import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
@@ -346,17 +350,21 @@ export async function createBooking(
   const bufferMin = client.serviceBufferMinutes;
   const newStart = toMinutes(time);
   const newEnd = newStart + duration;
-  const overlapsForBarber = (barber: BarberConfig): boolean => {
-    return existingOnDay.some((b) => {
-      const isSame =
-        (b.barberId && b.barberId === barber.id) ||
-        (b.barber && b.barber.trim().toLowerCase() === barber.name.trim().toLowerCase());
-      if (!isSame) return false;
-      const bStart = toMinutes(b.time);
-      const bEnd = bStart + b.duration + bufferMin;
-      return newStart < bEnd && newEnd > bStart;
-    });
-  };
+  // Solape: predicado puro compartido (mismo buffer + match barberId|nombre
+  // en `hasBookingOverlap`, fuente única) en vez de reimplementar el clash
+  // aquí. Al CREAR no hay cita propia → selfId null.
+  const overlapsForBarber = (barber: BarberConfig): boolean =>
+    hasBookingOverlap(
+      {
+        selfId: null,
+        startMinutes: newStart,
+        durationMin: duration,
+        barberId: barber.id,
+        barber: barber.name,
+      },
+      existingOnDay,
+      bufferMin,
+    );
 
   // Recurring breaks (R12) + ad-hoc blocks/absences (R2) — a manual booking
   // with an explicit barber must not land inside one either. The "any
