@@ -67,10 +67,10 @@
   --color-event-cancelled-ink:   oklch(0.60 0.02 60);
 
   /* ─── Agenda density ───
-   * Column header is taller than legacy (40px) to fit avatar + name
-   * (Booksy-dense, A5). Shared by DayGrid column headers AND the time
-   * gutter spacer so hour labels stay aligned with event blocks. */
-  --agenda-col-header-h: 3.25rem;  /* 52px */
+   * Column header fits avatar + nombre + subtítulo de horario en una fila
+   * (paridad Booksy, screenshot 09.39.31). Shared by DayGrid column headers
+   * AND the time gutter spacer so hour labels stay aligned with events. */
+  --agenda-col-header-h: 3.75rem;  /* 60px */
 
   /* ─── Barber identity palette (warm light, 8-deep, by displayOrder) ───
    * Deterministic: column N uses --color-barber-(N mod 8). Used for the
