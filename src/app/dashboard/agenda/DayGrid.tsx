@@ -3,18 +3,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Lock } from 'lucide-react';
+import { Lock, ChevronDown } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
+import { hoursForDate } from '@/lib/availability';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
 const GRID_END = 22 * 60;   // 22:00
 const TOTAL_HEIGHT = (GRID_END - GRID_START) * PX_PER_MIN; // 1680px
-// Must equal --agenda-col-header-h (52px). The gutter wrapper reserves
+// Must equal --agenda-col-header-h (60px). The gutter wrapper reserves
 // header + body so its scroll height matches the column bodies exactly.
-const COL_HEADER_H = 52;
+const COL_HEADER_H = 60;
 // Drag&drop / click-to-create se ajustan a esta rejilla de minutos. 5 min
 // = "ajustar minutos libremente" sin que un pixel mal puesto deje 10:03
 // (R1/R3). El servidor acepta cualquier HH:MM; el snap es UX del cliente.
@@ -79,6 +80,24 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+/**
+ * Subtítulo de la cabecera de columna (paridad Booksy 09.39.31): el HORARIO
+ * que ese barbero trabaja ese día ("11:00 - 20:00") o "Falta de
+ * disponibilidad" si está cerrado/bloqueado. Reusa `hoursForDate` de la
+ * lib de disponibilidad — cero lógica de parseo duplicada. Hoy todos los
+ * barberos heredan el horario de tienda (`hours`); cuando WS-B cablee
+ * horario por-barbero esta función ya consume el shape correcto. */
+function barberDayHoursLabel(
+  dateStr: string,
+  hours: Record<string, string> | null,
+  blocked: boolean,
+): string {
+  if (blocked) return 'Falta de disponibilidad';
+  const h = hoursForDate(dateStr, hours);
+  if (!h) return 'Falta de disponibilidad';
+  return `${h.start} - ${h.end}`;
 }
 
 export default function DayGrid({
@@ -293,6 +312,12 @@ export default function DayGrid({
                     suben. La esquina sup-izq (gutter spacer) va a z-50 para
                     quedar sobre las cabeceras al scrollear en ambos ejes. */}
                 {(() => {
+                  // Subtítulo = horario que trabaja ese barbero ese día, o
+                  // "Falta de disponibilidad" (paridad Booksy 09.39.31).
+                  // Solo para columnas que mapean a un barbero real.
+                  const hoursLabel = col.barber
+                    ? barberDayHoursLabel(dateStr, hours, isBlocked)
+                    : null;
                   const headerInner = (
                     <>
                       <span
@@ -305,25 +330,41 @@ export default function DayGrid({
                         <img
                           src={col.barber.photoUrl}
                           alt=""
-                          className="h-7 w-7 rounded-full object-cover ring-2 shrink-0"
+                          className="h-8 w-8 rounded-full object-cover ring-2 shrink-0"
                           style={{ ['--tw-ring-color' as string]: colColor }}
                         />
                       ) : (
                         <span
-                          className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                          className="h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
                           style={{ backgroundColor: colColor }}
                           aria-hidden="true"
                         >
                           {col.barber ? initials(col.barber.name) : '∅'}
                         </span>
                       )}
-                      <span className="text-[11px] font-bold text-ink-2 truncate max-w-full leading-none">
-                        {col.label}
+                      {/* Nombre (mayúsculas, Booksy) sobre el horario del
+                          día. min-w-0 + truncate para que no rompa columnas
+                          estrechas. */}
+                      <span className="flex flex-col min-w-0 flex-1 text-left">
+                        <span className="text-[0.75rem] font-bold uppercase tracking-wide text-ink truncate leading-tight">
+                          {col.label}
+                        </span>
+                        {hoursLabel && (
+                          <span className="text-[0.6875rem] text-ink-2 truncate leading-tight tabular-nums">
+                            {hoursLabel}
+                          </span>
+                        )}
                       </span>
+                      {col.barber && (
+                        <ChevronDown
+                          className="h-3.5 w-3.5 text-ink-3 shrink-0"
+                          aria-hidden="true"
+                        />
+                      )}
                     </>
                   );
                   const headerClass =
-                    'h-[var(--agenda-col-header-h)] w-full flex flex-col items-center justify-center gap-1 px-2 border-b border-line bg-overlay shrink-0 sticky top-0 z-40';
+                    'h-[var(--agenda-col-header-h)] w-full flex flex-row items-center gap-2 px-2.5 border-b border-line bg-overlay shrink-0 sticky top-0 z-40';
                   // Clic en la cabecera → menú de acciones del barbero
                   // (fix #2). Solo si la columna mapea a un barbero real
                   // (la fallback "Sin asignar"/"Todos" no es accionable).
@@ -331,7 +372,7 @@ export default function DayGrid({
                     <button
                       type="button"
                       onClick={() => onBarberClick(col.barber!)}
-                      aria-label={`Acciones de ${col.barber.name}`}
+                      aria-label={`Acciones de ${col.barber.name}${hoursLabel ? `, ${hoursLabel}` : ''}`}
                       className={`${headerClass} cursor-pointer hover:bg-overlay/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand transition-colors`}
                     >
                       {headerInner}
