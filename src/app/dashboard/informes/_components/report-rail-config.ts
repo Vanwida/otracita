@@ -31,7 +31,7 @@ export const CITAS_RAIL: ReportRailItem[] = [
   },
   {
     label: 'Citas por empleados',
-    href: '/dashboard/equipo',
+    href: '/dashboard/equipo?breakdown=open',
   },
   {
     label: 'Ingresos por citas',
@@ -58,7 +58,7 @@ export const INGRESOS_RAIL: ReportRailItem[] = [
   },
   {
     label: 'Ingresos por empleado',
-    href: '/dashboard/equipo',
+    href: '/dashboard/equipo?breakdown=open',
   },
   {
     label: 'Citas del periodo',

@@ -39,11 +39,16 @@ import BarberBreakdown from '../caja/BarberBreakdown'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{ period?: string; breakdown?: string }>
 }
 
 export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
-  const { period: rawPeriod } = await searchParams
+  const { period: rawPeriod, breakdown } = await searchParams
+
+  // Drill-down de Informes ("Citas/Ingresos por empleado"): el rail enlaza
+  // aquí con ?breakdown=open para que el dueño aterrice en el dato YA
+  // expandido, no en un <details> cerrado que parece que no hay nada.
+  const breakdownOpen = breakdown === 'open'
 
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
@@ -95,10 +100,14 @@ export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
           />
         </div>
 
-        {/* Rendimiento del equipo — colapsable, cerrado por defecto. Mismo
-            componente que el Resumen de Ventas (BarberBreakdown, una sola
-            query, sin duplicar). */}
-        <details className="group mt-4 shrink-0 rounded-control border border-line bg-surface">
+        {/* Rendimiento del equipo — colapsable, cerrado por defecto salvo
+            que se llegue desde el drill-down de Informes (?breakdown=open),
+            que aterriza con el dato ya abierto. Mismo componente que el
+            Resumen de Ventas (BarberBreakdown, una sola query, sin duplicar). */}
+        <details
+          open={breakdownOpen}
+          className="group mt-4 shrink-0 rounded-control border border-line bg-surface"
+        >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
               <span
