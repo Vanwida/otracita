@@ -259,6 +259,19 @@ export const barbers = pgTable('barbers', {
   // Public-page assets. Optional — falls back to name-only rendering.
   photoUrl: text('photo_url'),
   bio: text('bio'),
+  // Perfil Booksy del empleado (screenshots 10.16.45 / 10.16.58). ADITIVO:
+  //  · role          → puesto libre ("Top barber", "Aprendiz"…). null = sin
+  //                     puesto → la UI muestra "Profesional" por defecto.
+  //  · permissionLevel→ nivel de acceso. 'empleado' por defecto (el único
+  //                     que la UI v1 distingue; 'admin' reservado para
+  //                     cuando haya control de acceso por barbero).
+  //  · onlineBookable → si el cliente puede reservar con él online (toggle
+  //                     "Disponible para reservas online" de Booksy).
+  //                     Default true = comportamiento histórico (todos
+  //                     reservables) → cero regresión.
+  role: text('role'),
+  permissionLevel: text('permission_level').default('empleado').notNull(),
+  onlineBookable: boolean('online_bookable').default(true).notNull(),
   // Perfil de pago — 5 piezas que se combinan para calcular nómina mensual.
   // null en salaryType = sin configurar (no aparece en /finanzas/nóminas).
   // Tres presets en UI: fijo (solo base), mixto (base + comisiones),
@@ -392,6 +405,32 @@ export const barberServiceCommissions = pgTable('barber_service_commissions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   uniquePerService: unique('barber_service_commissions_unique').on(
+    table.clientId, table.barberId, table.serviceName,
+  ),
+}));
+
+// Asignación servicio↔barbero (Booksy "SERVICIOS" del detalle de empleado,
+// screenshot 10.16.45/58: qué servicios HACE cada barbero).
+//
+// Semántica deliberada: **un barbero SIN filas aquí hace TODOS los
+// servicios** (cero regresión — hoy todos hacen todo; el motor de
+// disponibilidad no filtra por servicio). En cuanto el barbero tiene ≥1
+// fila, su catálogo queda RESTRINGIDO a esas filas (lista blanca). El dueño
+// activa/desactiva en "EDITAR SERVICIOS".
+//
+// Mismo patrón que `barberServiceCommissions`: el catálogo
+// (`clients.chatbotServices`) es jsonb sin ID estable, así que el match es
+// por NOMBRE exacto (igual que loyalty/promos). Tabla ADITIVA, nada la lee
+// aún en el motor de reservas v1 — es metadato del perfil; conectar el
+// filtro a la disponibilidad/PWA es follow-up explícito.
+export const barberServices = pgTable('barber_services', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  barberId: uuid('barber_id').notNull().references(() => barbers.id, { onDelete: 'cascade' }),
+  serviceName: text('service_name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniquePerService: unique('barber_services_unique').on(
     table.clientId, table.barberId, table.serviceName,
   ),
 }));

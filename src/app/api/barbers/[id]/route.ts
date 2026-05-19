@@ -55,6 +55,11 @@ export async function PATCH(
     blockedDates?: unknown;
     displayOrder?: unknown;
     active?: unknown;
+    // Perfil Booksy del empleado.
+    bio?: unknown;
+    role?: unknown;
+    permissionLevel?: unknown;
+    onlineBookable?: unknown;
     // Perfil de pago — Pro feature, validado abajo.
     salaryType?: unknown;
     salaryBaseCents?: unknown;
@@ -147,6 +152,48 @@ export async function PATCH(
     if (typeof body.active !== 'boolean')
       return Response.json({ error: 'active debe ser boolean.' }, { status: 400 });
     patch.active = body.active;
+  }
+
+  // -- Perfil Booksy del empleado (role / permissionLevel / onlineBookable
+  //    / bio). Todos opcionales; defaults en schema cubren lo no enviado.
+  if ('bio' in body) {
+    if (body.bio === null || body.bio === '') {
+      patch.bio = null;
+    } else if (typeof body.bio === 'string') {
+      patch.bio = body.bio.slice(0, 1000);
+    } else {
+      return Response.json({ error: 'bio debe ser string o null.' }, { status: 400 });
+    }
+  }
+
+  if ('role' in body) {
+    if (body.role === null || body.role === '') {
+      patch.role = null;
+    } else if (typeof body.role === 'string') {
+      patch.role = body.role.trim().slice(0, 80);
+    } else {
+      return Response.json({ error: 'role debe ser string o null.' }, { status: 400 });
+    }
+  }
+
+  if ('permissionLevel' in body) {
+    if (body.permissionLevel === 'empleado' || body.permissionLevel === 'admin') {
+      patch.permissionLevel = body.permissionLevel;
+    } else {
+      return Response.json(
+        { error: "permissionLevel debe ser 'empleado' o 'admin'." },
+        { status: 400 },
+      );
+    }
+  }
+
+  if ('onlineBookable' in body) {
+    if (typeof body.onlineBookable !== 'boolean')
+      return Response.json(
+        { error: 'onlineBookable debe ser boolean.' },
+        { status: 400 },
+      );
+    patch.onlineBookable = body.onlineBookable;
   }
 
   // -- Perfil de pago (Pro feature, gateado a nivel UI; aquí solo validamos

@@ -19,6 +19,12 @@ import {
   ChevronUp,
   ChevronDown,
   Wallet,
+  Scissors,
+  Globe,
+  Shield,
+  FileText,
+  Pencil,
+  Check,
 } from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
@@ -53,6 +59,11 @@ interface BarberRow {
   blockedDates: string[]
   displayOrder: number
   active: boolean
+  // Perfil Booksy del empleado.
+  bio: string | null
+  role: string | null
+  permissionLevel: 'empleado' | 'admin'
+  onlineBookable: boolean
   // Perfil de pago — feature Pro. Null en salaryType = sin configurar.
   salaryType: 'fijo' | 'mixto' | 'autonomo' | null
   salaryBaseCents: number
@@ -61,6 +72,13 @@ interface BarberRow {
   chairRentCents: number
   createdAt: string
   updatedAt: string
+}
+
+/** Servicio del catálogo del local (jsonb, match por nombre). */
+interface ServiceCatalogItem {
+  name: string
+  duration: number
+  price: number
 }
 
 interface BlockingBooking {
@@ -79,9 +97,14 @@ interface BarbersManagerProps {
    *  panel "Cómo cobra" dentro de cada barbero. Si false, el panel se
    *  oculta y el resto del editor de barberos funciona igual. */
   payrollEnabled?: boolean
+  /** Catálogo de servicios del local (para la asignación por barbero). */
+  serviceCatalog?: ServiceCatalogItem[]
 }
 
-export default function BarbersManager({ payrollEnabled = false }: BarbersManagerProps = {}) {
+export default function BarbersManager({
+  payrollEnabled = false,
+  serviceCatalog = [],
+}: BarbersManagerProps = {}) {
   const { data, mutate, isLoading } = useSWR('/api/barbers', fetcher, {
     refreshInterval: 15_000,
     revalidateOnFocus: true,
@@ -360,6 +383,7 @@ export default function BarbersManager({ payrollEnabled = false }: BarbersManage
               barber={selected}
               busy={busyId === selected.id}
               payrollEnabled={payrollEnabled}
+              serviceCatalog={serviceCatalog}
               onPatch={(patch) => patchBarber(selected.id, patch)}
               onDelete={() => deleteBarber(selected.id, selected.name)}
               onSalaryUpdated={() => mutate()}
@@ -529,6 +553,7 @@ function BarberDetail({
   barber,
   busy,
   payrollEnabled,
+  serviceCatalog,
   onPatch,
   onDelete,
   onSalaryUpdated,
@@ -536,6 +561,7 @@ function BarberDetail({
   barber: BarberRow
   busy: boolean
   payrollEnabled: boolean
+  serviceCatalog: ServiceCatalogItem[]
   onPatch: (patch: Partial<BarberRow>) => Promise<void>
   onDelete: () => void
   onSalaryUpdated: () => void
@@ -545,9 +571,21 @@ function BarberDetail({
   // cambiar de barbero ya fuerza un remount con inicializadores frescos
   // (idioma React preferido sobre setState-in-effect).
   const [nameDraft, setNameDraft] = useState(barber.name)
+  const [roleDraft, setRoleDraft] = useState(barber.role ?? '')
+  const [bioDraft, setBioDraft] = useState(barber.bio ?? '')
   const [blockedDraft, setBlockedDraft] = useState('')
   const [customHours, setCustomHours] = useState(barber.hours !== null)
   const [hoursFormKey, setHoursFormKey] = useState(0)
+
+  const onRoleBlur = () => {
+    const next = roleDraft.trim()
+    if (next !== (barber.role ?? '')) onPatch({ role: next || null })
+  }
+
+  const onBioBlur = () => {
+    const next = bioDraft.trim()
+    if (next !== (barber.bio ?? '')) onPatch({ bio: next || null })
+  }
 
   const onNameBlur = () => {
     const name = nameDraft.trim()
@@ -602,9 +640,20 @@ function BarberDetail({
             aria-label="Nombre del profesional"
             className="w-full border-0 bg-transparent px-0 text-lg font-semibold text-ink outline-none focus:ring-0"
           />
-          <span className="mt-1 inline-flex items-center rounded-full border border-line bg-overlay px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-2">
-            Profesional
-          </span>
+          {/* Puesto editable (Booksy "TOP BARBER" bajo el nombre). Vacío
+              ⇒ placeholder; al guardar null se muestra como sin puesto. */}
+          <input
+            type="text"
+            value={roleDraft}
+            onChange={(e) => setRoleDraft(e.target.value)}
+            onBlur={onRoleBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+            aria-label="Puesto del profesional"
+            placeholder="Añadir puesto (p. ej. Top barber)"
+            className="mt-0.5 w-full border-0 bg-transparent px-0 text-xs font-semibold uppercase tracking-wide text-ink-2 outline-none placeholder:font-normal placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-3 focus:ring-0"
+          />
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {busy && (
@@ -650,6 +699,77 @@ function BarberDetail({
             url={barber.photoUrl}
             onChange={(next) => onPatch({ photoUrl: next })}
           />
+        </section>
+
+        {/* ── Servicios que hace ───────────────────────────────────────── */}
+        <section>
+          <BarberServicesEditor
+            barberId={barber.id}
+            catalog={serviceCatalog}
+          />
+        </section>
+
+        {/* ── Perfil (descripción · permiso · reservas online) ──────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-ink">
+            <FileText className="h-4 w-4 text-ink-2" />
+            Perfil
+          </div>
+
+          <div>
+            <label
+              htmlFor={`bio-${barber.id}`}
+              className="mb-1.5 block text-xs font-semibold text-ink-2"
+            >
+              Descripción
+            </label>
+            <textarea
+              id={`bio-${barber.id}`}
+              value={bioDraft}
+              onChange={(e) => setBioDraft(e.target.value.slice(0, 1000))}
+              onBlur={onBioBlur}
+              rows={3}
+              placeholder="Años de experiencia, especialidades, idiomas…"
+              className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand"
+            />
+            <p className="mt-1 text-xs text-ink-3">
+              Aparece en la app al elegir profesional.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div>
+              <label
+                htmlFor={`perm-${barber.id}`}
+                className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-ink-2"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Nivel de permiso
+              </label>
+              <select
+                id={`perm-${barber.id}`}
+                value={barber.permissionLevel}
+                onChange={(e) =>
+                  onPatch({ permissionLevel: e.target.value as BarberRow['permissionLevel'] })
+                }
+                className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+              >
+                <option value="empleado">Empleado</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2 self-end pb-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={barber.onlineBookable}
+                onChange={(e) => onPatch({ onlineBookable: e.target.checked })}
+                className="h-4 w-4 accent-[var(--color-brand)]"
+              />
+              <Globe className="h-4 w-4 text-ink-2" />
+              Disponible para reservas online
+            </label>
+          </div>
         </section>
 
         {/* ── Horario ───────────────────────────────────────────────────── */}
@@ -1051,6 +1171,191 @@ function BarberHoursEditor({
       >
         Volver al horario del negocio
       </button>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// BarberServicesEditor — "SERVICIOS" del detalle Booksy (10.16.45/58): qué
+// servicios HACE este barbero. Lista PLANA del catálogo (decisión: el jsonb
+// no tiene categoría/ID estable; agrupar por categoría es follow-up P2).
+//
+// Modo lectura: muestra lo asignado (o "Hace todos los servicios" si vacío —
+// la semántica del schema). "EDITAR SERVICIOS" entra en modo edición con
+// checkboxes; "Guardar" hace PUT del set completo (mismo patrón que breaks).
+//
+// SWR propio (la lista vive en otra tabla, no en /api/barbers) — se revalida
+// solo y no acopla con el resto del detalle.
+// -----------------------------------------------------------------------------
+const servicesFetcher = (url: string) =>
+  fetch(url).then((r) => r.json() as Promise<{ services: string[] }>)
+
+function BarberServicesEditor({
+  barberId,
+  catalog,
+}: {
+  barberId: string
+  catalog: ServiceCatalogItem[]
+}) {
+  const { data, mutate, isLoading } = useSWR(
+    `/api/barbers/${barberId}/services`,
+    servicesFetcher,
+  )
+  const assigned = data?.services ?? []
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const doesAll = assigned.length === 0
+
+  const fmtPrice = (eur: number) =>
+    eur > 0 ? `${eur.toFixed(2).replace('.', ',')} €` : '—'
+  const fmtDur = (min: number) => (min > 0 ? `${min} min` : '')
+
+  function startEdit() {
+    // Estado inicial del borrador: si no hay asignación explícita, parte de
+    // "todos marcados" (refleja la semántica "sin filas = hace todo" y deja
+    // al dueño desmarcar lo que no hace).
+    setDraft(new Set(doesAll ? catalog.map((s) => s.name) : assigned))
+    setError(null)
+    setEditing(true)
+  }
+
+  function toggle(name: string) {
+    setDraft((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    try {
+      // Si están TODOS marcados, guardamos lista vacía = "hace todos"
+      // (canónico; evita que añadir un servicio nuevo al catálogo lo deje
+      // fuera de este barbero por omisión).
+      const all = catalog.length > 0 && catalog.every((s) => draft.has(s.name))
+      const services = all ? [] : Array.from(draft)
+      const res = await fetch(`/api/barbers/${barberId}/services`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ services }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d?.error || 'No se pudo guardar.')
+        return
+      }
+      await mutate()
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium text-ink">
+          <Scissors className="h-4 w-4 text-ink-2" />
+          Servicios
+        </div>
+        {!editing && catalog.length > 0 && (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Editar servicios
+          </button>
+        )}
+      </div>
+
+      {catalog.length === 0 ? (
+        <p className="text-xs text-ink-3">
+          Aún no hay servicios en el catálogo. Créalos en Ajustes &gt; Reservas
+          online y vuelve para asignarlos.
+        </p>
+      ) : isLoading ? (
+        <p className="text-xs text-ink-3">Cargando servicios…</p>
+      ) : editing ? (
+        <div className="space-y-2">
+          <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+            {catalog.map((s) => (
+              <label
+                key={s.name}
+                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-overlay/50"
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.has(s.name)}
+                  onChange={() => toggle(s.name)}
+                  className="h-4 w-4 shrink-0 accent-[var(--color-brand)]"
+                />
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{s.name}</span>
+                <span className="shrink-0 text-xs tabular-nums text-ink-3">
+                  {fmtDur(s.duration)}
+                </span>
+                <span className="w-16 shrink-0 text-right text-xs font-medium tabular-nums text-ink-2">
+                  {fmtPrice(s.price)}
+                </span>
+              </label>
+            ))}
+          </div>
+          {error && (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+              {error}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-overlay hover:text-ink"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-espresso)] px-4 py-2 text-sm font-semibold text-[var(--color-cream-high)] transition-colors hover:bg-[var(--color-espresso-2)] disabled:opacity-60"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Guardar
+            </button>
+          </div>
+        </div>
+      ) : doesAll ? (
+        <p className="inline-flex items-center gap-1.5 text-xs text-ink-2">
+          <Check className="h-3.5 w-3.5 text-success" />
+          Hace todos los servicios del catálogo.
+        </p>
+      ) : (
+        <ul className="space-y-1 rounded-lg border border-line p-2">
+          {catalog
+            .filter((s) => assigned.includes(s.name))
+            .map((s) => (
+              <li
+                key={s.name}
+                className="flex items-center gap-3 px-2 py-1.5"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{s.name}</span>
+                <span className="shrink-0 text-xs tabular-nums text-ink-3">
+                  {fmtDur(s.duration)}
+                </span>
+                <span className="w-16 shrink-0 text-right text-xs font-medium tabular-nums text-ink-2">
+                  {fmtPrice(s.price)}
+                </span>
+              </li>
+            ))}
+        </ul>
+      )}
     </div>
   )
 }

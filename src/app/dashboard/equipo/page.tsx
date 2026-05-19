@@ -56,6 +56,24 @@ export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
 
   const payrollEnabled = hasFeature(client, 'controlFinanciero')
 
+  // Catálogo de servicios del local (jsonb, mismo shape que usan
+  // comisiones/recepcionista). Lo pasamos al detalle para la asignación
+  // "qué servicios hace este barbero" (match por nombre — sin ID estable).
+  const rawServices = (client.chatbotServices ?? []) as Array<{
+    name?: unknown
+    duration?: unknown
+    price?: unknown
+  }>
+  const serviceCatalog = Array.isArray(rawServices)
+    ? rawServices
+        .map((s) => ({
+          name: typeof s?.name === 'string' ? s.name.trim() : '',
+          duration: Number(s?.duration) || 0,
+          price: Number(s?.price) || 0,
+        }))
+        .filter((s) => s.name.length > 0)
+    : []
+
   // Periodo del desglose por barbero (default "mes": lo que el dueño mira a
   // diario). periodStartIso null = lifetime (sin filtro de fecha).
   const period = resolvePeriod(rawPeriod, 'month')
@@ -71,7 +89,10 @@ export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
       <div className="flex h-full min-h-0 flex-col p-[var(--space-page)]">
         {/* Master-detail: llena el frame del área. */}
         <div className="min-h-0 flex-1">
-          <BarbersManager payrollEnabled={payrollEnabled} />
+          <BarbersManager
+            payrollEnabled={payrollEnabled}
+            serviceCatalog={serviceCatalog}
+          />
         </div>
 
         {/* Rendimiento del equipo — colapsable, cerrado por defecto. Mismo
