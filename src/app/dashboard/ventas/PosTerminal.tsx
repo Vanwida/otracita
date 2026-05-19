@@ -1,0 +1,861 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  Zap,
+  Scissors,
+  ShoppingBag,
+  Calculator,
+  Plus,
+  Minus,
+  Trash2,
+  X,
+  Loader2,
+  Check,
+  Banknote,
+  CreditCard,
+  Smartphone,
+  Globe,
+  Pencil,
+  User,
+  Receipt,
+} from 'lucide-react'
+import NumberInput from '../_components/NumberInput'
+import type {
+  PosBarberItem,
+  PosProductItem,
+  PosServiceItem,
+} from './_data'
+
+// -----------------------------------------------------------------------------
+// PosTerminal — TPV "Nueva venta" estilo Booksy (10.00.16 / .25 / .41 /
+// 01.18 / 01.36). Tres zonas:
+//
+//   1. Rail de categorías (Venta rápida · Servicios · Productos · Cantidad
+//      personalizada) — igual orden y nombres que Booksy.
+//   2. Rejilla de tiles nombre+precio (servicios y/o productos según
+//      categoría). "Cantidad personalizada" abre un numpad como Booksy.
+//   3. Carrito acoplado a la derecha: cliente opcional, líneas con qty +
+//      descuento, TOTAL, botón "Seleccionar método de pago" → grid de
+//      métodos (Efectivo/Tarjeta/Bizum/Online) → CONFIRMAR Y PAGAR →
+//      recibo "Pago finalizado" (Booksy 10.01.18). "Editar artículo"
+//      (10.01.36): precio / descuento % / cantidad.
+//
+// El cobro REUSA el pipeline existente: POST /api/pos/sale crea una reserva
+// sintética vía createBooking y la cierra (auto-factura + caja). Cero
+// duplicación de lógica fiscal. Soporta walk-in SIN cita previa.
+//
+// Tokens only, sin Fraunces, castellano informal, AAA, viewport-fit (la
+// página no scrollea; los paneles internos gestionan su propio overflow).
+// -----------------------------------------------------------------------------
+
+type Category = 'rapida' | 'servicios' | 'productos' | 'personalizada'
+
+type LineKind = 'service' | 'product' | 'custom'
+
+interface CartLine {
+  /** Id único de la línea en el carrito (no del producto). */
+  uid: string
+  kind: LineKind
+  /** Solo para productos: id real para enviar al endpoint. */
+  productId?: string
+  name: string
+  /** Precio unitario en euros (IVA incluido). Editable para custom/servicio. */
+  unitPriceEuros: number
+  quantity: number
+  /** Descuento porcentual 0-100 sobre la línea. */
+  discountPct: number
+  /** Minutos — solo relevante para servicios (alimenta la reserva). */
+  durationMin: number
+}
+
+interface PaymentMethodDef {
+  key: 'cash' | 'card' | 'online'
+  label: string
+  hint: string
+  icon: typeof Banknote
+}
+
+// Booksy 10.00.41: Efectivo / Terminal tarjeta / Bizum / … Mapeamos a los 3
+// métodos que el pipeline de caja entiende (cash/card/online). Bizum es un
+// pago online para el cuadre (entra como 'online' en cash_movements) pero se
+// muestra como su propio tile porque el barbero lo piensa así.
+const PAYMENT_METHODS: PaymentMethodDef[] = [
+  { key: 'cash', label: 'Efectivo', hint: 'Dinero en mano', icon: Banknote },
+  {
+    key: 'card',
+    label: 'Tarjeta',
+    hint: 'Datáfono físico',
+    icon: CreditCard,
+  },
+  { key: 'online', label: 'Bizum', hint: 'Pago por móvil', icon: Smartphone },
+  {
+    key: 'online',
+    label: 'Online',
+    hint: 'Link de pago / Stripe',
+    icon: Globe,
+  },
+]
+
+const CATEGORIES: { key: Category; label: string; icon: typeof Zap }[] = [
+  { key: 'rapida', label: 'Venta rápida', icon: Zap },
+  { key: 'servicios', label: 'Servicios', icon: Scissors },
+  { key: 'productos', label: 'Productos', icon: ShoppingBag },
+  { key: 'personalizada', label: 'Cantidad personalizada', icon: Calculator },
+]
+
+function eur(cents: number): string {
+  return `${(cents / 100).toFixed(2).replace('.', ',')} €`
+}
+
+function eurFromEuros(euros: number): string {
+  return `${euros.toFixed(2).replace('.', ',')} €`
+}
+
+function lineTotalCents(l: CartLine): number {
+  const gross = Math.round(l.unitPriceEuros * 100) * l.quantity
+  const disc = Math.round((gross * l.discountPct) / 100)
+  return Math.max(0, gross - disc)
+}
+
+function uid(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+interface Props {
+  services: PosServiceItem[]
+  products: PosProductItem[]
+  barbers: PosBarberItem[]
+  invoicingEnabled: boolean
+}
+
+type Stage = 'cart' | 'payment' | 'done'
+
+export default function PosTerminal({
+  services,
+  products,
+  barbers,
+  invoicingEnabled,
+}: Props) {
+  const router = useRouter()
+  const [category, setCategory] = useState<Category>('rapida')
+  const [lines, setLines] = useState<CartLine[]>([])
+  const [barberId, setBarberId] = useState<string>(barbers[0]?.id ?? '')
+  const [customerName, setCustomerName] = useState('')
+  const [stage, setStage] = useState<Stage>('cart')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<CartLine | null>(null)
+  const [receipt, setReceipt] = useState<{
+    totalCents: number
+    methodLabel: string
+  } | null>(null)
+
+  // Numpad "Cantidad personalizada" (Booksy 10.00.25).
+  const [customAmount, setCustomAmount] = useState('')
+  const [customDesc, setCustomDesc] = useState('')
+
+  const totalCents = useMemo(
+    () => lines.reduce((acc, l) => acc + lineTotalCents(l), 0),
+    [lines],
+  )
+
+  // Tiles del centro según categoría. "Venta rápida" = servicios más
+  // habituales (todos, Booksy los ordena por uso; sin telemetría aún los
+  // mostramos en orden de catálogo).
+  const tiles = useMemo(() => {
+    if (category === 'productos') {
+      return products.map((p) => ({
+        key: `p-${p.id}`,
+        name: p.name,
+        priceLabel: eur(p.priceCents),
+        onAdd: () => addProduct(p),
+        disabled: p.stockQuantity !== null && p.stockQuantity <= 0,
+      }))
+    }
+    // rapida + servicios → servicios del catálogo
+    return services.map((s, i) => ({
+      key: `s-${i}-${s.name}`,
+      name: s.name,
+      priceLabel: eurFromEuros(s.priceEuros),
+      onAdd: () => addService(s),
+      disabled: false,
+    }))
+  }, [category, services, products])
+
+  function addService(s: PosServiceItem) {
+    setLines((prev) => [
+      ...prev,
+      {
+        uid: uid(),
+        kind: 'service',
+        name: s.name,
+        unitPriceEuros: s.priceEuros,
+        quantity: 1,
+        discountPct: 0,
+        durationMin: s.durationMin,
+      },
+    ])
+  }
+
+  function addProduct(p: PosProductItem) {
+    setLines((prev) => {
+      const existing = prev.find(
+        (l) => l.kind === 'product' && l.productId === p.id,
+      )
+      if (existing) {
+        return prev.map((l) =>
+          l.uid === existing.uid ? { ...l, quantity: l.quantity + 1 } : l,
+        )
+      }
+      return [
+        ...prev,
+        {
+          uid: uid(),
+          kind: 'product',
+          productId: p.id,
+          name: p.name,
+          unitPriceEuros: p.priceCents / 100,
+          quantity: 1,
+          discountPct: 0,
+          durationMin: 0,
+        },
+      ]
+    })
+  }
+
+  function addCustom() {
+    const amount = Number.parseFloat(customAmount.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Escribe un importe válido.')
+      return
+    }
+    setError(null)
+    setLines((prev) => [
+      ...prev,
+      {
+        uid: uid(),
+        kind: 'custom',
+        name: customDesc.trim() || 'Cantidad personalizada',
+        unitPriceEuros: amount,
+        quantity: 1,
+        discountPct: 0,
+        durationMin: 0,
+      },
+    ])
+    setCustomAmount('')
+    setCustomDesc('')
+    setCategory('rapida')
+  }
+
+  function setQuantity(uidv: string, q: number) {
+    setLines((prev) =>
+      prev.map((l) =>
+        l.uid === uidv ? { ...l, quantity: Math.max(1, Math.min(99, q)) } : l,
+      ),
+    )
+  }
+
+  function removeLine(uidv: string) {
+    setLines((prev) => prev.filter((l) => l.uid !== uidv))
+  }
+
+  function applyEdit(next: CartLine) {
+    setLines((prev) => prev.map((l) => (l.uid === next.uid ? next : l)))
+    setEditing(null)
+  }
+
+  function resetSale() {
+    setLines([])
+    setCustomerName('')
+    setStage('cart')
+    setError(null)
+    setReceipt(null)
+    setCategory('rapida')
+  }
+
+  async function confirmPayment(method: PaymentMethodDef) {
+    if (lines.length === 0) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const serviceLines = lines
+        .filter((l) => l.kind === 'service' || l.kind === 'custom')
+        .map((l) => {
+          // Descuento de línea → precio efectivo unitario (el endpoint
+          // factura por línea de servicio; aplicamos el % aquí para que el
+          // total cobrado y la factura coincidan con lo que ve el barbero).
+          const effective =
+            l.unitPriceEuros * l.quantity * (1 - l.discountPct / 100)
+          return {
+            name: l.quantity > 1 ? `${l.name} x${l.quantity}` : l.name,
+            priceEuros: Math.round(effective * 100) / 100,
+            durationMin: l.durationMin,
+          }
+        })
+      const productLines = lines
+        .filter((l) => l.kind === 'product')
+        .map((l) => ({ productId: l.productId!, quantity: l.quantity }))
+
+      const res = await fetch('/api/pos/sale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceLines,
+          productLines,
+          paymentMethod: method.key,
+          barberId: barberId || undefined,
+          customerName: customerName.trim() || undefined,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        totalCents?: number
+        error?: string
+      }
+      if (!res.ok) {
+        setError(data.error ?? 'No se pudo completar el cobro.')
+        setStage('cart')
+        return
+      }
+      setReceipt({
+        totalCents: data.totalCents ?? totalCents,
+        methodLabel: method.label,
+      })
+      setStage('done')
+      // Refresca datos del dashboard (caja, transacciones) en segundo plano.
+      router.refresh()
+    } catch {
+      setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.')
+      setStage('cart')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ── Recibo "Pago finalizado" (Booksy 10.01.18) ─────────────────────────
+  if (stage === 'done' && receipt) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-[var(--space-page)]">
+        <div className="w-full max-w-sm rounded-control border border-line bg-surface p-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
+            <Check className="h-7 w-7 text-success" aria-hidden="true" />
+          </div>
+          <h2
+            className="font-semibold text-ink"
+            style={{ fontSize: 'var(--text-section-title)' }}
+          >
+            Pago finalizado
+          </h2>
+          <p
+            className="mt-3 font-bold text-ink tabular-nums"
+            style={{ fontSize: 'var(--text-figure)' }}
+          >
+            {eur(receipt.totalCents)}
+          </p>
+          <p className="mt-1 text-[0.8125rem] text-ink-2">
+            Cobrado en {receipt.methodLabel}
+            {invoicingEnabled ? ' · factura emitida' : ''}
+          </p>
+          <div className="mt-6 grid grid-cols-1 gap-2">
+            <button
+              type="button"
+              onClick={resetSale}
+              className="btn-primary w-full justify-center"
+            >
+              Nueva venta
+            </button>
+            <a
+              href="/dashboard/ventas/transacciones"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
+            >
+              <Receipt className="h-4 w-4" aria-hidden="true" />
+              Ver transacciones
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* ── 1. Rail de categorías ─────────────────────────────────────── */}
+      <nav
+        aria-label="Categorías de venta"
+        className="flex w-44 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-overlay/40 p-3"
+      >
+        {CATEGORIES.map((c) => {
+          const active = category === c.key
+          const Icon = c.icon
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setCategory(c.key)}
+              aria-current={active ? 'true' : undefined}
+              className={`flex items-center gap-2 rounded-control px-3 py-2.5 text-left text-[0.8125rem] font-semibold transition-colors ${
+                active
+                  ? 'bg-surface text-ink shadow-sm'
+                  : 'text-ink-2 hover:bg-surface/60 hover:text-ink'
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 leading-tight">{c.label}</span>
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* ── 2. Rejilla de tiles / numpad ──────────────────────────────── */}
+      <div className="min-w-0 flex-1 overflow-y-auto p-[var(--space-page)]">
+        {category === 'personalizada' ? (
+          <CustomAmountPad
+            amount={customAmount}
+            desc={customDesc}
+            onAmount={setCustomAmount}
+            onDesc={setCustomDesc}
+            onAdd={addCustom}
+          />
+        ) : tiles.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-[0.8125rem] text-ink-2">
+              {category === 'productos'
+                ? 'No tienes productos dados de alta. Añádelos en Ventas → Productos.'
+                : 'No tienes servicios dados de alta. Añádelos en Ajustes → Negocio.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
+            {tiles.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={t.onAdd}
+                disabled={t.disabled}
+                className="flex min-h-[88px] flex-col justify-between rounded-control border border-line bg-surface p-3 text-left transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="text-[0.8125rem] font-semibold leading-tight text-ink">
+                  {t.name}
+                </span>
+                <span className="mt-2 text-[0.8125rem] font-bold tabular-nums text-ink">
+                  {t.priceLabel}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. Carrito acoplado ───────────────────────────────────────── */}
+      <aside
+        aria-label="Carrito de venta"
+        className="flex w-80 shrink-0 flex-col border-l border-line bg-surface"
+      >
+        {/* Cliente opcional + barbero */}
+        <div className="space-y-2 border-b border-line p-4">
+          <label className="flex items-center gap-2 rounded-control border border-line bg-canvas px-3 py-2">
+            <User className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Cliente (opcional)"
+              className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
+            />
+          </label>
+          {barbers.length > 0 && (
+            <select
+              value={barberId}
+              onChange={(e) => setBarberId(e.target.value)}
+              aria-label="Profesional"
+              className="w-full rounded-control border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            >
+              {barbers.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Líneas */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {lines.length === 0 ? (
+            <div className="flex h-full items-center justify-center p-6">
+              <p className="text-center text-[0.8125rem] text-ink-3">
+                Toca un servicio o producto para empezar la venta.
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {lines.map((l) => (
+                <li key={l.uid} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">
+                        {l.name}
+                      </p>
+                      <p className="mt-0.5 text-[0.75rem] text-ink-2">
+                        {eurFromEuros(l.unitPriceEuros)}
+                        {l.discountPct > 0 ? ` · -${l.discountPct}%` : ''}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+                      {eur(lineTotalCents(l))}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(l.uid, l.quantity - 1)}
+                      disabled={l.quantity <= 1}
+                      aria-label="Restar unidad"
+                      className="rounded-md border border-line p-1 text-ink-2 transition-colors hover:bg-overlay disabled:opacity-40"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <span className="w-7 text-center text-sm font-semibold tabular-nums text-ink">
+                      {l.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(l.uid, l.quantity + 1)}
+                      aria-label="Sumar unidad"
+                      className="rounded-md border border-line p-1 text-ink-2 transition-colors hover:bg-overlay"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(l)}
+                      className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-[0.75rem] font-semibold text-ink-2 transition-colors hover:bg-overlay hover:text-ink"
+                    >
+                      <Pencil className="h-3 w-3" aria-hidden="true" />
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeLine(l.uid)}
+                      aria-label="Quitar artículo"
+                      className="rounded-md p-1 text-ink-3 transition-colors hover:bg-danger/10 hover:text-danger"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Total + acción */}
+        <div className="border-t border-line p-4">
+          {error && (
+            <p className="mb-2 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-[0.75rem] text-danger">
+              {error}
+            </p>
+          )}
+          <div className="mb-3 flex items-baseline justify-between">
+            <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+              Total
+            </span>
+            <span
+              className="font-bold tabular-nums text-ink"
+              style={{ fontSize: 'var(--text-figure)' }}
+            >
+              {eur(totalCents)}
+            </span>
+          </div>
+
+          {stage === 'cart' && (
+            <button
+              type="button"
+              onClick={() => setStage('payment')}
+              disabled={lines.length === 0}
+              className="btn-primary w-full justify-center"
+            >
+              Seleccionar método de pago
+            </button>
+          )}
+
+          {stage === 'payment' && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                {PAYMENT_METHODS.map((m) => {
+                  const Icon = m.icon
+                  return (
+                    <button
+                      key={m.label}
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => void confirmPayment(m)}
+                      className="flex flex-col items-start gap-1 rounded-control border border-line bg-surface p-3 text-left transition-colors hover:border-brand disabled:opacity-50"
+                    >
+                      <Icon
+                        className="h-4 w-4 text-brand"
+                        aria-hidden="true"
+                      />
+                      <span className="text-[0.8125rem] font-semibold text-ink">
+                        {m.label}
+                      </span>
+                      <span className="text-[0.6875rem] text-ink-3">
+                        {m.hint}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setStage('cart')}
+                disabled={submitting}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface px-4 py-2 text-[0.8125rem] font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Cobrando…
+                  </>
+                ) : (
+                  'Volver al carrito'
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Modal "Editar artículo" (Booksy 10.01.36) ─────────────────── */}
+      {editing && (
+        <EditLineModal
+          line={editing}
+          onClose={() => setEditing(null)}
+          onSave={applyEdit}
+          onDelete={() => {
+            removeLine(editing.uid)
+            setEditing(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// CustomAmountPad — numpad "Cantidad personalizada" (Booksy 10.00.25).
+// -----------------------------------------------------------------------------
+function CustomAmountPad({
+  amount,
+  desc,
+  onAmount,
+  onDesc,
+  onAdd,
+}: {
+  amount: string
+  desc: string
+  onAmount: (v: string) => void
+  onDesc: (v: string) => void
+  onAdd: () => void
+}) {
+  const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '←']
+
+  function press(k: string) {
+    if (k === '←') {
+      onAmount(amount.slice(0, -1))
+      return
+    }
+    if (k === ',' && amount.includes(',')) return
+    // Máx 2 decimales.
+    if (amount.includes(',')) {
+      const dec = amount.split(',')[1] ?? ''
+      if (dec.length >= 2 && k !== ',') return
+    }
+    onAmount(amount + k)
+  }
+
+  return (
+    <div className="mx-auto max-w-sm">
+      <label className="mb-1.5 block text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+        Cantidad
+      </label>
+      <div className="mb-3 flex items-center gap-2 rounded-control border border-line bg-surface px-4 py-3">
+        <span className="text-ink-3">€</span>
+        <span
+          className="flex-1 font-bold tabular-nums text-ink"
+          style={{ fontSize: 'var(--text-figure)' }}
+        >
+          {amount || '0,00'}
+        </span>
+      </div>
+      <input
+        type="text"
+        value={desc}
+        onChange={(e) => onDesc(e.target.value)}
+        placeholder="Descripción (opcional)"
+        className="mb-3 w-full rounded-control border border-line bg-surface px-4 py-2.5 text-sm text-ink outline-none focus:border-brand placeholder:text-ink-3"
+      />
+      <div className="grid grid-cols-3 gap-2">
+        {KEYS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => press(k)}
+            className="rounded-control border border-line bg-surface py-4 text-base font-semibold text-ink transition-colors hover:border-brand"
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="btn-primary mt-3 w-full justify-center"
+      >
+        Añadir al recibo
+      </button>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// EditLineModal — "Editar artículo" (Booksy 10.01.36): precio / descuento %
+// / cantidad.
+// -----------------------------------------------------------------------------
+function EditLineModal({
+  line,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  line: CartLine
+  onClose: () => void
+  onSave: (next: CartLine) => void
+  onDelete: () => void
+}) {
+  const [price, setPrice] = useState<number | null>(line.unitPriceEuros)
+  const [discount, setDiscount] = useState<number | null>(line.discountPct)
+  const [qty, setQty] = useState<number | null>(line.quantity)
+  // Productos: el precio unitario es el de catálogo (no se reescribe aquí —
+  // se cambia en Ventas → Productos). Servicio/custom sí editan precio.
+  const priceEditable = line.kind !== 'product'
+
+  function save() {
+    onSave({
+      ...line,
+      unitPriceEuros: priceEditable
+        ? Math.max(0, price ?? 0)
+        : line.unitPriceEuros,
+      discountPct: Math.max(0, Math.min(100, discount ?? 0)),
+      quantity: Math.max(1, Math.min(99, qty ?? 1)),
+    })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold uppercase tracking-widest text-ink">
+              Editar artículo
+            </h3>
+            <p className="mt-0.5 truncate text-xs text-ink-3">{line.name}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="rounded p-1 text-ink-3 transition-colors hover:bg-overlay hover:text-ink-2"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <div>
+            <label className="mb-1.5 block text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+              Precio (€)
+            </label>
+            <NumberInput
+              value={price}
+              onValueChange={setPrice}
+              min={0}
+              decimals={2}
+              step="0.01"
+              disabled={!priceEditable}
+              aria-label="Precio del artículo en euros"
+              className="w-full rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand disabled:opacity-50"
+            />
+            {!priceEditable && (
+              <p className="mt-1 text-[0.6875rem] text-ink-3">
+                El precio de un producto se cambia en Ventas → Productos.
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+                Descuento (%)
+              </label>
+              <NumberInput
+                value={discount}
+                onValueChange={setDiscount}
+                min={0}
+                max={100}
+                decimals={0}
+                aria-label="Descuento porcentual"
+                className="w-full rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+                Cantidad
+              </label>
+              <NumberInput
+                value={qty}
+                onValueChange={setQty}
+                min={1}
+                max={99}
+                decimals={0}
+                aria-label="Cantidad"
+                className="w-full rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 border-t border-line p-4">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-surface px-3 py-2.5 text-[0.8125rem] font-semibold text-danger transition-colors hover:bg-danger/10"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Eliminar
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-control border border-line bg-surface px-3 py-2.5 text-[0.8125rem] font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            className="btn-primary flex-1 justify-center"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
