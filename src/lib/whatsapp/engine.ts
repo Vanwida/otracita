@@ -4,6 +4,7 @@ import { conversations, clients, customers, bookings, analytics, waitlist } from
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { getClientByPhoneNumberId, type BarbershopConfig, type ServiceConfig } from './config';
 import { hasFeature } from '@/lib/billing/tier';
+import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
 import {
   getAvailableSlots,
@@ -487,6 +488,17 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     console.error(`No client found for phoneNumberId: ${msg.phoneNumberId}`);
     return;
   }
+
+  // Canonicalize the WhatsApp sender ONCE here. Meta's Cloud API delivers
+  // `from` as a bare intl number ("34644288663", no +). Every downstream
+  // use in this handler — getOrCreateCustomer, the conversation row, the
+  // bookings/waitlist lookups, and the createBooking call — keys off
+  // msg.from, so reassigning it to the E.164 canonical form makes the bot
+  // resolve to the SAME customer row as the PWA / dashboard (which store
+  // +34644288663). Zero per-callsite changes; one source of truth.
+  // canonicalPhone never throws and keeps unparseable input as-is, so a
+  // weird sender id can never break message handling.
+  msg = { ...msg, from: canonicalPhone(msg.from) };
 
   // Tier gate: el bot WhatsApp es feature Pro+ (o Solo en trial activo).
   // Solo sin trial: dropeamos el mensaje silenciosamente. El barbero

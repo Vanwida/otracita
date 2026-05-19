@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { sendWhatsAppButtons, sendWhatsAppList, sendWhatsAppMessage } from '@/lib/whatsapp/sender';
 import { createTipSession, recordRating } from '@/lib/tips';
 import { dispatchUserNotification } from '@/lib/notifications/dispatch';
+import { canonicalPhone } from '@/lib/phone';
 import type { InferSelectModel } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
@@ -316,10 +317,17 @@ async function sendRatingWhatsAppList(
 // -----------------------------------------------------------------------------
 export async function handleFollowupReply(
   clientRef: Client | { id: string },
-  customerPhone: string,
+  customerPhoneRaw: string,
   replyId: string,
 ): Promise<boolean> {
   if (!isFollowupReplyId(replyId)) return false;
+
+  // Canonicalize so the conversation / ratings / followup-state lookups key
+  // off the SAME E.164 value that bookings + customers store. The engine
+  // already canonicalizes msg.from before calling us; doing it again is
+  // idempotent and makes this entry point correct on its own (defensive —
+  // it guarantees no raw-format identity match path through followup).
+  const customerPhone = canonicalPhone(customerPhoneRaw);
 
   // Resolve full client row so we have Connect / tips config fields.
   const client: Client =

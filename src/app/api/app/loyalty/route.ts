@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { appSessions, clients, customers, loyaltyLedger } from '@/db/schema'
 import { and, eq, gt } from 'drizzle-orm'
 import { computeBalance, computeProgress } from '@/lib/loyalty/compute'
+import { canonicalPhone } from '@/lib/phone'
 import type { LoyaltyConfig } from '@/lib/loyalty/types'
 
 // -----------------------------------------------------------------------------
@@ -67,10 +68,14 @@ export async function GET(request: Request) {
     return Response.json({ loggedIn: true, enabled: true, balance: 0, newCustomer: true })
   }
 
+  // appUsers.phone is E.164 by schema; canonicalize anyway so the customer
+  // match is correct even against rows created before canonicalization
+  // (idempotent for proper E.164).
+  const appUserPhone = canonicalPhone(appUser.phone)
   const [customer] = await db
     .select()
     .from(customers)
-    .where(and(eq(customers.clientId, client.id), eq(customers.phone, appUser.phone)))
+    .where(and(eq(customers.clientId, client.id), eq(customers.phone, appUserPhone)))
   if (!customer) {
     const progress0 = computeProgress(0, config)
     return Response.json({

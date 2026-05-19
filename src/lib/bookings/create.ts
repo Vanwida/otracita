@@ -5,6 +5,7 @@ import { pickBarberForCustomer } from '@/lib/availability';
 import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
 import { loadShopUnavailability } from '@/lib/unavailability-db';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
+import { canonicalPhone } from '@/lib/phone';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 
 // -----------------------------------------------------------------------------
@@ -193,6 +194,14 @@ export async function createBooking(
   if (!customerPhone || !customerPhone.trim()) {
     return { success: false, error: 'validation', message: 'customerPhone is required' };
   }
+  // Canonicalize ONCE here. Every downstream use — barber resolution,
+  // customer match/upsert, the value stored on bookings.customer_phone,
+  // and the push-by-phone lookup — must use the SAME canonical string so
+  // the same human is one customer row regardless of how the phone was
+  // typed (644… / +34644… / 34644… / 0034…). Invalid input keeps its raw
+  // form (canonicalPhone never throws / never empties a non-empty input
+  // that fails to parse) so the booking is still created and attributable.
+  const canonicalCustomerPhone = canonicalPhone(customerPhone);
   if (!service || !service.trim()) {
     return { success: false, error: 'validation', message: 'service is required' };
   }
@@ -338,7 +347,7 @@ export async function createBooking(
     // "Any available" — last-barber-first heuristic.
     resolved = await pickBarberForCustomer({
       clientId: client.id,
-      customerPhone: customerPhone.trim(),
+      customerPhone: canonicalCustomerPhone,
       barbers: activeBarbers,
       date,
       time,
@@ -361,7 +370,7 @@ export async function createBooking(
     .insert(bookings)
     .values({
       clientId: client.id,
-      customerPhone: customerPhone.trim(),
+      customerPhone: canonicalCustomerPhone,
       customerName: customerName ? customerName.trim() : null,
       service,
       // Persist BOTH the id (canonical) and the name (snapshot, survives renames).
@@ -410,7 +419,7 @@ export async function createBooking(
   // WhatsApp bot recognition, /dashboard/clientes, reputation tracking,
   // no-show decay — identify this person consistently.
   try {
-    const normalisedPhone = customerPhone.trim();
+    const normalisedPhone = canonicalCustomerPhone;
     const cleanName = customerName ? customerName.trim() : null;
     // Email aportado por el caller (PWA). Solo lo aceptamos si tiene forma
     // válida — un email basura es peor que NULL (rompe envíos futuros).
@@ -494,7 +503,7 @@ export async function createBooking(
       try {
         const { sendPushByPhone } = await import('@/lib/app-auth/push');
         const dateLabel = created.date.split('-').reverse().join('/'); // DD/MM/YYYY
-        await sendPushByPhone(customerPhone.trim(), client.id, {
+        await sendPushByPhone(canonicalCustomerPhone, client.id, {
           title: `Cita confirmada en ${client.businessName}`,
           body: `${created.service}${resolved ? ` con ${resolved.name}` : ''} · ${dateLabel} a las ${created.time}`,
           url: client.publicSlug ? `/b/${client.publicSlug}/cuenta` : '/',
