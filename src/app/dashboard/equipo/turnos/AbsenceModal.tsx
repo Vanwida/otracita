@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import Modal from '../../_components/Modal'
 import type { TurnosBarber } from './TurnosManager'
 
 // -----------------------------------------------------------------------------
@@ -95,29 +96,34 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[var(--color-scrim-strong)] backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-md my-8 flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-line px-5 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-ink">
-            Añadir ausencia <span className="text-ink-3">· {barber.name}</span>
-          </h2>
+    <Modal
+      open
+      onClose={onClose}
+      title="Añadir ausencia"
+      subtitle={barber.name}
+      size="md"
+      footer={
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="p-2 -mr-2 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink transition-colors"
-            aria-label="Cerrar"
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-ink-2 hover:text-ink hover:bg-overlay transition-colors"
           >
-            <X className="h-4 w-4" />
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-[var(--color-cream-high)] bg-[var(--color-espresso)] hover:bg-[var(--color-espresso-2)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            Guardar
           </button>
         </div>
-
-        <div className="px-5 py-4 space-y-5">
+      }
+    >
+      <div className="px-5 py-4 space-y-5">
           {/* Todo el día */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -218,27 +224,7 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
               {error}
             </div>
           )}
-        </div>
-
-        <div className="border-t border-line px-5 py-4 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-lg text-sm font-medium text-ink-2 hover:text-ink hover:bg-overlay transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-[var(--color-cream-high)] bg-[var(--color-espresso)] hover:bg-[var(--color-espresso-2)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Guardar
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import Modal from '../../_components/Modal'
 import { HHMM_RE, toMinutes } from './weekdays'
 import type { TurnosBarber } from './TurnosManager'
 
@@ -70,82 +71,14 @@ export default function BlockModal({ barber, defaultDate, onClose, onSaved }: Pr
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[var(--color-scrim-strong)] backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-md my-8 flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-line px-5 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Añadir falta de disponibilidad</h2>
-            <p className="text-xs text-ink-3 mt-0.5">{barber.name}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 -mr-2 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink transition-colors"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="px-5 py-4 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-2 mb-1.5">Fecha</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink-2 mb-1.5">Inicio</label>
-              <input
-                type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-ink-2 mb-1.5">Fin</label>
-              <input
-                type="time"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-ink-2 mb-1.5">
-              Nota <span className="font-normal text-ink-3">(opcional)</span>
-            </label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value.slice(0, 500))}
-              rows={2}
-              placeholder="Motivo interno…"
-              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors resize-none"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-line px-5 py-4 flex items-center justify-end gap-2">
+    <Modal
+      open
+      onClose={onClose}
+      title="Añadir falta de disponibilidad"
+      subtitle={barber.name}
+      size="md"
+      footer={
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
@@ -163,7 +96,59 @@ export default function BlockModal({ barber, defaultDate, onClose, onSaved }: Pr
             Guardar
           </button>
         </div>
+      }
+    >
+      <div className="px-5 py-4 space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-2 mb-1.5">Fecha</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-ink-2 mb-1.5">Inicio</label>
+            <input
+              type="time"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-2 mb-1.5">Fin</label>
+            <input
+              type="time"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors tabular-nums"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-ink-2 mb-1.5">
+            Nota <span className="font-normal text-ink-3">(opcional)</span>
+          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value.slice(0, 500))}
+            rows={2}
+            placeholder="Motivo interno…"
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors resize-none"
+          />
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {error}
+          </div>
+        )}
       </div>
-    </div>
+    </Modal>
   )
 }
