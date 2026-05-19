@@ -364,7 +364,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
-          Nueva Reserva
+          Nueva cita
         </button>
 
         {/* Loading indicator */}

@@ -174,7 +174,7 @@ export default function NewBookingPanel({
   };
 
   return (
-    <SlideOver open={isOpen} onClose={onClose} title="Nueva Reserva">
+    <SlideOver open={isOpen} onClose={onClose} title="Nueva cita">
             {/* Form */}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* Cliente — typeahead compartido con el TPV. Si se adjunta
@@ -421,7 +421,7 @@ export default function NewBookingPanel({
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink text-sm font-semibold transition-colors"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {loading ? 'Creando...' : 'Crear Reserva'}
+                {loading ? 'Creando...' : 'Crear cita'}
               </button>
             </form>
     </SlideOver>
