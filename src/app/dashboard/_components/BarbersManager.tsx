@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import useSWR from 'swr'
 import { upload } from '@vercel/blob/client'
 import {
@@ -17,6 +18,7 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
+  Wallet,
 } from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
@@ -610,6 +612,19 @@ function BarberDetail({
               <Loader2 className="h-3 w-3 animate-spin" />
               Guardando…
             </span>
+          )}
+          {/* Nóminas accesible desde Equipo: el ex-Booksy busca lo que cobra
+              el equipo bajo Empleados. No duplicamos el componente Payroll —
+              enlazamos a Informes>Nóminas (su sitio canónico). Solo visible
+              con payroll (Pro), mismo gate que esa página. */}
+          {payrollEnabled && (
+            <Link
+              href="/dashboard/informes/nominas"
+              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              Ver nóminas
+            </Link>
           )}
           <button
             type="button"
