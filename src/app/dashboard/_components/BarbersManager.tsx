@@ -1278,8 +1278,14 @@ function BarberServicesEditor({
 
       {catalog.length === 0 ? (
         <p className="text-xs text-ink-3">
-          Aún no hay servicios en el catálogo. Créalos en Ajustes &gt; Reservas
-          online y vuelve para asignarlos.
+          Aún no hay servicios en el catálogo. Créalos en{' '}
+          <Link
+            href="/dashboard/ajustes"
+            className="font-medium text-brand hover:text-brand-strong"
+          >
+            Ajustes › Negocio
+          </Link>{' '}
+          y vuelve para asignarlos.
         </p>
       ) : isLoading ? (
         <p className="text-xs text-ink-3">Cargando servicios…</p>

@@ -164,8 +164,8 @@ function PerServiceCommissions({ serviceNames }: { serviceNames: string[] }) {
     return (
       <div className="bg-surface border border-line rounded-xl px-4 py-8 text-center text-sm text-ink-3">
         No hay servicios en tu catálogo todavía. Añádelos en{' '}
-        <Link href="/dashboard/negocio" className="text-brand hover:text-brand-strong font-medium">
-          Negocio
+        <Link href="/dashboard/ajustes" className="text-brand hover:text-brand-strong font-medium">
+          Ajustes › Negocio
         </Link>{' '}
         y vuelve aquí para afinar comisiones por servicio.
       </div>
