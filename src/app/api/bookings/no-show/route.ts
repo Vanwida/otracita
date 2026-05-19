@@ -60,14 +60,19 @@ export async function POST(req: NextRequest) {
 
   // -------------------------------------------------------------------------
   // Tarifa por no-show — INTENTO de cobro. NUNCA bloquea ni revierte el
-  // marcado de no_show (ya hecho arriba). HOY siempre devuelve
-  // skipped:'no_card_on_file' en prod porque no se captura tarjeta en la
-  // reserva (ver propuesta de diseño). El mecanismo de cobro + caja queda
-  // listo y aditivo para cuando exista la tarjeta consentida.
+  // marcado de no_show (ya hecho arriba).
   //
-  // `stripeCustomerId` / `savedPaymentMethodId` se pasan null a propósito:
-  // ese dato NO existe en el modelo todavía (depende de la decisión de
-  // captura en la reserva, que toca create.ts — fuera de mi ownership).
+  // La tarjeta + consentimiento se capturan al reservar por web/PWA cuando
+  // el negocio tiene `noShowFeeCents > 0` (ver create.ts + setup-intent).
+  // Se persisten en `customers.stripe_customer_id` /
+  // `default_payment_method_id` / `card_consent_at`. Aquí los leemos y se
+  // los pasamos a `chargeNoShowFee` (off-session destination charge).
+  //
+  // Si NO hay tarjeta consentida (reserva por bot WhatsApp — exento — o
+  // cliente que reservó antes de activar la feature) → chargeNoShowFee
+  // devuelve skipped:'no_card_on_file' y el no_show queda igualmente
+  // marcado. Exigimos card_consent_at: tener PM sin consentimiento
+  // registrado NO autoriza el cargo (SCA/MIT).
   // -------------------------------------------------------------------------
   let noShowFee: NoShowFeeOutcome = {
     status: 'skipped',
@@ -79,15 +84,21 @@ export async function POST(req: NextRequest) {
       .from(clients)
       .where(eq(clients.id, booking.clientId))
     if (clientRow && (clientRow.noShowFeeCents ?? 0) > 0) {
+      const cust = customerRows[0]
+      const hasConsentedCard =
+        !!cust?.stripeCustomerId &&
+        !!cust?.defaultPaymentMethodId &&
+        !!cust?.cardConsentAt
       noShowFee = await chargeNoShowFee({
         clientId: booking.clientId,
         bookingId: booking.id,
         feeCents: clientRow.noShowFeeCents,
         connectAccountId: clientRow.stripeConnectAccountId,
         connectActive: clientRow.stripeConnectStatus === 'active',
-        // Bloqueado por la decisión de captura de tarjeta en la reserva.
-        stripeCustomerId: null,
-        savedPaymentMethodId: null,
+        stripeCustomerId: hasConsentedCard ? cust!.stripeCustomerId : null,
+        savedPaymentMethodId: hasConsentedCard
+          ? cust!.defaultPaymentMethodId
+          : null,
         description: `Tarifa por no presentarse · ${booking.service}`,
       })
     }

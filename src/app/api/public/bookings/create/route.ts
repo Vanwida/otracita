@@ -29,6 +29,25 @@ interface Body {
   notes?: unknown
   /** Atribución capturada en el cliente (utm/referrer). */
   attribution?: unknown
+  /** Consentimiento + tarjeta guardada (no-show fee). El cliente confirma
+   *  el SetupIntent en el navegador y nos manda su id + el checkbox. Se
+   *  RE-VALIDA en createBooking contra Stripe. */
+  cardConsent?: unknown
+}
+
+function sanitizeCardConsent(raw: unknown): {
+  setupIntentId: string
+  consented: boolean
+  source: 'web' | 'pwa'
+} | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const setupIntentId =
+    typeof obj.setupIntentId === 'string' ? obj.setupIntentId.trim() : ''
+  const consented = obj.consented === true
+  const source = obj.source === 'pwa' ? 'pwa' : 'web'
+  if (!setupIntentId || !consented) return null
+  return { setupIntentId, consented, source }
 }
 
 // Source/medium normalizados — debe coincidir con `AttributionSource`/
@@ -132,6 +151,13 @@ export async function POST(req: Request) {
   }
 
   const attribution = sanitizeAttribution(body.attribution)
+  const cardConsent = sanitizeCardConsent(body.cardConsent)
+
+  // El negocio EXIGE tarjeta consentida si tiene tarifa de no-show > 0. Para
+  // reservas web/PWA hay superficie de tarjeta → se exige. (El bot WhatsApp
+  // usa otro endpoint y queda exento por diseño.) fee == 0 → requireCard
+  // false → flujo idéntico al de hoy, no se pide tarjeta.
+  const requireCard = (client.noShowFeeCents ?? 0) > 0
 
   const result = await createBooking({
     client,
@@ -144,6 +170,8 @@ export async function POST(req: Request) {
     source: 'web',
     customerEmail: customerEmail || null,
     attribution,
+    cardConsent,
+    requireCard,
   })
 
   if (!result.success) {
@@ -153,7 +181,12 @@ export async function POST(req: Request) {
         : result.error === 'lead_time' || result.error === 'horizon' || result.error === 'no_barber_available'
           ? 422
           : 400
-    return Response.json({ error: result.message }, { status })
+    // `errorCode` deja a la UI distinguir "rehaz el paso de tarjeta" de un
+    // error de validación normal sin parsear el mensaje.
+    return Response.json(
+      { error: result.message, errorCode: result.error },
+      { status },
+    )
   }
 
   // El email (si vino y es válido) ya lo persiste createBooking en

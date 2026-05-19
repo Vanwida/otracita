@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, Scissors, Euro, Clock, ChevronRight, X, Star } from 'lucide-react'
 import { captureLastTouch, readStoredAttribution } from '@/lib/attribution/capture'
+import NoShowCardModal from './NoShowCardModal'
 
 // -----------------------------------------------------------------------------
 // PublicBookingFlow — flujo de reserva completo, estilo app.
@@ -96,6 +97,16 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAllServices, setShowAllServices] = useState(false)
+  // No-show fee: modal de guardado de tarjeta. `card` se rellena tras pedir
+  // el SetupIntent al backend; null = el negocio no exige tarjeta (fee=0) o
+  // aún no se ha iniciado el paso.
+  const [card, setCard] = useState<null | {
+    publishableKey: string
+    clientSecret: string
+    setupIntentId: string
+    feeCents: number
+  }>(null)
+  const [cardLoading, setCardLoading] = useState(false)
   const [confirmation, setConfirmation] = useState<null | {
     date: string
     time: string
@@ -167,7 +178,54 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     return (grid.byBarber[id] ?? []).length > 0
   }
 
+  // Paso 1 del submit: ¿el negocio exige tarjeta (tarifa no-show)?
+  // Preguntamos al backend (única fuente de verdad: clients.no_show_fee_cents).
+  //   · required:false  → reservar directo (flujo idéntico al de siempre).
+  //   · required:true   → abrir modal de tarjeta; al guardarla con éxito,
+  //     completeBooking(setupIntentId) crea la reserva.
   const submit = async () => {
+    if (!service || !date || !slot) return
+    setError(null)
+    setCardLoading(true)
+    try {
+      const res = await fetch('/api/public/bookings/setup-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          customerPhone: phone.trim(),
+          customerName: name.trim(),
+          customerEmail: email.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'No se pudo iniciar la reserva')
+        setCardLoading(false)
+        return
+      }
+      if (data.required === false) {
+        setCardLoading(false)
+        await completeBooking()
+        return
+      }
+      // Tarjeta requerida → abrir modal con el SetupIntent.
+      setCard({
+        publishableKey: data.publishableKey,
+        clientSecret: data.clientSecret,
+        setupIntentId: data.setupIntentId,
+        feeCents: data.feeCents,
+      })
+      setCardLoading(false)
+    } catch {
+      setError('Error de red')
+      setCardLoading(false)
+    }
+  }
+
+  // Paso 2: crea la reserva. Si vino de la rama con tarjeta, pasa el
+  // setupIntentId confirmado (el backend lo RE-valida contra Stripe).
+  const completeBooking = async (setupIntentId?: string) => {
     if (!service || !date || !slot) return
     setSubmitting(true)
     setError(null)
@@ -196,12 +254,18 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
           // (es la PRIMERA visita conocida). Si hay first-touch, lo usamos
           // para que el primer touch de este customer sea el correcto.
           attribution: firstTouch ?? attribution,
+          cardConsent: setupIntentId
+            ? { setupIntentId, consented: true, source: 'web' as const }
+            : undefined,
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'No se pudo completar la reserva')
         setSubmitting(false)
+        // Si el backend rechaza por tarjeta (raro: el modal ya la validó),
+        // reabrimos el paso de tarjeta limpiando el SetupIntent gastado.
+        if (data.errorCode === 'card_required') setCard(null)
         return
       }
 
@@ -259,7 +323,8 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     setShowAllServices(false)
   }
 
-  const canSubmit = !!slot && !!name.trim() && !!phone.trim() && !submitting
+  const canSubmit =
+    !!slot && !!name.trim() && !!phone.trim() && !submitting && !cardLoading
 
   // ── Success state ────────────────────────────────────────────────────────
   if (confirmation) {
@@ -523,7 +588,11 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
                 boxShadow: canSubmit ? `0 10px 24px -8px var(--brand-strong)` : undefined,
               }}
             >
-              {submitting ? 'Reservando…' : slot ? `Confirmar reserva a las ${slot}` : 'Elige una hora primero'}
+              {submitting || cardLoading
+                ? 'Reservando…'
+                : slot
+                  ? `Confirmar reserva a las ${slot}`
+                  : 'Elige una hora primero'}
             </button>
 
             <p className="text-[11px] text-center" style={{ color: 'var(--theme-ink-3)' }}>
@@ -535,6 +604,20 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
             </p>
           </div>
         </section>
+      )}
+
+      {/* ══════ MODAL: GUARDAR TARJETA (tarifa no-show) ═════════════ */}
+      {card && (
+        <NoShowCardModal
+          publishableKey={card.publishableKey}
+          clientSecret={card.clientSecret}
+          feeCents={card.feeCents}
+          onSaved={(setupIntentId) => {
+            setCard(null)
+            void completeBooking(setupIntentId)
+          }}
+          onClose={() => setCard(null)}
+        />
       )}
 
       {/* ══════ BOTTOM SHEET: TODOS LOS SERVICIOS ═══════════════════ */}

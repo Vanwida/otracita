@@ -6,6 +6,7 @@ import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability
 import { loadShopUnavailability } from '@/lib/unavailability-db';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import { canonicalPhone } from '@/lib/phone';
+import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 
 // -----------------------------------------------------------------------------
@@ -73,6 +74,24 @@ export interface CreateBookingOptions {
     medium: string;
     campaign: string | null;
   } | null;
+  /** Consentimiento + tarjeta guardada para la tarifa de no-show. Solo lo
+   *  manda el caller web/PWA cuando el negocio tiene `noShowFeeCents > 0`.
+   *  `setupIntentId` = el SetupIntent que el cliente confirmó en el
+   *  navegador (se RE-VALIDA aquí contra Stripe — nunca se confía en el
+   *  cliente). `source` = de qué superficie vino el checkbox de consent.
+   *  El bot WhatsApp NUNCA lo manda (exento). Ausente → ver `requireCard`. */
+  cardConsent?: {
+    setupIntentId: string;
+    /** El cliente marcó el checkbox de "acepto el cargo si no me presento". */
+    consented: boolean;
+    source: 'web' | 'pwa';
+  } | null;
+  /** El caller (ruta pública) ya resolvió que esta reserva EXIGE tarjeta
+   *  consentida (negocio con tarifa + origen web/PWA). Si es true y no
+   *  llega un `cardConsent` válido, la reserva se rechaza con
+   *  'card_required' (no se crea). Bot/dashboard nunca lo ponen → flujo
+   *  idéntico al de hoy. */
+  requireCard?: boolean;
 }
 
 export type CreateBookingError =
@@ -80,7 +99,8 @@ export type CreateBookingError =
   | 'overlap'
   | 'lead_time'
   | 'horizon'
-  | 'no_barber_available';
+  | 'no_barber_available'
+  | 'card_required';
 
 export type CreateBookingResult =
   | { success: true; booking: BookingRow }
@@ -188,6 +208,8 @@ export async function createBooking(
     extraServices,
     source = 'bot',
     attribution,
+    cardConsent,
+    requireCard = false,
   } = options;
 
   // --- Input validation -----------------------------------------------------
@@ -258,6 +280,45 @@ export async function createBooking(
       error: 'horizon',
       message: `Solo aceptamos reservas hasta ${client.maxBookingHorizonDays} días por adelantado.`,
     };
+  }
+
+  // --- No-show fee: tarjeta consentida (web/PWA, fee activo) ----------------
+  // `requireCard` lo pone SOLO la ruta pública cuando el negocio tiene
+  // `noShowFeeCents > 0` y la reserva es web/PWA. El bot WhatsApp NUNCA lo
+  // pone (exento — no hay superficie de tarjeta). Si se exige, validamos el
+  // SetupIntent CONTRA STRIPE (nunca confiamos en el cliente) y exigimos el
+  // checkbox de consentimiento. Sin tarjeta válida → la reserva NO se crea.
+  // `verifiedCard` se persiste en el customer más abajo para que el cobro
+  // off-session de no-show (no-show-fee.ts) encuentre Customer + PM.
+  let verifiedCard: { stripeCustomerId: string; paymentMethodId: string } | null =
+    null;
+  if (requireCard) {
+    if (
+      !cardConsent ||
+      !cardConsent.consented ||
+      !cardConsent.setupIntentId ||
+      (cardConsent.source !== 'web' && cardConsent.source !== 'pwa')
+    ) {
+      return {
+        success: false,
+        error: 'card_required',
+        message:
+          'Para reservar online debes guardar una tarjeta y aceptar la tarifa por no presentarte.',
+      };
+    }
+    verifiedCard = await verifyConfirmedSetupIntent({
+      setupIntentId: cardConsent.setupIntentId,
+      clientId: client.id,
+      customerPhone: canonicalCustomerPhone,
+    });
+    if (!verifiedCard) {
+      return {
+        success: false,
+        error: 'card_required',
+        message:
+          'No pudimos validar tu tarjeta. Vuelve a introducirla para completar la reserva.',
+      };
+    }
   }
 
   // --- Load active barbers --------------------------------------------------
@@ -428,6 +489,20 @@ export async function createBooking(
         ? normaliseEmail(customerEmail)
         : null;
 
+    // Tarjeta consentida verificada (solo web/PWA con fee activo). Una
+    // fuente, se aplica igual en insert y update — sin esto el cobro
+    // off-session de no-show no encuentra Customer/PM. Vacío en bot/
+    // dashboard/fee-off → no toca estas columnas (comportamiento idéntico).
+    const cardConsentFields =
+      verifiedCard && cardConsent
+        ? {
+            stripeCustomerId: verifiedCard.stripeCustomerId,
+            defaultPaymentMethodId: verifiedCard.paymentMethodId,
+            cardConsentAt: new Date(),
+            cardConsentSource: cardConsent.source,
+          }
+        : null;
+
     const [existingCustomer] = await db
       .select()
       .from(customers)
@@ -451,6 +526,7 @@ export async function createBooking(
         .set({
           name: cleanName ?? existingCustomer.name,
           ...(backfillEmail ? { email: backfillEmail } : {}),
+          ...(cardConsentFields ?? {}),
           totalBookings: sql`${customers.totalBookings} + 1`,
           lastBookingAt: new Date(),
         })
@@ -470,6 +546,7 @@ export async function createBooking(
         phone: normalisedPhone,
         name: cleanName,
         email: seedEmail,
+        ...(cardConsentFields ?? {}),
         totalBookings: 1,
         lastBookingAt: new Date(),
         firstSource: attribution?.source ?? null,
