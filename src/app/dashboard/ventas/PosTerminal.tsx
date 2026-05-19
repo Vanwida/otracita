@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Zap,
@@ -128,6 +128,16 @@ interface Props {
   products: PosProductItem[]
   barbers: PosBarberItem[]
   invoicingEnabled: boolean
+  /** % de IVA del negocio (España default 21). Para el desglose del recibo. */
+  ivaRate: number
+}
+
+interface ReceiptSnapshot {
+  lines: { name: string; qty: number; totalCents: number }[]
+  /** Total IVA incluido (lo que paga el cliente). */
+  totalCents: number
+  methodLabel: string
+  customerName: string | null
 }
 
 type Stage = 'cart' | 'payment' | 'done'
@@ -137,24 +147,74 @@ export default function PosTerminal({
   products,
   barbers,
   invoicingEnabled,
+  ivaRate,
 }: Props) {
   const router = useRouter()
   const [category, setCategory] = useState<Category>('rapida')
   const [lines, setLines] = useState<CartLine[]>([])
   const [barberId, setBarberId] = useState<string>(barbers[0]?.id ?? '')
   const [customerName, setCustomerName] = useState('')
+  // Cliente conocido adjuntado (Booksy "Sugiere para este cliente"). Si se
+  // adjunta, su teléfono enlaza la venta a su ficha → historial, fidelidad,
+  // followup van a la persona correcta en vez de a un walk-in anónimo.
+  const [linkedPhone, setLinkedPhone] = useState<string | null>(null)
+  const [custMatches, setCustMatches] = useState<
+    { name: string; phone: string }[]
+  >([])
+  const [custOpen, setCustOpen] = useState(false)
+  const custBoxRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<Stage>('cart')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<CartLine | null>(null)
-  const [receipt, setReceipt] = useState<{
-    totalCents: number
-    methodLabel: string
-  } | null>(null)
+  const [receipt, setReceipt] = useState<ReceiptSnapshot | null>(null)
 
   // Numpad "Cantidad personalizada" (Booksy 10.00.25).
   const [customAmount, setCustomAmount] = useState('')
   const [customDesc, setCustomDesc] = useState('')
+
+  // Typeahead de cliente conocido: al teclear el nombre, busca coincidencias
+  // (debounce 250ms). Al adjuntar un cliente fijamos su teléfono; si el
+  // barbero reescribe el nombre a mano, soltamos el enlace (vuelve a ser
+  // walk-in anónimo). Solo busca con ≥2 chars y mientras no haya enlace.
+  useEffect(() => {
+    if (linkedPhone) return
+    const term = customerName.trim()
+    if (term.length < 2) {
+      setCustMatches([])
+      return
+    }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      fetch(`/api/pos/customers?q=${encodeURIComponent(term)}`, {
+        signal: ctrl.signal,
+      })
+        .then((r) => r.json())
+        .then((d: { customers?: { name: string; phone: string }[] }) => {
+          setCustMatches(d.customers ?? [])
+          setCustOpen(true)
+        })
+        .catch(() => {
+          /* búsqueda best-effort; sin coincidencias no rompe la venta */
+        })
+    }, 250)
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [customerName, linkedPhone])
+
+  // Cierra el dropdown al hacer click fuera.
+  useEffect(() => {
+    if (!custOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (custBoxRef.current && !custBoxRef.current.contains(e.target as Node)) {
+        setCustOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [custOpen])
 
   const totalCents = useMemo(
     () => lines.reduce((acc, l) => acc + lineTotalCents(l), 0),
@@ -269,10 +329,27 @@ export default function PosTerminal({
   function resetSale() {
     setLines([])
     setCustomerName('')
+    setLinkedPhone(null)
+    setCustMatches([])
+    setCustOpen(false)
     setStage('cart')
     setError(null)
     setReceipt(null)
     setCategory('rapida')
+  }
+
+  function attachCustomer(c: { name: string; phone: string }) {
+    setCustomerName(c.name || c.phone)
+    setLinkedPhone(c.phone)
+    setCustOpen(false)
+    setCustMatches([])
+  }
+
+  function clearCustomer() {
+    setCustomerName('')
+    setLinkedPhone(null)
+    setCustMatches([])
+    setCustOpen(false)
   }
 
   async function confirmPayment(method: PaymentMethodDef) {
@@ -307,6 +384,10 @@ export default function PosTerminal({
           paymentMethod: method.key,
           barberId: barberId || undefined,
           customerName: customerName.trim() || undefined,
+          // Solo si el barbero adjuntó un cliente conocido: enlaza la venta
+          // a su ficha (historial/fidelidad/followup). Walk-in anónimo →
+          // undefined y el endpoint genera un teléfono sintético por venta.
+          customerPhone: linkedPhone ?? undefined,
         }),
       })
       const data = (await res.json().catch(() => ({}))) as {
@@ -318,9 +399,17 @@ export default function PosTerminal({
         setStage('cart')
         return
       }
+      // Snapshot del ticket para el recibo (Booksy 10.01.18): congelamos
+      // las líneas tal como se cobraron antes de vaciar el carrito.
       setReceipt({
+        lines: lines.map((l) => ({
+          name: l.name,
+          qty: l.quantity,
+          totalCents: lineTotalCents(l),
+        })),
         totalCents: data.totalCents ?? totalCents,
         methodLabel: method.label,
+        customerName: customerName.trim() || null,
       })
       setStage('done')
       // Refresca datos del dashboard (caja, transacciones) en segundo plano.
@@ -334,30 +423,93 @@ export default function PosTerminal({
   }
 
   // ── Recibo "Pago finalizado" (Booksy 10.01.18) ─────────────────────────
+  // Ticket desglosado: líneas + base imponible + IVA + total + método.
+  // El total cobrado lleva el IVA incluido (norma retail España); la base
+  // y la cuota se derivan hacia atrás con el ivaRate del negocio — los
+  // mismos números que la factura VeriFactu emitida en segundo plano.
   if (stage === 'done' && receipt) {
+    const baseCents = Math.round(
+      receipt.totalCents / (1 + ivaRate / 100),
+    )
+    const ivaCents = receipt.totalCents - baseCents
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-[var(--space-page)]">
-        <div className="w-full max-w-sm rounded-control border border-line bg-surface p-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
-            <Check className="h-7 w-7 text-success" aria-hidden="true" />
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-[var(--space-page)]">
+        <div className="w-full max-w-md">
+          <div className="mb-4 flex flex-col items-center text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success/15">
+              <Check className="h-6 w-6 text-success" aria-hidden="true" />
+            </div>
+            <h2
+              className="font-semibold text-ink"
+              style={{ fontSize: 'var(--text-section-title)' }}
+            >
+              Pago finalizado
+            </h2>
           </div>
-          <h2
-            className="font-semibold text-ink"
-            style={{ fontSize: 'var(--text-section-title)' }}
-          >
-            Pago finalizado
-          </h2>
-          <p
-            className="mt-3 font-bold text-ink tabular-nums"
-            style={{ fontSize: 'var(--text-figure)' }}
-          >
-            {eur(receipt.totalCents)}
-          </p>
-          <p className="mt-1 text-[0.8125rem] text-ink-2">
-            Cobrado en {receipt.methodLabel}
-            {invoicingEnabled ? ' · factura emitida' : ''}
-          </p>
-          <div className="mt-6 grid grid-cols-1 gap-2">
+
+          {/* Tarjeta-ticket */}
+          <div className="overflow-hidden rounded-control border border-line bg-surface">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-[0.6875rem] font-bold uppercase tracking-widest text-success">
+                <Check className="h-3 w-3" aria-hidden="true" />
+                Pagado
+              </span>
+              {receipt.customerName && (
+                <span className="truncate text-[0.8125rem] font-semibold text-ink">
+                  {receipt.customerName}
+                </span>
+              )}
+            </div>
+
+            <ul className="divide-y divide-line px-5">
+              {receipt.lines.map((l, i) => (
+                <li
+                  key={i}
+                  className="flex items-baseline justify-between gap-3 py-2.5"
+                >
+                  <span className="min-w-0 truncate text-sm text-ink">
+                    {l.name}
+                    {l.qty > 1 && (
+                      <span className="text-ink-3"> x{l.qty}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                    {eur(l.totalCents)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="space-y-1.5 border-t border-line px-5 py-3 text-[0.8125rem]">
+              <div className="flex justify-between text-ink-2">
+                <span>Base imponible</span>
+                <span className="tabular-nums">{eur(baseCents)}</span>
+              </div>
+              <div className="flex justify-between text-ink-2">
+                <span>IVA ({ivaRate}%)</span>
+                <span className="tabular-nums">{eur(ivaCents)}</span>
+              </div>
+              <div className="flex items-baseline justify-between border-t border-line pt-2">
+                <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+                  Total pagado
+                </span>
+                <span
+                  className="font-bold tabular-nums text-ink"
+                  style={{ fontSize: 'var(--text-figure)' }}
+                >
+                  {eur(receipt.totalCents)}
+                </span>
+              </div>
+              <p className="pt-1 text-[0.75rem] text-ink-3">
+                Cobrado en {receipt.methodLabel}
+                {invoicingEnabled
+                  ? ' · factura emitida automáticamente'
+                  : ''}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={resetSale}
@@ -366,11 +518,15 @@ export default function PosTerminal({
               Nueva venta
             </button>
             <a
-              href="/dashboard/ventas/transacciones"
+              href={
+                invoicingEnabled
+                  ? '/dashboard/ventas/facturas'
+                  : '/dashboard/ventas/transacciones'
+              }
               className="inline-flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
             >
               <Receipt className="h-4 w-4" aria-hidden="true" />
-              Ver transacciones
+              {invoicingEnabled ? 'Ver factura' : 'Ver transacciones'}
             </a>
           </div>
         </div>
@@ -452,18 +608,71 @@ export default function PosTerminal({
         aria-label="Carrito de venta"
         className="flex w-80 shrink-0 flex-col border-l border-line bg-surface"
       >
-        {/* Cliente opcional + barbero */}
+        {/* Cliente opcional (typeahead) + barbero */}
         <div className="space-y-2 border-b border-line p-4">
-          <label className="flex items-center gap-2 rounded-control border border-line bg-canvas px-3 py-2">
-            <User className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Cliente (opcional)"
-              className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
-            />
-          </label>
+          <div ref={custBoxRef} className="relative">
+            <label
+              className={`flex items-center gap-2 rounded-control border bg-canvas px-3 py-2 ${
+                linkedPhone ? 'border-brand' : 'border-line'
+              }`}
+            >
+              <User
+                className={`h-4 w-4 shrink-0 ${
+                  linkedPhone ? 'text-brand' : 'text-ink-3'
+                }`}
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => {
+                  setCustomerName(e.target.value)
+                  if (linkedPhone) setLinkedPhone(null)
+                }}
+                onFocus={() => {
+                  if (custMatches.length > 0) setCustOpen(true)
+                }}
+                placeholder="Cliente (opcional)"
+                aria-label="Buscar o escribir cliente"
+                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
+              />
+              {customerName && (
+                <button
+                  type="button"
+                  onClick={clearCustomer}
+                  aria-label="Quitar cliente"
+                  className="shrink-0 rounded p-0.5 text-ink-3 transition-colors hover:text-ink-2"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </label>
+            {custOpen && custMatches.length > 0 && !linkedPhone && (
+              <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-control border border-line bg-surface shadow-xl">
+                {custMatches.map((c) => (
+                  <li key={c.phone}>
+                    <button
+                      type="button"
+                      onClick={() => attachCustomer(c)}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-overlay"
+                    >
+                      <span className="truncate text-sm font-semibold text-ink">
+                        {c.name || 'Sin nombre'}
+                      </span>
+                      <span className="shrink-0 text-[0.75rem] tabular-nums text-ink-3">
+                        {c.phone}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {linkedPhone && (
+              <p className="mt-1 text-[0.6875rem] text-ink-3">
+                Cliente conocido · la venta entra en su historial
+              </p>
+            )}
+          </div>
           {barbers.length > 0 && (
             <select
               value={barberId}

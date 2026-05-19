@@ -29,6 +29,7 @@ export default async function VentasNuevaVentaPage() {
         products={d.products}
         barbers={d.barbers}
         invoicingEnabled={d.client.invoicingEnabled}
+        ivaRate={d.client.ivaRate}
       />
     </AreaContent>
   )
