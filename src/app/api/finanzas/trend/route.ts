@@ -8,6 +8,7 @@ import {
 import { requireFeature } from '@/lib/billing/tier'
 import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
+import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/trend?months=6
@@ -45,6 +46,20 @@ export async function GET(request: Request) {
 
   const clientId = access.client.id
 
+  // Nómina del periodo por mes — BATCH (1 set de queries para los N meses,
+  // no N×8). Misma fuente que /summary (computeMonthlyPayroll) → el
+  // beneficio del sparkline cuadra con el P&L mensual.
+  const [firstY, firstM] = monthKeys[0].split('-').map(Number)
+  const [lastY, lastM] = monthKeys[monthKeys.length - 1].split('-').map(Number)
+  const spanStart = monthBounds(firstY, firstM).start
+  const spanEnd = monthBounds(lastY, lastM).end
+  const { totalByMonth: payrollByMonth } = await computePayrollTotalsByMonth(
+    clientId,
+    spanStart,
+    spanEnd,
+    monthKeys,
+  )
+
   const results = await Promise.all(
     monthKeys.map(async (mk) => {
       const [year, month] = mk.split('-').map(Number)
@@ -81,7 +96,10 @@ export async function GET(request: Request) {
       const ingresosCents = revenue.totalCents
       const gastosVariablesCents = parseInt(gastosRes[0]?.total ?? '0', 10)
       const costosFijosCents = parseInt(fixedRes[0]?.total ?? '0', 10)
-      const totalGastosCents = gastosVariablesCents + costosFijosCents
+      // Nóminas del equipo este mes — coste real (mismo helper que /summary).
+      // Sin esto el beneficio del mes en el sparkline no cuadra con el P&L.
+      const nominasCents = Math.max(0, payrollByMonth.get(mk) ?? 0)
+      const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
 
       const { ingresosNetosCents } = computeIvaBreakdown({
         ingresosCents,
