@@ -128,6 +128,16 @@ interface Props {
   products: PosProductItem[]
   barbers: PosBarberItem[]
   invoicingEnabled: boolean
+  /** % de IVA del negocio (España default 21). Para el desglose del recibo. */
+  ivaRate: number
+}
+
+interface ReceiptSnapshot {
+  lines: { name: string; qty: number; totalCents: number }[]
+  /** Total IVA incluido (lo que paga el cliente). */
+  totalCents: number
+  methodLabel: string
+  customerName: string | null
 }
 
 type Stage = 'cart' | 'payment' | 'done'
@@ -137,6 +147,7 @@ export default function PosTerminal({
   products,
   barbers,
   invoicingEnabled,
+  ivaRate,
 }: Props) {
   const router = useRouter()
   const [category, setCategory] = useState<Category>('rapida')
@@ -156,10 +167,7 @@ export default function PosTerminal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<CartLine | null>(null)
-  const [receipt, setReceipt] = useState<{
-    totalCents: number
-    methodLabel: string
-  } | null>(null)
+  const [receipt, setReceipt] = useState<ReceiptSnapshot | null>(null)
 
   // Numpad "Cantidad personalizada" (Booksy 10.00.25).
   const [customAmount, setCustomAmount] = useState('')
@@ -391,9 +399,17 @@ export default function PosTerminal({
         setStage('cart')
         return
       }
+      // Snapshot del ticket para el recibo (Booksy 10.01.18): congelamos
+      // las líneas tal como se cobraron antes de vaciar el carrito.
       setReceipt({
+        lines: lines.map((l) => ({
+          name: l.name,
+          qty: l.quantity,
+          totalCents: lineTotalCents(l),
+        })),
         totalCents: data.totalCents ?? totalCents,
         methodLabel: method.label,
+        customerName: customerName.trim() || null,
       })
       setStage('done')
       // Refresca datos del dashboard (caja, transacciones) en segundo plano.
@@ -407,30 +423,93 @@ export default function PosTerminal({
   }
 
   // ── Recibo "Pago finalizado" (Booksy 10.01.18) ─────────────────────────
+  // Ticket desglosado: líneas + base imponible + IVA + total + método.
+  // El total cobrado lleva el IVA incluido (norma retail España); la base
+  // y la cuota se derivan hacia atrás con el ivaRate del negocio — los
+  // mismos números que la factura VeriFactu emitida en segundo plano.
   if (stage === 'done' && receipt) {
+    const baseCents = Math.round(
+      receipt.totalCents / (1 + ivaRate / 100),
+    )
+    const ivaCents = receipt.totalCents - baseCents
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-[var(--space-page)]">
-        <div className="w-full max-w-sm rounded-control border border-line bg-surface p-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
-            <Check className="h-7 w-7 text-success" aria-hidden="true" />
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-[var(--space-page)]">
+        <div className="w-full max-w-md">
+          <div className="mb-4 flex flex-col items-center text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success/15">
+              <Check className="h-6 w-6 text-success" aria-hidden="true" />
+            </div>
+            <h2
+              className="font-semibold text-ink"
+              style={{ fontSize: 'var(--text-section-title)' }}
+            >
+              Pago finalizado
+            </h2>
           </div>
-          <h2
-            className="font-semibold text-ink"
-            style={{ fontSize: 'var(--text-section-title)' }}
-          >
-            Pago finalizado
-          </h2>
-          <p
-            className="mt-3 font-bold text-ink tabular-nums"
-            style={{ fontSize: 'var(--text-figure)' }}
-          >
-            {eur(receipt.totalCents)}
-          </p>
-          <p className="mt-1 text-[0.8125rem] text-ink-2">
-            Cobrado en {receipt.methodLabel}
-            {invoicingEnabled ? ' · factura emitida' : ''}
-          </p>
-          <div className="mt-6 grid grid-cols-1 gap-2">
+
+          {/* Tarjeta-ticket */}
+          <div className="overflow-hidden rounded-control border border-line bg-surface">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-[0.6875rem] font-bold uppercase tracking-widest text-success">
+                <Check className="h-3 w-3" aria-hidden="true" />
+                Pagado
+              </span>
+              {receipt.customerName && (
+                <span className="truncate text-[0.8125rem] font-semibold text-ink">
+                  {receipt.customerName}
+                </span>
+              )}
+            </div>
+
+            <ul className="divide-y divide-line px-5">
+              {receipt.lines.map((l, i) => (
+                <li
+                  key={i}
+                  className="flex items-baseline justify-between gap-3 py-2.5"
+                >
+                  <span className="min-w-0 truncate text-sm text-ink">
+                    {l.name}
+                    {l.qty > 1 && (
+                      <span className="text-ink-3"> x{l.qty}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                    {eur(l.totalCents)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="space-y-1.5 border-t border-line px-5 py-3 text-[0.8125rem]">
+              <div className="flex justify-between text-ink-2">
+                <span>Base imponible</span>
+                <span className="tabular-nums">{eur(baseCents)}</span>
+              </div>
+              <div className="flex justify-between text-ink-2">
+                <span>IVA ({ivaRate}%)</span>
+                <span className="tabular-nums">{eur(ivaCents)}</span>
+              </div>
+              <div className="flex items-baseline justify-between border-t border-line pt-2">
+                <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+                  Total pagado
+                </span>
+                <span
+                  className="font-bold tabular-nums text-ink"
+                  style={{ fontSize: 'var(--text-figure)' }}
+                >
+                  {eur(receipt.totalCents)}
+                </span>
+              </div>
+              <p className="pt-1 text-[0.75rem] text-ink-3">
+                Cobrado en {receipt.methodLabel}
+                {invoicingEnabled
+                  ? ' · factura emitida automáticamente'
+                  : ''}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={resetSale}
@@ -439,11 +518,15 @@ export default function PosTerminal({
               Nueva venta
             </button>
             <a
-              href="/dashboard/ventas/transacciones"
+              href={
+                invoicingEnabled
+                  ? '/dashboard/ventas/facturas'
+                  : '/dashboard/ventas/transacciones'
+              }
               className="inline-flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
             >
               <Receipt className="h-4 w-4" aria-hidden="true" />
-              Ver transacciones
+              {invoicingEnabled ? 'Ver factura' : 'Ver transacciones'}
             </a>
           </div>
         </div>
