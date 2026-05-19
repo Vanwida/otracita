@@ -400,18 +400,21 @@ export default function DayGrid({
                   }}
                   onDrop={e => handleColumnDrop(e, col.barber?.id ?? null)}
                 >
-                  {/* Business hours dimming — before open */}
+                  {/* Fuera de horario — antes de abrir. .offhours-overlay
+                      (FIX 3): tinte cálido + trama diagonal → "cerrado" se
+                      lee de un vistazo sin pisar el acento de barbero (barra
+                      sólida saturada, nunca compite con el tinte). */}
                   {businessHours && businessHours.open > GRID_START && (
                     <div
-                      className="absolute left-0 right-0 top-0 bg-overlay pointer-events-none z-10"
+                      className="absolute left-0 right-0 top-0 offhours-overlay pointer-events-none z-10"
                       style={{ height: (businessHours.open - GRID_START) * PX_PER_MIN }}
                     />
                   )}
 
-                  {/* Business hours dimming — after close */}
+                  {/* Fuera de horario — tras cerrar. */}
                   {businessHours && businessHours.close < GRID_END && (
                     <div
-                      className="absolute left-0 right-0 bg-overlay pointer-events-none z-10"
+                      className="absolute left-0 right-0 offhours-overlay pointer-events-none z-10"
                       style={{
                         top: (businessHours.close - GRID_START) * PX_PER_MIN,
                         height: (GRID_END - businessHours.close) * PX_PER_MIN,

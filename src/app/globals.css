@@ -72,6 +72,26 @@
    * AND the time gutter spacer so hour labels stay aligned with events. */
   --agenda-col-header-h: 3.75rem;  /* 60px */
 
+  /* ─── Agenda off-hours / blocked (FIX 3) ───
+   * El cuerpo de columna es blanco (--color-surface). Antes la franja
+   * fuera-de-horario usaba --color-overlay (#F0EBE3 ≈ oklch 0.93) — sobre
+   * blanco era casi invisible: el barbero no distinguía abierto de cerrado.
+   *
+   * Un tinte plano NO puede a la vez (a) separarse claramente del blanco
+   * y (b) mantener 3:1 estricto contra el acento de barbero (L 0.58–0.64),
+   * porque el acento es de tono medio: cualquier tinte bastante oscuro para
+   * "cantar" sobre blanco se acerca al acento. Solución de producto (igual
+   * que Booksy / Google Calendar): tinte cálido moderado MÁS trama diagonal.
+   * La trama es señal de TEXTURA (no compite en luminancia) → la zona
+   * cerrada es inequívoca; el tinte se queda claro para que el spine/avatar
+   * y el borde-acento de cita (barra sólida saturada, nunca tinte) lean
+   * encima. tinte L0.86 ≈ 1.44:1 vs blanco (claramente "no es zona de
+   * trabajo") + hatch de marca con presencia real (antes negro 4%, invisible
+   * sobre el canvas cálido). */
+  --color-agenda-offhours:      oklch(0.86 0.020 60);          /* tinte franja cerrada */
+  --color-agenda-offhours-line: oklch(0.74 0.030 55 / 0.30);   /* trama suave franja cerrada */
+  --color-agenda-blocked-line:  oklch(0.62 0.080 45 / 0.26);   /* trama día bloqueado (más fuerte) */
+
   /* ─── Barber identity palette (warm light, 8-deep, by displayOrder) ───
    * Deterministic: column N uses --color-barber-(N mod 8). Used for the
    * column spine, the avatar fallback chip, and the event left accent
@@ -217,14 +237,31 @@ body {
 
 /* Utilities */
 @layer utilities {
+  /* Fuera de horario (antes/después de abrir): tinte cálido + trama
+     diagonal suave. La textura hace inequívoca la zona "no reservable"
+     sin oscurecer tanto el tinte que pise el acento de barbero. */
+  .offhours-overlay {
+    background:
+      var(--color-agenda-offhours)
+      repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 7px,
+        var(--color-agenda-offhours-line) 7px,
+        var(--color-agenda-offhours-line) 14px
+      );
+  }
+
+  /* Día bloqueado: misma trama, más marcada (token, no negro 4% que no se
+     veía sobre el canvas cálido). Visible pero deja leer las citas debajo. */
   .blocked-overlay {
     background:
       repeating-linear-gradient(
         -45deg,
         transparent,
         transparent 6px,
-        oklch(0 0 0 / 0.04) 6px,
-        oklch(0 0 0 / 0.04) 12px
+        var(--color-agenda-blocked-line) 6px,
+        var(--color-agenda-blocked-line) 12px
       );
   }
 
