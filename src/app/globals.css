@@ -70,7 +70,10 @@
   --color-event-noshow-bg:       oklch(0.93 0.06 29);   /* red tint — no-show */
   --color-event-noshow-ink:      oklch(0.50 0.16 29);
   --color-event-cancelled-bg:    oklch(0.95 0.01 60);   /* near-grey — cancelled */
-  --color-event-cancelled-ink:   oklch(0.60 0.02 60);
+  /* L 0.60 daba 3.42:1 sobre el tinte cancelado (FALLA cuerpo AA 4.5:1, el
+   * único estado que fallaba). Bajado a 0.45 → 6.45:1 (PASA). El "void"
+   * visual lo siguen dando bg gris + tachado + badge, no un texto ilegible. */
+  --color-event-cancelled-ink:   oklch(0.45 0.02 60);
 
   /* ─── Agenda density ───
    * Column header fits avatar + nombre + subtítulo de horario en una fila
@@ -78,16 +81,21 @@
    * AND the time gutter spacer so hour labels stay aligned with events. */
   --agenda-col-header-h: 3.75rem;  /* 60px */
 
-  /* ─── Agenda appointment block — escala tipográfica (FIX B) ───
+  /* ─── Agenda appointment block — escala tipográfica (FIX B → UX v2) ───
    * Antes el bloque usaba text-[9px]/[10px] dispersos: ilegible y
-   * frágil (evidencia agenda-block-fonts.png). Booksy ronda 12–13px en
-   * hora/nombre. Escala compartida (Día y Semana la consumen, cero px
-   * mágicos sueltos): hora bold ~13, cliente prominente ~13, servicio
-   * legible ~12, estado/meta ~11. Jerarquía clara, bloque sólido. */
-  --agenda-ev-time:    0.8125rem;  /* 13px — rango horario (bold) */
-  --agenda-ev-client:  0.8125rem;  /* 13px — nombre del cliente */
-  --agenda-ev-service: 0.75rem;    /* 12px — servicio */
-  --agenda-ev-meta:    0.6875rem;  /* 11px — estado/etiqueta inline */
+   * frágil (evidencia agenda-block-fonts.png). El barbero VIVE en esta
+   * pantalla todo el día y la encontraba pequeña a 13/12/11. Subida
+   * deliberada un escalón claro por encima (no "un poco más"): hora y
+   * cliente 15px (la info que se lee a un metro), servicio 13.5px,
+   * meta 12px. Escala compartida (Día y Semana la consumen, cero px
+   * mágicos sueltos). Jerarquía clara, bloque sólido. No existe mínimo
+   * WCAG de tamaño de fuente — el estándar duro es CONTRASTE (verificado
+   * numéricamente en _appointment-color.ts contra cada tinte de estado:
+   * ≥4.5:1 cuerpo / ≥3:1 grande). */
+  --agenda-ev-time:    0.9375rem;  /* 15px — rango horario (bold) */
+  --agenda-ev-client:  0.9375rem;  /* 15px — nombre del cliente */
+  --agenda-ev-service: 0.84375rem; /* 13.5px — servicio */
+  --agenda-ev-meta:    0.75rem;    /* 12px — estado/etiqueta inline */
 
   /* ─── Agenda off-hours / blocked (FIX 3) ───
    * El cuerpo de columna es blanco (--color-surface). Antes la franja
