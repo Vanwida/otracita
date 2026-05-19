@@ -15,9 +15,10 @@ import {
   format,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, CheckCircle2, Clock3, AlertCircle, UserX, CircleDollarSign } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleDollarSign } from 'lucide-react';
 import type { Barber } from './types';
 import { barberColorVar } from './types';
+import { STATUS_LEGEND } from './_appointment-color';
 
 // -----------------------------------------------------------------------------
 // AgendaSideRail — el rail izquierdo firma de Booksy (screenshot 09.39.31).
@@ -233,22 +234,15 @@ export default function AgendaSideRail({
           Estado de la cita
         </span>
         <ul className="space-y-1">
-          <li className="flex items-center gap-1.5 text-[0.75rem] text-ink">
-            <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" aria-hidden="true" />
-            Confirmada
-          </li>
-          <li className="flex items-center gap-1.5 text-[0.75rem] text-ink">
-            <Clock3 className="h-3.5 w-3.5 text-warning shrink-0" aria-hidden="true" />
-            Sin confirmar
-          </li>
-          <li className="flex items-center gap-1.5 text-[0.75rem] text-ink">
-            <UserX className="h-3.5 w-3.5 text-danger shrink-0" aria-hidden="true" />
-            Inasistencia
-          </li>
-          <li className="flex items-center gap-1.5 text-[0.75rem] text-ink">
-            <AlertCircle className="h-3.5 w-3.5 text-ink-3 shrink-0" aria-hidden="true" />
-            Cancelada
-          </li>
+          {STATUS_LEGEND.map(({ icon: Icon, label, tone }) => (
+            <li
+              key={label}
+              className="flex items-center gap-1.5 text-[0.75rem] text-ink"
+            >
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${tone}`} aria-hidden="true" />
+              {label}
+            </li>
+          ))}
         </ul>
       </div>
 

@@ -172,6 +172,25 @@ export function statusBadge(
 export const CONFIRMED_ICON: LucideIcon = CalendarClock;
 
 /**
+ * Leyenda de estado de cita — el panel "Destacados" del rail (paridad
+ * Booksy 09.39.31). DERIVA de `statusBadge`/`CONFIRMED_ICON` (misma fuente
+ * que pinta cada tile) para que la leyenda NUNCA mienta: si cambia el
+ * ícono/etiqueta de un estado en el grid, la leyenda cambia con él. Orden
+ * Booksy: confirmada → hecha → no vino → cancelada. `confirmed` no tiene
+ * badge en el tile (estado por defecto = relleno sólido); en la leyenda sí
+ * se nombra con el ícono genérico para que el usuario lo reconozca. */
+export const STATUS_LEGEND: ReadonlyArray<{
+  icon: LucideIcon;
+  label: string;
+  tone: string;
+}> = [
+  { icon: CONFIRMED_ICON, label: 'Confirmada', tone: 'text-ink-2' },
+  statusBadge('completed')!,
+  statusBadge('no_show')!,
+  statusBadge('cancelled')!,
+];
+
+/**
  * Resuelve el `displayOrder` de una cita desde su nombre de barbero usando
  * la lista de barberos del tenant. Para Semana/Mes, que solo tienen
  * `event.barber` (nombre) y no la columna. Case-insensitive, igual que el
