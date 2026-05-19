@@ -7,7 +7,7 @@ import { Lock, ChevronDown } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
-import { hoursForDate } from '@/lib/availability';
+import { hoursForDate } from '@/lib/availability-hours';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
