@@ -4,14 +4,16 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import {
+  barbers as barbersTable,
   bookings,
   cashSessions,
   clients,
   invoices,
   productSales,
+  products,
   tips,
 } from '@/db/schema'
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   type Period,
@@ -229,5 +231,97 @@ export async function loadVentasData(
     invoiceCountThisMonth,
     hasEmittedInvoices,
     registerHistory,
+  }
+}
+
+// -----------------------------------------------------------------------------
+// loadPosData — catálogo para el TPV "Nueva venta" (pestaña índice de Ventas).
+//
+// Mismas fuentes que ya consume la agenda y la tienda — NO se reinventa:
+//   · servicios → clients.chatbotServices (catálogo jsonb, igual que
+//     NewBookingPanel / availability)
+//   · productos → products activos por client.id (query EXACTA de
+//     ventas/productos)
+//   · equipo → tabla canonical `barbers` (active, displayOrder) — nunca
+//     clients.booksyServices (legacy congelado, CLAUDE.md regla 4)
+//
+// El cobro real NO pasa por aquí: lo hace POST /api/pos/sale, que reusa el
+// pipeline único createBooking + auto-factura + caja.
+// -----------------------------------------------------------------------------
+
+export interface PosServiceItem {
+  name: string
+  priceEuros: number
+  durationMin: number
+}
+
+export interface PosProductItem {
+  id: string
+  name: string
+  priceCents: number
+  stockQuantity: number | null
+}
+
+export interface PosBarberItem {
+  id: string
+  name: string
+}
+
+export interface PosData {
+  client: typeof clients.$inferSelect
+  services: PosServiceItem[]
+  products: PosProductItem[]
+  barbers: PosBarberItem[]
+}
+
+export async function loadPosData(): Promise<PosData> {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.email) redirect('/login')
+
+  const [client] = await db
+    .select()
+    .from(clients)
+    .where(eq(clients.email, session.user.email))
+  if (!client) redirect('/dashboard/setup')
+
+  const rawServices =
+    (client.chatbotServices as
+      | Array<{ name?: unknown; price?: unknown; duration?: unknown }>
+      | null) || []
+  const services: PosServiceItem[] = rawServices
+    .filter((s) => s && typeof s.name === 'string' && s.name.trim().length > 0)
+    .map((s) => ({
+      name: String(s.name).trim(),
+      priceEuros: typeof s.price === 'number' && s.price >= 0 ? s.price : 0,
+      durationMin:
+        typeof s.duration === 'number' && s.duration > 0
+          ? Math.trunc(s.duration)
+          : 30,
+    }))
+
+  const productRows = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      priceCents: products.priceCents,
+      stockQuantity: products.stockQuantity,
+    })
+    .from(products)
+    .where(and(eq(products.clientId, client.id), eq(products.active, true)))
+    .orderBy(asc(products.displayOrder), asc(products.createdAt))
+
+  const barberRows = await db
+    .select({ id: barbersTable.id, name: barbersTable.name })
+    .from(barbersTable)
+    .where(
+      and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)),
+    )
+    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name))
+
+  return {
+    client,
+    services,
+    products: productRows,
+    barbers: barberRows,
   }
 }

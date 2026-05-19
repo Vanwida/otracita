@@ -89,13 +89,21 @@ export const AREAS: Area[] = [
     label: 'Ventas',
     icon: ShoppingCart,
     href: '/dashboard/ventas',
-    subtitle: 'Cobros, cierre de caja, propinas y facturas.',
+    subtitle: 'Cobra, mira lo vendido y cuadra caja.',
+    // Los 4 PRIMEROS son el set Booksy literal ("Nueva venta · Transacciones
+    // · Cierre de caja · Facturas") para que un barbero que viene de Booksy
+    // encuentre lo de siempre en el mismo orden. Nueva venta es la ruta
+    // ÍNDICE (seg:null) → al entrar en Ventas cae directo en el TPV, igual
+    // que Booksy. Resumen/Cobros/Propinas/Productos quedan como secundarias
+    // detrás (siguen existiendo, no se pierde nada).
     tabs: [
-      { seg: null, label: 'Resumen', href: '/dashboard/ventas' },
-      { seg: 'cobros', label: 'Cobros', href: '/dashboard/ventas/cobros' },
+      { seg: null, label: 'Nueva venta', href: '/dashboard/ventas' },
+      { seg: 'transacciones', label: 'Transacciones', href: '/dashboard/ventas/transacciones' },
       { seg: 'caja', label: 'Cierre de caja', href: '/dashboard/ventas/caja' },
-      { seg: 'propinas', label: 'Propinas', href: '/dashboard/ventas/propinas' },
       { seg: 'facturas', label: 'Facturas', href: '/dashboard/ventas/facturas' },
+      { seg: 'resumen', label: 'Resumen', href: '/dashboard/ventas/resumen' },
+      { seg: 'cobros', label: 'Cobros', href: '/dashboard/ventas/cobros' },
+      { seg: 'propinas', label: 'Propinas', href: '/dashboard/ventas/propinas' },
       { seg: 'productos', label: 'Productos', href: '/dashboard/ventas/productos' },
     ],
     prefixes: [
