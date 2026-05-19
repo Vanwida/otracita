@@ -8,6 +8,7 @@ import {
 import { requireFeature } from '@/lib/billing/tier'
 import { annualRevenueComponentsByMonth } from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
+import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/annual?year=2026
@@ -48,8 +49,16 @@ export async function GET(request: Request) {
   // productos+propinas, GROUP BY mes — pocas queries, no satura Neon).
   // Antes este endpoint solo sumaba bookings+manual con 21/121 hardcoded
   // → divergía del P&L mensual de /summary.
-  const [revByMonth, expenseRows, fixedRows] = await Promise.all([
+  // monthKeys 'YYYY-MM' para el batch de nómina (12 meses → ~8 queries
+  // agrupadas, NO 12×8 — mismo patrón que annualRevenueComponentsByMonth).
+  const monthKeys = Array.from(
+    { length: 12 },
+    (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`,
+  )
+
+  const [revByMonth, payrollByMonth, expenseRows, fixedRows] = await Promise.all([
     annualRevenueComponentsByMonth(clientId, start, end),
+    computePayrollTotalsByMonth(clientId, start, end, monthKeys),
 
     // Gastos variables por mes — SUM con desglose IVA
     db
@@ -97,7 +106,10 @@ export async function GET(request: Request) {
       .filter((fc) => VALID_IVA_CATEGORIES.includes(fc.category))
       .reduce((s, fc) => s + fc.amountCents, 0)
 
-    const totalGastosCents = gastosVariablesCents + costosFijosCents
+    // Nóminas del equipo este mes (mismo helper que /summary, en BATCH).
+    // Sin esto el beneficio anual no cuadra con el P&L mensual.
+    const nominasCents = Math.max(0, payrollByMonth.totalByMonth.get(monthStr) ?? 0)
+    const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
     const { ivaAPagarCents, ingresosNetosCents } = computeIvaBreakdown({
       ingresosCents,
       tipsCents: revenue.tipsCents,

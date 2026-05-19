@@ -8,6 +8,7 @@ import {
 import { requireFeature } from '@/lib/billing/tier'
 import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
+import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/quarterly?quarter=YYYY-QN
@@ -53,6 +54,7 @@ async function calcMonth(
   clientId: string,
   monthStr: string,
   ivaRate: number,
+  nominasCents: number,
 ): Promise<{
   month: string
   ingresosCents: number
@@ -122,7 +124,10 @@ async function calcMonth(
     parseInt(gastosIvaRes[0]?.total ?? '0', 10) +
     parseInt(fixedIvaRes[0]?.total ?? '0', 10)
 
-  const totalGastosCents = gastosVariablesCents + costosFijosCents
+  // Nóminas del equipo este mes (mismo helper que /summary, en BATCH desde
+  // el caller) — sin esto el beneficio del trimestre no cuadra con el P&L.
+  const totalGastosCents =
+    gastosVariablesCents + costosFijosCents + Math.max(0, nominasCents)
   const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
     computeIvaBreakdown({
       ingresosCents,
@@ -164,9 +169,21 @@ export async function GET(request: Request) {
   const months = quarterMonths(year, q)
   const quarterStr = `${year}-Q${q}`
 
+  // Nómina del trimestre por mes — BATCH (1 set de queries para los 3 meses).
+  const quarterStartBounds = monthBounds(months[0])
+  const quarterEndBounds = monthBounds(months[months.length - 1])
+  const { totalByMonth: payrollByMonth } = await computePayrollTotalsByMonth(
+    access.client.id,
+    quarterStartBounds.start,
+    quarterEndBounds.end,
+    months,
+  )
+
   // Calculate all three months in parallel
   const monthResults = await Promise.all(
-    months.map((m) => calcMonth(access.client.id, m, access.client.ivaRate)),
+    months.map((m) =>
+      calcMonth(access.client.id, m, access.client.ivaRate, payrollByMonth.get(m) ?? 0),
+    ),
   )
 
   // Aggregate totals
