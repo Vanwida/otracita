@@ -6,6 +6,7 @@ import { db } from '@/db'
 import { clients, customers } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
+import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
 import SourceBreakdown from '../SourceBreakdown'
 
@@ -48,16 +49,22 @@ export default async function ClientesAtribucionPage() {
   ).rows.map((r) => ({ source: r.source, count: Number(r.count) }))
   const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
 
+  // Mismo chasis de área que la pestaña Lista (clientes/page.tsx): header
+  // + tira de pestañas Lista·Atribución + región acotada. Antes esta página
+  // renderizaba <AreaContent> a pelo → sin cabecera, sin pestañas, sin
+  // vuelta (bug de hermano divergente, qa-sweep P1-4).
   return (
-    <AreaContent scroll="region" maxWidth="6xl">
-      <p
-        className="mb-4 text-ink-2"
-        style={{ fontSize: 'var(--text-meta)' }}
-      >
-        De dónde llegan tus clientes nuevos (últimos 30 días). Te dice en qué
-        canal invertir.
-      </p>
-      <SourceBreakdown items={sourceRows} total={sourceTotal} />
-    </AreaContent>
+    <AreaShell area="clientes">
+      <AreaContent scroll="region" maxWidth="6xl">
+        <p
+          className="mb-4 text-ink-2"
+          style={{ fontSize: 'var(--text-meta)' }}
+        >
+          De dónde llegan tus clientes nuevos (últimos 30 días). Te dice en
+          qué canal invertir.
+        </p>
+        <SourceBreakdown items={sourceRows} total={sourceTotal} />
+      </AreaContent>
+    </AreaShell>
   )
 }

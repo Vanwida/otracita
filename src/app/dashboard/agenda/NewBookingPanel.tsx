@@ -3,6 +3,7 @@
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import SlideOver from '../_components/SlideOver';
+import CustomerTypeahead from '../_components/CustomerTypeahead';
 import NumberInput from '../_components/NumberInput';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 
@@ -44,6 +45,10 @@ export default function NewBookingPanel({
 }: Props) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  // Cliente conocido adjuntado vía typeahead (mismo patrón que el TPV).
+  // Si está enlazado, la reserva entra en SU ficha (historial / fidelidad
+  // / no-show) en vez de crear un cliente huérfano. null = walk-in.
+  const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
   const [service, setService] = useState(services[0]?.name || '');
   const [barber, setBarber] = useState('');
   const [date, setDate] = useState(initialDate);
@@ -68,6 +73,11 @@ export default function NewBookingPanel({
         : '';
       setBarber(preset);
       setError(null);
+      // Nueva apertura = empezar limpio: sin cliente enlazado arrastrado
+      // de una reserva anterior.
+      setCustomerName('');
+      setCustomerPhone('');
+      setLinkedPhone(null);
     }
   }, [isOpen, initialDate, initialTime, initialBarberId, barbers]);
 
@@ -153,6 +163,7 @@ export default function NewBookingPanel({
       // Reset form
       setCustomerName('');
       setCustomerPhone('');
+      setLinkedPhone(null);
       setExtraServices([]);
       setError(null);
     } catch {
@@ -163,22 +174,32 @@ export default function NewBookingPanel({
   };
 
   return (
-    <SlideOver open={isOpen} onClose={onClose} title="Nueva Reserva">
+    <SlideOver open={isOpen} onClose={onClose} title="Nueva cita">
             {/* Form */}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
-              {/* Customer name */}
+              {/* Cliente — typeahead compartido con el TPV. Si se adjunta
+                  un cliente conocido, fijamos su teléfono y la reserva
+                  enlaza con su ficha (historial / fidelidad / no-show). Si
+                  es walk-in, el teléfono se escribe a mano abajo. */}
               <div>
-                <label className={LABEL_CLASS}>Nombre del cliente</label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
-                  placeholder="Nombre (opcional)"
-                  className={INPUT_CLASS}
+                <label className={LABEL_CLASS}>Cliente</label>
+                <CustomerTypeahead
+                  name={customerName}
+                  onNameChange={setCustomerName}
+                  linkedPhone={linkedPhone}
+                  onLink={c => {
+                    setCustomerName(c.name || c.phone);
+                    setCustomerPhone(c.phone);
+                    setLinkedPhone(c.phone);
+                  }}
+                  onUnlink={() => setLinkedPhone(null)}
+                  placeholder="Nombre o teléfono del cliente"
+                  ariaLabel="Buscar cliente conocido o escribir uno nuevo"
                 />
               </div>
 
-              {/* Customer phone */}
+              {/* Teléfono — prefijado y bloqueado cuando hay cliente
+                  enlazado (es el de su ficha); editable para walk-ins. */}
               <div>
                 <label className={LABEL_CLASS}>Teléfono *</label>
                 <input
@@ -186,9 +207,16 @@ export default function NewBookingPanel({
                   required
                   value={customerPhone}
                   onChange={e => setCustomerPhone(e.target.value)}
+                  readOnly={linkedPhone !== null}
                   placeholder="+34 612 345 678"
-                  className={INPUT_CLASS}
+                  className={`${INPUT_CLASS}${linkedPhone !== null ? ' opacity-70 cursor-not-allowed' : ''}`}
                 />
+                {linkedPhone !== null && (
+                  <p className="mt-1 text-[11px] text-ink-2">
+                    Teléfono del cliente enlazado. Quita el cliente para
+                    editarlo.
+                  </p>
+                )}
               </div>
 
               {/* Service (principal) */}
@@ -393,7 +421,7 @@ export default function NewBookingPanel({
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink text-sm font-semibold transition-colors"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {loading ? 'Creando...' : 'Crear Reserva'}
+                {loading ? 'Creando...' : 'Crear cita'}
               </button>
             </form>
     </SlideOver>

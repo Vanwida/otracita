@@ -27,6 +27,8 @@ import NewBookingPanel from './NewBookingPanel';
 import PromosFillModal from './PromosFillModal';
 import SlotActionMenu from './SlotActionMenu';
 import BarberActionMenu from './BarberActionMenu';
+import AbsenceModal from '../equipo/turnos/AbsenceModal';
+import BlockModal from '../equipo/turnos/BlockModal';
 import type { CalendarEvent, Barber, SlotAction } from './types';
 
 interface Props {
@@ -47,18 +49,9 @@ interface Props {
   /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal
    *  manual cash/card/online. */
   sumupReaderConnected?: boolean;
-  /**
-   * Costura para WS-B: se invoca cuando el usuario elige "Falta de
-   * disponibilidad" o "Ausencia" en el menú contextual de slot. NUEVA
-   * CITA NO pasa por aquí (la resuelve CalendarView con NewBookingPanel).
-   * Default no-op hasta que WS-B cablee BlockModal/AbsenceModal.
-   */
-  onSelectSlotAction?: (
-    action: Extract<SlotAction, { type: 'unavailability' | 'absence' }>,
-  ) => void;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false, onSelectSlotAction }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -82,6 +75,16 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
   } | null>(null);
   // Menú de acciones de barbero (fix #2). null = cerrado.
   const [barberMenu, setBarberMenu] = useState<Barber | null>(null);
+  // K1 — el slot context-menu ("Añadir falta de disponibilidad" /
+  // "Añadir ausencia") abre los MISMOS modales que BarberActionMenu
+  // (BlockModal/AbsenceModal de Equipo>Turnos, mismo endpoint), prefijados
+  // con el barbero+fecha del hueco. Antes era un no-op silencioso porque
+  // agenda/page.tsx nunca pasaba onSelectSlotAction. null = cerrado.
+  const [slotBlock, setSlotBlock] = useState<{
+    kind: 'unavailability' | 'absence';
+    barber: Barber;
+    date: string;
+  } | null>(null);
   // Error transitorio de un movimiento de cita (drag&drop / mover manual).
   // Se autolimpia; el rollback visual lo hace el revalidate de SWR.
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -159,9 +162,11 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     setSlotMenu({ date, time, barberId: barberId ?? null });
   };
 
-  // Despacha la opción elegida en el menú. NUEVA CITA la resolvemos aquí
-  // (NewBookingPanel prefilled). Las otras dos se delegan a WS-B vía
-  // stubs — costura limpia, no-op + TODO hasta que sus paneles existan.
+  // Despacha la opción elegida en el menú. NUEVA CITA → NewBookingPanel
+  // prefilled. FALTA DE DISPONIBILIDAD / AUSENCIA → mismos modales que
+  // BarberActionMenu (BlockModal/AbsenceModal de Equipo>Turnos), prefijados
+  // con el barbero del hueco (o el primero del equipo si la columna no
+  // mapea a uno concreto — "Todos"/"Sin asignar"/tienda de 1).
   const handleSlotAction = (action: SlotAction) => {
     setSlotMenu(null);
     if (action.type === 'new_booking') {
@@ -173,10 +178,10 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       setIsNewBookingOpen(true);
       return;
     }
-    // WS-B owns BlockModal/AbsenceModal. El intent ya llega con
-    // {type,date,time,barberId} listo para consumir. Si WS-B aún no
-    // cableó el handler, es un no-op silencioso (no rompe el flujo).
-    onSelectSlotAction?.(action);
+    const barber =
+      barbers.find((b) => b.id === action.barberId) ?? barbers[0];
+    if (!barber) return; // sin equipo no hay a quién bloquear (defensivo)
+    setSlotBlock({ kind: action.type, barber, date: action.date });
   };
 
   // Etiqueta humana del slot para el subtítulo del menú: "lun 18 may · 10:30 · Reni".
@@ -277,11 +282,11 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
 
   return (
     <div className="flex flex-col h-full bg-canvas">
-      {/* Controls bar */}
+      {/* Controls bar — SIN título: la cabecera del área (page.tsx) ya
+          pinta "Agenda" + las pestañas (AreaTabs). Antes había un
+          <h1>Calendario</h1> aquí → título doblado y término divergente
+          (G1/N2). Esto es sólo la barra de controles del calendario. */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface flex-wrap shrink-0">
-        {/* Title */}
-        <h1 className="text-base font-bold text-ink mr-1">Calendario</h1>
-
         {/* Today */}
         <button
           onClick={handleTodayClick}
@@ -359,7 +364,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
-          Nueva Reserva
+          Nueva cita
         </button>
 
         {/* Loading indicator */}
@@ -464,6 +469,48 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         onClose={() => setSlotMenu(null)}
         onAction={handleSlotAction}
       />
+
+      {/* K1 — Bloqueo/ausencia desde el slot context-menu. MISMOS modales
+          que BarberActionMenu (Equipo>Turnos, mismo endpoint
+          /api/barbers/[id]/blocks). modalBarber: shape mínimo que
+          Block/AbsenceModal leen (id+name+photoUrl; hours/breaks/blocks
+          no se usan al crear — verificado en BarberActionMenu). */}
+      {slotBlock && slotBlock.kind === 'unavailability' && (
+        <BlockModal
+          barber={{
+            id: slotBlock.barber.id,
+            name: slotBlock.barber.name,
+            photoUrl: slotBlock.barber.photoUrl,
+            hours: null,
+            breaks: [],
+            blocks: [],
+          }}
+          defaultDate={slotBlock.date}
+          onClose={() => setSlotBlock(null)}
+          onSaved={() => {
+            setSlotBlock(null);
+            refetch();
+          }}
+        />
+      )}
+      {slotBlock && slotBlock.kind === 'absence' && (
+        <AbsenceModal
+          barber={{
+            id: slotBlock.barber.id,
+            name: slotBlock.barber.name,
+            photoUrl: slotBlock.barber.photoUrl,
+            hours: null,
+            breaks: [],
+            blocks: [],
+          }}
+          defaultDate={slotBlock.date}
+          onClose={() => setSlotBlock(null)}
+          onSaved={() => {
+            setSlotBlock(null);
+            refetch();
+          }}
+        />
+      )}
 
       {/* Menú de acciones del barbero (fix #2) — clic en su cabecera de
           columna. Reusa AbsenceModal/BlockModal y los eventos ya cargados. */}

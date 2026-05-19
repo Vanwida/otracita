@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Zap,
@@ -18,10 +18,10 @@ import {
   Smartphone,
   Globe,
   Pencil,
-  User,
   Receipt,
 } from 'lucide-react'
 import NumberInput from '../_components/NumberInput'
+import CustomerTypeahead from '../_components/CustomerTypeahead'
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt'
 import type {
   PosBarberItem,
@@ -164,11 +164,6 @@ export default function PosTerminal({
   // adjunta, su teléfono enlaza la venta a su ficha → historial, fidelidad,
   // followup van a la persona correcta en vez de a un walk-in anónimo.
   const [linkedPhone, setLinkedPhone] = useState<string | null>(null)
-  const [custMatches, setCustMatches] = useState<
-    { name: string; phone: string }[]
-  >([])
-  const [custOpen, setCustOpen] = useState(false)
-  const custBoxRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<Stage>('cart')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -197,48 +192,9 @@ export default function PosTerminal({
   const [customAmount, setCustomAmount] = useState('')
   const [customDesc, setCustomDesc] = useState('')
 
-  // Typeahead de cliente conocido: al teclear el nombre, busca coincidencias
-  // (debounce 250ms). Al adjuntar un cliente fijamos su teléfono; si el
-  // barbero reescribe el nombre a mano, soltamos el enlace (vuelve a ser
-  // walk-in anónimo). Solo busca con ≥2 chars y mientras no haya enlace.
-  useEffect(() => {
-    if (linkedPhone) return
-    const term = customerName.trim()
-    if (term.length < 2) {
-      setCustMatches([])
-      return
-    }
-    const ctrl = new AbortController()
-    const t = setTimeout(() => {
-      fetch(`/api/pos/customers?q=${encodeURIComponent(term)}`, {
-        signal: ctrl.signal,
-      })
-        .then((r) => r.json())
-        .then((d: { customers?: { name: string; phone: string }[] }) => {
-          setCustMatches(d.customers ?? [])
-          setCustOpen(true)
-        })
-        .catch(() => {
-          /* búsqueda best-effort; sin coincidencias no rompe la venta */
-        })
-    }, 250)
-    return () => {
-      clearTimeout(t)
-      ctrl.abort()
-    }
-  }, [customerName, linkedPhone])
-
-  // Cierra el dropdown al hacer click fuera.
-  useEffect(() => {
-    if (!custOpen) return
-    const onDown = (e: MouseEvent) => {
-      if (custBoxRef.current && !custBoxRef.current.contains(e.target as Node)) {
-        setCustOpen(false)
-      }
-    }
-    window.addEventListener('mousedown', onDown)
-    return () => window.removeEventListener('mousedown', onDown)
-  }, [custOpen])
+  // El typeahead de cliente conocido (búsqueda debounced + dropdown +
+  // enlace) vive ahora en <CustomerTypeahead> (fuente única, reusado por
+  // la agenda). PosTerminal sólo posee customerName + linkedPhone.
 
   const totalCents = useMemo(
     () => lines.reduce((acc, l) => acc + lineTotalCents(l), 0),
@@ -354,8 +310,6 @@ export default function PosTerminal({
     setLines([])
     setCustomerName('')
     setLinkedPhone(null)
-    setCustMatches([])
-    setCustOpen(false)
     setStage('cart')
     setError(null)
     setReceipt(null)
@@ -398,15 +352,6 @@ export default function PosTerminal({
   function attachCustomer(c: { name: string; phone: string }) {
     setCustomerName(c.name || c.phone)
     setLinkedPhone(c.phone)
-    setCustOpen(false)
-    setCustMatches([])
-  }
-
-  function clearCustomer() {
-    setCustomerName('')
-    setLinkedPhone(null)
-    setCustMatches([])
-    setCustOpen(false)
   }
 
   // Payload de la venta (líneas + cliente) — compartido por el cobro
@@ -813,69 +758,13 @@ export default function PosTerminal({
       >
         {/* Cliente opcional (typeahead) + barbero */}
         <div className="space-y-2 border-b border-line p-4">
-          <div ref={custBoxRef} className="relative">
-            <label
-              className={`flex items-center gap-2 rounded-control border bg-canvas px-3 py-2 ${
-                linkedPhone ? 'border-brand' : 'border-line'
-              }`}
-            >
-              <User
-                className={`h-4 w-4 shrink-0 ${
-                  linkedPhone ? 'text-brand' : 'text-ink-3'
-                }`}
-                aria-hidden="true"
-              />
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => {
-                  setCustomerName(e.target.value)
-                  if (linkedPhone) setLinkedPhone(null)
-                }}
-                onFocus={() => {
-                  if (custMatches.length > 0) setCustOpen(true)
-                }}
-                placeholder="Cliente (opcional)"
-                aria-label="Buscar o escribir cliente"
-                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
-              />
-              {customerName && (
-                <button
-                  type="button"
-                  onClick={clearCustomer}
-                  aria-label="Quitar cliente"
-                  className="shrink-0 rounded p-0.5 text-ink-3 transition-colors hover:text-ink-2"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </label>
-            {custOpen && custMatches.length > 0 && !linkedPhone && (
-              <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-control border border-line bg-surface shadow-xl">
-                {custMatches.map((c) => (
-                  <li key={c.phone}>
-                    <button
-                      type="button"
-                      onClick={() => attachCustomer(c)}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-overlay"
-                    >
-                      <span className="truncate text-sm font-semibold text-ink">
-                        {c.name || 'Sin nombre'}
-                      </span>
-                      <span className="shrink-0 text-[0.75rem] tabular-nums text-ink-3">
-                        {c.phone}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {linkedPhone && (
-              <p className="mt-1 text-[0.6875rem] text-ink-3">
-                Cliente conocido · la venta entra en su historial
-              </p>
-            )}
-          </div>
+          <CustomerTypeahead
+            name={customerName}
+            onNameChange={setCustomerName}
+            linkedPhone={linkedPhone}
+            onLink={attachCustomer}
+            onUnlink={() => setLinkedPhone(null)}
+          />
           {barbers.length > 0 && (
             <select
               value={barberId}

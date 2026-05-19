@@ -568,7 +568,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       <SlideOver
         open={!!booking}
         onClose={onClose}
-        ariaLabel="Detalle de la reserva"
+        ariaLabel="Detalle de la cita"
       >
         {booking && (
           <>
