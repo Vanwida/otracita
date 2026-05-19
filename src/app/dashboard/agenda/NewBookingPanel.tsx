@@ -1,10 +1,10 @@
 'use client';
 
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import SlideOver from '../_components/SlideOver';
 import CustomerTypeahead from '../_components/CustomerTypeahead';
-import NumberInput from '../_components/NumberInput';
+import ServiceLinePicker from '../_components/ServiceLinePicker';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 
 import type { Barber } from './types';
@@ -81,15 +81,8 @@ export default function NewBookingPanel({
     }
   }, [isOpen, initialDate, initialTime, initialBarberId, barbers]);
 
-  // Auto-fill duration & price when service changes
-  const handleServiceChange = (name: string) => {
-    setService(name);
-    const svc = services.find(s => s.name === name);
-    if (svc) {
-      setDuration(svc.duration);
-      setPrice(svc.price);
-    }
-  };
+  // El autorrelleno duración/precio al elegir servicio vive ahora en
+  // <ServiceLinePicker> (fuente única, FIX C).
 
   // ── Servicios extra (R7) ────────────────────────────────────────────────
   const addExtraService = () => {
@@ -219,113 +212,61 @@ export default function NewBookingPanel({
                 )}
               </div>
 
-              {/* Service (principal) */}
-              {services.length > 0 && (
-                <div>
-                  <label className={LABEL_CLASS}>Servicio *</label>
-                  <select
-                    required
-                    value={service}
-                    onChange={e => handleServiceChange(e.target.value)}
-                    className={INPUT_CLASS}
-                  >
-                    {services.map(s => (
-                      <option key={s.name} value={s.name}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Servicio principal — picker compartido (catálogo →
+                  autorrellena duración/precio, ambos editables). Misma
+                  pieza que el editor de BookingDetailPanel (FIX C, DRY). */}
+              <ServiceLinePicker
+                services={services}
+                value={{
+                  name: service,
+                  durationMin: duration ?? 0,
+                  priceEuros: price,
+                }}
+                onChange={(v) => {
+                  setService(v.name);
+                  setDuration(v.durationMin || null);
+                  setPrice(v.priceEuros);
+                }}
+                label="Servicio"
+                required
+                ariaSuffix="servicio principal"
+              />
 
-              {/* Servicios extra (R7) — varios servicios en una misma cita.
-                  El principal queda arriba; estos se suman a la duración y
-                  cada uno emite su propia línea en la factura. */}
-              {services.length > 0 && (
-                <div className="space-y-2">
-                  {extraServices.map((extra, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-lg border border-line bg-overlay/40 p-3 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
-                          Servicio extra {idx + 1}
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => removeExtraService(idx)}
-                          aria-label={`Quitar servicio extra ${idx + 1}`}
-                          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-ink-3 hover:text-danger hover:bg-danger/10 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                      <select
-                        value={extra.name}
-                        onChange={e => {
-                          const svc = services.find(s => s.name === e.target.value);
-                          updateExtraService(idx, {
-                            name: e.target.value,
-                            durationMin: svc?.duration ?? extra.durationMin,
-                            priceEuros: svc?.price ?? extra.priceEuros,
-                          });
-                        }}
-                        className={INPUT_CLASS}
-                      >
-                        {services.map(s => (
-                          <option key={s.name} value={s.name}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[11px] text-ink-2 mb-1 block">
-                            Duración (min)
-                          </label>
-                          <NumberInput
-                            value={extra.durationMin}
-                            onValueChange={n =>
-                              updateExtraService(idx, { durationMin: n ?? 0 })
-                            }
-                            min={0}
-                            max={480}
-                            decimals={0}
-                            className={INPUT_CLASS}
-                            aria-label={`Duración servicio extra ${idx + 1}`}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] text-ink-2 mb-1 block">
-                            Precio (€)
-                          </label>
-                          <NumberInput
-                            value={extra.priceEuros}
-                            onValueChange={n =>
-                              updateExtraService(idx, { priceEuros: n })
-                            }
-                            min={0}
-                            decimals={2}
-                            step="0.01"
-                            placeholder="0"
-                            className={INPUT_CLASS}
-                            aria-label={`Precio servicio extra ${idx + 1}`}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={addExtraService}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-line hover:border-brand hover:text-brand px-3 py-2 text-xs font-semibold text-ink-2 transition-colors"
+              {/* Servicios extra (R7) — varias prestaciones en una cita.
+                  Se suman a la duración total y cada uno emite su línea. */}
+              <div className="space-y-2">
+                {extraServices.map((extra, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-lg border border-line bg-overlay/40 p-3"
                   >
-                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    Añadir otro servicio
-                  </button>
-                </div>
-              )}
+                    <ServiceLinePicker
+                      services={services}
+                      value={extra}
+                      onChange={(v) => updateExtraService(idx, v)}
+                      onRemove={() => removeExtraService(idx)}
+                      label={`Servicio extra ${idx + 1}`}
+                      ariaSuffix={`servicio extra ${idx + 1}`}
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addExtraService}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-line hover:border-brand hover:text-brand px-3 py-2 text-xs font-semibold text-ink-2 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Añadir otro servicio
+                </button>
+                {extraServices.length > 0 && (
+                  <p className="text-[11px] text-ink-2">
+                    Duración total:{' '}
+                    <span className="font-semibold text-ink tabular-nums">
+                      {totalDuration} min
+                    </span>
+                  </p>
+                )}
+              </div>
 
               {/* Barber */}
               {barbers.length > 0 && (
@@ -370,42 +311,9 @@ export default function NewBookingPanel({
                 />
               </div>
 
-              {/* Duration (servicio principal) */}
-              <div>
-                <label className={LABEL_CLASS}>Duración (min)</label>
-                <NumberInput
-                  value={duration}
-                  onValueChange={setDuration}
-                  min={5}
-                  max={480}
-                  decimals={0}
-                  className={INPUT_CLASS}
-                  aria-label="Duración del servicio principal en minutos"
-                />
-                {extraServices.length > 0 && (
-                  <p className="mt-1 text-[11px] text-ink-2">
-                    Total con extras:{' '}
-                    <span className="font-semibold text-ink tabular-nums">
-                      {totalDuration} min
-                    </span>
-                  </p>
-                )}
-              </div>
-
-              {/* Price (servicio principal) */}
-              <div>
-                <label className={LABEL_CLASS}>Precio (€)</label>
-                <NumberInput
-                  value={price}
-                  onValueChange={setPrice}
-                  min={0}
-                  decimals={2}
-                  step="0.01"
-                  placeholder="0"
-                  className={INPUT_CLASS}
-                  aria-label="Precio del servicio principal en euros"
-                />
-              </div>
+              {/* Duración/Precio del principal ya viven en el
+                  ServiceLinePicker de arriba (FIX C) — sin campos sueltos
+                  duplicados. */}
 
               {/* Error */}
               {error && (
