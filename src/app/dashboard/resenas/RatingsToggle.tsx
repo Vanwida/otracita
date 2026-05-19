@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Star, Check, Loader2 } from 'lucide-react'
+import NumberInput from '../_components/NumberInput'
 
 // -----------------------------------------------------------------------------
 // Card de configuración del flow post-servicio:
@@ -120,13 +121,16 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
                   Cuándo enviar tras el fin del servicio
                 </label>
                 <div className="flex items-center gap-2 max-w-md flex-wrap">
-                  <input
-                    type="number"
-                    min={15}
-                    max={240}
+                  {/* min/max NO se pasan a NumberInput a propósito: la
+                      validación 15–240 vive en onSaveDelay (muestra error
+                      explícito). Clamp en blur ocultaría ese mensaje y
+                      cambiaría el comportamiento observable. */}
+                  <NumberInput
+                    value={delay === '' ? null : Number(delay)}
+                    onValueChange={(n) => setDelay(n === null ? '' : String(n))}
+                    decimals={0}
                     step={5}
-                    value={delay}
-                    onChange={(e) => setDelay(e.target.value)}
+                    aria-label="Minutos tras el fin del servicio"
                     className="bg-surface border border-line rounded-lg px-3 py-2 text-sm w-24 focus:border-brand outline-none"
                   />
                   <span className="text-sm text-ink-2">minutos</span>
