@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { AlertTriangle, Info, Check, Loader2 } from 'lucide-react'
+import NumberInput from './NumberInput'
 
 // -----------------------------------------------------------------------------
 // InvoicingSettings — panel de datos fiscales + numeración + toggle de
@@ -56,7 +57,12 @@ export default function InvoicingSettings({ initial }: Props) {
   const [fiscalPostalCode, setFiscalPostalCode] = useState(initial.fiscalPostalCode)
   const [ivaRate, setIvaRate] = useState<number>(initial.ivaRate)
   const [prefix, setPrefix] = useState(initial.invoiceNumberPrefix)
-  const [nextNumber, setNextNumber] = useState<string>(String(initial.invoiceNumberNext))
+  // Número entero de secuencia de factura (NO importe/IVA/tasa): NumberInput
+  // con decimals=0 parsea idéntico a parseInt para todo entero válido; un
+  // input malformado sigue sin poder guardarse (el guard ≥ 1 lo bloquea).
+  const [nextNumber, setNextNumber] = useState<number | null>(
+    initial.invoiceNumberNext,
+  )
 
   const [saving, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -83,8 +89,8 @@ export default function InvoicingSettings({ initial }: Props) {
     setError(null)
     setSaved(false)
 
-    const parsedNext = Number.parseInt(nextNumber, 10)
-    if (!Number.isFinite(parsedNext) || parsedNext < 1) {
+    const parsedNext = nextNumber
+    if (parsedNext === null || !Number.isFinite(parsedNext) || parsedNext < 1) {
       setError('El próximo número debe ser ≥ 1.')
       return
     }
@@ -258,13 +264,15 @@ export default function InvoicingSettings({ initial }: Props) {
         <label htmlFor="invoiceNumberNext" className="text-sm font-medium text-ink-2">
           Próximo número
         </label>
-        <input
+        {/* min NO se pasa a propósito: la validación ≥ 1 vive en onSave
+            con mensaje explícito. Clamp-en-blur lo ocultaría (cambio
+            observable). decimals=0 → mismo entero que parseInt. */}
+        <NumberInput
           id="invoiceNumberNext"
-          type="number"
-          min={1}
+          decimals={0}
           step={1}
           value={nextNumber}
-          onChange={(e) => setNextNumber(e.target.value)}
+          onValueChange={setNextNumber}
           disabled={initial.hasEmittedInvoices}
           className="bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         />
