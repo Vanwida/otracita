@@ -194,8 +194,10 @@ export default function WeekGrid({
                     const height = Math.max(event.duration * PX_PER_MIN, 20);
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    // Color = barbero de la cita (mismo que Día/Mes). Estado
-                    // por tratamiento + ícono, nunca por otro tono (fix #6).
+                    // Color = ESTADO de la cita (Booksy-exact, mismo que
+                    // Día/Mes) + ícono/etiqueta, nunca solo color (fix #6).
+                    // `dispOrder` se mantiene por compat de firma; el bloque
+                    // ya no se tinta por barbero.
                     const dispOrder = displayOrderForEventBarber(
                       event.barber,
                       barbers,

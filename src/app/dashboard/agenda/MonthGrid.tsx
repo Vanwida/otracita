@@ -104,8 +104,9 @@ export default function MonthGrid({
                 {/* Events */}
                 <div className="space-y-0.5">
                   {dayEvents.slice(0, MAX_VISIBLE).map(event => {
-                    // Color = barbero de la cita (mismo que Día/Semana).
-                    // Estado por tratamiento + ícono (fuente única, fix #6).
+                    // Color = ESTADO de la cita (Booksy-exact, igual que
+                    // Día/Semana) + ícono/etiqueta (fuente única, fix #6).
+                    // `dispOrder` se mantiene por compat; ya no tinta el chip.
                     const dispOrder = displayOrderForEventBarber(
                       event.barber,
                       barbers,
