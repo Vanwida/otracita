@@ -14,7 +14,6 @@ import {
   Coffee,
   ArrowRight,
   Copy,
-  X,
   Loader2,
 } from 'lucide-react'
 import {
@@ -25,6 +24,7 @@ import {
   formatRangeHours,
   weekdayToHoursDay,
 } from './weekdays'
+import Modal from '../../_components/Modal'
 import ScheduleEditorModal from './ScheduleEditorModal'
 import AbsenceModal from './AbsenceModal'
 import BlockModal from './BlockModal'
@@ -595,37 +595,31 @@ function ActionChooser({
   onAddBlock: () => void
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--color-scrim-strong)] backdrop-blur-sm"
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title={barberName}
+      subtitle="¿Qué quieres hacer?"
+      size="sm"
     >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-xs overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-4 py-3 border-b border-line">
-          <p className="text-sm font-semibold text-ink truncate">{barberName}</p>
-          <p className="text-[11px] text-ink-3">¿Qué quieres hacer?</p>
-        </div>
-        <div className="divide-y divide-line">
-          {[
-            { label: 'Editar horario de trabajo', icon: Pencil, fn: onEditSchedule },
-            { label: 'Añadir ausencia', icon: CalendarOff, fn: onAddAbsence },
-            { label: 'Falta de disponibilidad', icon: Ban, fn: onAddBlock },
-          ].map(({ label, icon: Icon, fn }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={fn}
-              className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-ink hover:bg-overlay/60 transition-colors"
-            >
-              <Icon className="h-4 w-4 text-ink-3 shrink-0" />
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="divide-y divide-line">
+        {[
+          { label: 'Editar horario de trabajo', icon: Pencil, fn: onEditSchedule },
+          { label: 'Añadir ausencia', icon: CalendarOff, fn: onAddAbsence },
+          { label: 'Falta de disponibilidad', icon: Ban, fn: onAddBlock },
+        ].map(({ label, icon: Icon, fn }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={fn}
+            className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-ink hover:bg-overlay/60 transition-colors"
+          >
+            <Icon className="h-4 w-4 text-ink-3 shrink-0" />
+            {label}
+          </button>
+        ))}
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -814,31 +808,33 @@ function CopyWeekModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[var(--color-scrim-strong)] backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-md my-8 flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-line px-5 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Copiar horario semanal</h2>
-            <p className="text-xs text-ink-3 mt-0.5">
-              Copia el horario de un barbero a otros.
-            </p>
-          </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="Copiar horario semanal"
+      subtitle="Copia el horario de un barbero a otros."
+      size="md"
+      footer={
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="p-2 -mr-2 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink transition-colors"
-            aria-label="Cerrar"
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-ink-2 hover:text-ink hover:bg-overlay transition-colors"
           >
-            <X className="h-4 w-4" />
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={copy}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-[var(--color-cream-high)] bg-[var(--color-espresso)] hover:bg-[var(--color-espresso-2)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            Copiar
           </button>
         </div>
-
+      }
+    >
         <div className="px-5 py-4 space-y-4">
           <div>
             <label
@@ -897,26 +893,6 @@ function CopyWeekModal({
             </div>
           )}
         </div>
-
-        <div className="border-t border-line px-5 py-4 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-lg text-sm font-medium text-ink-2 hover:text-ink hover:bg-overlay transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={copy}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-[var(--color-cream-high)] bg-[var(--color-espresso)] hover:bg-[var(--color-espresso-2)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Copiar
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

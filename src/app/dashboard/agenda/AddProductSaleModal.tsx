@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Loader2, ShoppingBag, Plus, Minus, Check } from 'lucide-react'
+import { Loader2, ShoppingBag, Plus, Minus, Check } from 'lucide-react'
+import Modal from '../_components/Modal'
 import NumberInput from '../_components/NumberInput'
 
 // -----------------------------------------------------------------------------
@@ -117,36 +118,17 @@ export default function AddProductSaleModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 overflow-y-auto"
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title={done ? 'Venta registrada' : 'Añadir venta de producto'}
+      subtitle={
+        !done && customerName
+          ? `Cliente: ${customerName}${barberName ? ` · Barbero: ${barberName}` : ''}`
+          : undefined
+      }
+      size="md"
     >
-      <div
-        className="bg-surface border border-line rounded-2xl w-full max-w-md my-8 max-h-[calc(100vh-4rem)] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between rounded-t-2xl">
-          <div>
-            <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4 text-brand" />
-              {done ? 'Venta registrada' : 'Añadir venta de producto'}
-            </h2>
-            {!done && customerName && (
-              <p className="text-xs text-ink-3 mt-0.5">
-                Cliente: {customerName}{barberName ? ` · Barbero: ${barberName}` : ''}
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 -mr-2 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
-
         {done ? (
           <div className="p-5 space-y-4">
             <div className="rounded-xl bg-success/10 border border-success/30 p-4 text-center">
@@ -323,7 +305,6 @@ export default function AddProductSaleModal({
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }
