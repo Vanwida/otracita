@@ -9,7 +9,7 @@ import type { TurnosBarber } from './TurnosManager'
 //
 // Estructura espejo de Booksy:
 //   · "Todo el día" (toggle) + recuento de días.
-//   · "Seleccionar fecha": Fecha + "Repetir".
+//   · "Seleccionar fecha": Fecha (sin "Repetir" — ver TODO abajo).
 //   · Franja horaria SI "Todo el día" está desmarcado (la API y el motor de
 //     disponibilidad ya soportan ausencias parciales vía startTime/endTime).
 //   · "Seleccionar motivo": catálogo cerrado (personal/enfermedad/
@@ -137,6 +137,10 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
             <span className="block text-xs font-semibold uppercase tracking-wide text-ink-3 mb-2">
               Seleccionar fecha
             </span>
+            {/* TODO(turnos): "Repetir" de Booksy (10.22.23) omitido a
+                propósito — `barber_blocks` no tiene columna de recurrencia.
+                Un control que no funciona engaña al ex-Booksy que espera
+                que funcione, así que no se pinta hasta tener el schema. */}
             <div className="flex items-center gap-3">
               <input
                 type="date"
@@ -145,15 +149,6 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
                 aria-label="Fecha de la ausencia"
                 className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand transition-colors"
               />
-              {/* Repetir — sin schema de recurrencia (FLAG). Visible para
-                  paridad, deshabilitado con motivo claro. */}
-              <label
-                className="flex items-center gap-1.5 text-xs text-ink-3 cursor-not-allowed"
-                title="Programar repeticiones: próximamente"
-              >
-                <input type="checkbox" disabled className="h-4 w-4" />
-                Repetir
-              </label>
             </div>
             {!allDay && (
               <div className="mt-3 flex items-center gap-2">
