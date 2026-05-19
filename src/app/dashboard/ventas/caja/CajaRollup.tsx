@@ -2,7 +2,7 @@ import { Banknote, CreditCard, Globe, Scale, AlertTriangle } from 'lucide-react'
 import { db } from '@/db'
 import { cashSessions, cashMovements } from '@/db/schema'
 import { sql } from 'drizzle-orm'
-import { isIncoming, type MovementKind } from '@/lib/cash/compute'
+import { isIncoming, ALL_MOVEMENT_KINDS } from '@/lib/cash/compute'
 
 // -----------------------------------------------------------------------------
 // CajaRollup — resumen del periodo sobre el histórico de cierres de caja.
@@ -30,18 +30,12 @@ interface Props {
   periodLabel: string
 }
 
-// Kinds que SUMAN al cobro, derivados de cash/compute.ts (single source of
-// truth del signo). El set completo de kinds del schema:
-const ALL_KINDS: MovementKind[] = [
-  'booking',
-  'product_sale',
-  'tip_cash',
-  'expense',
-  'withdrawal',
-  'deposit',
-  'adjustment',
-]
-const INCOMING_KINDS = ALL_KINDS.filter((k) => isIncoming(k))
+// Kinds que SUMAN al cobro. El set completo de kinds Y el signo salen de
+// cash/compute.ts (single source of truth): ALL_MOVEMENT_KINDS se deriva del
+// type, isIncoming del mismo NEGATIVE_KINDS que usa el cuadre diario. Si
+// mañana entra un kind nuevo (ej. 'refund') este rollup lo hereda sin tocar
+// y no diverge del cuadre.
+const INCOMING_KINDS = ALL_MOVEMENT_KINDS.filter((k) => isIncoming(k))
 
 function formatCents(cents: number): string {
   const euros = cents / 100

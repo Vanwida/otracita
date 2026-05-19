@@ -23,6 +23,12 @@
   --color-warning:   #C9924D;       /* warm amber — warnings */
   --color-danger:    #B24D3F;       /* muted red — cancellations, no-shows */
 
+  /* Surface tints — barely-there backgrounds for P&L / status rows. Warm,
+     harmonized with the semantic colors above (no cold Tailwind 50s). */
+  --color-success-surface: #EDF3EE; /* sage tint — profit rows */
+  --color-warning-surface: #F7EFE0; /* amber tint — caution rows */
+  --color-danger-surface:  #F6E8E5; /* red tint — loss rows */
+
   /* ─── Surfaces ─── */
   --color-canvas:    #F7F3EE;       /* page background — bone white w/ warmth */
   --color-surface:   #FFFFFF;       /* cards, panels, inputs */

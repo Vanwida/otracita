@@ -21,6 +21,17 @@ import { Wallet, Receipt, CalendarCheck, Heart, Star, User, ShoppingBag, Trophy 
 //     para bookings legacy creados antes de que existiera la tabla barbers
 //   - bookings con NULL en ambos → fila "Sin asignar"
 //
+// Atribución de propinas/ratings (ADD-2): tips/ratings NO tienen barber_id,
+// sólo barber_name (snapshot que NO cambia si el barbero se renombra). Un
+// join por lower(barber_name) pierde las propinas de un barbero renombrado
+// (caso real prod: PABLO con bookings de snapshot "Jesús"). Solución: las
+// resolvemos por su booking_id → bookings.barber_id → barbers.id, con
+// fallback al snapshot de nombre sólo si no hay booking_id (propina/rating
+// espontáneo) o el booking no tenía barber_id (legacy). Robust contra rename.
+//
+// billed_eur (ADD-2/P0-1): principal (bookings.price) + servicios EXTRA
+// (booking_services.price_euros) — antes sólo sumaba el principal.
+//
 // Filtra por periodo igual que los KPIs globales (StatsPeriodTabs URL param).
 //
 // Upsells (venta de productos): pendiente cuando esté el módulo Tienda
@@ -88,7 +99,17 @@ export default async function BarberBreakdown({
         COALESCE(b.name, book.barber, 'Sin asignar') AS barber_name,
         b.active,
         COUNT(book.id) FILTER (WHERE book.status = 'completed')::int AS completed_count,
-        COALESCE(SUM(book.price) FILTER (WHERE book.status = 'completed'), 0)::bigint AS billed_eur
+        -- Principal + servicios EXTRA (R7). price_euros en EUROS (foot-gun)
+        -- igual que book.price; subquery correlada, sin fan-out. Sólo
+        -- 'completed' (mismo filtro que el principal).
+        COALESCE(SUM(
+          (book.price + COALESCE((
+            SELECT SUM(bs.price_euros)
+            FROM booking_services bs
+            WHERE bs.booking_id = book.id
+              AND bs.price_euros IS NOT NULL
+          ), 0))
+        ) FILTER (WHERE book.status = 'completed'), 0)::bigint AS billed_eur
       FROM ${bookings} book
       LEFT JOIN ${barbersTable} b ON (
         book.barber_id = b.id
@@ -98,27 +119,52 @@ export default async function BarberBreakdown({
       ${periodWhere}
       GROUP BY barber_key, barber_name, b.active
     ),
+    -- Propinas resueltas al barbero canónico vía su booking (barber_id),
+    -- fallback al snapshot de nombre. La misma fórmula de barber_key que
+    -- bookings_by_barber para que el join sea por clave, no por nombre.
+    -- barber_key resuelto POR FILA con subqueries escalares (no joins) para
+    -- garantizar exactamente 1 clave por propina/rating → cero fan-out aunque
+    -- dos barberos compartan nombre. Prioridad: (1) barber_id del booking
+    -- vinculado, (2) snapshot de nombre → barbers.name, (3) sin asignar.
     tips_by_barber AS (
       SELECT
-        lower(t.barber_name) AS barber_name_key,
+        COALESCE(
+          (SELECT tbk.barber_id::text FROM bookings tbk
+             WHERE tbk.id = t.booking_id AND tbk.barber_id IS NOT NULL),
+          (SELECT tb.id::text FROM barbers tb
+             WHERE tb.client_id = ${clientId}
+               AND lower(tb.name) = lower(t.barber_name)
+             ORDER BY tb.created_at LIMIT 1),
+          lower(t.barber_name),
+          '__unassigned__'
+        ) AS barber_key,
         COALESCE(SUM(t.amount_cents), 0)::bigint AS tips_cents
       FROM ${tips} t
       WHERE t.client_id = ${clientId}
         AND t.status = 'paid'
         AND t.barber_name IS NOT NULL
         ${tipsPeriodWhere}
-      GROUP BY barber_name_key
+      GROUP BY barber_key
     ),
     ratings_by_barber AS (
       SELECT
-        lower(r.barber_name) AS barber_name_key,
+        COALESCE(
+          (SELECT rbk.barber_id::text FROM bookings rbk
+             WHERE rbk.id = r.booking_id AND rbk.barber_id IS NOT NULL),
+          (SELECT rb.id::text FROM barbers rb
+             WHERE rb.client_id = ${clientId}
+               AND lower(rb.name) = lower(r.barber_name)
+             ORDER BY rb.created_at LIMIT 1),
+          lower(r.barber_name),
+          '__unassigned__'
+        ) AS barber_key,
         COUNT(*)::int AS rating_count,
         AVG(r.rating)::float AS avg_rating
       FROM ${ratings} r
       WHERE r.client_id = ${clientId}
         AND r.barber_name IS NOT NULL
         ${ratingPeriodWhere}
-      GROUP BY barber_name_key
+      GROUP BY barber_key
     ),
     sales_by_barber AS (
       SELECT
@@ -142,8 +188,8 @@ export default async function BarberBreakdown({
       COALESCE(s.upsells_cents, 0)::bigint AS upsells_cents,
       COALESCE(s.upsells_count, 0)::int AS upsells_count
     FROM bookings_by_barber bb
-    LEFT JOIN tips_by_barber t ON t.barber_name_key = lower(bb.barber_name)
-    LEFT JOIN ratings_by_barber r ON r.barber_name_key = lower(bb.barber_name)
+    LEFT JOIN tips_by_barber t ON t.barber_key = bb.barber_key
+    LEFT JOIN ratings_by_barber r ON r.barber_key = bb.barber_key
     LEFT JOIN sales_by_barber s ON (
       (bb.barber_key = '__unassigned__' AND s.barber_id IS NULL)
       OR (bb.barber_key != '__unassigned__' AND s.barber_id::text = bb.barber_key)

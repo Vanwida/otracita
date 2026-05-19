@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { bookings, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
+import { expenses, fixedCosts, ownerWithdrawals } from '@/db/schema'
 import { and, eq, gte, lt, lte, sql, inArray } from 'drizzle-orm'
 import {
   requireClientAccess,
@@ -7,6 +7,8 @@ import {
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
+import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/summary?month=YYYY-MM
@@ -62,18 +64,17 @@ export async function GET(request: Request) {
   const clientId = access.client.id
 
   const [
-    ingresosResult,
+    revComponents,
     gastosResult,
     fixedResult,
     gastosConIvaResult,
     fixedConIvaResult,
     retirosResult,
-    prevYearResult,
-    manualIngresosResult,
+    prevYearComponents,
   ] = await Promise.all([
-    db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-      .from(bookings)
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
+    // Ingreso del periodo (servicios+extras+manual+productos+propinas) vía
+    // helper compartido — única fuente, idéntico a quarterly/annual/etc.
+    periodRevenueComponents(clientId, start, end),
     db.select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
       .from(expenses)
       .where(and(eq(expenses.clientId, clientId), gte(expenses.date, start), lt(expenses.date, end))),
@@ -89,23 +90,26 @@ export async function GET(request: Request) {
     db.select({ total: sql<string>`COALESCE(SUM(${ownerWithdrawals.amountCents}), 0)` })
       .from(ownerWithdrawals)
       .where(and(eq(ownerWithdrawals.clientId, clientId), gte(ownerWithdrawals.date, start), lt(ownerWithdrawals.date, end))),
-    db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-      .from(bookings)
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, prevYearBounds.start), lt(bookings.date, prevYearBounds.end))),
-    db.select({ total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)` })
-      .from(manualIncomes)
-      .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end))),
+    // YoY: SOLO servicios+extras del año anterior (comparativa de facturación
+    // de servicios, no incluye productos/propinas/manual — semántica original).
+    periodRevenueComponents(clientId, prevYearBounds.start, prevYearBounds.end, { includeManual: false }),
   ])
 
-  const bookingIngresosCents = Math.round(parseFloat(ingresosResult[0]?.total ?? '0') * 100)
-  const manualIngresosCents = parseInt(manualIngresosResult[0]?.total ?? '0', 10)
-  const ingresosCents = bookingIngresosCents + manualIngresosCents
+  const revenue = computeRevenueCents(revComponents)
+  const manualIngresosCents = revenue.manualCents
+  const productsIngresosCents = revenue.productsCents
+  const tipsIngresosCents = revenue.tipsCents
+  // Ingresos totales = servicios + extras + efectivo manual + PRODUCTOS +
+  // PROPINAS (payroll ya descuenta comisión/payout de productos y propinas
+  // como coste; sin su ingreso el beneficio quedaba infravalorado).
+  const ingresosCents = revenue.totalCents
   const gastosVariablesCents = parseInt(gastosResult[0]?.total ?? '0', 10)
   const costosFijosCents = parseInt(fixedResult[0]?.total ?? '0', 10)
   const gastosVariablesConIvaCents = parseInt(gastosConIvaResult[0]?.total ?? '0', 10)
   const fixedConIvaCents = parseInt(fixedConIvaResult[0]?.total ?? '0', 10)
   const retirosCents = parseInt(retirosResult[0]?.total ?? '0', 10)
-  const prevYearIngresosCents = Math.round(parseFloat(prevYearResult[0]?.total ?? '0') * 100)
+  // prevYear: solo bookingCents (servicios+extras), sin manual/productos/tips.
+  const prevYearIngresosCents = computeRevenueCents(prevYearComponents).bookingCents
 
   // Nóminas del equipo — coste real para el local. Mismo helper que
   // /api/finanzas/payroll para asegurar coherencia entre lo que ve el
@@ -113,12 +117,16 @@ export async function GET(request: Request) {
   const payroll = await computeMonthlyPayroll(clientId, { start, end })
   const nominasCents = Math.max(0, payroll.totalCents)
 
+  // IVA configurable por tenant (clients.ivaRate) + propina fuera de la base
+  // imponible — vía helper compartido (única fuente fiscal del P&L).
   const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
-  const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
-  const gastosConIvaTotalCents = gastosVariablesConIvaCents + fixedConIvaCents
-  const ivaSoportadoCents = Math.round((gastosConIvaTotalCents * 21) / 121)
-  const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
-  const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
+  const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
+    computeIvaBreakdown({
+      ingresosCents,
+      tipsCents: tipsIngresosCents,
+      gastosConIvaCents: gastosVariablesConIvaCents + fixedConIvaCents,
+      ivaRate: access.client.ivaRate,
+    })
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const beneficioRealCents = beneficioBrutoCents - retirosCents
   const irpfEstimadoCents = Math.max(0, Math.round((beneficioBrutoCents * 20) / 100))
@@ -127,6 +135,8 @@ export async function GET(request: Request) {
     month: monthStr,
     ingresosCents,
     manualIngresosCents,
+    productsIngresosCents,
+    tipsIngresosCents,
     gastosVariablesCents,
     costosFijosCents,
     nominasCents,

@@ -1,11 +1,13 @@
 import { db } from '@/db'
-import { bookings, expenses, fixedCosts, manualIncomes } from '@/db/schema'
+import { expenses, fixedCosts } from '@/db/schema'
 import { and, eq, gte, lt, lte, sql, inArray } from 'drizzle-orm'
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
+import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/quarterly?quarter=YYYY-QN
@@ -50,6 +52,7 @@ function monthBounds(monthStr: string): { start: string; end: string } {
 async function calcMonth(
   clientId: string,
   monthStr: string,
+  ivaRate: number,
 ): Promise<{
   month: string
   ingresosCents: number
@@ -63,18 +66,10 @@ async function calcMonth(
 }> {
   const { start, end } = monthBounds(monthStr)
 
-  const [ingresosRes, gastosRes, fixedRes, gastosIvaRes, fixedIvaRes, manualRes] = await Promise.all([
-    db
-      .select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-      .from(bookings)
-      .where(
-        and(
-          eq(bookings.clientId, clientId),
-          eq(bookings.status, 'completed'),
-          gte(bookings.date, start),
-          lt(bookings.date, end),
-        ),
-      ),
+  // Ingreso vía helper compartido (servicios+extras+manual+productos+
+  // propinas) — antes solo bookings+manual con 21/121 hardcoded.
+  const [revComponents, gastosRes, fixedRes, gastosIvaRes, fixedIvaRes] = await Promise.all([
+    periodRevenueComponents(clientId, start, end),
     db
       .select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
       .from(expenses)
@@ -117,13 +112,10 @@ async function calcMonth(
           inArray(fixedCosts.category, VALID_IVA_CATEGORIES),
         ),
       ),
-    db
-      .select({ total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)` })
-      .from(manualIncomes)
-      .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end))),
   ])
 
-  const ingresosCents = Math.round(parseFloat(ingresosRes[0]?.total ?? '0') * 100) + parseInt(manualRes[0]?.total ?? '0', 10)
+  const revenue = computeRevenueCents(revComponents)
+  const ingresosCents = revenue.totalCents
   const gastosVariablesCents = parseInt(gastosRes[0]?.total ?? '0', 10)
   const costosFijosCents = parseInt(fixedRes[0]?.total ?? '0', 10)
   const gastosConIvaCents =
@@ -131,11 +123,13 @@ async function calcMonth(
     parseInt(fixedIvaRes[0]?.total ?? '0', 10)
 
   const totalGastosCents = gastosVariablesCents + costosFijosCents
-  const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
-  const ivaSoportadoCents = Math.round((gastosConIvaCents * 21) / 121)
-  const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
-
-  const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
+  const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
+    computeIvaBreakdown({
+      ingresosCents,
+      tipsCents: revenue.tipsCents,
+      gastosConIvaCents,
+      ivaRate,
+    })
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
 
   return {
@@ -172,7 +166,7 @@ export async function GET(request: Request) {
 
   // Calculate all three months in parallel
   const monthResults = await Promise.all(
-    months.map((m) => calcMonth(access.client.id, m)),
+    months.map((m) => calcMonth(access.client.id, m, access.client.ivaRate)),
   )
 
   // Aggregate totals

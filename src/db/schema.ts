@@ -1127,10 +1127,12 @@ export const cashSessions = pgTable('cash_sessions', {
 //   - 'withdrawal'   → retirada de cash (al banco, a bolsillo)
 //   - 'deposit'      → ingreso manual (cambio adicional)
 //   - 'adjustment'   → ajuste manual de cuadre (raro, traza)
+//   - 'refund'       → devolución al cliente (SumUp REFUNDED / reembolso)
 //
 // `amount_cents` es SIEMPRE positivo. La dirección la marca `kind`:
-// los expense/withdrawal restan; el resto suman. Esto se calcula en
-// `src/lib/cash/compute.ts` (puro, testeado).
+// los expense/withdrawal/refund RESTAN; el resto suman. Esto se calcula en
+// `src/lib/cash/compute.ts` (puro, testeado). `kind` es columna text (no
+// pg enum) — añadir un kind nuevo NO requiere migración.
 //
 // `method` discrimina la columna del cuadre afectada (cash/card/online).
 // Movimientos con method='card' u 'online' NO afectan al efectivo en cajón

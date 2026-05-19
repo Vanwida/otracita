@@ -1,11 +1,13 @@
 import { db } from '@/db'
-import { bookings, expenses, fixedCosts, manualIncomes } from '@/db/schema'
+import { expenses, fixedCosts } from '@/db/schema'
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
+import { annualRevenueComponentsByMonth } from '@/lib/finanzas/period-revenue'
+import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/annual?year=2026
@@ -42,17 +44,12 @@ export async function GET(request: Request) {
   const clientId = access.client.id
   const { start, end } = monthBounds(year)
 
-  // 4 queries en vez de 60 paralelas
-  const [bookingRows, expenseRows, fixedRows, manualRows] = await Promise.all([
-    // Ingresos por mes — SUM(price) agrupado por mes
-    db
-      .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${bookings.date}::date)::int`,
-        totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
-      })
-      .from(bookings)
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end)))
-      .groupBy(sql`EXTRACT(MONTH FROM ${bookings.date}::date)`),
+  // Ingresos por mes vía helper compartido (servicios+extras+manual+
+  // productos+propinas, GROUP BY mes — pocas queries, no satura Neon).
+  // Antes este endpoint solo sumaba bookings+manual con 21/121 hardcoded
+  // → divergía del P&L mensual de /summary.
+  const [revByMonth, expenseRows, fixedRows] = await Promise.all([
+    annualRevenueComponentsByMonth(clientId, start, end),
 
     // Gastos variables por mes — SUM con desglose IVA
     db
@@ -74,29 +71,21 @@ export async function GET(request: Request) {
       })
       .from(fixedCosts)
       .where(and(eq(fixedCosts.clientId, clientId), eq(fixedCosts.active, true))),
-
-    // Ingresos manuales por mes
-    db
-      .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${manualIncomes.date}::date)::int`,
-        total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)`,
-      })
-      .from(manualIncomes)
-      .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end)))
-      .groupBy(sql`EXTRACT(MONTH FROM ${manualIncomes.date}::date)`),
   ])
 
   // Índices para acceso O(1)
-  const bookingByMonth = new Map(bookingRows.map((r) => [r.month, parseFloat(r.totalEur)]))
   const expenseByMonth = new Map(expenseRows.map((r) => [r.month, { total: parseInt(r.total, 10), iva: parseInt(r.totalIva, 10) }]))
-  const manualByMonth = new Map(manualRows.map((r) => [r.month, parseInt(r.total, 10)]))
 
   const monthResults = Array.from({ length: 12 }, (_, i) => {
     const month = i + 1
     const mStart = monthStart(year, month)
     const monthStr = `${year}-${String(month).padStart(2, '0')}`
 
-    const ingresosCents = Math.round((bookingByMonth.get(month) ?? 0) * 100) + (manualByMonth.get(month) ?? 0)
+    const revComponents =
+      revByMonth.get(month) ??
+      { bookingPriceEuros: 0, extrasEuros: 0, manualCents: 0, productsCents: 0, tipsCents: 0 }
+    const revenue = computeRevenueCents(revComponents)
+    const ingresosCents = revenue.totalCents
     const expData = expenseByMonth.get(month) ?? { total: 0, iva: 0 }
     const gastosVariablesCents = expData.total
     const gastosVariablesIvaCents = expData.iva
@@ -109,10 +98,12 @@ export async function GET(request: Request) {
       .reduce((s, fc) => s + fc.amountCents, 0)
 
     const totalGastosCents = gastosVariablesCents + costosFijosCents
-    const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
-    const ivaSoportadoCents = Math.round(((gastosVariablesIvaCents + fixedIvaCents) * 21) / 121)
-    const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
-    const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
+    const { ivaAPagarCents, ingresosNetosCents } = computeIvaBreakdown({
+      ingresosCents,
+      tipsCents: revenue.tipsCents,
+      gastosConIvaCents: gastosVariablesIvaCents + fixedIvaCents,
+      ivaRate: access.client.ivaRate,
+    })
     const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
 
     return { month: monthStr, ingresosCents, totalGastosCents, beneficioBrutoCents, ivaAPagarCents }

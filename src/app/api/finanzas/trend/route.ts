@@ -1,11 +1,13 @@
 import { db } from '@/db'
-import { bookings, expenses, fixedCosts } from '@/db/schema'
+import { expenses, fixedCosts } from '@/db/schema'
 import { and, eq, gte, lt, lte, sql } from 'drizzle-orm'
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
+import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/trend?months=6
@@ -48,18 +50,11 @@ export async function GET(request: Request) {
       const [year, month] = mk.split('-').map(Number)
       const { start, end } = monthBounds(year, month)
 
-      const [ingresosRes, gastosRes, fixedRes] = await Promise.all([
-        db
-          .select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-          .from(bookings)
-          .where(
-            and(
-              eq(bookings.clientId, clientId),
-              eq(bookings.status, 'completed'),
-              gte(bookings.date, start),
-              lt(bookings.date, end),
-            ),
-          ),
+      // Mismo basis de ingreso que /summary (servicios+extras+manual+
+      // productos+propinas) + mismo IVA configurable, vía helpers compartidos.
+      // Sin esto el sparkline divergía del P&L mensual.
+      const [revComponents, gastosRes, fixedRes] = await Promise.all([
+        periodRevenueComponents(clientId, start, end),
         db
           .select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
           .from(expenses)
@@ -82,12 +77,18 @@ export async function GET(request: Request) {
           ),
       ])
 
-      const ingresosCents = Math.round(parseFloat(ingresosRes[0]?.total ?? '0') * 100)
+      const revenue = computeRevenueCents(revComponents)
+      const ingresosCents = revenue.totalCents
       const gastosVariablesCents = parseInt(gastosRes[0]?.total ?? '0', 10)
       const costosFijosCents = parseInt(fixedRes[0]?.total ?? '0', 10)
       const totalGastosCents = gastosVariablesCents + costosFijosCents
 
-      const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
+      const { ingresosNetosCents } = computeIvaBreakdown({
+        ingresosCents,
+        tipsCents: revenue.tipsCents,
+        gastosConIvaCents: 0, // trend solo necesita el neto para beneficio
+        ivaRate: access.client.ivaRate,
+      })
       const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
 
       return {

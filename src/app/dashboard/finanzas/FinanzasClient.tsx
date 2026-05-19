@@ -150,6 +150,12 @@ export type FinanzasSummary = {
   month: string
   ingresosCents: number
   manualIngresosCents: number
+  /** Ingreso por venta de productos este mes (cents). Su comisión ya
+   *  se descuenta vía nóminas — incluido en ingresos para que sea simétrico. */
+  productsIngresosCents: number
+  /** Propinas cobradas este mes (cents). Pasan al barbero vía nómina
+   *  (coste ya contabilizado). Sin IVA (gratuidad). */
+  tipsIngresosCents: number
   gastosVariablesCents: number
   costosFijosCents: number
   /** Coste del equipo este mes — auto-calculado desde el perfil de pago
@@ -912,7 +918,9 @@ export default function FinanzasClient({
               right={formatCents(summary.ingresosCents)}
             >
               <div className="divide-y divide-line">
-                {/* Citas (read-only) */}
+                {/* Citas (read-only). De citas = ingresos − efectivo manual
+                    − productos − propinas (esos van en sus propias líneas).
+                    Antes restaba sólo el efectivo y absorbía productos+propinas. */}
                 <div className="flex items-baseline justify-between px-4 py-3">
                   <div>
                     <p className="text-sm text-ink">De citas</p>
@@ -923,9 +931,37 @@ export default function FinanzasClient({
                     )}
                   </div>
                   <span className="tabular-nums text-sm font-semibold text-ink">
-                    {formatCents(summary.ingresosCents - summary.manualIngresosCents)}
+                    {formatCents(
+                      summary.ingresosCents -
+                        summary.manualIngresosCents -
+                        summary.productsIngresosCents -
+                        summary.tipsIngresosCents,
+                    )}
                   </span>
                 </div>
+
+                {/* Productos vendidos */}
+                {summary.productsIngresosCents > 0 && (
+                  <div className="flex items-baseline justify-between px-4 py-3">
+                    <p className="text-sm text-ink">De productos</p>
+                    <span className="tabular-nums text-sm font-semibold text-ink">
+                      {formatCents(summary.productsIngresosCents)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Propinas (sin IVA — gratuidad) */}
+                {summary.tipsIngresosCents > 0 && (
+                  <div className="flex items-baseline justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm text-ink">Propinas</p>
+                      <p className="text-xs text-ink-3 mt-0.5">Sin IVA · se reparte al equipo</p>
+                    </div>
+                    <span className="tabular-nums text-sm font-semibold text-ink">
+                      {formatCents(summary.tipsIngresosCents)}
+                    </span>
+                  </div>
+                )}
 
                 {/* Efectivo manual */}
                 {manualIncomesList.length > 0 && (
@@ -1109,7 +1145,7 @@ export default function FinanzasClient({
                     <p className="text-xs text-ink-3 font-medium uppercase tracking-wider">Nóminas del equipo</p>
                   </div>
                   <a
-                    href="/dashboard/equipo#nominas"
+                    href="/dashboard/informes/nominas"
                     className="flex items-center gap-3 px-4 py-2.5 border-b border-line hover:bg-overlay/30 transition-colors group"
                   >
                     <div className="flex-1 min-w-0">
@@ -1847,11 +1883,20 @@ function PrintRow({
   indent?: boolean
   highlight?: 'profit' | 'loss' | 'warning'
 }) {
-  const bg = highlight === 'profit' ? '#f0fdf4' : highlight === 'loss' ? '#fef2f2' : highlight === 'warning' ? '#fffbeb' : 'transparent'
+  // Tints desde @theme (sin hex inline — regla dura del proyecto). Cálidos,
+  // armonizados con --color-success/danger/warning.
+  const bg =
+    highlight === 'profit'
+      ? 'var(--color-success-surface)'
+      : highlight === 'loss'
+        ? 'var(--color-danger-surface)'
+        : highlight === 'warning'
+          ? 'var(--color-warning-surface)'
+          : 'transparent'
   const fw = bold ? 700 : 400
   return (
-    <tr style={{ borderBottom: '1px solid #eee', background: bg }}>
-      <td style={{ padding: '5px 8px 5px 0', fontWeight: fw, paddingLeft: indent ? '16px' : '0', color: indent ? '#555' : '#111' }}>{label}</td>
+    <tr style={{ borderBottom: '1px solid var(--color-line)', background: bg }}>
+      <td style={{ padding: '5px 8px 5px 0', fontWeight: fw, paddingLeft: indent ? '16px' : '0', color: indent ? 'var(--color-ink-2)' : 'var(--color-ink)' }}>{label}</td>
       <td style={{ padding: '5px 0 5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: fw, whiteSpace: 'nowrap' }}>{value}</td>
     </tr>
   )
