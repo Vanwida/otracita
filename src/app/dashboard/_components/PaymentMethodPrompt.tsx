@@ -1,7 +1,7 @@
 'use client'
 
-import { Banknote, CreditCard, Globe, X, Loader2, ArrowLeft } from 'lucide-react'
-import { useEffect } from 'react'
+import { Banknote, CreditCard, Globe, Loader2, ArrowLeft } from 'lucide-react'
+import Modal from './Modal'
 
 // -----------------------------------------------------------------------------
 // PaymentMethodPrompt — modal pequeño para elegir cash/card/online al
@@ -25,43 +25,23 @@ interface Props {
 }
 
 export default function PaymentMethodPrompt({ open, onClose, onPick, subtitle, pending }: Props) {
-  // Cerrar con ESC.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !pending) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose, pending])
-
-  if (!open) return null
-
+  // ESC + scrim-close los gestiona Modal; closeOnBackdrop={!pending}
+  // preserva el guard de "no cerrar mientras procesa el cobro".
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
-      onClick={() => !pending && onClose()}
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel="¿Cómo se cobró?"
+      size="sm"
+      zClass="z-[60]"
+      closeOnBackdrop={!pending}
     >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl max-w-sm w-full overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-ink uppercase tracking-widest">
-              ¿Cómo se cobró?
-            </h3>
-            {subtitle && <p className="text-xs text-ink-3 mt-0.5 truncate">{subtitle}</p>}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={pending}
-            className="p-1 rounded hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-40"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        {/* Header propio (mayúsculas tracking, estilo prompt de cobro). */}
+        <div className="px-5 py-4 border-b border-line">
+          <h3 className="text-sm font-semibold text-ink uppercase tracking-widest">
+            ¿Cómo se cobró?
+          </h3>
+          {subtitle && <p className="text-xs text-ink-3 mt-0.5 truncate">{subtitle}</p>}
         </div>
 
         <div className="p-4 grid grid-cols-1 gap-2">
@@ -110,8 +90,7 @@ export default function PaymentMethodPrompt({ open, onClose, onPick, subtitle, p
             Cerrando cita…
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }
 

@@ -10,7 +10,6 @@ import {
   Plus,
   Minus,
   Trash2,
-  X,
   Loader2,
   Check,
   Banknote,
@@ -21,6 +20,7 @@ import {
   Receipt,
 } from 'lucide-react'
 import NumberInput from '../_components/NumberInput'
+import Modal from '../_components/Modal'
 import CustomerTypeahead from '../_components/CustomerTypeahead'
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt'
 import type {
@@ -1080,14 +1080,40 @@ function EditLineModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Editar artículo"
+      size="sm"
+      zClass="z-[60]"
+      footer={
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-surface px-3 py-2.5 text-[0.8125rem] font-semibold text-danger transition-colors hover:bg-danger/10"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Eliminar
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-control border border-line bg-surface px-3 py-2.5 text-[0.8125rem] font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            className="btn-primary flex-1 justify-center"
+          >
+            Guardar
+          </button>
+        </div>
+      }
     >
-      <div
-        className="w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+        {/* Header propio (mayúsculas tracking-widest, estilo POS). */}
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold uppercase tracking-widest text-ink">
@@ -1095,14 +1121,6 @@ function EditLineModal({
             </h3>
             <p className="mt-0.5 truncate text-xs text-ink-3">{line.name}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="rounded p-1 text-ink-3 transition-colors hover:bg-overlay hover:text-ink-2"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="space-y-4 p-5">
@@ -1157,32 +1175,6 @@ function EditLineModal({
             </div>
           </div>
         </div>
-
-        <div className="flex gap-2 border-t border-line p-4">
-          <button
-            type="button"
-            onClick={onDelete}
-            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-surface px-3 py-2.5 text-[0.8125rem] font-semibold text-danger transition-colors hover:bg-danger/10"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-            Eliminar
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-control border border-line bg-surface px-3 py-2.5 text-[0.8125rem] font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            className="btn-primary flex-1 justify-center"
-          >
-            Guardar
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

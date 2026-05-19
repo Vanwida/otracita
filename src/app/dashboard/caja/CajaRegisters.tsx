@@ -16,10 +16,10 @@ import {
   Receipt,
   Heart,
   Sliders,
-  X,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
+import Modal from '../_components/Modal'
 import {
   MOVEMENT_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -752,35 +752,25 @@ function ModalShell({
   title: string
   children: React.ReactNode
 }) {
-  if (!open) return null
+  // Adaptador fino sobre el primitivo canónico Modal (#55). Conserva la
+  // firma local (open/onClose/title/children) para no tocar a sus
+  // consumidores en este archivo; el header en MAYÚSCULAS tracking se
+  // pinta como hijo (el title plano del primitivo no es uppercase).
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
-      onClick={onClose}
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel={title}
+      size="md"
+      zClass="z-[60]"
     >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-ink uppercase tracking-[0.08em]">
-            {title}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded hover:bg-overlay text-ink-2 hover:text-ink transition-colors"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
+      <div className="px-5 py-4 border-b border-line">
+        <h3 className="text-sm font-semibold text-ink uppercase tracking-[0.08em]">
+          {title}
+        </h3>
       </div>
-    </div>
+      <div className="p-5">{children}</div>
+    </Modal>
   )
 }
 
