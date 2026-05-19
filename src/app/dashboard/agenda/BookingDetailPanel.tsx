@@ -3,6 +3,7 @@
 import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, RotateCcw, AlertTriangle } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import SlideOver from '../_components/SlideOver';
+import Modal from '../_components/Modal';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
@@ -1461,16 +1462,36 @@ function EditServiceModal({
 
 
   return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--color-scrim-strong)] backdrop-blur-sm p-4"
-      onClick={() => !submitting && onClose()}
-      role="dialog"
-      aria-modal="true"
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Editar servicio o precio"
+      size="md"
+      zClass="z-[70]"
+      closeOnBackdrop={!submitting}
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Guardar cambios
+          </button>
+        </div>
+      }
     >
-      <div
-        className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+        {/* Header propio (avatar Pencil + contexto de la cita). */}
         <div className="p-5 border-b border-line flex items-start gap-3">
           <div className="h-10 w-10 rounded-full bg-brand-softer flex items-center justify-center shrink-0">
             <Pencil className="h-5 w-5 text-brand" />
@@ -1484,15 +1505,6 @@ function EditServiceModal({
               {booking.time}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            aria-label="Cerrar"
-            className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-40"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
@@ -1579,27 +1591,7 @@ function EditServiceModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-overlay/40 border-t border-line">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
-          >
-            Volver
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Guardar cambios
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1665,16 +1657,36 @@ function CancelBookingModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--color-scrim-strong)] backdrop-blur-sm p-4"
-      onClick={() => !submitting && onClose()}
-      role="dialog"
-      aria-modal="true"
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Cancelar la cita"
+      size="md"
+      zClass="z-[70]"
+      closeOnBackdrop={!submitting}
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting || (notify && !message.trim())}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-danger hover:bg-danger/90 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Cancelar cita
+          </button>
+        </div>
+      }
     >
-      <div
-        className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+        {/* Header propio (avatar danger + contexto de la cita). */}
         <div className="p-5 border-b border-line flex items-start gap-3">
           <div className="h-10 w-10 rounded-full bg-danger/10 flex items-center justify-center shrink-0">
             <CalendarX2 className="h-5 w-5 text-danger" />
@@ -1685,15 +1697,6 @@ function CancelBookingModal({
               {booking.customerName} · {booking.service} · {booking.date} {booking.time}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            aria-label="Cerrar"
-            className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-40"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -1743,26 +1746,6 @@ function CancelBookingModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-overlay/40 border-t border-line">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
-          >
-            Volver
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting || (notify && !message.trim())}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-danger hover:bg-danger/90 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Cancelar cita
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
