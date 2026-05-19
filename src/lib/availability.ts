@@ -4,6 +4,20 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
 import { loadShopUnavailability } from '@/lib/unavailability-db';
+import {
+  parseMinutes,
+  formatMinutes,
+  hoursForDate,
+  type TimeSlot,
+  type HoursForDay,
+  type WeeklyHours,
+} from '@/lib/availability-hours';
+
+// Re-export the pure hours/parsing surface so existing server callers keep
+// their `@/lib/availability` import path. The implementations live in the
+// client-safe `availability-hours.ts` (db-free) — see that file's header.
+export { hoursForDate };
+export type { TimeSlot, HoursForDay, WeeklyHours };
 
 // -----------------------------------------------------------------------------
 // Availability engine — the single source of truth for "when can a customer
@@ -23,51 +37,6 @@ import { loadShopUnavailability } from '@/lib/unavailability-db';
 //     (this is enforced by the date picker, but we double-check here too to
 //     keep the engine honest).
 // -----------------------------------------------------------------------------
-
-export interface TimeSlot {
-  start: string; // HH:MM
-  end: string;   // HH:MM
-}
-
-export interface HoursForDay {
-  start: string; // HH:MM
-  end: string;   // HH:MM
-}
-
-/** Full-week hours map; keys: 'monday'..'sunday' or 'lunes'..'domingo'. */
-export type WeeklyHours = Record<string, string>;
-
-function parseMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function formatMinutes(totalMinutes: number): string {
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-/**
- * Resolve the open-close window for a given date from a WeeklyHours map.
- * Returns `null` when the day is closed. Accepts both English and Spanish
- * weekday keys so existing configs keep working either way.
- */
-export function hoursForDate(date: string, hours: WeeklyHours | null): HoursForDay | null {
-  if (!hours) return null;
-  const d = new Date(`${date}T00:00:00Z`);
-  const weekdayIndex = d.getUTCDay(); // 0 = Sunday
-  const keysEn = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const keysEs = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
-  const value = hours[keysEn[weekdayIndex]] ?? hours[keysEs[weekdayIndex]];
-  if (!value || typeof value !== 'string') return null;
-  const cleaned = value.trim().toLowerCase();
-  if (!cleaned || cleaned === 'closed' || cleaned === 'cerrado') return null;
-  // Accept "10:00-20:00" or "10:00 - 20:00"
-  const parts = cleaned.split('-').map((p) => p.trim());
-  if (parts.length !== 2) return null;
-  return { start: parts[0], end: parts[1] };
-}
 
 function barberHoursForDate(
   barber: BarberConfig,

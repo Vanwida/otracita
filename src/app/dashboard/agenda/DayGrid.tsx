@@ -7,7 +7,7 @@ import { Lock, ChevronDown } from 'lucide-react';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
-import { hoursForDate } from '@/lib/availability';
+import { hoursForDate } from '@/lib/availability-hours';
 
 const PX_PER_MIN = 2;
 const GRID_START = 8 * 60;  // 08:00
@@ -460,8 +460,9 @@ export default function DayGrid({
                     const height = Math.max(event.duration * PX_PER_MIN, 24);
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    // Color = barbero de ESTA columna (consistente con
-                    // Semana/Mes). Estado por tratamiento + ícono + etiqueta.
+                    // Color = ESTADO de la cita (Booksy-exact, igual en
+                    // Semana/Mes) + ícono + etiqueta, nunca solo color. La
+                    // identidad del barbero vive en la cabecera de columna.
                     const { style: blockStyle, treatment } = appointmentBlockStyle(
                       col.barber?.displayOrder ?? null,
                       event.status,
