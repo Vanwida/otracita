@@ -1,8 +1,8 @@
 'use client';
 
-import { X, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import RightSlideOver from './_RightSlideOver';
+import SlideOver from '../_components/SlideOver';
 import NumberInput from '../_components/NumberInput';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 
@@ -163,18 +163,7 @@ export default function NewBookingPanel({
   };
 
   return (
-    <RightSlideOver isOpen={isOpen} onClose={onClose} ariaLabel="Nueva reserva">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-line">
-              <span className="text-sm font-semibold text-ink">Nueva Reserva</span>
-              <button
-                onClick={onClose}
-                className="p-1.5 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
+    <SlideOver open={isOpen} onClose={onClose} title="Nueva Reserva">
             {/* Form */}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* Customer name */}
@@ -407,6 +396,6 @@ export default function NewBookingPanel({
                 {loading ? 'Creando...' : 'Crear Reserva'}
               </button>
             </form>
-    </RightSlideOver>
+    </SlideOver>
   );
 }

@@ -1,9 +1,8 @@
 'use client';
 
-import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Trash2, FileWarning, Phone } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
-import RightSlideOver from './_RightSlideOver';
+import SlideOver from '../_components/SlideOver';
 import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
 import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
 import RectificativaModal from '../facturas/_components/RectificativaModal';
@@ -12,7 +11,7 @@ import { pushUndoToast } from '../_components/UndoToast';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import ClientProfile from '../clientes/[id]/ClientProfile';
 import type { ClientProfileData } from '@/lib/clients/profile';
-import { useState, useTransition, useEffect, useCallback, Fragment } from 'react';
+import { useState, useTransition, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -561,12 +560,13 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
   return (
     <>
-      {/* Slide-over compartido (mismo chasis que NewBookingPanel: ancho,
-          scrim, animación — fuente única en _RightSlideOver). Los modales
-          y overlays de abajo son SIBLINGS suyos, no entran aquí: tienen su
-          propio ciclo de vida y no comparten su key-set. */}
-      <RightSlideOver
-        isOpen={!!booking}
+      {/* Slide-over canónico (mismo chasis que NewBookingPanel y la ficha
+          de cliente — ancho/scrim/anim/a11y en _components/SlideOver). Sin
+          `title`: el detalle pinta su propia banda de estado de color como
+          primer hijo. Los modales y overlays de abajo son SIBLINGS suyos,
+          con su propio ciclo de vida. */}
+      <SlideOver
+        open={!!booking}
         onClose={onClose}
         ariaLabel="Detalle de la reserva"
       >
@@ -1137,7 +1137,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             )}
           </>
         )}
-      </RightSlideOver>
+      </SlideOver>
 
       {/* Modales — siblings del panel, FUERA del slide-over. No comparten
           su ciclo de vida (cada uno gestiona su propio open/close);
@@ -1221,61 +1221,47 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         />
       )}
 
-      {/* Ficha de cliente en overlay (fix #1) — slide-over sobre el panel
+      {/* Ficha de cliente en overlay — slide-over CANÓNICO sobre el panel
           de detalle. Mismo <ClientProfile> que /clientes/[id], variant
-          panel. z-[60] para quedar sobre el panel de detalle (z-50). */}
-      <AnimatePresence>
-        {profileOpen && booking && (
-          <Fragment key="client-profile">
-            <motion.div
-              key="cp-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setProfileOpen(false)}
-              className="fixed inset-0 z-[60] bg-[var(--color-scrim-light)]"
-            />
-            <motion.div
-              key="cp-panel"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed right-0 top-0 z-[60] h-full w-[480px] max-w-[94vw] bg-canvas border-l border-line flex flex-col shadow-xl"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Ficha del cliente"
-            >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-surface shrink-0">
-                <span className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2">
-                  Ficha del cliente
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(false)}
-                  aria-label="Cerrar ficha"
-                  className="inline-flex items-center justify-center h-11 w-11 -mr-3 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                >
-                  <X className="h-5 w-5" aria-hidden="true" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-5">
-                {profileLoading ? (
-                  <div className="flex items-center justify-center py-16 text-ink-3">
-                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-                  </div>
-                ) : profileError ? (
-                  <div className="rounded-xl border border-line bg-surface p-6 text-center text-sm text-ink-2">
-                    {profileError}
-                  </div>
-                ) : profileData ? (
-                  <ClientProfile data={profileData} variant="panel" />
-                ) : null}
-              </div>
-            </motion.div>
-          </Fragment>
-        )}
-      </AnimatePresence>
+          panel. surface="canvas" (superficie tipo lista), zClass z-[60]
+          para apilar SOBRE el panel de detalle (z-50). Ancho canónico:
+          antes divergía a w-[480px]/94vw — ahora la única definición vive
+          en SlideOver. Header propio (barra bg-surface) como primer hijo. */}
+      <SlideOver
+        open={profileOpen && !!booking}
+        onClose={() => setProfileOpen(false)}
+        ariaLabel="Ficha del cliente"
+        surface="canvas"
+        zClass="z-[60]"
+        scrim="always"
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-surface shrink-0">
+          <span className="text-xs uppercase tracking-[0.18em] font-semibold text-ink-2">
+            Ficha del cliente
+          </span>
+          <button
+            type="button"
+            onClick={() => setProfileOpen(false)}
+            aria-label="Cerrar ficha"
+            className="inline-flex items-center justify-center h-11 w-11 -mr-3 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          {profileLoading ? (
+            <div className="flex items-center justify-center py-16 text-ink-3">
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            </div>
+          ) : profileError ? (
+            <div className="rounded-xl border border-line bg-surface p-6 text-center text-sm text-ink-2">
+              {profileError}
+            </div>
+          ) : profileData ? (
+            <ClientProfile data={profileData} variant="panel" />
+          ) : null}
+        </div>
+      </SlideOver>
     </>
   );
 }
