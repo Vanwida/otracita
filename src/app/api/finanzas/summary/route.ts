@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { bookings, bookingServices, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
+import { bookings, bookingServices, productSales, tips, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
 import { and, eq, gte, lt, lte, sql, inArray } from 'drizzle-orm'
 import {
   requireClientAccess,
@@ -72,6 +72,8 @@ export async function GET(request: Request) {
     prevYearResult,
     prevYearExtrasResult,
     manualIngresosResult,
+    productsIngresosResult,
+    tipsIngresosResult,
   ] = await Promise.all([
     db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
       .from(bookings)
@@ -108,6 +110,20 @@ export async function GET(request: Request) {
     db.select({ total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)` })
       .from(manualIncomes)
       .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end))),
+    // ADD-1 — ingresos por venta de PRODUCTOS. payroll ya descuenta su
+    // comisión como coste (nóminas) pero el P&L nunca sumaba su ingreso →
+    // beneficio infravalorado. product_sales.total_cents ya en cents.
+    db.select({ total: sql<string>`COALESCE(SUM(${productSales.totalCents}), 0)` })
+      .from(productSales)
+      .where(and(eq(productSales.clientId, clientId), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
+    // ADD-1 — PROPINAS cobradas. Pasan al barbero vía nómina (coste ya
+    // contabilizado); sin sumar su ingreso el P&L las trataba como gasto
+    // puro. amount_cents ya en cents. Solo 'paid'. NOTA fiscal: la propina
+    // NO lleva IVA en España → entra al beneficio pero NO a la base de IVA
+    // (ver cálculo de ivaRepercutido abajo).
+    db.select({ total: sql<string>`COALESCE(SUM(${tips.amountCents}), 0)` })
+      .from(tips)
+      .where(and(eq(tips.clientId, clientId), eq(tips.status, 'paid'), gte(tips.paidAt, new Date(start)), lt(tips.paidAt, new Date(end)))),
   ])
 
   // Principal + extras (R7) en EUROS → ×100 una sola vez sobre la suma,
@@ -116,7 +132,17 @@ export async function GET(request: Request) {
     parseFloat(ingresosResult[0]?.total ?? '0') + parseFloat(extrasResult[0]?.total ?? '0')
   const bookingIngresosCents = Math.round(bookingIngresosEuros * 100)
   const manualIngresosCents = parseInt(manualIngresosResult[0]?.total ?? '0', 10)
-  const ingresosCents = bookingIngresosCents + manualIngresosCents
+  const productsIngresosCents = parseInt(productsIngresosResult[0]?.total ?? '0', 10)
+  const tipsIngresosCents = parseInt(tipsIngresosResult[0]?.total ?? '0', 10)
+  // ADD-1 — ingresos totales = servicios + extras + efectivo manual +
+  // PRODUCTOS + PROPINAS. Antes faltaban productos y propinas pese a que
+  // payroll ya descontaba su comisión/payout como coste → beneficio
+  // infravalorado y asimétrico (gasto sin su ingreso).
+  const ingresosCents =
+    bookingIngresosCents +
+    manualIngresosCents +
+    productsIngresosCents +
+    tipsIngresosCents
   const gastosVariablesCents = parseInt(gastosResult[0]?.total ?? '0', 10)
   const costosFijosCents = parseInt(fixedResult[0]?.total ?? '0', 10)
   const gastosVariablesConIvaCents = parseInt(gastosConIvaResult[0]?.total ?? '0', 10)
@@ -142,11 +168,18 @@ export async function GET(request: Request) {
   const ivaDenom = 100 + ivaRate
 
   const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
-  const ivaRepercutidoCents = Math.round((ingresosCents * ivaRate) / ivaDenom)
+  // Base de IVA = ingresos SIN propinas: la propina no lleva IVA en España
+  // (es gratuidad, fuera de la base imponible). Servicios, extras, productos
+  // y efectivo manual sí. Sin esto el IVA repercutido se inflaría por las
+  // propinas. Si no hay propinas, base == ingresosCents (sin regresión).
+  const ivaBaseCents = ingresosCents - tipsIngresosCents
+  const ivaRepercutidoCents = Math.round((ivaBaseCents * ivaRate) / ivaDenom)
   const gastosConIvaTotalCents = gastosVariablesConIvaCents + fixedConIvaCents
   const ivaSoportadoCents = Math.round((gastosConIvaTotalCents * ivaRate) / ivaDenom)
   const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
-  const ingresosNetosCents = Math.round((ingresosCents * 100) / ivaDenom)
+  // Neto = base sin IVA + propinas (las propinas ya son netas, no llevan IVA).
+  const ingresosNetosCents =
+    Math.round((ivaBaseCents * 100) / ivaDenom) + tipsIngresosCents
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const beneficioRealCents = beneficioBrutoCents - retirosCents
   const irpfEstimadoCents = Math.max(0, Math.round((beneficioBrutoCents * 20) / 100))
@@ -155,6 +188,8 @@ export async function GET(request: Request) {
     month: monthStr,
     ingresosCents,
     manualIngresosCents,
+    productsIngresosCents,
+    tipsIngresosCents,
     gastosVariablesCents,
     costosFijosCents,
     nominasCents,

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { bookings, clients, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
+import { bookings, bookingServices, productSales, tips, clients, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
 import { eq, and, gte, lt, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
@@ -108,7 +108,19 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     ).orderBy(manualIncomes.date),
   ])
 
-  const [bookingRow, bookingContextRow, prevBookingRow, prevYearBookingRow] = await Promise.all([
+  // NOTA: este SSR replica el cálculo de /api/finanzas/summary para que el
+  // render inicial coincida con el primer refetch del cliente. Cualquier
+  // cambio aquí debe ir también allí (extras R7, productos, propinas, IVA).
+  const [
+    bookingRow,
+    bookingContextRow,
+    prevBookingRow,
+    prevYearBookingRow,
+    extrasRow,
+    prevYearExtrasRow,
+    productsRow,
+    tipsRow,
+  ] = await Promise.all([
     db
       .select({ totalEur: sql<number>`COALESCE(SUM(price), 0)` })
       .from(bookings)
@@ -128,15 +140,47 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
       .select({ total: sql<number>`COALESCE(SUM(price), 0)` })
       .from(bookings)
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, prevYearStart), lt(bookings.date, prevYearEnd))),
+    // Servicios EXTRA (R7) — booking_services.priceEuros (EUROS, foot-gun).
+    // Query separada (no LEFT JOIN) para no inflar SUM(price) por fan-out.
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .from(bookingServices)
+      .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
+      .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .from(bookingServices)
+      .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
+      .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, prevYearStart), lt(bookings.date, prevYearEnd))),
+    // Productos vendidos (total_cents ya en cents) — su comisión ya se
+    // descuenta vía nóminas; sin sumar su ingreso el beneficio se infravalora.
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${productSales.totalCents}), 0)` })
+      .from(productSales)
+      .where(and(eq(productSales.clientId, client.id), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
+    // Propinas 'paid' (amount_cents ya en cents). Sin IVA (gratuidad).
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${tips.amountCents}), 0)` })
+      .from(tips)
+      .where(and(eq(tips.clientId, client.id), eq(tips.status, 'paid'), gte(tips.paidAt, new Date(start)), lt(tips.paidAt, new Date(end)))),
   ])
 
-  const bookingIngresosCents = Math.round(Number(bookingRow[0]?.totalEur ?? 0) * 100)
+  // Principal + extras en EUROS → ×100 una sola vez (boundary idéntico a
+  // bookingTotalCents y la factura).
+  const bookingIngresosCents = Math.round(
+    (Number(bookingRow[0]?.totalEur ?? 0) + Number(extrasRow[0]?.total ?? 0)) * 100,
+  )
   const manualIngresosCents = monthManualIncomes.reduce((sum, m) => sum + m.amountCents, 0)
-  const ingresosCents = bookingIngresosCents + manualIngresosCents
+  const productsIngresosCents = Number(productsRow[0]?.total ?? 0)
+  const tipsIngresosCents = Number(tipsRow[0]?.total ?? 0)
+  const ingresosCents =
+    bookingIngresosCents + manualIngresosCents + productsIngresosCents + tipsIngresosCents
   const serviciosCount = Number(bookingContextRow[0]?.count ?? 0)
   const ticketMedioCents = Math.round(Number(bookingContextRow[0]?.ticketMedio ?? 0) * 100)
   const prevIngresosCents = Math.round(Number(prevBookingRow[0]?.total ?? 0) * 100)
-  const prevYearIngresosCents = Math.round(Number(prevYearBookingRow[0]?.total ?? 0) * 100)
+  const prevYearIngresosCents = Math.round(
+    (Number(prevYearBookingRow[0]?.total ?? 0) + Number(prevYearExtrasRow[0]?.total ?? 0)) * 100,
+  )
 
   const gastosVariablesCents = monthExpenses.reduce((sum, e) => sum + e.amountCents, 0)
 
@@ -152,8 +196,13 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
 
   const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
 
-  // IVA: ingresos incluyen IVA (precio con IVA), repercutido = precio × 21/121
-  const ivaRepercutidoCents = Math.round((ingresosCents * 21) / 121)
+  // IVA configurable por tenant (clients.ivaRate, default 21). Para un
+  // tenant al 21% es idéntico a 21/121 (sin regresión). Base SIN propinas
+  // (la propina no lleva IVA en España).
+  const ivaRate = client.ivaRate
+  const ivaDenom = 100 + ivaRate
+  const ivaBaseCents = ingresosCents - tipsIngresosCents
+  const ivaRepercutidoCents = Math.round((ivaBaseCents * ivaRate) / ivaDenom)
 
   // IVA soportado: solo categorías con IVA (productos, suministros, publicidad)
   const gastosConIvaCents = monthExpenses
@@ -162,12 +211,14 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   const fixedConIvaCents = activeFixedThisMonth
     .filter((fc) => IVA_CATEGORIES.includes(fc.category))
     .reduce((sum, fc) => sum + fc.amountCents, 0)
-  const ivaSoportadoCents = Math.round(((gastosConIvaCents + fixedConIvaCents) * 21) / 121)
+  const ivaSoportadoCents = Math.round(((gastosConIvaCents + fixedConIvaCents) * ivaRate) / ivaDenom)
 
   const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
 
-  // Beneficio bruto = ingresos netos (sin IVA) − total gastos (incluye nóminas)
-  const ingresosNetosCents = Math.round((ingresosCents * 100) / 121)
+  // Beneficio bruto = ingresos netos (sin IVA) − total gastos (incluye nóminas).
+  // Neto = base sin IVA + propinas (las propinas ya son netas).
+  const ingresosNetosCents =
+    Math.round((ivaBaseCents * 100) / ivaDenom) + tipsIngresosCents
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const retirosCents = monthWithdrawals.reduce((sum, w) => sum + w.amountCents, 0)
   const beneficioRealCents = beneficioBrutoCents - retirosCents
@@ -186,6 +237,8 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     month,
     ingresosCents,
     manualIngresosCents,
+    productsIngresosCents,
+    tipsIngresosCents,
     gastosVariablesCents,
     costosFijosCents,
     nominasCents,
