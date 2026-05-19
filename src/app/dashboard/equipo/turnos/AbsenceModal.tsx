@@ -6,7 +6,11 @@ import Modal from '../../_components/Modal'
 import type { TurnosBarber } from './TurnosManager'
 
 // -----------------------------------------------------------------------------
-// AbsenceModal — "Añadir ausencia · <barbero>" (screenshot 10.22.23).
+// AbsenceModal — "Día libre · <barbero>" (screenshot 10.22.23).
+//
+// Lenguaje de barbero: "día libre / ausencia", no "añadir ausencia". El
+// `kind:'absence'` del payload y los 4 valores de `reason` NO cambian —
+// esto es copy + el motivo (que ya persiste en la columna `reason`).
 //
 // Estructura espejo de Booksy:
 //   · "Todo el día" (toggle) + recuento de días.
@@ -99,7 +103,7 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
     <Modal
       open
       onClose={onClose}
-      title="Añadir ausencia"
+      title="Día libre / ausencia"
       subtitle={barber.name}
       size="md"
       footer={
@@ -141,7 +145,7 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
           {/* Seleccionar fecha */}
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wide text-ink-3 mb-2">
-              Seleccionar fecha
+              ¿Qué día?
             </span>
             {/* TODO(turnos): "Repetir" de Booksy (10.22.23) omitido a
                 propósito — `barber_blocks` no tiene columna de recurrencia.
@@ -180,7 +184,7 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
           {/* Seleccionar motivo */}
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wide text-ink-3 mb-2">
-              Seleccionar motivo
+              Motivo
             </span>
             <select
               value={reason}

@@ -43,8 +43,8 @@ import BlockModal from './BlockModal'
 //     día + cómputo de horas. Botón "Copiar" copia el `hours` semanal de un
 //     barbero a otros (PATCH /api/barbers/[id], sin schema nuevo).
 //
-// Click en fila → chooser (Editar horario · Añadir ausencia · Falta de
-// disponibilidad, screenshot 10.18.07) → abre el modal correspondiente.
+// Click en fila → chooser (Editar horario · Día libre / ausencia · Descanso
+// / bloquear hueco, screenshot 10.18.07) → abre el modal correspondiente.
 // Los modales escriben vía las APIs tenant-scoped ya existentes; al cerrar
 // con éxito hacemos router.refresh() para repintar con datos frescos del
 // server (success optimista + revalidate, sin estado duplicado).
@@ -272,7 +272,7 @@ export default function TurnosManager({ barbers, shopHours }: Props) {
             </button>
           )}
           <p className="hidden text-xs text-ink-3 sm:block">
-            Toca un barbero para editar su horario, añadir una ausencia o bloquear una franja.
+            Toca un barbero para editar su horario, ponerle un día libre o un descanso.
           </p>
         </div>
       </div>
@@ -450,8 +450,8 @@ function DayTimeline({
                       <>
                         <Ban className="h-3 w-3 shrink-0" />
                         {fullDayBlock.kind === 'absence'
-                          ? 'Ausente todo el día'
-                          : 'No disponible'}
+                          ? 'Día libre'
+                          : 'Descanso'}
                       </>
                     ) : win ? (
                       <>
@@ -481,7 +481,7 @@ function DayTimeline({
                   <div className="absolute inset-2 rounded-md bg-danger/10 border border-danger/30 flex items-center justify-center">
                     <span className="text-[11px] font-medium text-danger flex items-center gap-1">
                       <Ban className="h-3 w-3" />
-                      {fullDayBlock.kind === 'absence' ? 'Ausencia' : 'No disponible'}
+                      {fullDayBlock.kind === 'absence' ? 'Día libre' : 'Descanso'}
                     </span>
                   </div>
                 ) : win ? (
@@ -556,7 +556,7 @@ function WorkBlock({
           const bs = Math.max(toMinutes(b.startTime as string), ws)
           const be = Math.min(toMinutes(b.endTime as string), we)
           if (be <= bs) return null
-          const label = `${b.kind === 'absence' ? 'Ausencia' : 'No disponible'} ${b.startTime}-${b.endTime}`
+          const label = `${b.kind === 'absence' ? 'Día libre' : 'Descanso'} ${b.startTime}-${b.endTime}`
           return (
             <div
               key={b.id}
@@ -579,7 +579,7 @@ function WorkBlock({
 
 // -----------------------------------------------------------------------------
 // ActionChooser — popup tras click en fila (screenshot 10.18.07):
-// Editar horario · Añadir ausencia · Falta de disponibilidad.
+// Editar horario · Día libre / ausencia · Descanso / bloquear hueco.
 // -----------------------------------------------------------------------------
 function ActionChooser({
   barberName,
@@ -605,8 +605,8 @@ function ActionChooser({
       <div className="divide-y divide-line">
         {[
           { label: 'Editar horario de trabajo', icon: Pencil, fn: onEditSchedule },
-          { label: 'Añadir ausencia', icon: CalendarOff, fn: onAddAbsence },
-          { label: 'Falta de disponibilidad', icon: Ban, fn: onAddBlock },
+          { label: 'Día libre / ausencia', icon: CalendarOff, fn: onAddAbsence },
+          { label: 'Descanso / bloquear hueco', icon: Ban, fn: onAddBlock },
         ].map(({ label, icon: Icon, fn }) => (
           <button
             key={label}
@@ -703,7 +703,7 @@ function WeekGrid({
                   {fullDayBlock ? (
                     <span className="flex items-center gap-1 text-[11px] font-medium text-danger">
                       <Ban className="h-3 w-3 shrink-0" />
-                      {fullDayBlock.kind === 'absence' ? 'Ausencia' : 'No disp.'}
+                      {fullDayBlock.kind === 'absence' ? 'Día libre' : 'Descanso'}
                     </span>
                   ) : win ? (
                     <>

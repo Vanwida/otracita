@@ -74,9 +74,11 @@ function barberDayHoursLabel(
   hours: Record<string, string> | null,
   blocked: boolean,
 ): string {
-  if (blocked) return 'Falta de disponibilidad';
+  // Lenguaje de barbero: si ese día no curra, no es una "falta de
+  // disponibilidad" — es que hoy no trabaja. Mismo estado, plano.
+  if (blocked) return 'Hoy no trabaja';
   const h = hoursForDate(dateStr, hours);
-  if (!h) return 'Falta de disponibilidad';
+  if (!h) return 'Hoy no trabaja';
   return `${h.start} - ${h.end}`;
 }
 
@@ -321,7 +323,7 @@ export default function DayGrid({
                     quedar sobre las cabeceras al scrollear en ambos ejes. */}
                 {(() => {
                   // Subtítulo = horario que trabaja ese barbero ese día, o
-                  // "Falta de disponibilidad" (paridad Booksy 09.39.31).
+                  // "Hoy no trabaja" (paridad Booksy 09.39.31, en plano).
                   // Solo para columnas que mapean a un barbero real.
                   const hoursLabel = col.barber
                     ? barberDayHoursLabel(dateStr, hours, isBlocked)

@@ -22,9 +22,9 @@ import { barberColorVar } from './types';
 //   · Editar horario          → /dashboard/equipo/turnos (editor canónico,
 //                                con sus datos ya cargados — no duplicamos
 //                                el loader de turnos en la agenda)
-//   · Añadir ausencia         → AbsenceModal (reusado tal cual: solo usa
+//   · Día libre / ausencia    → AbsenceModal (reusado tal cual: solo usa
 //                                barber.id + barber.name)
-//   · Falta de disponibilidad → BlockModal (idem, reusado)
+//   · Descanso / bloquear     → BlockModal (idem, reusado)
 //   · Qué ha hecho            → resumen del barbero a partir de los eventos
 //                                YA cargados por CalendarView (cero fetch
 //                                nuevo) + enlace al desglose completo en
@@ -208,7 +208,7 @@ export default function BarberActionMenu({
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-ink">
-                        Añadir ausencia
+                        Ausencia (día libre)
                       </span>
                       <span className="block text-xs text-ink-2 truncate">
                         Día completo (vacaciones, baja, personal)
@@ -227,10 +227,10 @@ export default function BarberActionMenu({
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-ink">
-                        Añadir falta de disponibilidad
+                        Descanso / bloquear hueco
                       </span>
                       <span className="block text-xs text-ink-2 truncate">
-                        Bloquear una franja de un día concreto
+                        Tapar una franja de un día concreto
                       </span>
                     </span>
                   </button>
