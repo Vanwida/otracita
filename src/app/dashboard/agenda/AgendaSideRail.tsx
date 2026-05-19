@@ -170,10 +170,14 @@ export default function AgendaSideRail({
             {format(currentDay, 'MMMM yyyy', { locale: es })}
           </span>
           <div className="flex items-center gap-0.5">
+            {/* h-7 w-7 = 28×28 (≥24×24 WCAG 2.2 SC 2.5.8 AA). Antes era
+                p-1 + icono 14px = 22×22 y a 2px del vecino → fallaba
+                tamaño Y la excepción de espaciado. El icono sigue a 14px:
+                solo crece el área de toque, no el dibujo. */}
             <button
               type="button"
               onClick={() => onSelectDate(subMonths(currentDay, 1))}
-              className="p-1 rounded-md text-ink-2 hover:bg-overlay hover:text-ink transition-colors"
+              className="inline-flex items-center justify-center h-7 w-7 rounded-md text-ink-2 hover:bg-overlay hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
               aria-label="Mes anterior"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -181,7 +185,7 @@ export default function AgendaSideRail({
             <button
               type="button"
               onClick={() => onSelectDate(addMonths(currentDay, 1))}
-              className="p-1 rounded-md text-ink-2 hover:bg-overlay hover:text-ink transition-colors"
+              className="inline-flex items-center justify-center h-7 w-7 rounded-md text-ink-2 hover:bg-overlay hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
               aria-label="Mes siguiente"
             >
               <ChevronRight className="h-3.5 w-3.5" />
