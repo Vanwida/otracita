@@ -149,12 +149,14 @@ export function ConfirmDialogHost() {
                 </p>
               )}
             </div>
+            {/* WCAG 2.2 SC 2.5.8/2.5.5: hit area 44×44 (h-11 w-11),
+                glyph 16px. -m-2 recupera el espacio óptico de la cabecera. */}
             <button
               type="button"
               onClick={() => close(false)}
               disabled={isPending}
               aria-label="Cerrar"
-              className="text-ink-3 hover:text-ink-2 p-1 -m-1 rounded disabled:opacity-40"
+              className="-m-2 inline-flex h-11 w-11 items-center justify-center rounded text-ink-3 hover:text-ink-2 disabled:opacity-40"
             >
               <X className="h-4 w-4" />
             </button>

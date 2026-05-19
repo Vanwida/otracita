@@ -194,11 +194,13 @@ export default function SlideOver({
                 >
                   {title}
                 </span>
+                {/* WCAG 2.2 SC 2.5.8/2.5.5: hit area 44×44 (h-11 w-11),
+                    glyph 16px. -mr-2 recupera espacio óptico del header. */}
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="Cerrar"
-                  className="p-1.5 rounded-lg hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                  className="-mr-2 inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
