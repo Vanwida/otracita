@@ -6,6 +6,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
+import { canonicalPhone } from '@/lib/phone'
 
 export async function POST(req: NextRequest) {
   const access = await requireClientAccess(req)
@@ -46,11 +47,13 @@ export async function POST(req: NextRequest) {
       ),
     )
 
-  // Decrement customer no-shows
+  // Decrement customer no-shows. Match on the canonical E.164 form so a
+  // legacy booking stored with a raw phone still resolves the (canonical)
+  // customer row. Idempotent for bookings created after canonicalization.
   const customerRows = await db.select().from(customers).where(
     and(
       eq(customers.clientId, booking.clientId),
-      eq(customers.phone, booking.customerPhone)
+      eq(customers.phone, canonicalPhone(booking.customerPhone))
     )
   )
 

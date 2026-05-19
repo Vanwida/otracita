@@ -7,6 +7,7 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { createBooking } from '@/lib/bookings/create'
+import { canonicalizePhone } from '@/lib/phone'
 
 // -----------------------------------------------------------------------------
 // Vision-based import — accepts 1-N screenshots (Booksy "Appointment List" or
@@ -89,14 +90,16 @@ interface RequestBody {
   dryRun?: boolean
 }
 
+// Phone normalization now lives in the shared canonical util (see
+// `@/lib/phone`). `normalisePhone` returns the canonical E.164 string for
+// parseable input, or `null` when the OCR yielded no usable phone — the
+// caller substitutes a pseudo-phone so the slot is still blocked. We treat
+// "parsed but invalid" as null too: a placeholder is better than persisting
+// OCR garbage that would never merge with the real customer.
 function normalisePhone(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const cleaned = raw.replace(/[^\d+]/g, '')
-  if (!cleaned) return null
-  if (cleaned.startsWith('+')) return cleaned
-  if (/^\d{9}$/.test(cleaned)) return `+34${cleaned}`
-  if (/^\d{11,15}$/.test(cleaned)) return `+${cleaned}`
-  return cleaned
+  if (!raw || !raw.trim()) return null
+  const c = canonicalizePhone(raw)
+  return c.valid ? c.value : null
 }
 
 async function extractWithVision(images: string[]): Promise<ParsedBooking[]> {

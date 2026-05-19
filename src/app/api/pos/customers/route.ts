@@ -5,6 +5,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
+import { canonicalizePhone } from '@/lib/phone'
 
 // -----------------------------------------------------------------------------
 // GET /api/pos/customers?q=... — typeahead de clientes para el TPV.
@@ -30,6 +31,15 @@ export async function GET(req: Request) {
 
   const like = `%${q.toLowerCase()}%`
 
+  // Stored phones are canonical E.164 (+34…). A barber typing "+34 644" or
+  // "0034644" wouldn't substring-match the stored "+34644288663"; canonical-
+  // izing the query and OR-ing it in makes phone search format-agnostic
+  // while keeping the human-friendly partial NAME search untouched. Only
+  // added when the query parses to a valid number — a 2-char name fragment
+  // never becomes a bogus phone filter.
+  const canon = canonicalizePhone(q)
+  const phoneLike = canon.valid ? `%${canon.value.toLowerCase()}%` : like
+
   const rows = await db
     .select({
       name: customers.name,
@@ -42,6 +52,7 @@ export async function GET(req: Request) {
         or(
           sql`LOWER(COALESCE(${customers.name}, '')) LIKE ${like}`,
           sql`${customers.phone} LIKE ${like}`,
+          sql`${customers.phone} LIKE ${phoneLike}`,
         ),
       ),
     )

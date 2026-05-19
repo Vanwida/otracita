@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
 import { computeBalance, computeProgress } from '@/lib/loyalty/compute'
+import { canonicalPhone } from '@/lib/phone'
 import type { LoyaltyConfig } from '@/lib/loyalty/types'
 
 // -----------------------------------------------------------------------------
@@ -34,10 +35,14 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const phoneRaw = url.searchParams.get('phone') ?? ''
-  const phone = phoneRaw.trim()
-  if (!phone) {
+  if (!phoneRaw.trim()) {
     return Response.json({ error: 'phone required' }, { status: 400 })
   }
+  // Match on the SAME canonical E.164 form the customer row is stored in,
+  // so the barber finds the client regardless of how they type the number
+  // (644… / +34 644… / 34644…). Falls back to the trimmed raw value for
+  // unparseable input — consistent with how it'd have been stored.
+  const phone = canonicalPhone(phoneRaw)
 
   const config = access.client.loyaltyConfig as unknown as LoyaltyConfig | null
   if (!config || typeof config !== 'object' || !('mode' in config)) {

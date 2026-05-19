@@ -2,6 +2,7 @@ import 'server-only'
 import { db } from '@/db'
 import { customers, bookings, ratings, tips, loyaltyLedger } from '@/db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
+import { canonicalPhone } from '@/lib/phone'
 
 // -----------------------------------------------------------------------------
 // loadClientProfile — FUENTE ÚNICA de la ficha de un cliente (fix #1).
@@ -125,10 +126,15 @@ export async function loadClientProfile(
   clientId: string,
   opts: LoadOpts,
 ): Promise<ClientProfileData | null> {
+  // Look up by id, or by phone in its canonical E.164 form so the agenda
+  // (which passes a booking's phone) resolves the same row regardless of
+  // the format that booking was created with. Idempotent for already-
+  // canonical input; keeps raw for unparseable (consistent with storage).
+  const phoneKey = opts.phone ? canonicalPhone(opts.phone) : undefined
   const where = opts.customerId
     ? and(eq(customers.id, opts.customerId), eq(customers.clientId, clientId))
-    : opts.phone
-      ? and(eq(customers.phone, opts.phone), eq(customers.clientId, clientId))
+    : phoneKey
+      ? and(eq(customers.phone, phoneKey), eq(customers.clientId, clientId))
       : null
   if (!where) return null
 
