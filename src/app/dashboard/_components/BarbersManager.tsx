@@ -26,6 +26,7 @@ import {
   Pencil,
   Check,
 } from 'lucide-react'
+import Modal from './Modal'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
 import BarberSalaryEditor from './BarberSalaryEditor'
@@ -896,44 +897,13 @@ function ReassignModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--color-scrim-strong)] backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-surface rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
-        <div className="flex items-start gap-3 p-5 border-b border-line">
-          <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="h-5 w-5 text-warning" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-ink">
-              Resuelve las reservas de {barberName}
-            </h3>
-            <p className="text-sm text-ink-2 mt-0.5">
-              Tiene {blockingBookings.length} reserva{blockingBookings.length === 1 ? '' : 's'}{' '}
-              futura{blockingBookings.length === 1 ? '' : 's'}. Reasigna o cancela cada una
-              para poder eliminarlo.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="text-ink-3 hover:text-ink p-1 -m-1"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-2">
-          {blockingBookings.map((b) => (
-            <BlockingBookingRow
-              key={b.id}
-              booking={b}
-              otherBarbers={otherBarbers}
-              onResolved={() => onResolved(b.id)}
-            />
-          ))}
-        </div>
-
-        <div className="p-4 border-t border-line text-right">
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel={`Resuelve las reservas de ${barberName}`}
+      size="xl"
+      footer={
+        <div className="text-right">
           <button
             type="button"
             onClick={onClose}
@@ -942,8 +912,43 @@ function ReassignModal({
             Cerrar sin eliminar
           </button>
         </div>
+      }
+    >
+      <div className="flex items-start gap-3 p-5 border-b border-line">
+        <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
+          <AlertTriangle className="h-5 w-5 text-warning" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-ink">
+            Resuelve las reservas de {barberName}
+          </h3>
+          <p className="text-sm text-ink-2 mt-0.5">
+            Tiene {blockingBookings.length} reserva{blockingBookings.length === 1 ? '' : 's'}{' '}
+            futura{blockingBookings.length === 1 ? '' : 's'}. Reasigna o cancela cada una
+            para poder eliminarlo.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar"
+          className="text-ink-3 hover:text-ink p-1 -m-1"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-    </div>
+
+      <div className="p-5 space-y-2">
+        {blockingBookings.map((b) => (
+          <BlockingBookingRow
+            key={b.id}
+            booking={b}
+            otherBarbers={otherBarbers}
+            onResolved={() => onResolved(b.id)}
+          />
+        ))}
+      </div>
+    </Modal>
   )
 }
 

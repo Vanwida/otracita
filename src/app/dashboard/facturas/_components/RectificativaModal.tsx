@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Loader2, AlertTriangle } from 'lucide-react'
+import Modal from '../../_components/Modal'
 
 // -----------------------------------------------------------------------------
 // Modal para emitir una factura rectificativa de una original.
@@ -116,41 +117,59 @@ export default function RectificativaModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-strong)] backdrop-blur-sm p-4"
-      onClick={() => !submitting && onClose()}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="w-full max-w-lg bg-surface rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="p-5 border-b border-line flex items-start gap-3">
-          <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="h-5 w-5 text-warning" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-ink">Emitir rectificativa</h3>
-            <p className="text-xs text-ink-2 mt-0.5">
-              Rectificando <span className="font-mono">{originalNumber}</span> · Original:{' '}
-              {formatCents(originalTotalCents)} €
-            </p>
-          </div>
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Emitir rectificativa"
+      size="lg"
+      closeOnBackdrop={!submitting}
+      footer={
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            aria-label="Cerrar"
-            className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-40"
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
           >
-            <X className="h-4 w-4" />
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!valid || submitting}
+            className="btn-primary"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Emitir rectificativa
           </button>
         </div>
+      }
+    >
+      {/* Header */}
+      <div className="p-5 border-b border-line flex items-start gap-3">
+        <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
+          <AlertTriangle className="h-5 w-5 text-warning" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-ink">Emitir rectificativa</h3>
+          <p className="text-xs text-ink-2 mt-0.5">
+            Rectificando <span className="font-mono">{originalNumber}</span> · Original:{' '}
+            {formatCents(originalTotalCents)} €
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={submitting}
+          aria-label="Cerrar"
+          className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-40"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4 overflow-y-auto">
+      {/* Body */}
+      <div className="p-5 space-y-4">
           {/* Motivo */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-ink-3 mb-2">
@@ -243,28 +262,6 @@ export default function RectificativaModal({
             La rectificativa se envía a Hacienda con su propia huella VeriFactu.
           </p>
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-overlay/40 border-t border-line">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!valid || submitting}
-            className="btn-primary"
-          >
-            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Emitir rectificativa
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

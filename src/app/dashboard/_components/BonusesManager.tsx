@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { Plus, Trash2, Award, Loader2, Lock } from 'lucide-react'
 import Link from 'next/link'
+import { useConfirm } from './ConfirmDialog'
 
 // -----------------------------------------------------------------------------
 // BonusesManager — configuración del catálogo de bonos del local.
@@ -44,9 +45,16 @@ function BonusesManagerInner() {
   const list = data?.bonuses ?? []
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const confirm = useConfirm()
 
   async function deleteBonus(id: string) {
-    if (!confirm('¿Eliminar este bono? Se borra también el histórico de progreso.')) return
+    const ok = await confirm({
+      title: '¿Eliminar este bono?',
+      message: 'Se borra también el histórico de progreso.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
     setError(null)
     const res = await fetch(`/api/bonuses/${id}`, { method: 'DELETE' })
     if (!res.ok) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CreditCard, Loader2, Check, X, AlertCircle } from 'lucide-react'
+import Modal from './Modal'
 
 // -----------------------------------------------------------------------------
 // SumupCheckoutPrompt — modal de cobro instantáneo con SumUp Cloud API.
@@ -68,17 +69,8 @@ export default function SumupCheckoutPrompt({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // Cierre con ESC (solo si no estamos en cobro activo).
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (state.kind === 'awaiting' || state.kind === 'starting') return
-      onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose, state.kind])
+  // (ESC lo gestiona ahora el primitivo Modal vía closeOnBackdrop, con el
+  // mismo gate de cobro activo — antes había un useEffect propio aquí.)
 
   function stopPolling() {
     if (pollIntervalRef.current) {
@@ -152,40 +144,39 @@ export default function SumupCheckoutPrompt({
     }, POLL_INTERVAL_MS)
   }
 
-  if (!open) return null
+  // Durante el cobro activo (starting/awaiting) NI scrim NI ESC cierran —
+  // un cierre accidental dejaría la cita a medio cobrar. Mismo gate que
+  // antes; lo aplica el primitivo Modal vía closeOnBackdrop.
+  const charging = state.kind === 'awaiting' || state.kind === 'starting'
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--color-scrim)] p-4"
-      onClick={() => {
-        if (state.kind === 'awaiting' || state.kind === 'starting') return
-        onClose()
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel="Cobrar con SumUp"
+      size="sm"
+      closeOnBackdrop={!charging}
     >
-      <div
-        className="bg-surface border border-line rounded-2xl shadow-xl max-w-sm w-full overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-ink uppercase tracking-widest">
-              Cobrar con SumUp
-            </h3>
-            {subtitle && <p className="text-xs text-ink-3 mt-0.5 truncate">{subtitle}</p>}
-          </div>
-          {state.kind !== 'awaiting' && state.kind !== 'starting' && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors"
-              aria-label="Cerrar"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+      <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-ink uppercase tracking-widest">
+            Cobrar con SumUp
+          </h3>
+          {subtitle && <p className="text-xs text-ink-3 mt-0.5 truncate">{subtitle}</p>}
         </div>
+        {!charging && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded hover:bg-overlay text-ink-3 hover:text-ink-2 transition-colors"
+            aria-label="Cerrar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
-        <div className="p-5">
+      <div className="p-5">
           {state.kind === 'idle' && (
             <div className="space-y-4">
               <div className="text-center py-3">
@@ -320,7 +311,6 @@ export default function SumupCheckoutPrompt({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -12,6 +12,7 @@ import {
   X,
   PackageOpen,
 } from 'lucide-react'
+import { useConfirm } from '../../_components/ConfirmDialog'
 
 // -----------------------------------------------------------------------------
 // ProductsManager — CRUD client-side del catálogo de productos.
@@ -60,6 +61,7 @@ export default function ProductsManager({ initial }: Props) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const confirm = useConfirm()
 
   const startCreate = () => {
     setError(null)
@@ -171,8 +173,15 @@ export default function ProductsManager({ initial }: Props) {
     })
   }
 
-  const remove = (p: Product) => {
-    if (!confirm(`¿Eliminar "${p.name}"? Si tiene ventas históricas se mantendrá oculto pero conservaremos el histórico.`)) return
+  const remove = async (p: Product) => {
+    const ok = await confirm({
+      title: `¿Eliminar "${p.name}"?`,
+      message:
+        'Si tiene ventas históricas se mantendrá oculto pero conservaremos el histórico.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
     startTransition(async () => {
       try {
         const r = await fetch(`/api/products/${p.id}`, { method: 'DELETE' })

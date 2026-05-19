@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CreditCard, Check, Loader2, Unlink, AlertCircle, Smartphone } from 'lucide-react'
+import { useConfirm } from './ConfirmDialog'
 
 // -----------------------------------------------------------------------------
 // SumupConnect — card en /dashboard/caja para conectar/desconectar el
@@ -45,6 +46,7 @@ export default function SumupConnect({
   const [error, setError] = useState<string | null>(null)
   const [readers, setReaders] = useState<Reader[] | null>(null)
   const [loadingReaders, setLoadingReaders] = useState(false)
+  const confirm = useConfirm()
 
   const flashSuccess = searchParams.get('sumup') === 'connected'
   const flashError = searchParams.get('sumup') === 'error'
@@ -106,7 +108,14 @@ export default function SumupConnect({
   }
 
   async function disconnect() {
-    if (!confirm('¿Desconectar SumUp? Dejaremos de importar tus cobros con datáfono al cuadre del día.')) return
+    const ok = await confirm({
+      title: '¿Desconectar SumUp?',
+      message:
+        'Dejaremos de importar tus cobros con datáfono al cuadre del día.',
+      confirmLabel: 'Desconectar',
+      variant: 'danger',
+    })
+    if (!ok) return
     setBusy(true)
     setError(null)
     try {
