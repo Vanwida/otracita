@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { bookings, bookingServices, productSales, tips, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
+import { expenses, fixedCosts, ownerWithdrawals } from '@/db/schema'
 import { and, eq, gte, lt, lte, sql, inArray } from 'drizzle-orm'
 import {
   requireClientAccess,
@@ -7,6 +7,8 @@ import {
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
+import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/summary?month=YYYY-MM
@@ -62,29 +64,17 @@ export async function GET(request: Request) {
   const clientId = access.client.id
 
   const [
-    ingresosResult,
-    extrasResult,
+    revComponents,
     gastosResult,
     fixedResult,
     gastosConIvaResult,
     fixedConIvaResult,
     retirosResult,
-    prevYearResult,
-    prevYearExtrasResult,
-    manualIngresosResult,
-    productsIngresosResult,
-    tipsIngresosResult,
+    prevYearComponents,
   ] = await Promise.all([
-    db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-      .from(bookings)
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
-    // Servicios EXTRA (R7) — booking_services.priceEuros (EUROS, foot-gun).
-    // Query separada (no LEFT JOIN) para no inflar SUM(bookings.price) por
-    // fan-out cuando una cita tiene varios extras. Mismo filtro tenant/estado.
-    db.select({ total: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
-      .from(bookingServices)
-      .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
+    // Ingreso del periodo (servicios+extras+manual+productos+propinas) vía
+    // helper compartido — única fuente, idéntico a quarterly/annual/etc.
+    periodRevenueComponents(clientId, start, end),
     db.select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
       .from(expenses)
       .where(and(eq(expenses.clientId, clientId), gte(expenses.date, start), lt(expenses.date, end))),
@@ -100,57 +90,26 @@ export async function GET(request: Request) {
     db.select({ total: sql<string>`COALESCE(SUM(${ownerWithdrawals.amountCents}), 0)` })
       .from(ownerWithdrawals)
       .where(and(eq(ownerWithdrawals.clientId, clientId), gte(ownerWithdrawals.date, start), lt(ownerWithdrawals.date, end))),
-    db.select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-      .from(bookings)
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, prevYearBounds.start), lt(bookings.date, prevYearBounds.end))),
-    db.select({ total: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
-      .from(bookingServices)
-      .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
-      .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, prevYearBounds.start), lt(bookings.date, prevYearBounds.end))),
-    db.select({ total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)` })
-      .from(manualIncomes)
-      .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end))),
-    // ADD-1 — ingresos por venta de PRODUCTOS. payroll ya descuenta su
-    // comisión como coste (nóminas) pero el P&L nunca sumaba su ingreso →
-    // beneficio infravalorado. product_sales.total_cents ya en cents.
-    db.select({ total: sql<string>`COALESCE(SUM(${productSales.totalCents}), 0)` })
-      .from(productSales)
-      .where(and(eq(productSales.clientId, clientId), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
-    // ADD-1 — PROPINAS cobradas. Pasan al barbero vía nómina (coste ya
-    // contabilizado); sin sumar su ingreso el P&L las trataba como gasto
-    // puro. amount_cents ya en cents. Solo 'paid'. NOTA fiscal: la propina
-    // NO lleva IVA en España → entra al beneficio pero NO a la base de IVA
-    // (ver cálculo de ivaRepercutido abajo).
-    db.select({ total: sql<string>`COALESCE(SUM(${tips.amountCents}), 0)` })
-      .from(tips)
-      .where(and(eq(tips.clientId, clientId), eq(tips.status, 'paid'), gte(tips.paidAt, new Date(start)), lt(tips.paidAt, new Date(end)))),
+    // YoY: SOLO servicios+extras del año anterior (comparativa de facturación
+    // de servicios, no incluye productos/propinas/manual — semántica original).
+    periodRevenueComponents(clientId, prevYearBounds.start, prevYearBounds.end, { includeManual: false }),
   ])
 
-  // Principal + extras (R7) en EUROS → ×100 una sola vez sobre la suma,
-  // mismo boundary de redondeo que bookingTotalCents y la factura.
-  const bookingIngresosEuros =
-    parseFloat(ingresosResult[0]?.total ?? '0') + parseFloat(extrasResult[0]?.total ?? '0')
-  const bookingIngresosCents = Math.round(bookingIngresosEuros * 100)
-  const manualIngresosCents = parseInt(manualIngresosResult[0]?.total ?? '0', 10)
-  const productsIngresosCents = parseInt(productsIngresosResult[0]?.total ?? '0', 10)
-  const tipsIngresosCents = parseInt(tipsIngresosResult[0]?.total ?? '0', 10)
-  // ADD-1 — ingresos totales = servicios + extras + efectivo manual +
-  // PRODUCTOS + PROPINAS. Antes faltaban productos y propinas pese a que
-  // payroll ya descontaba su comisión/payout como coste → beneficio
-  // infravalorado y asimétrico (gasto sin su ingreso).
-  const ingresosCents =
-    bookingIngresosCents +
-    manualIngresosCents +
-    productsIngresosCents +
-    tipsIngresosCents
+  const revenue = computeRevenueCents(revComponents)
+  const manualIngresosCents = revenue.manualCents
+  const productsIngresosCents = revenue.productsCents
+  const tipsIngresosCents = revenue.tipsCents
+  // Ingresos totales = servicios + extras + efectivo manual + PRODUCTOS +
+  // PROPINAS (payroll ya descuenta comisión/payout de productos y propinas
+  // como coste; sin su ingreso el beneficio quedaba infravalorado).
+  const ingresosCents = revenue.totalCents
   const gastosVariablesCents = parseInt(gastosResult[0]?.total ?? '0', 10)
   const costosFijosCents = parseInt(fixedResult[0]?.total ?? '0', 10)
   const gastosVariablesConIvaCents = parseInt(gastosConIvaResult[0]?.total ?? '0', 10)
   const fixedConIvaCents = parseInt(fixedConIvaResult[0]?.total ?? '0', 10)
   const retirosCents = parseInt(retirosResult[0]?.total ?? '0', 10)
-  const prevYearIngresosEuros =
-    parseFloat(prevYearResult[0]?.total ?? '0') + parseFloat(prevYearExtrasResult[0]?.total ?? '0')
-  const prevYearIngresosCents = Math.round(prevYearIngresosEuros * 100)
+  // prevYear: solo bookingCents (servicios+extras), sin manual/productos/tips.
+  const prevYearIngresosCents = computeRevenueCents(prevYearComponents).bookingCents
 
   // Nóminas del equipo — coste real para el local. Mismo helper que
   // /api/finanzas/payroll para asegurar coherencia entre lo que ve el
@@ -158,28 +117,16 @@ export async function GET(request: Request) {
   const payroll = await computeMonthlyPayroll(clientId, { start, end })
   const nominasCents = Math.max(0, payroll.totalCents)
 
-  // IVA configurable por tenant (clients.ivaRate, Spain default 21). El P&L
-  // usaba el literal 21 y contradecía la factura, que ya respeta ivaRate
-  // (ver invoicing-math.ts calculateAmounts). Para un tenant al 21% el
-  // resultado es idéntico al de antes (21/121, 100/121) — sin regresión.
-  // Importes son IVA-incluido (convención retail): base = total*100/(100+r),
-  // IVA repercutido = total*r/(100+r).
-  const ivaRate = access.client.ivaRate
-  const ivaDenom = 100 + ivaRate
-
+  // IVA configurable por tenant (clients.ivaRate) + propina fuera de la base
+  // imponible — vía helper compartido (única fuente fiscal del P&L).
   const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
-  // Base de IVA = ingresos SIN propinas: la propina no lleva IVA en España
-  // (es gratuidad, fuera de la base imponible). Servicios, extras, productos
-  // y efectivo manual sí. Sin esto el IVA repercutido se inflaría por las
-  // propinas. Si no hay propinas, base == ingresosCents (sin regresión).
-  const ivaBaseCents = ingresosCents - tipsIngresosCents
-  const ivaRepercutidoCents = Math.round((ivaBaseCents * ivaRate) / ivaDenom)
-  const gastosConIvaTotalCents = gastosVariablesConIvaCents + fixedConIvaCents
-  const ivaSoportadoCents = Math.round((gastosConIvaTotalCents * ivaRate) / ivaDenom)
-  const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
-  // Neto = base sin IVA + propinas (las propinas ya son netas, no llevan IVA).
-  const ingresosNetosCents =
-    Math.round((ivaBaseCents * 100) / ivaDenom) + tipsIngresosCents
+  const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
+    computeIvaBreakdown({
+      ingresosCents,
+      tipsCents: tipsIngresosCents,
+      gastosConIvaCents: gastosVariablesConIvaCents + fixedConIvaCents,
+      ivaRate: access.client.ivaRate,
+    })
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const beneficioRealCents = beneficioBrutoCents - retirosCents
   const irpfEstimadoCents = Math.max(0, Math.round((beneficioBrutoCents * 20) / 100))

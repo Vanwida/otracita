@@ -14,6 +14,7 @@ import AreaTabs from '../_components/AreaTabs'
 import PanelSwitch from './PanelSwitch'
 import OperatorPanel from './OperatorPanel'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
+import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes — área Informes (nomenclatura estándar; ex-Finanzas).
@@ -165,22 +166,33 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
       .where(and(eq(tips.clientId, client.id), eq(tips.status, 'paid'), gte(tips.paidAt, new Date(start)), lt(tips.paidAt, new Date(end)))),
   ])
 
-  // Principal + extras en EUROS → ×100 una sola vez (boundary idéntico a
-  // bookingTotalCents y la factura).
-  const bookingIngresosCents = Math.round(
-    (Number(bookingRow[0]?.totalEur ?? 0) + Number(extrasRow[0]?.total ?? 0)) * 100,
-  )
-  const manualIngresosCents = monthManualIncomes.reduce((sum, m) => sum + m.amountCents, 0)
-  const productsIngresosCents = Number(productsRow[0]?.total ?? 0)
-  const tipsIngresosCents = Number(tipsRow[0]?.total ?? 0)
-  const ingresosCents =
-    bookingIngresosCents + manualIngresosCents + productsIngresosCents + tipsIngresosCents
+  // Misma matemática fiscal que /api/finanzas/summary vía helpers puros
+  // compartidos (única fuente — pnl-math.ts). El SSR conserva sus queries
+  // bespoke (necesita count/ticketMedio/prevMes que el helper no da) pero
+  // el cálculo ingresos→IVA→neto NO se duplica: idéntico byte a byte.
+  const revenue = computeRevenueCents({
+    bookingPriceEuros: Number(bookingRow[0]?.totalEur ?? 0),
+    extrasEuros: Number(extrasRow[0]?.total ?? 0),
+    manualCents: monthManualIncomes.reduce((sum, m) => sum + m.amountCents, 0),
+    productsCents: Number(productsRow[0]?.total ?? 0),
+    tipsCents: Number(tipsRow[0]?.total ?? 0),
+  })
+  const manualIngresosCents = revenue.manualCents
+  const productsIngresosCents = revenue.productsCents
+  const tipsIngresosCents = revenue.tipsCents
+  const ingresosCents = revenue.totalCents
   const serviciosCount = Number(bookingContextRow[0]?.count ?? 0)
   const ticketMedioCents = Math.round(Number(bookingContextRow[0]?.ticketMedio ?? 0) * 100)
   const prevIngresosCents = Math.round(Number(prevBookingRow[0]?.total ?? 0) * 100)
-  const prevYearIngresosCents = Math.round(
-    (Number(prevYearBookingRow[0]?.total ?? 0) + Number(prevYearExtrasRow[0]?.total ?? 0)) * 100,
-  )
+  // prevYear: solo servicios+extras (comparativa de facturación, sin
+  // productos/propinas/manual — misma semántica que /summary).
+  const prevYearIngresosCents = computeRevenueCents({
+    bookingPriceEuros: Number(prevYearBookingRow[0]?.total ?? 0),
+    extrasEuros: Number(prevYearExtrasRow[0]?.total ?? 0),
+    manualCents: 0,
+    productsCents: 0,
+    tipsCents: 0,
+  }).bookingCents
 
   const gastosVariablesCents = monthExpenses.reduce((sum, e) => sum + e.amountCents, 0)
 
@@ -196,14 +208,6 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
 
   const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
 
-  // IVA configurable por tenant (clients.ivaRate, default 21). Para un
-  // tenant al 21% es idéntico a 21/121 (sin regresión). Base SIN propinas
-  // (la propina no lleva IVA en España).
-  const ivaRate = client.ivaRate
-  const ivaDenom = 100 + ivaRate
-  const ivaBaseCents = ingresosCents - tipsIngresosCents
-  const ivaRepercutidoCents = Math.round((ivaBaseCents * ivaRate) / ivaDenom)
-
   // IVA soportado: solo categorías con IVA (productos, suministros, publicidad)
   const gastosConIvaCents = monthExpenses
     .filter((e) => IVA_CATEGORIES.includes(e.category))
@@ -211,14 +215,18 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   const fixedConIvaCents = activeFixedThisMonth
     .filter((fc) => IVA_CATEGORIES.includes(fc.category))
     .reduce((sum, fc) => sum + fc.amountCents, 0)
-  const ivaSoportadoCents = Math.round(((gastosConIvaCents + fixedConIvaCents) * ivaRate) / ivaDenom)
 
-  const ivaAPagarCents = Math.max(0, ivaRepercutidoCents - ivaSoportadoCents)
+  // IVA configurable + propina fuera de la base — helper compartido
+  // (misma fuente fiscal que /api/finanzas/summary).
+  const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
+    computeIvaBreakdown({
+      ingresosCents,
+      tipsCents: tipsIngresosCents,
+      gastosConIvaCents: gastosConIvaCents + fixedConIvaCents,
+      ivaRate: client.ivaRate,
+    })
 
   // Beneficio bruto = ingresos netos (sin IVA) − total gastos (incluye nóminas).
-  // Neto = base sin IVA + propinas (las propinas ya son netas).
-  const ingresosNetosCents =
-    Math.round((ivaBaseCents * 100) / ivaDenom) + tipsIngresosCents
   const beneficioBrutoCents = ingresosNetosCents - totalGastosCents
   const retirosCents = monthWithdrawals.reduce((sum, w) => sum + w.amountCents, 0)
   const beneficioRealCents = beneficioBrutoCents - retirosCents

@@ -1,11 +1,13 @@
 import { db } from '@/db'
-import { bookings, expenses, manualIncomes } from '@/db/schema'
+import { bookings, expenses } from '@/db/schema'
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
+import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import { computeRevenueCents } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
 // GET /api/finanzas/historical
@@ -56,22 +58,18 @@ export async function GET(request: Request) {
       const start = `${year}-01-01`
       const end = `${year + 1}-01-01`
 
-      const [ingRes, expRes, manualRes] = await Promise.all([
-        db
-          .select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
-          .from(bookings)
-          .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
+      // Mismo basis de ingreso que /summary vía helper compartido
+      // (servicios+extras+manual+productos+propinas). Antes solo bookings+
+      // manual → divergía del P&L mensual al agregar el año.
+      const [revComponents, expRes] = await Promise.all([
+        periodRevenueComponents(clientId, start, end),
         db
           .select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
           .from(expenses)
           .where(and(eq(expenses.clientId, clientId), gte(expenses.date, start), lt(expenses.date, end))),
-        db
-          .select({ total: sql<string>`COALESCE(SUM(${manualIncomes.amountCents}), 0)` })
-          .from(manualIncomes)
-          .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end))),
       ])
 
-      const ingresosCents = Math.round(parseFloat(ingRes[0]?.total ?? '0') * 100) + parseInt(manualRes[0]?.total ?? '0', 10)
+      const ingresosCents = computeRevenueCents(revComponents).totalCents
       const gastosVariablesCents = parseInt(expRes[0]?.total ?? '0', 10)
 
       return { year, ingresosCents, gastosVariablesCents }
