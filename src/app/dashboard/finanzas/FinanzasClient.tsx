@@ -22,6 +22,7 @@ import {
   Coins,
   Landmark,
 } from 'lucide-react'
+import MonthStepper from '@/app/dashboard/_components/MonthStepper'
 
 // ── Formatters ───────────────────────────────────────────────────────────────
 
@@ -716,27 +717,17 @@ export default function FinanzasClient({
           Ventas
         </Link>
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={handlePrevMonth}
-              disabled={isLoading}
-              className="p-1.5 text-ink-2 hover:text-ink transition-colors disabled:opacity-40"
-              aria-label="Mes anterior"
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <h1 className="text-base font-semibold text-ink capitalize min-w-[8rem] text-center">
-              {formatMonthLabel(month)}
-            </h1>
-            <button
-              onClick={handleNextMonth}
-              disabled={isLoading}
-              className="p-1.5 text-ink-2 hover:text-ink transition-colors disabled:opacity-40"
-              aria-label="Mes siguiente"
-            >
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
+          {/* Selector de mes con el MISMO contenedor visual que
+              StatsPeriodTabs (el resto de pestañas de Informes) para que
+              el ex-Booksy no vea dos selectores distintos. Semántica de
+              MES intacta: mismos handlers, misma `month`, mismo P&L. */}
+          <h1 className="sr-only">{formatMonthLabel(month)}</h1>
+          <MonthStepper
+            label={formatMonthLabel(month)}
+            onPrev={handlePrevMonth}
+            onNext={handleNextMonth}
+            disabled={isLoading}
+          />
           <button
             onClick={handleExport}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-2 hover:text-ink border border-line rounded-lg px-2.5 py-1.5 transition-colors"
