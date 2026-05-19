@@ -11,6 +11,7 @@ import {
 } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { notifyAlex } from '@/lib/notify-alex';
+import { recordRefundMovement } from '@/lib/cash/record-refund';
 import type Stripe from 'stripe';
 import type { ConnectStatus } from '@/lib/payments';
 
@@ -632,9 +633,18 @@ async function handleCheckoutSessionExpired(
 }
 
 // -----------------------------------------------------------------------------
-// charge.refunded — full or partial refund issued by the barber (or by us
-// via Stripe Support). Mark the payment refunded so the UI shows the right
-// state. Match by charge id, which we recorded on completion.
+// charge.refunded — full or partial refund. SOURCE-AGNOSTIC: this fires
+// whether the refund came from our in-app /api/payments/[id]/refund route OR
+// from the Stripe Dashboard / Stripe Support. We must:
+//
+//   1. Flip payment.status to 'refunded' SOLO si el reembolso es TOTAL
+//      (charge.refunded === true). Un parcial deja 'succeeded' — coincide con
+//      la regla de la route, así un parcial vía Dashboard no marca el cobro
+//      como muerto.
+//   2. Emitir el cash_movement 'refund' (RESTA online) — para que un
+//      reembolso hecho DESDE STRIPE también cuadre la caja. Idempotente con
+//      la route vía dedupeKey = Stripe refund id (`re_…`): el MISMO id que la
+//      route pasó → un único apunte aunque lleguen ambos.
 // -----------------------------------------------------------------------------
 async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
   // The charge could belong to either a regular payment or a tip — try tips
@@ -658,10 +668,44 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
 
   if (!payment) return;
 
-  await db
-    .update(payments)
-    .set({ status: 'refunded', updatedAt: new Date() })
-    .where(eq(payments.id, payment.id));
+  const fullyRefunded = charge.refunded === true;
+  if (fullyRefunded && payment.status !== 'refunded') {
+    await db
+      .update(payments)
+      .set({ status: 'refunded', updatedAt: new Date() })
+      .where(eq(payments.id, payment.id));
+  }
+
+  // El refund más reciente del charge. Stripe lo devolvió a nuestra route con
+  // este MISMO id (`re_…`) → dedupeKey común = un solo cash_movement. El
+  // payload del webhook NO siempre expande `charge.refunds`; si falta, lo
+  // pedimos a la API (lista ordenada desc por defecto → [0] es el último).
+  let latestRefund = charge.refunds?.data?.[0];
+  if (!latestRefund) {
+    try {
+      const list = await stripe.refunds.list({ charge: charge.id, limit: 1 });
+      latestRefund = list.data[0];
+    } catch (err) {
+      console.error('[stripe-webhook] could not list refunds:', err);
+    }
+  }
+  if (!latestRefund) return;
+
+  const cents =
+    typeof latestRefund.amount === 'number' && latestRefund.amount > 0
+      ? latestRefund.amount
+      : charge.amount_refunded;
+  if (!cents || cents <= 0) return;
+
+  await recordRefundMovement({
+    clientId: payment.clientId,
+    amountCents: cents,
+    method: 'online',
+    dedupeKey: latestRefund.id,
+    bookingId: payment.bookingId,
+    notes: `Reembolso Stripe (webhook) · pago ${payment.id.slice(0, 8)}`,
+    createdByEmail: null,
+  });
 }
 
 // -----------------------------------------------------------------------------

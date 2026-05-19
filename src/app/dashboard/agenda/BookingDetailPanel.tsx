@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, RotateCcw, AlertTriangle } from 'lucide-react';
 import AddProductSaleModal from './AddProductSaleModal';
 import SlideOver from '../_components/SlideOver';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
@@ -81,6 +81,12 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [amountEuros, setAmountEuros] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+
+  // Refund state — separado del cobro. `refundConfirm` abre el paso de
+  // confirmación (un reembolso es irreversible y mueve dinero real).
+  const [refundConfirm, setRefundConfirm] = useState(false);
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
 
   const isNoShow = booking?.status === 'no_show';
   const isCompleted = booking?.status === 'completed';
@@ -188,6 +194,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     setPaymentData(null);
     setPaymentError(null);
     setLinkCopied(false);
+    setRefundConfirm(false);
+    setRefundError(null);
     // A3 — cierra cualquier modal de edición/rectificativa al cambiar de cita.
     setEditOpen(false);
     setRectInvoice(null);
@@ -514,6 +522,39 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     }
   }, [booking, amountEuros, description]);
 
+  // Reembolso total del cobro online (Stripe Connect). Idempotente en el
+  // backend; aquí solo reflejamos el estado. Tras éxito el pago pasa a
+  // 'refunded' y la UI muestra el estado reembolsado.
+  const refundPayment = useCallback(async () => {
+    const paymentId = paymentData?.payment.id;
+    if (!paymentId) return;
+    setRefundError(null);
+    setRefundLoading(true);
+    try {
+      const res = await fetch(`/api/payments/${paymentId}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRefundError(data.error || 'No se pudo reembolsar');
+        setRefundLoading(false);
+        return;
+      }
+      setPaymentData((prev) =>
+        prev
+          ? { ...prev, payment: { ...prev.payment, status: 'refunded' } }
+          : prev,
+      );
+      setRefundConfirm(false);
+    } catch {
+      setRefundError('Error de red');
+    } finally {
+      setRefundLoading(false);
+    }
+  }, [paymentData]);
+
   const formatDate = (dateStr: string) => {
     try {
       return format(parseISO(dateStr), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es });
@@ -561,6 +602,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   };
 
   const alreadyPaid = paymentData?.payment.status === 'succeeded';
+  const isRefunded = paymentData?.payment.status === 'refunded';
   const hasPendingLink = paymentData?.payment.status === 'pending' && paymentData?.payment.paymentUrl;
 
   return (
@@ -1011,8 +1053,17 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                         Activar cobros online
                       </Link>
                     </div>
+                  ) : isRefunded ? (
+                    <div className="rounded-xl border border-line bg-overlay p-3 space-y-1">
+                      <p className="text-sm font-semibold text-ink-2 inline-flex items-center gap-1.5">
+                        <RotateCcw className="h-4 w-4" /> Reembolsado
+                      </p>
+                      <p className="text-xs text-ink-2">
+                        {(paymentData!.payment.amountCents / 100).toFixed(2)} € devueltos al cliente
+                      </p>
+                    </div>
                   ) : alreadyPaid ? (
-                    <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-1">
+                    <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-2">
                       <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
                         <Check className="h-4 w-4" /> Pagado online
                       </p>
@@ -1022,6 +1073,57 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                           ? format(parseISO(paymentData!.payment.paidAt), "d MMM yyyy 'a las' HH:mm", { locale: es })
                           : ''}
                       </p>
+
+                      {/* Reembolsar — acción de dinero irreversible: paso de
+                          confirmación explícito antes de ejecutar. */}
+                      {!refundConfirm ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRefundError(null);
+                            setRefundConfirm(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Reembolsar
+                        </button>
+                      ) : (
+                        <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 space-y-2">
+                          <p className="text-xs text-ink inline-flex items-start gap-1.5 leading-relaxed">
+                            <AlertTriangle className="h-3.5 w-3.5 text-danger shrink-0 mt-0.5" />
+                            Se devolverán{' '}
+                            <strong>{(paymentData!.payment.amountCents / 100).toFixed(2)} €</strong>{' '}
+                            al cliente. No se puede deshacer.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={refundPayment}
+                              disabled={refundLoading}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-danger hover:bg-danger/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-60"
+                            >
+                              {refundLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              )}
+                              Confirmar reembolso
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRefundConfirm(false)}
+                              disabled={refundLoading}
+                              className="inline-flex items-center justify-center rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors disabled:opacity-60"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                          {refundError && (
+                            <p className="text-xs text-danger">{refundError}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-3">
