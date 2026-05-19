@@ -63,6 +63,11 @@ interface Body {
   barberId?: unknown
   customerPhone?: unknown
   customerName?: unknown
+  /** SumUp Reader: crea la venta SIN cerrarla. El callback de SumUp la
+   *  cierra (recordSumupCheckoutResult) tras el cobro real con datáfono —
+   *  igual que la agenda. Devuelve {bookingId, amountCents} para que el
+   *  prompt de checkout arranque contra esa reserva. */
+  prepareForSumup?: unknown
 }
 
 const VALID_METHODS = ['cash', 'card', 'online'] as const
@@ -147,14 +152,22 @@ export async function POST(req: Request) {
     )
   }
 
+  const prepareForSumup = body.prepareForSumup === true
+
+  // En modo SumUp el método lo fija el callback ('card'); el body puede no
+  // traerlo. En modo normal exigimos un método válido.
   const paymentMethod =
     typeof body.paymentMethod === 'string' &&
     (VALID_METHODS as readonly string[]).includes(body.paymentMethod)
       ? (body.paymentMethod as PosMethod)
       : null
-  if (!paymentMethod) {
+  if (!prepareForSumup && !paymentMethod) {
     return Response.json({ error: 'Método de pago inválido.' }, { status: 400 })
   }
+  // Para los INSERT de productSales necesitamos un método concreto aunque
+  // en SumUp el cierre lo haga el callback — usamos 'card' (lo que SumUp
+  // registra) para que el cuadre y la factura sean coherentes.
+  const effectiveMethod: PosMethod = paymentMethod ?? 'card'
 
   const barberId =
     typeof body.barberId === 'string' && body.barberId.length > 0
@@ -292,10 +305,40 @@ export async function POST(req: Request) {
         unitPriceCents: prod.priceCents,
         totalCents: prod.priceCents * line.quantity,
         customerPhone: booking.customerPhone,
-        paymentMethod,
+        paymentMethod: effectiveMethod,
       })
       .returning({ id: productSales.id })
     if (sale) productSaleIds.push(sale.id)
+  }
+
+  // Total cobrado (servicio + extras + productos), IVA incluido — para el
+  // recibo y para arrancar el checkout SumUp con el importe correcto.
+  const servicesTotalCents = serviceLines.reduce(
+    (acc, s) => acc + Math.round(s.priceEuros * 100),
+    0,
+  )
+  const productsTotalCents = productLines.reduce((acc, line) => {
+    const prod = productById.get(line.productId)
+    return acc + (prod ? prod.priceCents * line.quantity : 0)
+  }, 0)
+  const grandTotalCents = servicesTotalCents + productsTotalCents
+
+  // ── SumUp Reader: NO cerramos aquí ─────────────────────────────────────
+  // La reserva queda 'confirmed' con sus productSales atados. El front abre
+  // SumupCheckoutPrompt contra este bookingId; cuando el datáfono cobra,
+  // el callback /api/sumup/checkout/return → recordSumupCheckoutResult
+  // cierra el booking (status=completed, paymentMethod='card'), dispara
+  // auto-factura + followup + cash_movement. Idéntico a la agenda — cero
+  // duplicación de cierre.
+  if (prepareForSumup) {
+    return Response.json(
+      {
+        bookingId: booking.id,
+        amountCents: grandTotalCents,
+        prepared: true,
+      },
+      { status: 201 },
+    )
   }
 
   // ── 4. Cerrar la reserva = cobrar. Replica EXACTO el cierre del PATCH ──
@@ -307,7 +350,7 @@ export async function POST(req: Request) {
     .update(bookings)
     .set({
       status: 'completed',
-      paymentMethod: recordServicePayment ? paymentMethod : null,
+      paymentMethod: recordServicePayment ? effectiveMethod : null,
     })
     .where(eq(bookings.id, booking.id))
 
@@ -339,7 +382,7 @@ export async function POST(req: Request) {
       clientId: client.id,
       referenceType: 'booking',
       referenceId: updated.id,
-      method: paymentMethod,
+      method: effectiveMethod,
       amountCents: Math.round(updated.price * 100),
       createdByEmail: access.user.email,
     })
@@ -356,29 +399,18 @@ export async function POST(req: Request) {
         clientId: client.id,
         referenceType: 'product_sale',
         referenceId: saleId,
-        method: paymentMethod,
+        method: effectiveMethod,
         amountCents: prod.priceCents * line.quantity,
         createdByEmail: access.user.email,
       })
     }
   }
 
-  // Total cobrado para el recibo (servicio principal + extras + productos),
-  // todo IVA incluido. Igual unidad que muestra Booksy en "Total pagado".
-  const servicesTotalCents = serviceLines.reduce(
-    (acc, s) => acc + Math.round(s.priceEuros * 100),
-    0,
-  )
-  const productsTotalCents = productLines.reduce((acc, line) => {
-    const prod = productById.get(line.productId)
-    return acc + (prod ? prod.priceCents * line.quantity : 0)
-  }, 0)
-
   return Response.json(
     {
       bookingId: booking.id,
-      paymentMethod,
-      totalCents: servicesTotalCents + productsTotalCents,
+      paymentMethod: effectiveMethod,
+      totalCents: grandTotalCents,
     },
     { status: 201 },
   )

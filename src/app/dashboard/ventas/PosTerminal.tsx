@@ -22,6 +22,7 @@ import {
   Receipt,
 } from 'lucide-react'
 import NumberInput from '../_components/NumberInput'
+import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt'
 import type {
   PosBarberItem,
   PosProductItem,
@@ -130,6 +131,8 @@ interface Props {
   invoicingEnabled: boolean
   /** % de IVA del negocio (España default 21). Para el desglose del recibo. */
   ivaRate: number
+  /** SumUp conectado + Reader pareado → "Tarjeta" cobra con datáfono real. */
+  sumupReaderConnected: boolean
 }
 
 interface ReceiptSnapshot {
@@ -148,6 +151,7 @@ export default function PosTerminal({
   barbers,
   invoicingEnabled,
   ivaRate,
+  sumupReaderConnected,
 }: Props) {
   const router = useRouter()
   const [category, setCategory] = useState<Category>('rapida')
@@ -168,6 +172,15 @@ export default function PosTerminal({
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<CartLine | null>(null)
   const [receipt, setReceipt] = useState<ReceiptSnapshot | null>(null)
+  // SumUp Reader: cuando se prepara una venta para cobro con datáfono,
+  // guardamos el bookingId+importe y abrimos SumupCheckoutPrompt (reusado
+  // tal cual de la agenda). El snapshot del recibo se guarda aparte para
+  // mostrarlo cuando el callback confirme el cobro.
+  const [sumupCheckout, setSumupCheckout] = useState<{
+    bookingId: string
+    amountCents: number
+    snapshot: ReceiptSnapshot
+  } | null>(null)
 
   // Numpad "Cantidad personalizada" (Booksy 10.00.25).
   const [customAmount, setCustomAmount] = useState('')
@@ -352,42 +365,99 @@ export default function PosTerminal({
     setCustOpen(false)
   }
 
+  // Payload de la venta (líneas + cliente) — compartido por el cobro
+  // directo y por la preparación para SumUp. Descuento de línea → precio
+  // efectivo (el endpoint factura por línea; el % se aplica aquí para que
+  // total cobrado y factura coincidan con lo que ve el barbero).
+  function buildSalePayload() {
+    const serviceLines = lines
+      .filter((l) => l.kind === 'service' || l.kind === 'custom')
+      .map((l) => {
+        const effective =
+          l.unitPriceEuros * l.quantity * (1 - l.discountPct / 100)
+        return {
+          name: l.quantity > 1 ? `${l.name} x${l.quantity}` : l.name,
+          priceEuros: Math.round(effective * 100) / 100,
+          durationMin: l.durationMin,
+        }
+      })
+    const productLines = lines
+      .filter((l) => l.kind === 'product')
+      .map((l) => ({ productId: l.productId!, quantity: l.quantity }))
+    return {
+      serviceLines,
+      productLines,
+      barberId: barberId || undefined,
+      customerName: customerName.trim() || undefined,
+      // Solo si se adjuntó un cliente conocido: enlaza a su ficha. Walk-in
+      // anónimo → undefined → el endpoint genera un teléfono sintético.
+      customerPhone: linkedPhone ?? undefined,
+    }
+  }
+
+  function buildSnapshot(methodLabel: string): ReceiptSnapshot {
+    return {
+      lines: lines.map((l) => ({
+        name: l.name,
+        qty: l.quantity,
+        totalCents: lineTotalCents(l),
+      })),
+      totalCents,
+      methodLabel,
+      customerName: customerName.trim() || null,
+    }
+  }
+
   async function confirmPayment(method: PaymentMethodDef) {
     if (lines.length === 0) return
+
+    // SumUp Reader + "Tarjeta": no cobramos a mano. Preparamos la venta
+    // (reserva sin cerrar) y abrimos SumupCheckoutPrompt — el datáfono
+    // cobra de verdad y su callback cierra todo. Reutiliza el MISMO prompt
+    // y el MISMO pipeline que la agenda.
+    if (method.key === 'card' && sumupReaderConnected) {
+      setSubmitting(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/pos/sale', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...buildSalePayload(), prepareForSumup: true }),
+        })
+        const data = (await res.json().catch(() => ({}))) as {
+          bookingId?: string
+          amountCents?: number
+          error?: string
+        }
+        if (!res.ok || !data.bookingId || !data.amountCents) {
+          setError(data.error ?? 'No se pudo preparar el cobro con datáfono.')
+          setStage('cart')
+          return
+        }
+        setSumupCheckout({
+          bookingId: data.bookingId,
+          amountCents: data.amountCents,
+          snapshot: buildSnapshot(method.label),
+        })
+      } catch {
+        setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.')
+        setStage('cart')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
+    // Cobro directo (efectivo / bizum / online / tarjeta manual sin Reader).
     setSubmitting(true)
     setError(null)
     try {
-      const serviceLines = lines
-        .filter((l) => l.kind === 'service' || l.kind === 'custom')
-        .map((l) => {
-          // Descuento de línea → precio efectivo unitario (el endpoint
-          // factura por línea de servicio; aplicamos el % aquí para que el
-          // total cobrado y la factura coincidan con lo que ve el barbero).
-          const effective =
-            l.unitPriceEuros * l.quantity * (1 - l.discountPct / 100)
-          return {
-            name: l.quantity > 1 ? `${l.name} x${l.quantity}` : l.name,
-            priceEuros: Math.round(effective * 100) / 100,
-            durationMin: l.durationMin,
-          }
-        })
-      const productLines = lines
-        .filter((l) => l.kind === 'product')
-        .map((l) => ({ productId: l.productId!, quantity: l.quantity }))
-
       const res = await fetch('/api/pos/sale', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceLines,
-          productLines,
+          ...buildSalePayload(),
           paymentMethod: method.key,
-          barberId: barberId || undefined,
-          customerName: customerName.trim() || undefined,
-          // Solo si el barbero adjuntó un cliente conocido: enlaza la venta
-          // a su ficha (historial/fidelidad/followup). Walk-in anónimo →
-          // undefined y el endpoint genera un teléfono sintético por venta.
-          customerPhone: linkedPhone ?? undefined,
         }),
       })
       const data = (await res.json().catch(() => ({}))) as {
@@ -399,20 +469,52 @@ export default function PosTerminal({
         setStage('cart')
         return
       }
-      // Snapshot del ticket para el recibo (Booksy 10.01.18): congelamos
-      // las líneas tal como se cobraron antes de vaciar el carrito.
-      setReceipt({
-        lines: lines.map((l) => ({
-          name: l.name,
-          qty: l.quantity,
-          totalCents: lineTotalCents(l),
-        })),
-        totalCents: data.totalCents ?? totalCents,
-        methodLabel: method.label,
-        customerName: customerName.trim() || null,
-      })
+      const snap = buildSnapshot(method.label)
+      setReceipt({ ...snap, totalCents: data.totalCents ?? totalCents })
       setStage('done')
       // Refresca datos del dashboard (caja, transacciones) en segundo plano.
+      router.refresh()
+    } catch {
+      setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.')
+      setStage('cart')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // SumUp cobró con éxito (callback procesado) → mostramos el recibo con el
+  // snapshot congelado al preparar la venta.
+  function onSumupSettled() {
+    if (sumupCheckout) {
+      setReceipt(sumupCheckout.snapshot)
+      setStage('done')
+      router.refresh()
+    }
+    setSumupCheckout(null)
+  }
+
+  // SumUp falló/timeout y el barbero elige marcar a mano: la reserva ya
+  // existe sin cerrar; la cerramos como tarjeta manual vía el PATCH de
+  // siempre (mismo cierre que la agenda, sin duplicar lógica).
+  async function onSumupFallback() {
+    const ck = sumupCheckout
+    setSumupCheckout(null)
+    if (!ck) return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/bookings/${ck.bookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed', paymentMethod: 'card' }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error ?? 'No se pudo cerrar la venta a mano.')
+        setStage('cart')
+        return
+      }
+      setReceipt(ck.snapshot)
+      setStage('done')
       router.refresh()
     } catch {
       setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.')
@@ -794,6 +896,13 @@ export default function PosTerminal({
               <div className="grid grid-cols-2 gap-2">
                 {PAYMENT_METHODS.map((m) => {
                   const Icon = m.icon
+                  // "Tarjeta" con Reader pareado cobra de verdad en el
+                  // datáfono — el hint lo dice para que el barbero sepa que
+                  // no es marcar a mano.
+                  const hint =
+                    m.label === 'Tarjeta' && sumupReaderConnected
+                      ? 'Cobro real en datáfono'
+                      : m.hint
                   return (
                     <button
                       key={m.label}
@@ -810,7 +919,7 @@ export default function PosTerminal({
                         {m.label}
                       </span>
                       <span className="text-[0.6875rem] text-ink-3">
-                        {m.hint}
+                        {hint}
                       </span>
                     </button>
                   )
@@ -846,6 +955,25 @@ export default function PosTerminal({
             removeLine(editing.uid)
             setEditing(null)
           }}
+        />
+      )}
+
+      {/* ── Cobro instantáneo SumUp (Booksy "acerca la tarjeta") ──────────
+          Reusa el MISMO prompt que la agenda: "Acerca la tarjeta…",
+          polling a /api/bookings/[id]/status, éxito o fallback a mano.
+          La reserva ya está creada (prepareForSumup); su callback la
+          cierra y dispara factura/caja/followup. */}
+      {sumupCheckout && (
+        <SumupCheckoutPrompt
+          open
+          bookingId={sumupCheckout.bookingId}
+          amountCents={sumupCheckout.amountCents}
+          subtitle={
+            sumupCheckout.snapshot.customerName ?? 'Venta de mostrador'
+          }
+          onClose={() => setSumupCheckout(null)}
+          onSettled={onSumupSettled}
+          onFallback={() => void onSumupFallback()}
         />
       )}
     </div>

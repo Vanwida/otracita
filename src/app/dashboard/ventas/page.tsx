@@ -30,6 +30,11 @@ export default async function VentasNuevaVentaPage() {
         barbers={d.barbers}
         invoicingEnabled={d.client.invoicingEnabled}
         ivaRate={d.client.ivaRate}
+        sumupReaderConnected={
+          !!d.client.sumupAccessToken &&
+          !!d.client.sumupMerchantCode &&
+          !!d.client.sumupReaderId
+        }
       />
     </AreaContent>
   )
