@@ -11,6 +11,8 @@ import StatsPeriodTabs from '../../_components/StatsPeriodTabs'
 import StatStrip, { type Stat } from '../../_components/StatStrip'
 import DataTable, { type Column } from '../../_components/DataTable'
 import SourceBreakdown from '../../clientes/SourceBreakdown'
+import ReportLayout from '../_components/ReportLayout'
+import { CLIENTES_RAIL } from '../_components/report-rail-config'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -328,7 +330,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
+          <ReportLayout rail={CLIENTES_RAIL}>
             <StatStrip
               stats={stats}
               ariaLabel={`Resumen de clientes · ${periodLabel}`}
@@ -422,7 +424,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
                 </div>
               </section>
             )}
-          </div>
+          </ReportLayout>
         )}
       </AreaContent>
     </AreaShell>

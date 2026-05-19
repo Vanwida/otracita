@@ -9,6 +9,8 @@ import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
 import StatsPeriodTabs from '../../_components/StatsPeriodTabs'
 import DataTable, { type Column } from '../../_components/DataTable'
+import ReportLayout from '../_components/ReportLayout'
+import { INGRESOS_RAIL } from '../_components/report-rail-config'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -267,7 +269,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
+          <ReportLayout rail={INGRESOS_RAIL}>
             {/* Ingreso por tipo de venta. */}
             <section className="rounded-control border border-line bg-surface overflow-hidden">
               <header
@@ -395,7 +397,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
                 </div>
               </section>
             )}
-          </div>
+          </ReportLayout>
         )}
       </AreaContent>
     </AreaShell>

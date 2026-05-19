@@ -10,6 +10,8 @@ import AreaContent from '../../_components/AreaContent'
 import StatsPeriodTabs from '../../_components/StatsPeriodTabs'
 import StatStrip, { type Stat } from '../../_components/StatStrip'
 import DataTable, { type Column } from '../../_components/DataTable'
+import ReportLayout from '../_components/ReportLayout'
+import { CITAS_RAIL } from '../_components/report-rail-config'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -276,7 +278,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
+          <ReportLayout rail={CITAS_RAIL}>
             <StatStrip
               stats={stats}
               ariaLabel={`Resumen de citas · ${periodLabel}`}
@@ -383,7 +385,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
                 </div>
               </section>
             )}
-          </div>
+          </ReportLayout>
         )}
       </AreaContent>
     </AreaShell>
