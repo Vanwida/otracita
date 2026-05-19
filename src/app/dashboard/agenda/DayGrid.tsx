@@ -514,13 +514,19 @@ export default function DayGrid({
                         className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 overflow-hidden transition-opacity hover:opacity-80 ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
-                          // Mientras se arrastra CUALQUIER cita, las demás
-                          // dejan de capturar puntero/drop: así el dragover y
-                          // el drop SIEMPRE llegan al cuerpo de la columna,
-                          // incluso si sueltas encima de otra cita (era el
-                          // bug — soltar sobre una cita existente no hacía
-                          // nada porque el tile interceptaba el drop).
-                          draggingId ? 'pointer-events-none' : ''
+                          // Mientras se arrastra una cita, las OTRAS tiles
+                          // dejan de capturar puntero/drop → el dragover y el
+                          // drop SIEMPRE llegan al cuerpo de la columna,
+                          // aunque sueltes encima de otra cita.
+                          //
+                          // CRÍTICO: la tile ARRASTRADA (isDragging) NO debe
+                          // recibir pointer-events-none. Si la fuente del
+                          // drag pierde pointer-events a mitad de gesto, el
+                          // navegador (Chrome/Safari/FF) CANCELA el drag:
+                          // drop nunca dispara y "no pasa nada". Ese era el
+                          // bug — el fix anterior aplicó la clase a TODAS las
+                          // tiles, incluida la fuente, matando el propio drag.
+                          draggingId && !isDragging ? 'pointer-events-none' : ''
                         }`}
                         style={{ top, height, ...blockStyle }}
                         title={event.title}
