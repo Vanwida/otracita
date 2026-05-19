@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { bookings, barbers, clients } from '@/db/schema'
 import { and, eq, ne } from 'drizzle-orm'
+import { hasBookingOverlap, hhmmToMinutes } from '@/lib/bookings/duration'
 import {
   requireClientAccess,
   accessErrorResponse,
@@ -26,7 +27,8 @@ import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 //
 // date/time/barberId se pueden combinar libremente (mover hora, barbero,
 // o ambos). La re-validación de solape corre UNA vez contra los valores
-// FINALES (destino), reusando la misma lógica de clash `s < be && e > bs`.
+// FINALES (destino), usando el predicado puro compartido
+// `hasBookingOverlap` (mismo buffer + match barberId|nombre que create.ts).
 // R1/R3: snap a 5 min lo hace el cliente; el servidor acepta cualquier HH:MM.
 //
 // Transiciones permitidas para `status`:
@@ -202,25 +204,41 @@ export async function PATCH(
     effectiveBarberId &&
     (movedTime || reassignedToConcrete)
   ) {
-    const start = parseMinutes(targetTime)
-    const end = start + booking.duration
+    // Nombre del barbero efectivo: el del destino si se reasignó, si no el
+    // de la reserva actual. `targetBarberLabel` ya lo resuelve así arriba
+    // ('El profesional' es el placeholder de "cualquiera", que aquí no
+    // llega porque effectiveBarberId es truthy).
+    const effectiveBarberName =
+      targetBarberId !== undefined ? targetBarberLabel : booking.barber
+    // FIX (#9): este check antes NO aplicaba el buffer del cliente y casaba
+    // solo por barberId — divergía de create.ts/services y dejaba pasar
+    // solapes que la creación rechaza (p.ej. citas legacy con barberId NULL
+    // pero mismo nombre, o dentro del buffer). Ahora usa el predicado puro
+    // compartido `hasBookingOverlap` (buffer + match id|nombre, fuente
+    // única). El SELECT ya no filtra por barbero — el predicado lo hace
+    // (así también ve las filas legacy de barberId NULL).
     const sameDay = await db
       .select()
       .from(bookings)
       .where(
         and(
           eq(bookings.clientId, access.client.id),
-          eq(bookings.barberId, effectiveBarberId),
           eq(bookings.date, targetDate),
           ne(bookings.status, 'cancelled'),
           ne(bookings.id, id),
         ),
       )
-    const clash = sameDay.some((b) => {
-      const bs = parseMinutes(b.time)
-      const be = bs + b.duration
-      return start < be && end > bs
-    })
+    const clash = hasBookingOverlap(
+      {
+        selfId: id,
+        startMinutes: hhmmToMinutes(targetTime),
+        durationMin: booking.duration,
+        barberId: effectiveBarberId,
+        barber: effectiveBarberName,
+      },
+      sameDay,
+      access.client.serviceBufferMinutes,
+    )
     if (clash) {
       return Response.json(
         { error: `${targetBarberLabel} ya tiene otra reserva a esa hora.` },

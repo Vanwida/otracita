@@ -205,3 +205,117 @@ test('match por NOMBRE cuando barberId es null (filas legacy)', () => {
   )
   assert.equal(clash, true)
 })
+
+// -----------------------------------------------------------------------------
+// Regresiones del FIX #9 — el PATCH de reasignación antes (a) NO aplicaba el
+// buffer del cliente y (b) filtraba el SELECT por barberId, así que NUNCA veía
+// las filas legacy con barberId NULL aunque el nombre coincidiera. Estos casos
+// fallaban en producción y create.ts/services SÍ los rechazaban.
+// -----------------------------------------------------------------------------
+
+test('FIX#9 — candidato con barberId concreto pisa fila legacy (barberId NULL, mismo nombre)', () => {
+  // El barbero efectivo en el PATCH lleva un id real; la cita existente es
+  // legacy (barberId NULL) pero MISMO nombre. El SELECT viejo (eq barberId)
+  // la dejaba fuera → solape silencioso. El predicado casa por nombre.
+  const legacyNoId: OverlapBooking = {
+    id: 'legacy',
+    time: '11:30',
+    duration: 30, // 11:30–12:00
+    barberId: null,
+    barber: 'Dani',
+    status: 'confirmed',
+  }
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'moved',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 60, // 11:00–12:00 → pisa
+      barberId: BARBER_A, // id concreto (reasignación)
+      barber: 'Dani',
+    },
+    [legacyNoId],
+    0,
+  )
+  assert.equal(clash, true)
+})
+
+test('FIX#9 — buffer del cliente hace solapar lo que sin buffer no solaparía (paridad create.ts)', () => {
+  // 10:30–11:00 + buffer 10 → fin efectivo 11:10. Una cita 11:00–11:30
+  // NO solapa sin buffer (adyacente) pero SÍ con buffer 10. El PATCH viejo
+  // (bufferless) la aceptaba; create.ts la rechaza. Ahora coinciden.
+  const prev: OverlapBooking = {
+    id: 'prev',
+    time: '10:30',
+    duration: 30, // 10:30–11:00
+    barberId: BARBER_A,
+    barber: 'Dani',
+    status: 'confirmed',
+  }
+  const noBuffer = hasBookingOverlap(
+    {
+      selfId: 'moved',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 30,
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [prev],
+    0,
+  )
+  const withBuffer = hasBookingOverlap(
+    {
+      selfId: 'moved',
+      startMinutes: hhmmToMinutes('11:00'),
+      durationMin: 30,
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [prev],
+    10,
+  )
+  assert.equal(noBuffer, false)
+  assert.equal(withBuffer, true)
+})
+
+test('FIX#9 — adyacencia exacta CON buffer: termina justo en el límite → no solapa', () => {
+  // prev 10:30–11:00, buffer 15 → fin efectivo 11:15. Cita que arranca
+  // EXACTO a las 11:15 (fin del buffer) NO debe solapar (intervalos
+  // semiabiertos: newStart < bEnd es falso cuando newStart == bEnd).
+  const prev: OverlapBooking = {
+    id: 'prev',
+    time: '10:30',
+    duration: 30,
+    barberId: BARBER_A,
+    barber: 'Dani',
+    status: 'confirmed',
+  }
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'moved',
+      startMinutes: hhmmToMinutes('11:15'), // == 11:00 + 15 buffer
+      durationMin: 30,
+      barberId: BARBER_A,
+      barber: 'Dani',
+    },
+    [prev],
+    15,
+  )
+  assert.equal(clash, false)
+})
+
+test('FIX#9 — reasignar a otro barbero libera el solape (match estricto por barbero)', () => {
+  // Misma franja que next1130 pero el candidato se reasigna a Pablo
+  // (id+nombre distintos) → ya no es el mismo barbero → no solapa.
+  const clash = hasBookingOverlap(
+    {
+      selfId: 'moved',
+      startMinutes: hhmmToMinutes('11:30'),
+      durationMin: 30,
+      barberId: 'b-pablo',
+      barber: 'Pablo',
+    },
+    [next1130], // barbero Dani / BARBER_A
+    15,
+  )
+  assert.equal(clash, false)
+})
