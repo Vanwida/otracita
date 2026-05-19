@@ -6,10 +6,9 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
-import {
-  shouldAutoInvoiceBooking,
-  tryAutoInvoiceForCompletedBooking,
-} from '@/lib/invoicing'
+// La facturación VeriFactu ya NO se dispara al cerrar la cita — es una
+// acción explícita por venta (POST /api/invoices/from-booking). Por eso
+// este endpoint ya no importa los helpers de invoicing.
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 
@@ -237,21 +236,15 @@ export async function PATCH(
   await db.update(bookings).set(patch).where(eq(bookings.id, id))
   const [updated] = await db.select().from(bookings).where(eq(bookings.id, id))
 
-  // ── Auto-facturación al completar ────────────────────────────────────
-  // Si el barbero acaba de cerrar la cita (transición confirmed→completed),
-  // disparamos la factura en background. Incluye servicio + productos
-  // vendidos durante la cita (las ventas con invoiced_at IS NULL).
-  // Fire-and-forget — failures no rompen la respuesta del PATCH; el
-  // barbero ve la cita como completada y la factura se reintenta vía
-  // re-emisión manual desde el admin si algo falla.
-  if (
-    patch.status === 'completed' &&
-    updated &&
-    shouldAutoInvoiceBooking(updated) &&
-    access.client.invoicingEnabled
-  ) {
-    tryAutoInvoiceForCompletedBooking(updated.id)
-  }
+  // ── Facturación VeriFactu: NUNCA automática ──────────────────────────
+  // Decisión de producto: cerrar la cita registra la venta para gestión
+  // (cash_movement, ingresos, caja, BI) pero NO declara a Hacienda. El
+  // barbero no factura el 100% de su negocio — emitir factura VeriFactu
+  // es una acción EXPLÍCITA por venta ("Generar factura", patrón Booksy
+  // recibo 10.01.18) vía POST /api/invoices/from-booking. Aquí ya no se
+  // dispara nada fiscal; `generateInvoiceFromBooking` sigue siendo la
+  // única fuente VeriFactu (hash encadenado + QR intactos), solo que
+  // on-demand. La venta queda como TICKET interno hasta que se factura.
 
   // ── Push solicitud de reseña al cliente ──────────────────────────────
   // Solo cuando se transiciona a 'completed' (no en cancel ni en barber
