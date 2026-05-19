@@ -45,6 +45,13 @@ export default function RightSlideOver({
   children,
   ariaLabel,
 }: Props) {
+  // Nota sobre la animación de salida: algunos consumidores
+  // (BookingDetailPanel) condicionan sus children al mismo dato que
+  // controla `isOpen` (`booking && (...)`). No hace falta latch: cuando
+  // `isOpen`→false, AnimatePresence NO re-renderiza el subárbol — conserva
+  // el ÚLTIMO árbol renderizado (con `isOpen` true y children completos)
+  // hasta que termina el exit. El panel se desliza fuera CON su contenido,
+  // exactamente como cuando AnimatePresence vivía dentro de cada panel.
   return (
     <AnimatePresence>
       {isOpen && (
