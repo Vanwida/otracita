@@ -23,6 +23,8 @@
     "@remotion/cli": "^4.0.439",
     "@remotion/google-fonts": "^4.0.439",
     "@remotion/player": "^4.0.439",
+    "@stripe/react-stripe-js": "^3.10.0",
+    "@stripe/stripe-js": "^7.9.0",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
     "@vercel/blob": "^2.3.3",
