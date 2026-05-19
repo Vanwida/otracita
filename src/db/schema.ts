@@ -71,6 +71,14 @@ export const clients = pgTable('clients', {
   botAllowCancelWhatsapp: boolean('bot_allow_cancel_whatsapp').notNull().default(true),
   // Tras N no-shows el cliente se bloquea automáticamente del bot. Default 3.
   noShowBlockThreshold: integer('no_show_block_threshold').notNull().default(3),
+  // Tarifa por no-show (céntimos). 0 = desactivado (default → callers
+  // existentes no cobran nada). Cuando > 0 y la cita se marca no_show, se
+  // INTENTA cobrar al método de pago consentido del cliente (Stripe
+  // off_session). HOY no hay tarjeta guardada en reservas WhatsApp/PWA: el
+  // cobro se salta con motivo 'no_card_on_file' hasta que se implemente la
+  // captura+consentimiento de tarjeta en la reserva (ver propuesta de
+  // diseño). El mecanismo de cobro/caja ya está listo y es aditivo.
+  noShowFeeCents: integer('no_show_fee_cents').notNull().default(0),
   // Plantilla del recordatorio diario. null = plantilla por defecto.
   // Placeholders soportados: {name} {service} {time} {barber}.
   reminderTemplate: text('reminder_template'),
