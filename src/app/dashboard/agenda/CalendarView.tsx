@@ -282,11 +282,11 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
 
   return (
     <div className="flex flex-col h-full bg-canvas">
-      {/* Controls bar */}
+      {/* Controls bar — SIN título: la cabecera del área (page.tsx) ya
+          pinta "Agenda" + las pestañas (AreaTabs). Antes había un
+          <h1>Calendario</h1> aquí → título doblado y término divergente
+          (G1/N2). Esto es sólo la barra de controles del calendario. */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface flex-wrap shrink-0">
-        {/* Title */}
-        <h1 className="text-base font-bold text-ink mr-1">Calendario</h1>
-
         {/* Today */}
         <button
           onClick={handleTodayClick}
