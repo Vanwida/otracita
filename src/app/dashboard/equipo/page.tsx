@@ -17,20 +17,25 @@ import BarberBreakdown from '../caja/BarberBreakdown'
 // -----------------------------------------------------------------------------
 // /dashboard/equipo — pestaña EMPLEADOS (ruta índice del área Equipo).
 //
-// Patrón Booksy "Empleados" (10.16.45): la lista del equipo + su
-// RENDIMIENTO. El barbero abre Equipo y ve quién tira del carro (factura,
-// propinas, nota, % de cuota) con badge TOP en el que más factura — la
-// substancia que el dueño pedía. El desglose es el mismo componente que
-// usa el Resumen de Ventas (BarberBreakdown, una sola query, sin duplicar);
-// solo se renderiza con ≥2 barberos activos.
+// Patrón Booksy "Empleados" (10.16.45 / 10.16.58): MASTER-DETAIL — lista
+// buscable del equipo a la izquierda, detalle del seleccionado a la derecha.
+// El ex-Booksy abre Equipo y reconoce el mismo modelo (solo nuestros
+// colores), en vez del acordeón de tarjetas apiladas de antes.
+//
+// El split llena el frame del área (la página NUNCA scrollea — regla
+// AreaShell; el master y el detalle hacen su propio scroll interno). El
+// "Rendimiento del equipo" (BarberBreakdown, requisito V1) se conserva como
+// bloque colapsable AL PIE, cerrado por defecto, para no romper el
+// viewport-fit del master-detail ni duplicar la query (mismo componente que
+// el Resumen de Ventas e Informes).
 //
 // El selector de periodo es LOCAL a esta pestaña (no en el layout del área:
-// Turnos/Comisiones/Bonos/Competición no lo necesitan y ensuciarlo rompería
-// sus headers). Filtra solo el desglose; la lista de empleados es atemporal.
+// Turnos/Comisiones/Bonos/Competición no lo necesitan). Filtra solo el
+// desglose; la lista de empleados es atemporal.
 //
 // LÓGICA DE SERVIDOR INTACTA: mismo resolve de tenant por sesión, mismo
-// `hasFeature(client, 'controlFinanciero')` para el flag de payroll que
-// BarbersManager necesita. El periodo reutiliza el helper puro compartido.
+// `hasFeature(client, 'controlFinanciero')` para el flag de payroll. El
+// periodo reutiliza el helper puro compartido.
 // -----------------------------------------------------------------------------
 
 interface PageProps {
@@ -62,38 +67,54 @@ export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
     PERIOD_OPTIONS.find((p) => p.key === period)?.label.toLowerCase() ?? period
 
   return (
-    <AreaContent scroll="region" maxWidth="7xl">
-      <BarbersManager payrollEnabled={payrollEnabled} />
-
-      {/* Rendimiento del equipo — mismo componente que el Resumen de
-          Ventas (BarberBreakdown). Solo aparece con ≥2 barberos activos:
-          con uno es redundante con el resto de la pestaña. */}
-      <div className="mt-8">
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h2
-              className="font-semibold text-ink"
-              style={{ fontSize: 'var(--text-section-title)' }}
-            >
-              Rendimiento del equipo
-            </h2>
-            <p className="mt-0.5 text-ink-2" style={{ fontSize: 'var(--text-meta)' }}>
-              Quién factura más este periodo · {periodLabel}.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <Suspense>
-              <StatsPeriodTabs />
-            </Suspense>
-          </div>
+    <AreaContent scroll="region" maxWidth="full" bleed>
+      <div className="flex h-full min-h-0 flex-col p-[var(--space-page)]">
+        {/* Master-detail: llena el frame del área. */}
+        <div className="min-h-0 flex-1">
+          <BarbersManager payrollEnabled={payrollEnabled} />
         </div>
-        <BarberBreakdown
-          clientId={client.id}
-          periodStartIso={periodStartIso}
-          title="Por barbero"
-          subtitle="Quién factura más, quién recibe más propinas, quién tiene mejor nota."
-          highlightTop
-        />
+
+        {/* Rendimiento del equipo — colapsable, cerrado por defecto. Mismo
+            componente que el Resumen de Ventas (BarberBreakdown, una sola
+            query, sin duplicar). */}
+        <details className="group mt-4 shrink-0 rounded-control border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <span
+                className="font-semibold text-ink"
+                style={{ fontSize: 'var(--text-section-title)' }}
+              >
+                Rendimiento del equipo
+              </span>
+              <span
+                className="ml-2 text-ink-2"
+                style={{ fontSize: 'var(--text-meta)' }}
+              >
+                Quién factura más · {periodLabel}
+              </span>
+            </div>
+            <span
+              className="shrink-0 text-ink-3 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            >
+              ▾
+            </span>
+          </summary>
+          <div className="border-t border-line p-4">
+            <div className="mb-3 flex justify-end">
+              <Suspense>
+                <StatsPeriodTabs />
+              </Suspense>
+            </div>
+            <BarberBreakdown
+              clientId={client.id}
+              periodStartIso={periodStartIso}
+              title="Por barbero"
+              subtitle="Quién factura más, quién recibe más propinas, quién tiene mejor nota."
+              highlightTop
+            />
+          </div>
+        </details>
       </div>
     </AreaContent>
   )

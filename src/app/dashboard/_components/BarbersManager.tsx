@@ -1,29 +1,45 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { upload } from '@vercel/blob/client'
-import { Plus, Trash2, ChevronDown, ChevronUp, Loader2, Calendar, Clock, X, Camera, User, AlertTriangle } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Loader2,
+  Calendar,
+  Clock,
+  X,
+  Camera,
+  User,
+  AlertTriangle,
+  Search,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
 import BarberSalaryEditor from './BarberSalaryEditor'
 
 // -----------------------------------------------------------------------------
-// BarbersManager — CRUD UI for per-staff scheduling.
+// BarbersManager — Equipo > Empleados en patrón MASTER-DETAIL (Booksy
+// "Empleados", screenshots 10.16.45 / 10.16.58).
 //
-// Replaces the old name-only TeamEditor. Each barber is an expandable card:
-//   · Inline name edit (saves on blur).
-//   · Reorder ↑↓ to drive displayOrder (agenda column order, any-available
-//     tie-breaking, bot list order).
-//   · "Horario personalizado" toggle — OFF = inherit shop hours; ON = opens
-//     the HoursEditor for this barber.
-//   · "Días bloqueados personales" — chip list with add/remove (YYYY-MM-DD).
-//   · Eliminar — soft-delete. Blocked by API if the barber has future
-//     confirmed bookings, so the UI just surfaces the error cleanly.
+//   · Izquierda: lista buscable del equipo. Cada fila = handle de arrastre +
+//     avatar + nombre + rol. La fila seleccionada queda activa; arrastrar
+//     reordena el displayOrder (orden de columnas de la agenda, desempate de
+//     "cualquiera", orden de la lista del bot). Botón "+ Añadir" al pie.
+//   · Derecha: panel de detalle del barbero seleccionado — avatar grande,
+//     nombre, rol, y secciones (Foto · Horario · Días bloqueados · Perfil de
+//     pago). Antes era un acordeón de tarjetas apiladas; ahora un split que
+//     no obliga a scrollear una página larga (regla AreaShell).
 //
-// Uses SWR so other tabs / devices pick up changes within ~10s without a
-// full page refresh. The component self-saves (PATCH) on each field change;
-// no global "Save" button, which would be error-prone for per-row edits.
+// La capa de datos es idéntica a la anterior (SWR sobre /api/barbers,
+// PATCH/DELETE por barbero, ReassignModal al borrar con citas futuras). Solo
+// cambia el SHELL: de cards expandibles a master-detail. Drag-reorder
+// reemplaza los botones ↑↓ del modelo viejo (Booksy usa handle de arrastre);
+// las flechas siguen disponibles, ocultas, para reorden por teclado.
 // -----------------------------------------------------------------------------
 
 interface BarberRow {
@@ -71,7 +87,8 @@ export default function BarbersManager({ payrollEnabled = false }: BarbersManage
 
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   // Estado del modal de reasignación — se abre cuando un borrado falla por
@@ -84,7 +101,27 @@ export default function BarbersManager({ payrollEnabled = false }: BarbersManage
   }>(null)
   const confirm = useConfirm()
 
-  const barbers = data?.barbers ?? []
+  const barbers = useMemo(() => data?.barbers ?? [], [data])
+
+  // Garantiza siempre una selección válida: el master-detail nunca muestra
+  // el panel vacío si hay equipo (primera carga, borrado, reorden).
+  useEffect(() => {
+    if (barbers.length === 0) {
+      if (selectedId !== null) setSelectedId(null)
+      return
+    }
+    if (!selectedId || !barbers.some((b) => b.id === selectedId)) {
+      setSelectedId(barbers[0].id)
+    }
+  }, [barbers, selectedId])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return barbers
+    return barbers.filter((b) => b.name.toLowerCase().includes(q))
+  }, [barbers, query])
+
+  const selected = barbers.find((b) => b.id === selectedId) ?? null
 
   const addBarber = async () => {
     const name = newName.trim()
@@ -103,6 +140,7 @@ export default function BarbersManager({ payrollEnabled = false }: BarbersManage
       } else {
         setNewName('')
         await mutate()
+        if (body?.barber?.id) setSelectedId(body.barber.id)
       }
     } finally {
       setCreating(false)
@@ -179,75 +217,162 @@ export default function BarbersManager({ payrollEnabled = false }: BarbersManage
     })
   }
 
-  const move = async (id: string, direction: -1 | 1) => {
-    const idx = barbers.findIndex((b) => b.id === id)
-    if (idx < 0) return
-    const other = barbers[idx + direction]
-    if (!other) return
-    const a = barbers[idx]
-    // Swap displayOrders
-    await Promise.all([
-      patchBarber(a.id, { displayOrder: other.displayOrder }),
-      patchBarber(other.id, { displayOrder: a.displayOrder }),
-    ])
+  /** Reordena la lista completa y persiste el displayOrder de cada barbero
+   *  (0..n-1). Lo llaman el drag-drop y las flechas accesibles. Optimista
+   *  vía mutate(); revalida al terminar. */
+  const reorder = async (orderedIds: string[]) => {
+    const byId = new Map(barbers.map((b) => [b.id, b]))
+    const next = orderedIds
+      .map((id, idx) => {
+        const b = byId.get(id)
+        return b ? { ...b, displayOrder: idx } : null
+      })
+      .filter((b): b is BarberRow => b !== null)
+    // Pinta el nuevo orden ya (sin esperar al server).
+    await mutate({ barbers: next }, { revalidate: false })
+    setErrorMsg(null)
+    try {
+      await Promise.all(
+        next.map((b, idx) =>
+          fetch(`/api/barbers/${b.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayOrder: idx }),
+          }),
+        ),
+      )
+    } catch {
+      setErrorMsg('No se pudo guardar el orden. Inténtalo de nuevo.')
+    } finally {
+      await mutate()
+    }
+  }
+
+  const moveBy = (id: string, dir: -1 | 1) => {
+    const ids = barbers.map((b) => b.id)
+    const idx = ids.indexOf(id)
+    const swap = idx + dir
+    if (idx < 0 || swap < 0 || swap >= ids.length) return
+    ;[ids[idx], ids[swap]] = [ids[swap], ids[idx]]
+    void reorder(ids)
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-full min-h-0 flex-col">
       {errorMsg && (
-        <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+        <div className="mb-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {errorMsg}
         </div>
       )}
 
-      {isLoading && <p className="text-xs text-ink-3">Cargando equipo…</p>}
+      <div className="flex min-h-0 flex-1 gap-4">
+        {/* ── Master: lista buscable del equipo ──────────────────────────── */}
+        <div className="flex w-72 shrink-0 flex-col rounded-control border border-line bg-surface">
+          <div className="border-b border-line p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar empleados…"
+                aria-label="Buscar empleados"
+                className="w-full rounded-lg border border-line bg-canvas py-2 pl-8 pr-3 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand"
+              />
+            </div>
+          </div>
 
-      {!isLoading && barbers.length === 0 && (
-        <p className="text-xs text-ink-3">Aún no has añadido a nadie. Añade al primer barbero abajo.</p>
-      )}
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {isLoading && barbers.length === 0 && (
+              <p className="px-2 py-3 text-xs text-ink-3">Cargando equipo…</p>
+            )}
+            {!isLoading && barbers.length === 0 && (
+              <p className="px-2 py-3 text-xs text-ink-3">
+                Aún no has añadido a nadie. Añade al primer barbero abajo.
+              </p>
+            )}
+            {barbers.length > 0 && filtered.length === 0 && (
+              <p className="px-2 py-3 text-xs text-ink-3">Nadie coincide con «{query}».</p>
+            )}
 
-      {barbers.map((barber, i) => (
-        <BarberCard
-          key={barber.id}
-          barber={barber}
-          expanded={expanded === barber.id}
-          busy={busyId === barber.id}
-          canMoveUp={i > 0}
-          canMoveDown={i < barbers.length - 1}
-          payrollEnabled={payrollEnabled}
-          onToggle={() => setExpanded(expanded === barber.id ? null : barber.id)}
-          onPatch={(patch) => patchBarber(barber.id, patch)}
-          onDelete={() => deleteBarber(barber.id, barber.name)}
-          onMoveUp={() => move(barber.id, -1)}
-          onMoveDown={() => move(barber.id, 1)}
-          onSalaryUpdated={() => mutate()}
-        />
-      ))}
+            <ul className="space-y-0.5">
+              {filtered.map((b) => (
+                <BarberListItem
+                  key={b.id}
+                  barber={b}
+                  selected={b.id === selectedId}
+                  busy={busyId === b.id}
+                  // Drag solo sin filtro (reordenar sobre un subconjunto es
+                  // ambiguo). Con filtro: solo selección.
+                  draggable={!query.trim()}
+                  index={barbers.indexOf(b)}
+                  total={barbers.length}
+                  allIds={barbers.map((x) => x.id)}
+                  onSelect={() => setSelectedId(b.id)}
+                  onReorder={reorder}
+                  onMoveUp={() => moveBy(b.id, -1)}
+                  onMoveDown={() => moveBy(b.id, 1)}
+                />
+              ))}
+            </ul>
+          </div>
 
-      <div className="flex gap-2 pt-2">
-        <input
-          type="text"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              addBarber()
-            }
-          }}
-          placeholder="Nombre del barbero / profesional"
-          className="flex-1 bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none"
-          disabled={creating}
-        />
-        <button
-          type="button"
-          onClick={addBarber}
-          disabled={creating || !newName.trim()}
-          className="btn-primary"
-        >
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Añadir
-        </button>
+          <div className="border-t border-line p-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addBarber()
+                  }
+                }}
+                placeholder="Nombre del profesional"
+                className="min-w-0 flex-1 rounded-lg border border-line bg-canvas p-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand"
+                disabled={creating}
+              />
+              <button
+                type="button"
+                onClick={addBarber}
+                disabled={creating || !newName.trim()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-espresso)] px-3 py-2 text-sm font-semibold text-[var(--color-cream-high)] transition-colors hover:bg-[var(--color-espresso-2)] disabled:opacity-60"
+              >
+                {creating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Añadir
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Detalle del barbero seleccionado ───────────────────────────── */}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-control border border-line bg-surface">
+          {selected ? (
+            <BarberDetail
+              key={selected.id}
+              barber={selected}
+              busy={busyId === selected.id}
+              payrollEnabled={payrollEnabled}
+              onPatch={(patch) => patchBarber(selected.id, patch)}
+              onDelete={() => deleteBarber(selected.id, selected.name)}
+              onSalaryUpdated={() => mutate()}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+              <User className="mb-3 h-7 w-7 text-ink-3" />
+              <p className="text-sm text-ink-2">
+                {isLoading
+                  ? 'Cargando equipo…'
+                  : 'Añade a tu primer profesional para empezar.'}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {reassignModal && (
@@ -263,36 +388,164 @@ export default function BarbersManager({ payrollEnabled = false }: BarbersManage
   )
 }
 
-function BarberCard({
+// -----------------------------------------------------------------------------
+// BarberListItem — fila de la lista master. Handle de arrastre + avatar +
+// nombre + rol. Drag-and-drop nativo (sin dependencia): al soltar sobre otra
+// fila, recompone el orden y lo persiste vía onReorder. Flechas ↑↓ ocultas
+// (teclado / lectores de pantalla) para que el reorden sea accesible.
+// -----------------------------------------------------------------------------
+function BarberListItem({
   barber,
-  expanded,
+  selected,
   busy,
-  canMoveUp,
-  canMoveDown,
-  payrollEnabled,
-  onToggle,
-  onPatch,
-  onDelete,
+  draggable,
+  index,
+  total,
+  allIds,
+  onSelect,
+  onReorder,
   onMoveUp,
   onMoveDown,
+}: {
+  barber: BarberRow
+  selected: boolean
+  busy: boolean
+  draggable: boolean
+  index: number
+  total: number
+  allIds: string[]
+  onSelect: () => void
+  onReorder: (orderedIds: string[]) => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+}) {
+  const [dragOver, setDragOver] = useState(false)
+
+  return (
+    <li>
+      <div
+        draggable={draggable}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/plain', barber.id)
+        }}
+        onDragOver={(e) => {
+          if (!draggable) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (!dragOver) setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          const draggedId = e.dataTransfer.getData('text/plain')
+          if (!draggedId || draggedId === barber.id) return
+          const next = allIds.filter((id) => id !== draggedId)
+          const targetIdx = next.indexOf(barber.id)
+          next.splice(targetIdx, 0, draggedId)
+          onReorder(next)
+        }}
+        className={`group flex items-center gap-2 rounded-lg px-2 py-2 transition-colors ${
+          selected ? 'bg-brand-softer ring-1 ring-brand/30' : 'hover:bg-overlay/60'
+        } ${dragOver ? 'ring-1 ring-brand' : ''}`}
+      >
+        {draggable ? (
+          <span
+            className="shrink-0 cursor-grab text-ink-3 opacity-40 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+            aria-hidden="true"
+            title="Arrastra para reordenar"
+          >
+            <GripVertical className="h-4 w-4" />
+          </span>
+        ) : (
+          <span className="w-4 shrink-0" aria-hidden="true" />
+        )}
+
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          aria-current={selected ? 'true' : undefined}
+        >
+          {barber.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={barber.photoUrl}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-full border border-line object-cover"
+            />
+          ) : (
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-overlay text-xs font-bold text-ink-2">
+              {barber.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium text-ink">{barber.name}</span>
+            <span className="block truncate text-[11px] uppercase tracking-wide text-ink-3">
+              Profesional
+            </span>
+          </span>
+        </button>
+
+        {/* Reorden accesible por teclado (oculto; el handle cubre el ratón).
+            Solo sin filtro de búsqueda. */}
+        {draggable && (
+          <span className="flex shrink-0 flex-col opacity-0 focus-within:opacity-100 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={index === 0 || busy}
+              aria-label={`Subir a ${barber.name}`}
+              className="text-ink-3 hover:text-ink disabled:opacity-30"
+            >
+              <ChevronUp className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={index === total - 1 || busy}
+              aria-label={`Bajar a ${barber.name}`}
+              className="text-ink-3 hover:text-ink disabled:opacity-30"
+            >
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          </span>
+        )}
+      </div>
+    </li>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// BarberDetail — panel derecho. Cabecera (avatar + nombre + rol + acciones) +
+// secciones de edición. Misma sustancia que el antiguo acordeón, pero como
+// detalle persistente del seleccionado (no apila tarjetas en una página
+// larga).
+// -----------------------------------------------------------------------------
+function BarberDetail({
+  barber,
+  busy,
+  payrollEnabled,
+  onPatch,
+  onDelete,
   onSalaryUpdated,
 }: {
   barber: BarberRow
-  expanded: boolean
   busy: boolean
-  canMoveUp: boolean
-  canMoveDown: boolean
   payrollEnabled: boolean
-  onToggle: () => void
   onPatch: (patch: Partial<BarberRow>) => Promise<void>
   onDelete: () => void
-  onMoveUp: () => void
-  onMoveDown: () => void
   onSalaryUpdated: () => void
 }) {
+  // Estado de drafts inicializado desde props. NO necesita re-sync por
+  // efecto: el padre monta este componente con `key={selected.id}`, así que
+  // cambiar de barbero ya fuerza un remount con inicializadores frescos
+  // (idioma React preferido sobre setState-in-effect).
   const [nameDraft, setNameDraft] = useState(barber.name)
   const [blockedDraft, setBlockedDraft] = useState('')
   const [customHours, setCustomHours] = useState(barber.hours !== null)
+  const [hoursFormKey, setHoursFormKey] = useState(0)
 
   const onNameBlur = () => {
     const name = nameDraft.trim()
@@ -315,219 +568,175 @@ function BarberCard({
   const onCustomHoursToggle = (next: boolean) => {
     setCustomHours(next)
     if (!next) onPatch({ hours: null })
-    // If turning ON, we wait for the HoursEditor's first change to PATCH — the
-    // initial state mirrors defaults from HoursEditor itself.
   }
 
-  // Re-using HoursEditor: it only exposes the current value via a hidden
-  // input tied to a form. Here we wrap it with a listener via MutationObserver
-  // — but simpler: we read its hidden input on a small debounce whenever
-  // user edits. We accept the cost of one small adapter.
-  const [hoursFormKey, setHoursFormKey] = useState(0)
-  const onHoursChange = (next: HoursMap) => onPatch({ hours: next })
-
   return (
-    <div className="border border-line rounded-xl bg-surface overflow-hidden">
-      <div className="flex items-center gap-2 p-3">
-        <div className="flex flex-col gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={!canMoveUp || busy}
-            className="text-ink-3 hover:text-ink disabled:opacity-30 disabled:hover:text-ink-3"
-            aria-label="Subir"
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={!canMoveDown || busy}
-            className="text-ink-3 hover:text-ink disabled:opacity-30 disabled:hover:text-ink-3"
-            aria-label="Bajar"
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={onToggle}
-          className="h-9 w-9 rounded-full overflow-hidden bg-overlay border border-line shrink-0 flex items-center justify-center transition-transform hover:scale-105"
-          aria-label="Ver foto"
-        >
+    <div className="flex h-full flex-col">
+      {/* Cabecera del detalle */}
+      <div className="flex items-start gap-4 border-b border-line p-5">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-line bg-overlay">
           {barber.photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={barber.photoUrl} alt={barber.name} className="h-full w-full object-cover" />
+            <img
+              src={barber.photoUrl}
+              alt={barber.name}
+              className="h-full w-full object-cover"
+            />
           ) : (
-            <span className="text-xs font-bold text-ink-2">
+            <span className="flex h-full w-full items-center justify-center text-lg font-bold text-ink-2">
               {barber.name.slice(0, 1).toUpperCase()}
             </span>
           )}
-        </button>
-
-        <input
-          type="text"
-          value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={onNameBlur}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          }}
-          className="flex-1 bg-transparent border-0 text-sm font-medium text-ink focus:outline-none focus:ring-0 px-0"
-        />
-
-        {barber.hours !== null && (
-          <span className="text-[10px] uppercase tracking-wider text-brand font-semibold px-2 py-0.5 rounded-full bg-brand-softer border border-brand/20">
-            Horario propio
+        </div>
+        <div className="min-w-0 flex-1">
+          <input
+            type="text"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={onNameBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+            aria-label="Nombre del profesional"
+            className="w-full border-0 bg-transparent px-0 text-lg font-semibold text-ink outline-none focus:ring-0"
+          />
+          <span className="mt-1 inline-flex items-center rounded-full border border-line bg-overlay px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-2">
+            Profesional
           </span>
-        )}
-        {barber.blockedDates.length > 0 && (
-          <span className="text-[10px] uppercase tracking-wider text-ink-2 font-semibold px-2 py-0.5 rounded-full bg-overlay border border-line">
-            {barber.blockedDates.length} día{barber.blockedDates.length === 1 ? '' : 's'} bloqueado{barber.blockedDates.length === 1 ? '' : 's'}
-          </span>
-        )}
-
-        <button
-          type="button"
-          onClick={onToggle}
-          className="text-sm text-ink-2 hover:text-ink px-2 py-1 rounded hover:bg-overlay transition-colors"
-        >
-          {expanded ? 'Cerrar' : 'Editar'}
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={busy}
-          className="text-ink-3 hover:text-danger transition-colors p-1"
-          aria-label={`Eliminar ${barber.name}`}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-
-      {expanded && (
-        <div className="border-t border-line bg-overlay/50 p-4 space-y-5">
-          {/* ── Foto ────────────────────────────────────────────────────── */}
-          <div>
-            <div className="flex items-center gap-2 mb-2 text-sm font-medium text-ink">
-              <Camera className="h-4 w-4 text-ink-2" />
-              Foto
-            </div>
-            <BarberPhotoUpload
-              url={barber.photoUrl}
-              onChange={(next) => onPatch({ photoUrl: next })}
-            />
-          </div>
-
-          {/* ── Hours ───────────────────────────────────────────────────── */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-ink">
-                <Clock className="h-4 w-4 text-ink-2" />
-                Horario
-              </div>
-              <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-ink-2">
-                <input
-                  type="checkbox"
-                  checked={customHours}
-                  onChange={(e) => onCustomHoursToggle(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                Horario personalizado
-              </label>
-            </div>
-            {customHours ? (
-              <BarberHoursEditor
-                key={hoursFormKey}
-                initial={barber.hours}
-                onChange={onHoursChange}
-                onReset={() => {
-                  onPatch({ hours: null })
-                  setCustomHours(false)
-                  setHoursFormKey((k) => k + 1)
-                }}
-              />
-            ) : (
-              <p className="text-xs text-ink-3">
-                Hereda el horario del negocio. Actívalo para configurar uno propio.
-              </p>
-            )}
-          </div>
-
-          {/* ── Blocked dates ───────────────────────────────────────────── */}
-          <div>
-            <div className="flex items-center gap-2 mb-2 text-sm font-medium text-ink">
-              <Calendar className="h-4 w-4 text-ink-2" />
-              Días bloqueados personales
-            </div>
-            <p className="text-xs text-ink-3 mb-2">
-              Vacaciones, días libres, bajas. Se suman a los días bloqueados del negocio.
-            </p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {barber.blockedDates.length === 0 && (
-                <span className="text-xs text-ink-3">Sin días bloqueados.</span>
-              )}
-              {barber.blockedDates.map((d) => (
-                <span
-                  key={d}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-surface border border-line px-2.5 py-1 text-xs"
-                >
-                  {d}
-                  <button
-                    type="button"
-                    onClick={() => removeBlocked(d)}
-                    className="text-ink-3 hover:text-danger"
-                    aria-label={`Quitar ${d}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={blockedDraft}
-                onChange={(e) => setBlockedDraft(e.target.value)}
-                className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none"
-              />
-              <button
-                type="button"
-                onClick={addBlocked}
-                disabled={!blockedDraft || busy}
-                className="rounded-lg bg-overlay border border-line px-3 py-2 text-sm text-ink hover:bg-canvas hover:border-line-strong disabled:opacity-50"
-              >
-                Añadir día
-              </button>
-            </div>
-          </div>
-
-          {/* ── Perfil de pago ──────────────────────────────────────────── */}
-          {payrollEnabled && (
-            <div className="pt-4 border-t border-line">
-              <BarberSalaryEditor
-                barberId={barber.id}
-                initial={{
-                  salaryType: barber.salaryType,
-                  salaryBaseCents: barber.salaryBaseCents,
-                  commissionServicesPct: barber.commissionServicesPct,
-                  commissionProductsPct: barber.commissionProductsPct,
-                  chairRentCents: barber.chairRentCents,
-                }}
-                onSaved={onSalaryUpdated}
-              />
-            </div>
-          )}
-
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           {busy && (
-            <p className="text-xs text-ink-3 inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 text-xs text-ink-3">
               <Loader2 className="h-3 w-3 animate-spin" />
               Guardando…
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            className="rounded-md p-2 text-ink-3 transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+            aria-label={`Eliminar ${barber.name}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Cuerpo del detalle */}
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+        {/* ── Foto ──────────────────────────────────────────────────────── */}
+        <section>
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-ink">
+            <Camera className="h-4 w-4 text-ink-2" />
+            Foto
+          </div>
+          <BarberPhotoUpload
+            url={barber.photoUrl}
+            onChange={(next) => onPatch({ photoUrl: next })}
+          />
+        </section>
+
+        {/* ── Horario ───────────────────────────────────────────────────── */}
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-ink">
+              <Clock className="h-4 w-4 text-ink-2" />
+              Horario
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-ink-2">
+              <input
+                type="checkbox"
+                checked={customHours}
+                onChange={(e) => onCustomHoursToggle(e.target.checked)}
+                className="h-4 w-4 accent-[var(--color-brand)]"
+              />
+              Horario personalizado
+            </label>
+          </div>
+          {customHours ? (
+            <BarberHoursEditor
+              key={hoursFormKey}
+              initial={barber.hours}
+              onChange={(next) => onPatch({ hours: next })}
+              onReset={() => {
+                onPatch({ hours: null })
+                setCustomHours(false)
+                setHoursFormKey((k) => k + 1)
+              }}
+            />
+          ) : (
+            <p className="text-xs text-ink-3">
+              Hereda el horario del negocio. Actívalo para configurar uno propio.
             </p>
           )}
-        </div>
-      )}
+        </section>
+
+        {/* ── Días bloqueados ───────────────────────────────────────────── */}
+        <section>
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-ink">
+            <Calendar className="h-4 w-4 text-ink-2" />
+            Días bloqueados personales
+          </div>
+          <p className="mb-2 text-xs text-ink-3">
+            Vacaciones, días libres, bajas. Se suman a los días bloqueados del negocio.
+          </p>
+          <div className="mb-2 flex flex-wrap gap-2">
+            {barber.blockedDates.length === 0 && (
+              <span className="text-xs text-ink-3">Sin días bloqueados.</span>
+            )}
+            {barber.blockedDates.map((d) => (
+              <span
+                key={d}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-2.5 py-1 text-xs"
+              >
+                {d}
+                <button
+                  type="button"
+                  onClick={() => removeBlocked(d)}
+                  className="text-ink-3 hover:text-danger"
+                  aria-label={`Quitar ${d}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={blockedDraft}
+              onChange={(e) => setBlockedDraft(e.target.value)}
+              className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            />
+            <button
+              type="button"
+              onClick={addBlocked}
+              disabled={!blockedDraft || busy}
+              className="rounded-lg border border-line bg-overlay px-3 py-2 text-sm text-ink hover:border-line-strong hover:bg-canvas disabled:opacity-50"
+            >
+              Añadir día
+            </button>
+          </div>
+        </section>
+
+        {/* ── Perfil de pago ────────────────────────────────────────────── */}
+        {payrollEnabled && (
+          <section className="border-t border-line pt-5">
+            <BarberSalaryEditor
+              barberId={barber.id}
+              initial={{
+                salaryType: barber.salaryType,
+                salaryBaseCents: barber.salaryBaseCents,
+                commissionServicesPct: barber.commissionServicesPct,
+                commissionProductsPct: barber.commissionProductsPct,
+                chairRentCents: barber.chairRentCents,
+              }}
+              onSaved={onSalaryUpdated}
+            />
+          </section>
+        )}
+      </div>
     </div>
   )
 }
