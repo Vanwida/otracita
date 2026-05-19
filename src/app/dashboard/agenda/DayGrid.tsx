@@ -470,7 +470,12 @@ export default function DayGrid({
                   {colEvents.map(event => {
                     const evStartMin = toMinutes(event.time);
                     const top = (evStartMin - startMin) * PX_PER_MIN;
-                    const height = Math.max(event.duration * PX_PER_MIN, 24);
+                    // Alto mínimo legible: una cita corta (15min=30px) seguía
+                    // mostrando hora+cliente sin recortarse. 40px ≈ 2 líneas.
+                    const height = Math.max(event.duration * PX_PER_MIN, 40);
+                    // Umbrales de densidad: con ≥56px caben las 3 líneas
+                    // (hora+estado / cliente / servicio); por debajo, 2.
+                    const showService = height >= 56;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
                     // Color = ESTADO de la cita (Booksy-exact, igual en
@@ -521,7 +526,7 @@ export default function DayGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 overflow-hidden transition-opacity hover:opacity-80 ${
+                        className={`absolute left-1 right-1 z-20 flex flex-col gap-0.5 rounded-r px-2 py-1.5 overflow-hidden transition-opacity hover:opacity-80 ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
                           // Mientras se arrastra una cita, las OTRAS tiles
@@ -541,56 +546,71 @@ export default function DayGrid({
                         style={{ top, height, ...blockStyle }}
                         title={event.title}
                       >
-                        {/* Booksy lock icon */}
+                        {/* Booksy lock icon — esquina, fuera del flujo. */}
                         {isBooksy && !isCancelled && (
-                          <Lock className="absolute top-1 right-1 h-3 w-3 opacity-60" />
+                          <Lock className="absolute top-1.5 right-1.5 h-3 w-3 opacity-60" aria-hidden="true" />
                         )}
-                        {/* A2 ♥ — cliente pidió este barbero explícitamente.
-                            Sólo se pinta en el tile cuando hay altura para
-                            no chocar con el candado de Booksy. */}
-                        {event.barberRequested && !isBooksy && height > 28 && (
+                        {/* A2 ♥ — cliente pidió este barbero explícitamente. */}
+                        {event.barberRequested && !isBooksy && (
                           <span
-                            className="absolute top-1 right-1 text-[10px] leading-none"
+                            className="absolute top-1 right-1.5 text-[0.8125rem] leading-none"
                             title="Solicitado por el cliente"
                             aria-label="Solicitado por el cliente"
                           >
                             ♥
                           </span>
                         )}
-                        <p className="text-[10px] font-semibold leading-tight truncate">
-                          {event.time}
-                          <span className="opacity-60"> – {endTime}</span>
-                          {/* Estado por ícono + etiqueta (NUNCA solo color):
-                              confirmada no necesita decoración. */}
+
+                        {/* Línea 1 — rango horario (bold, legible) +
+                            estado por ícono+etiqueta (NUNCA solo color). */}
+                        <div
+                          className="flex items-center gap-1 font-bold leading-tight tabular-nums"
+                          style={{ fontSize: 'var(--agenda-ev-time)' }}
+                        >
+                          <span className="truncate">
+                            {event.time}
+                            <span className="font-semibold opacity-55">
+                              {' '}– {endTime}
+                            </span>
+                          </span>
                           {badge && (
                             <span
-                              className={`ml-1 inline-flex items-center gap-0.5 font-bold ${badge.tone}`}
+                              className={`inline-flex items-center gap-0.5 shrink-0 ${badge.tone}`}
+                              style={{ fontSize: 'var(--agenda-ev-meta)' }}
                             >
-                              <badge.icon className="h-2.5 w-2.5" aria-hidden="true" />
-                              {height > 28 && <span>{badge.label}</span>}
+                              <badge.icon className="h-3 w-3" aria-hidden="true" />
+                              {showService && <span>{badge.label}</span>}
                             </span>
                           )}
+                        </div>
+
+                        {/* Línea 2 — cliente (protagonista del bloque). */}
+                        <p
+                          className="font-semibold leading-tight truncate"
+                          style={{ fontSize: 'var(--agenda-ev-client)' }}
+                        >
+                          {event.customerName || event.customerPhone}
                         </p>
-                        {height > 28 && (
-                          <p className="text-[10px] leading-tight truncate font-medium">
-                            {event.customerName || event.customerPhone}
-                          </p>
-                        )}
-                        {height > 44 && (
-                          <p className="text-[9px] leading-tight truncate opacity-75">
+
+                        {/* Línea 3 — servicio (sólo si hay alto). */}
+                        {showService && (
+                          <p
+                            className="leading-tight truncate opacity-80"
+                            style={{ fontSize: 'var(--agenda-ev-service)' }}
+                          >
                             {event.service}
                           </p>
                         )}
-                        {/* R6 badge cobrado (display-only). El método lo
-                            captura WS-D al completar; aquí solo se pinta.
-                            Pegado abajo-derecha para no robar la línea de
-                            cliente/servicio. */}
+
+                        {/* R6 badge cobrado (display-only). Esquina inferior
+                            derecha, no roba línea de cliente/servicio. */}
                         {(() => {
                           const pb = paymentBadge(event.paymentMethod);
-                          if (!pb || height <= 28) return null;
+                          if (!pb) return null;
                           return (
                             <span
-                              className="absolute bottom-1 right-1 inline-flex items-center justify-center min-w-[1rem] h-4 px-1 rounded bg-surface/70 text-[9px] font-bold tabular-nums"
+                              className="absolute bottom-1 right-1 inline-flex items-center justify-center min-w-[1rem] h-4 px-1 rounded bg-surface/70 font-bold tabular-nums"
+                              style={{ fontSize: 'var(--agenda-ev-meta)' }}
                               title={pb.label}
                               aria-label={pb.label}
                             >

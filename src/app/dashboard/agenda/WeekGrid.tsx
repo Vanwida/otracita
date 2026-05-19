@@ -233,7 +233,10 @@ export default function WeekGrid({
                   {dayEvents.map(event => {
                     const evStartMin = toMinutes(event.time);
                     const top = (evStartMin - startMin) * PX_PER_MIN;
-                    const height = Math.max(event.duration * PX_PER_MIN, 20);
+                    // Alto mínimo legible (igual criterio que Día, algo más
+                    // bajo por la densidad de 7 columnas).
+                    const height = Math.max(event.duration * PX_PER_MIN, 34);
+                    const showService = height >= 50;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
                     // Color = ESTADO de la cita (Booksy-exact, mismo que
@@ -254,27 +257,37 @@ export default function WeekGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 rounded-r px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${treatment}`}
+                        className={`absolute left-1 right-1 z-20 flex flex-col gap-0.5 rounded-r px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${treatment}`}
                         style={{ top, height, ...blockStyle }}
                         title={event.title}
                       >
                         {/* Booksy lock icon */}
                         {isBooksy && !isCancelled && (
-                          <Lock className="absolute top-1 right-1 h-3 w-3 opacity-70" />
+                          <Lock className="absolute top-1 right-1 h-3 w-3 opacity-70" aria-hidden="true" />
                         )}
-                        <p className="text-[10px] font-semibold leading-tight truncate">
-                          {event.time} {event.customerName || event.customerPhone}
+                        {/* Línea 1 — hora + cliente (legible, no 10px). */}
+                        <p
+                          className="font-semibold leading-tight truncate"
+                          style={{ fontSize: 'var(--agenda-ev-client)' }}
+                        >
+                          <span className="tabular-nums">{event.time}</span>{' '}
+                          {event.customerName || event.customerPhone}
                           {badge && (
                             <span
                               className={`ml-1 inline-flex items-center gap-0.5 font-bold ${badge.tone}`}
                             >
-                              <badge.icon className="h-2.5 w-2.5" aria-hidden="true" />
-                              {height > 28 && <span>{badge.label}</span>}
+                              <badge.icon className="h-3 w-3" aria-hidden="true" />
+                              {showService && <span>{badge.label}</span>}
                             </span>
                           )}
                         </p>
-                        {height > 28 && (
-                          <p className="text-[9px] opacity-80 truncate">{event.service}</p>
+                        {showService && (
+                          <p
+                            className="opacity-80 leading-tight truncate"
+                            style={{ fontSize: 'var(--agenda-ev-service)' }}
+                          >
+                            {event.service}
+                          </p>
                         )}
                       </div>
                     );

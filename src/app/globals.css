@@ -72,6 +72,17 @@
    * AND the time gutter spacer so hour labels stay aligned with events. */
   --agenda-col-header-h: 3.75rem;  /* 60px */
 
+  /* ─── Agenda appointment block — escala tipográfica (FIX B) ───
+   * Antes el bloque usaba text-[9px]/[10px] dispersos: ilegible y
+   * frágil (evidencia agenda-block-fonts.png). Booksy ronda 12–13px en
+   * hora/nombre. Escala compartida (Día y Semana la consumen, cero px
+   * mágicos sueltos): hora bold ~13, cliente prominente ~13, servicio
+   * legible ~12, estado/meta ~11. Jerarquía clara, bloque sólido. */
+  --agenda-ev-time:    0.8125rem;  /* 13px — rango horario (bold) */
+  --agenda-ev-client:  0.8125rem;  /* 13px — nombre del cliente */
+  --agenda-ev-service: 0.75rem;    /* 12px — servicio */
+  --agenda-ev-meta:    0.6875rem;  /* 11px — estado/etiqueta inline */
+
   /* ─── Agenda off-hours / blocked (FIX 3) ───
    * El cuerpo de columna es blanco (--color-surface). Antes la franja
    * fuera-de-horario usaba --color-overlay (#F0EBE3 ≈ oklch 0.93) — sobre
