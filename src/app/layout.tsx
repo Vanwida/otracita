@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
 
@@ -49,6 +49,19 @@ export const metadata: Metadata = {
     description:
       "Cinco herramientas en una. Pagas mes a mes, sin permanencia.",
   },
+};
+
+// Viewport — `viewport-fit=cover` activa env(safe-area-inset-*) en iPhones
+// con notch / Dynamic Island, imprescindible para que el bottom-nav del
+// dashboard no quede tapado por el home-indicator. `maximumScale=1` no:
+// daña accesibilidad (impediría zoom a usuarios con baja visión). El
+// theme-color es el cream cálido del lienzo (Safari iOS pinta la barra de
+// estado con este color al añadir a pantalla de inicio).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#F7F3EE",
 };
 
 export default function RootLayout({

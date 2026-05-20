@@ -62,8 +62,10 @@ export type PaymentStatus =
 /** Currency we support in MVP. Keep hard-coded until we actually sell abroad. */
 export const PAYMENT_CURRENCY = 'eur';
 
-/** URL prefixes — build success/cancel URLs in one place for easy swap. */
-export const SITE_URL = 'https://otracita.es';
+/** URL prefixes — derivadas de `SITE_ORIGIN` (única fuente en `@/lib/site`).
+ *  Re-exportado como `SITE_URL` por compatibilidad con callers existentes. */
+import { SITE_ORIGIN } from './site';
+export const SITE_URL = SITE_ORIGIN;
 export const PAYMENT_SUCCESS_URL = `${SITE_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}`;
 export const PAYMENT_CANCELLED_URL = `${SITE_URL}/pay/cancelled`;
 export const CONNECT_REFRESH_URL = `${SITE_URL}/dashboard/negocio?connect=refresh`;
