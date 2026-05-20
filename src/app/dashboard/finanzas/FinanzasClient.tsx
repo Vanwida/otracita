@@ -5,15 +5,8 @@ import Link from 'next/link'
 import {
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Plus,
   X,
-  Scissors,
-  Droplets,
-  Megaphone,
-  User,
-  Wallet,
-  MoreHorizontal,
   Check,
   Loader2,
   Printer,
@@ -24,188 +17,50 @@ import {
 } from 'lucide-react'
 import MonthStepper from '@/app/dashboard/_components/MonthStepper'
 
+// Types públicos del módulo Finanzas. Antes vivían inline; ahora en
+// `_components/types.ts` para que sub-componentes y endpoints los reusen.
+import type {
+  FinanzasSummary,
+  Expense,
+  FixedCost,
+  Withdrawal,
+  ManualIncome,
+  ExpenseCategory,
+} from './_components/types'
+// Helpers puros (formatters de mes, IVA deadline, trendPct, categorías).
+import {
+  formatMonthLabel,
+  formatMonthShort,
+  prevMonth,
+  nextMonth,
+  nextIvaDeadline,
+  trendPct,
+  CATEGORY_OPTIONS,
+  categoryLabel,
+} from './_components/helpers'
+// Sub-componentes UI extraídos.
+import Sparkline from './_components/Sparkline'
+import FinanzasSkeleton from './_components/Skeleton'
+import KpiTile from './_components/KpiTile'
+import CollapsibleBlock from './_components/CollapsibleBlock'
+import SectionHeader from './_components/SectionHeader'
+import CategoryStackedBar from './_components/CategoryStackedBar'
+import PrintReport from './_components/PrintReport'
+
+// Re-exportamos los types para los callers que ya importaban `FinanzasSummary`
+// y compañía desde este archivo. NO añadir lógica aquí; los types viven en
+// `_components/types.ts`.
+export type { FinanzasSummary, Expense, FixedCost, Withdrawal, ManualIncome }
+
 // ── Formatters ───────────────────────────────────────────────────────────────
 
+// Compact = omite ",00" en enteros. Coherente con la lectura densa del P&L
+// (las cifras con muchos decimales rompen el ritmo del panel). El informe
+// imprimible (PrintReport) usa la variante STRICT internamente — allí no
+// se puede omitir decimales en facturas/Modelo 130.
+import { formatCents as formatCentsBase } from '@/lib/format'
 function formatCents(cents: number): string {
-  const euros = cents / 100
-  if (Number.isInteger(euros)) return `${euros} €`
-  return `${euros.toFixed(2).replace('.', ',')} €`
-}
-
-function formatMonthLabel(month: string): string {
-  const [year, mon] = month.split('-').map(Number)
-  const date = new Date(year, mon - 1, 1)
-  return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
-}
-
-function formatMonthShort(month: string): string {
-  const [year, mon] = month.split('-').map(Number)
-  const date = new Date(year, mon - 1, 1)
-  return date.toLocaleDateString('es-ES', { month: 'short' })
-}
-
-function prevMonth(month: string): string {
-  const [year, mon] = month.split('-').map(Number)
-  if (mon === 1) return `${year - 1}-12`
-  return `${year}-${String(mon - 1).padStart(2, '0')}`
-}
-
-function nextMonth(month: string): string {
-  const [year, mon] = month.split('-').map(Number)
-  if (mon === 12) return `${year + 1}-01`
-  return `${year}-${String(mon + 1).padStart(2, '0')}`
-}
-
-// IVA countdown: próximo vencimiento trimestral (20 abr, 20 jul, 20 oct, 20 ene)
-function nextIvaDeadline(): { label: string; daysLeft: number } {
-  const now = new Date()
-  const year = now.getFullYear()
-  const deadlines = [
-    new Date(year, 3, 20),       // 20 abril (Q1)
-    new Date(year, 6, 20),       // 20 julio (Q2)
-    new Date(year, 9, 20),       // 20 octubre (Q3)
-    new Date(year + 1, 0, 20),   // 20 enero siguiente (Q4)
-  ]
-  const future = deadlines.find((d) => d > now) ?? deadlines[deadlines.length - 1]
-  const days = Math.ceil((future.getTime() - now.getTime()) / 86400000)
-  const label = future.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
-  return { label, daysLeft: days }
-}
-
-function trendPct(current: number, prev: number): string | null {
-  if (prev === 0) return null
-  const pct = Math.round(((current - prev) / Math.abs(prev)) * 100)
-  return pct >= 0 ? `+${pct}%` : `${pct}%`
-}
-
-// ── Sparkline ─────────────────────────────────────────────────────────────────
-
-function Sparkline({ data, height = 48 }: { data: number[]; height?: number }) {
-  if (data.length < 2) return null
-  const W = 300
-  const H = height
-  const min = Math.min(...data)
-  const max = Math.max(...data)
-  const range = max - min || 1
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * W
-    const y = H - ((v - min) / range) * (H - 8) - 4
-    return `${x},${y}`
-  })
-  const zeroY = H - ((0 - min) / range) * (H - 8) - 4
-  return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true" preserveAspectRatio="none">
-      {min < 0 && (
-        <line
-          x1="0" y1={zeroY}
-          x2={W} y2={zeroY}
-          stroke="var(--color-line-strong)"
-          strokeWidth="1"
-          strokeDasharray="4,4"
-        />
-      )}
-      <polyline
-        points={pts.join(' ')}
-        fill="none"
-        stroke="var(--color-brand)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-// ── Skeleton ──────────────────────────────────────────────────────────────────
-
-function Skeleton() {
-  return (
-    <div className="space-y-3 animate-pulse">
-      {/* Hero */}
-      <div className="h-44 bg-overlay rounded-2xl" />
-      {/* 2×2 KPI grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-24 bg-overlay rounded-xl" />
-        <div className="h-24 bg-overlay rounded-xl" />
-        <div className="h-24 bg-overlay rounded-xl" />
-        <div className="h-24 bg-overlay rounded-xl" />
-      </div>
-      {/* Action row */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="h-11 bg-overlay rounded-xl" />
-        <div className="h-11 bg-overlay rounded-xl" />
-        <div className="h-11 bg-overlay rounded-xl" />
-      </div>
-      {/* Collapsibles */}
-      <div className="h-12 bg-overlay rounded-xl mt-4" />
-      <div className="h-12 bg-overlay rounded-xl" />
-      <div className="h-12 bg-overlay rounded-xl" />
-    </div>
-  )
-}
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export type FinanzasSummary = {
-  month: string
-  ingresosCents: number
-  manualIngresosCents: number
-  /** Ingreso por venta de productos este mes (cents). Su comisión ya
-   *  se descuenta vía nóminas — incluido en ingresos para que sea simétrico. */
-  productsIngresosCents: number
-  /** Propinas cobradas este mes (cents). Pasan al barbero vía nómina
-   *  (coste ya contabilizado). Sin IVA (gratuidad). */
-  tipsIngresosCents: number
-  gastosVariablesCents: number
-  costosFijosCents: number
-  /** Coste del equipo este mes — auto-calculado desde el perfil de pago
-   *  de cada barbero (ver /dashboard/equipo). Se suma a totalGastosCents
-   *  y por tanto resta del beneficio. */
-  nominasCents: number
-  totalGastosCents: number
-  ivaRepercutidoCents: number
-  ivaSoportadoCents: number
-  ivaAPagarCents: number
-  beneficioBrutoCents: number
-  retirosCents: number
-  beneficioRealCents: number
-  irpfEstimadoCents: number
-  prevYearIngresosCents: number
-}
-
-export type ManualIncome = {
-  id: string
-  date: string
-  amountCents: number
-  notes: string | null
-  createdAt: string
-}
-
-export type Expense = {
-  id: string
-  date: string
-  amountCents: number
-  category: string
-  notes: string | null
-  createdAt: string
-}
-
-export type FixedCost = {
-  id: string
-  name: string
-  amountCents: number
-  category: string
-  activeFrom: string
-  active: boolean
-  sortOrder: number
-}
-
-export type Withdrawal = {
-  id: string
-  date: string
-  amountCents: number
-  notes: string | null
-  createdAt: string
+  return formatCentsBase(cents, { compact: true })
 }
 
 interface FinanzasClientProps {
@@ -219,21 +74,6 @@ interface FinanzasClientProps {
   initialTicketMedioCents: number
   initialCategoryTotals: Record<string, number>
   initialPrevIngresosCents: number
-}
-
-type ExpenseCategory = 'productos' | 'suministros' | 'publicidad' | 'personal' | 'nomina' | 'otro'
-
-const CATEGORY_OPTIONS: { value: ExpenseCategory; label: string; Icon: typeof Scissors }[] = [
-  { value: 'productos',   label: 'Productos',   Icon: Scissors },
-  { value: 'suministros', label: 'Suministros', Icon: Droplets },
-  { value: 'publicidad',  label: 'Publicidad',  Icon: Megaphone },
-  { value: 'personal',    label: 'Personal',    Icon: User },
-  { value: 'nomina',      label: 'Nómina',      Icon: Wallet },
-  { value: 'otro',        label: 'Otro',        Icon: MoreHorizontal },
-]
-
-function categoryLabel(cat: string): string {
-  return CATEGORY_OPTIONS.find((c) => c.value === cat)?.label ?? cat
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -750,7 +590,7 @@ export default function FinanzasClient({
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-5xl mx-auto" style={{ padding: 'var(--space-page)' }}>
       {isLoading ? (
-        <div><Skeleton /></div>
+        <div><FinanzasSkeleton /></div>
       ) : (
         <>
           <div className="space-y-3">
@@ -1700,349 +1540,26 @@ export default function FinanzasClient({
     </div>
 
     {/* ── PRINT REPORT (hidden on screen, shown when printing) ──────────── */}
-    <div
-      className="hidden print:block"
-      style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: '10pt', color: '#111', lineHeight: '1.6', padding: '1.5cm 2cm' }}
-    >
-      {/* Header */}
-      <div style={{ borderBottom: '2px solid #111', paddingBottom: '12px', marginBottom: '20px' }}>
-        <p style={{ fontSize: '8pt', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#666', margin: '0 0 4px' }}>otracita</p>
-        <h1 style={{ fontSize: '20pt', fontWeight: 700, margin: '0 0 4px' }}>Control Financiero</h1>
-        <p style={{ fontSize: '11pt', color: '#444', margin: 0, textTransform: 'capitalize' }}>
-          {formatMonthLabel(month)}
-        </p>
-        <p style={{ fontSize: '8pt', color: '#888', margin: '4px 0 0' }}>
-          Generado el {new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
-        </p>
-      </div>
-
-      {/* Resumen P&L */}
-      <section style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#666', margin: '0 0 8px', fontWeight: 600 }}>Resumen del mes</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            <PrintRow label="Ingresos brutos (con IVA)" value={formatCents(summary.ingresosCents)} />
-            <PrintRow label="Gastos variables" value={`-${formatCents(summary.gastosVariablesCents)}`} indent />
-            <PrintRow label="Costes fijos activos" value={`-${formatCents(summary.costosFijosCents)}`} indent />
-            {summary.nominasCents > 0 && (
-              <PrintRow label="Nóminas del equipo" value={`-${formatCents(summary.nominasCents)}`} indent />
-            )}
-            <PrintRow label="Total gastos" value={formatCents(summary.totalGastosCents)} />
-            <PrintRow label="Beneficio bruto (sin IVA)" value={formatCents(summary.beneficioBrutoCents)} bold />
-            <PrintRow label="Retiros personales" value={`-${formatCents(summary.retirosCents)}`} />
-            <PrintRow label="Beneficio real" value={formatCents(summary.beneficioRealCents)} bold highlight={summary.beneficioRealCents < 0 ? 'loss' : 'profit'} />
-          </tbody>
-        </table>
-      </section>
-
-      {/* Contexto */}
-      <section style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#666', margin: '0 0 8px', fontWeight: 600 }}>Contexto de ingresos</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            <PrintRow label="Servicios completados" value={serviciosCount.toLocaleString('es-ES')} />
-            <PrintRow label="Ticket medio" value={ticketMedioCents > 0 ? formatCents(ticketMedioCents) : '—'} />
-          </tbody>
-        </table>
-      </section>
-
-      {/* Fiscal */}
-      <section style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#666', margin: '0 0 8px', fontWeight: 600 }}>Estimación fiscal</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            <PrintRow label="IVA repercutido (21% s/ base)" value={formatCents(summary.ivaRepercutidoCents)} />
-            <PrintRow label="IVA soportado (deducible)" value={`-${formatCents(summary.ivaSoportadoCents)}`} />
-            <PrintRow label="IVA a declarar (Modelo 303)" value={formatCents(summary.ivaAPagarCents)} bold />
-            <PrintRow label="IRPF estimado 20% (Modelo 130)" value={formatCents(summary.irpfEstimadoCents)} bold />
-            <PrintRow label="Total reserva Hacienda" value={formatCents(reservaHaciendaCents)} bold highlight="warning" />
-          </tbody>
-        </table>
-        <p style={{ fontSize: '8pt', color: '#888', marginTop: '6px' }}>
-          Estimación orientativa. Consulta con tu gestor antes de presentar los modelos.
-        </p>
-      </section>
-
-      {/* Gastos variables */}
-      {expensesList.length > 0 && (
-        <section style={{ marginBottom: '24px', pageBreakInside: 'avoid' }}>
-          <h2 style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#666', margin: '0 0 8px', fontWeight: 600 }}>
-            Gastos variables ({expensesList.length})
-          </h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #ccc' }}>
-                <th style={{ textAlign: 'left', padding: '4px 8px 4px 0', fontWeight: 600, color: '#444' }}>Fecha</th>
-                <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600, color: '#444' }}>Categoría</th>
-                <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600, color: '#444' }}>Nota</th>
-                <th style={{ textAlign: 'right', padding: '4px 0 4px 8px', fontWeight: 600, color: '#444' }}>Importe</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expensesList.map((e) => (
-                <tr key={e.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '4px 8px 4px 0', whiteSpace: 'nowrap' }}>{e.date}</td>
-                  <td style={{ padding: '4px 8px' }}>{categoryLabel(e.category)}</td>
-                  <td style={{ padding: '4px 8px', color: '#666' }}>{e.notes ?? ''}</td>
-                  <td style={{ padding: '4px 0 4px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{formatCents(e.amountCents)}</td>
-                </tr>
-              ))}
-              <tr style={{ borderTop: '2px solid #111' }}>
-                <td colSpan={3} style={{ padding: '5px 8px 5px 0', fontWeight: 700 }}>Total gastos variables</td>
-                <td style={{ padding: '5px 0 5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{formatCents(summary.gastosVariablesCents)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* Costes fijos */}
-      {fixedCostsList.filter((f) => f.active).length > 0 && (
-        <section style={{ marginBottom: '24px', pageBreakInside: 'avoid' }}>
-          <h2 style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#666', margin: '0 0 8px', fontWeight: 600 }}>
-            Costes fijos activos ({fixedCostsList.filter((f) => f.active).length})
-          </h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #ccc' }}>
-                <th style={{ textAlign: 'left', padding: '4px 8px 4px 0', fontWeight: 600, color: '#444' }}>Nombre</th>
-                <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600, color: '#444' }}>Categoría</th>
-                <th style={{ textAlign: 'right', padding: '4px 0 4px 8px', fontWeight: 600, color: '#444' }}>Importe/mes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fixedCostsList.filter((f) => f.active).map((fc) => (
-                <tr key={fc.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '4px 8px 4px 0' }}>{fc.name}</td>
-                  <td style={{ padding: '4px 8px', color: '#666' }}>{categoryLabel(fc.category)}</td>
-                  <td style={{ padding: '4px 0 4px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{formatCents(fc.amountCents)}</td>
-                </tr>
-              ))}
-              <tr style={{ borderTop: '2px solid #111' }}>
-                <td colSpan={2} style={{ padding: '5px 8px 5px 0', fontWeight: 700 }}>Total costes fijos</td>
-                <td style={{ padding: '5px 0 5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{formatCents(summary.costosFijosCents)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* Retiros */}
-      {withdrawalsList.length > 0 && (
-        <section style={{ marginBottom: '24px', pageBreakInside: 'avoid' }}>
-          <h2 style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#666', margin: '0 0 8px', fontWeight: 600 }}>
-            Retiros personales ({withdrawalsList.length})
-          </h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #ccc' }}>
-                <th style={{ textAlign: 'left', padding: '4px 8px 4px 0', fontWeight: 600, color: '#444' }}>Fecha</th>
-                <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600, color: '#444' }}>Nota</th>
-                <th style={{ textAlign: 'right', padding: '4px 0 4px 8px', fontWeight: 600, color: '#444' }}>Importe</th>
-              </tr>
-            </thead>
-            <tbody>
-              {withdrawalsList.map((w) => (
-                <tr key={w.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '4px 8px 4px 0', whiteSpace: 'nowrap' }}>{w.date}</td>
-                  <td style={{ padding: '4px 8px', color: '#666' }}>{w.notes ?? ''}</td>
-                  <td style={{ padding: '4px 0 4px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{formatCents(w.amountCents)}</td>
-                </tr>
-              ))}
-              <tr style={{ borderTop: '2px solid #111' }}>
-                <td colSpan={2} style={{ padding: '5px 8px 5px 0', fontWeight: 700 }}>Total retirado</td>
-                <td style={{ padding: '5px 0 5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{formatCents(summary.retirosCents)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* Footer */}
-      <div style={{ borderTop: '1px solid #ccc', paddingTop: '10px', marginTop: '16px', fontSize: '8pt', color: '#888', display: 'flex', justifyContent: 'space-between' }}>
-        <span>otracita · Informe financiero mensual</span>
-        <span>{formatMonthLabel(month)}</span>
-      </div>
-    </div>
+    {/* Sub-componente `PrintReport` encapsula estilos + sub-secciones del
+        informe imprimible (Modelo 130 / 303 para el gestor). Mantenido en
+        `_components/PrintReport.tsx` — el archivo de este orquestador no
+        debe lidiar con paginación, márgenes ni borders del PDF. */}
+    <PrintReport
+      month={month}
+      summary={summary}
+      expensesList={expensesList}
+      fixedCostsList={fixedCostsList}
+      withdrawalsList={withdrawalsList}
+      serviciosCount={serviciosCount}
+      ticketMedioCents={ticketMedioCents}
+      reservaHaciendaCents={reservaHaciendaCents}
+    />
     </>
   )
 }
 
-// ── Print helper component ────────────────────────────────────────────────────
-
-function PrintRow({
-  label,
-  value,
-  bold,
-  indent,
-  highlight,
-}: {
-  label: string
-  value: string
-  bold?: boolean
-  indent?: boolean
-  highlight?: 'profit' | 'loss' | 'warning'
-}) {
-  // Tints desde @theme (sin hex inline — regla dura del proyecto). Cálidos,
-  // armonizados con --color-success/danger/warning.
-  const bg =
-    highlight === 'profit'
-      ? 'var(--color-success-surface)'
-      : highlight === 'loss'
-        ? 'var(--color-danger-surface)'
-        : highlight === 'warning'
-          ? 'var(--color-warning-surface)'
-          : 'transparent'
-  const fw = bold ? 700 : 400
-  return (
-    <tr style={{ borderBottom: '1px solid var(--color-line)', background: bg }}>
-      <td style={{ padding: '5px 8px 5px 0', fontWeight: fw, paddingLeft: indent ? '16px' : '0', color: indent ? 'var(--color-ink-2)' : 'var(--color-ink)' }}>{label}</td>
-      <td style={{ padding: '5px 0 5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: fw, whiteSpace: 'nowrap' }}>{value}</td>
-    </tr>
-  )
-}
-
-// ── KpiTile, CollapsibleBlock, SectionHeader, CategoryStackedBar ─────────────
-//
-// Building blocks visuales del nuevo Finanzas. Inline en el mismo archivo
-// porque sólo se usan aquí — extraer a otro archivo añadiría fricción de
-// navegación sin ganancia real.
-// ──────────────────────────────────────────────────────────────────────────────
-
-interface KpiTileProps {
-  icon: typeof Scissors
-  label: string
-  value: string
-  sub?: string
-  tone?: 'default' | 'warning'
-  badge?: string
-  children?: React.ReactNode
-}
-
-function KpiTile({ icon: Icon, label, value, sub, tone = 'default', badge, children }: KpiTileProps) {
-  const bg = tone === 'warning' ? 'bg-warning/5 border-warning/20' : 'bg-surface border-line'
-  const iconColor = tone === 'warning' ? 'text-warning' : 'text-ink-3'
-  return (
-    <div className={`relative rounded-xl border px-4 py-3 ${bg}`}>
-      <div className="flex items-start justify-between gap-2">
-        <Icon className={`h-4 w-4 ${iconColor}`} aria-hidden="true" />
-        {badge && (
-          <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full bg-warning text-canvas uppercase tracking-wider">
-            {badge}
-          </span>
-        )}
-      </div>
-      <p className="text-[11px] font-medium text-ink-3 uppercase tracking-[0.1em] mt-2">{label}</p>
-      <p className={`tabular-nums text-lg font-bold mt-0.5 leading-tight text-ink`}>
-        {value}
-      </p>
-      {sub && (
-        <p className="text-[11px] text-ink-3 mt-1 leading-snug truncate">
-          {sub}
-        </p>
-      )}
-      {children}
-    </div>
-  )
-}
-
-interface CollapsibleBlockProps {
-  label: string
-  sub?: string
-  right?: string
-  rightTone?: 'default' | 'warning'
-  isOpen?: boolean
-  onToggle?: () => void
-  extraHeader?: React.ReactNode
-  children: React.ReactNode
-}
-
-/**
- * Plegable controlado o autónomo. Si recibe `isOpen`/`onToggle` usa estado
- * externo (para los bloques con carga lazy de datos); si no, mantiene
- * estado interno.
- */
-function CollapsibleBlock({ label, sub, right, rightTone = 'default', isOpen, onToggle, extraHeader, children }: CollapsibleBlockProps) {
-  const [internalOpen, setInternalOpen] = useState(false)
-  const open = isOpen !== undefined ? isOpen : internalOpen
-  const toggle = onToggle ?? (() => setInternalOpen(!internalOpen))
-  const rightClass = rightTone === 'warning'
-    ? 'text-warning font-bold'
-    : 'text-ink font-semibold'
-  return (
-    <div className="bg-surface border border-line rounded-xl overflow-hidden">
-      <button
-        onClick={toggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-overlay/30 transition-colors text-left"
-        aria-expanded={open}
-      >
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-ink">{label}</p>
-          {sub && <p className="text-xs text-ink-3 mt-0.5 truncate">{sub}</p>}
-        </div>
-        {extraHeader}
-        {right && (
-          <span className={`tabular-nums text-sm shrink-0 ${rightClass}`}>{right}</span>
-        )}
-        <ChevronDown
-          className={`h-4 w-4 text-ink-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-          aria-hidden="true"
-        />
-      </button>
-      {open && (
-        <div className="border-t border-line">
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-[11px] font-semibold text-ink-3 uppercase tracking-[0.14em] pt-6 pb-1 px-1">
-      {children}
-    </h2>
-  )
-}
-
-interface CategoryStackedBarProps {
-  breakdown: { cat: string; cents: number; label: string }[]
-  total: number
-}
-
-/**
- * Mini-bar apilada de las top categorías de gasto. La primera ocupa más,
- * la segunda menos, el resto se agrupa en "Otros". El barbero ve a primera
- * vista en qué está gastando más.
- */
-function CategoryStackedBar({ breakdown, total }: CategoryStackedBarProps) {
-  if (total === 0) return null
-  // Top 2 + agrupar resto en "Otros"
-  const top = breakdown.slice(0, 2)
-  const restCents = breakdown.slice(2).reduce((s, b) => s + b.cents, 0)
-  const segments: { label: string; cents: number; color: string }[] = []
-  top.forEach((t, i) => {
-    segments.push({
-      label: t.label,
-      cents: t.cents,
-      color: i === 0 ? 'bg-brand/70' : 'bg-brand/40',
-    })
-  })
-  if (restCents > 0) {
-    segments.push({ label: 'Otros', cents: restCents, color: 'bg-brand/20' })
-  }
-  return (
-    <div className="flex h-1.5 mt-2 rounded-full overflow-hidden bg-overlay">
-      {segments.map((s, i) => (
-        <div
-          key={i}
-          className={s.color}
-          style={{ width: `${(s.cents / total) * 100}%` }}
-          title={`${s.label} · ${(s.cents / 100).toFixed(0)} €`}
-        />
-      ))}
-    </div>
-  )
-}
+// Las definiciones internas de PRINT/PrintSection/PrintRow/KpiTile/
+// CollapsibleBlock/SectionHeader/CategoryStackedBar vivieron aquí hasta
+// que el archivo creció a 2k+ LOC. Movidas a `_components/*` — este
+// orquestador sólo importa lo que renderiza.
 
