@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import useSWR from 'swr';
 import {
   startOfWeek,
@@ -18,6 +18,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { isMobileViewport } from '@/lib/responsive';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
 import DayGrid from './DayGrid';
@@ -30,7 +31,16 @@ import BarberActionMenu from './BarberActionMenu';
 import AbsenceModal from '../equipo/turnos/AbsenceModal';
 import BlockModal from '../equipo/turnos/BlockModal';
 import { useConfirm } from '../_components/ConfirmDialog';
-import type { CalendarEvent, Barber, SlotAction } from './types';
+import type { CalendarEvent, CalendarBlock, Barber, SlotAction } from './types';
+
+/** Respuesta cruda del endpoint `/api/dashboard/calendar`. Antes era
+ *  `CalendarEvent[]` directo; ahora es `{ events, blocks }` para que la
+ *  agenda pinte también los descansos / ausencias del barbero. */
+interface CalendarPayload {
+  events: CalendarEvent[];
+  blocks: CalendarBlock[];
+}
+const EMPTY_PAYLOAD: CalendarPayload = { events: [], blocks: [] };
 
 interface Props {
   services: Array<{ name: string; duration: number; price: number }>;
@@ -58,10 +68,23 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
-  const [railCollapsed, setRailCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('otracita_agenda_rail_collapsed_v1') === '1';
-  });
+  // Init SSR-safe: el server NO puede saber si es mobile ni leer
+  // localStorage, así que el primer render asume rail VISIBLE (default
+  // desktop). El cliente lo ajusta tras hidratar — sin esto React detectaba
+  // mismatch porque el lazy-init leía window y daba `true` en mobile
+  // mientras server devolvía `false`. Ver `useEffect` debajo.
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  useEffect(() => {
+    const stored = window.localStorage.getItem('otracita_agenda_rail_collapsed_v1');
+    // Si el usuario ya expresó preferencia, respetar. Sin preferencia:
+    // mobile (<md) default-colapsado (el rail de 240px taparía la agenda).
+    // Breakpoint canónico en `src/lib/responsive.ts`.
+    if (stored !== null) {
+      setRailCollapsed(stored === '1');
+    } else if (isMobileViewport()) {
+      setRailCollapsed(true);
+    }
+  }, []);
   function toggleRail() {
     setRailCollapsed(prev => {
       const next = !prev;
@@ -128,18 +151,29 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
   }, [currentDay, viewMode, selectedBarber]);
 
   const {
-    data: events = [],
+    data: payload = EMPTY_PAYLOAD,
     isLoading: loading,
     mutate: refetch,
-  } = useSWR<CalendarEvent[]>(fetchUrl, async (url: string) => {
+  } = useSWR<CalendarPayload>(fetchUrl, async (url: string) => {
     const r = await fetch(url);
     const d = await r.json();
-    return Array.isArray(d) ? d : [];
+    // Defensive: shape esperado `{ events, blocks }`. Arrays sueltos
+    // (response antigua) caen al fallback. Si el server pasa algo raro,
+    // devolvemos vacío en vez de romper la agenda.
+    if (d && Array.isArray(d.events) && Array.isArray(d.blocks)) return d;
+    if (Array.isArray(d)) return { events: d, blocks: [] };
+    return EMPTY_PAYLOAD;
   }, {
     refreshInterval: 10_000,
     revalidateOnFocus: true,
     keepPreviousData: true,
   });
+
+  // Desestructurado SIEMPRE: el resto del componente sigue usando `events`
+  // como un array directo (compat con la API previa). `blocks` se pasa a
+  // DayGrid para que los descansos/ausencias se pinten como overlays.
+  const events = payload.events;
+  const blocks = payload.blocks;
 
   const rangeLabel = () => {
     if (viewMode === 'day') {
@@ -241,19 +275,26 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         : null;
 
       // 1) Update optimista en la caché SWR (sin revalidar todavía).
+      // El payload ahora es `{ events, blocks }` — sólo mutamos `events`,
+      // los `blocks` (descansos) se mantienen sin tocar.
       await refetch(
-        (prev) =>
-          (prev ?? []).map((e) =>
-            e.id === id
-              ? {
-                  ...e,
-                  date: next.date,
-                  time: next.time,
-                  barberId: next.barberId,
-                  barber: nextBarberName,
-                }
-              : e,
-          ),
+        (prev) => {
+          const safe = prev ?? EMPTY_PAYLOAD;
+          return {
+            events: safe.events.map((e) =>
+              e.id === id
+                ? {
+                    ...e,
+                    date: next.date,
+                    time: next.time,
+                    barberId: next.barberId,
+                    barber: nextBarberName,
+                  }
+                : e,
+            ),
+            blocks: safe.blocks,
+          };
+        },
         { revalidate: false },
       );
 
@@ -448,13 +489,50 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           viven ahora DENTRO del rail (fuente única, no duplicar). */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {viewMode !== 'month' && !railCollapsed && (
-          <AgendaSideRail
-            currentDay={currentDay}
-            onSelectDate={(d) => setCurrentDay(d)}
-            barbers={barbers}
-            selectedBarber={selectedBarber}
-            onSelectBarber={setSelectedBarber}
-          />
+          <>
+            {/* Scrim sólo en mobile (<md). Cierra el drawer al tocar fuera.
+                <button> en lugar de <div onClick> para accesibilidad teclado
+                + role implícito + AAA tap target en el wrapper completo. */}
+            <button
+              type="button"
+              onClick={toggleRail}
+              aria-label="Cerrar panel lateral"
+              className="fixed inset-0 z-40 bg-[var(--color-scrim-light)] md:hidden cursor-default"
+            />
+            {/* Wrapper del rail: drawer fixed entre top-bar y bottom-nav del
+                shell mobile; `md:static` lo reintegra al flex layout desktop.
+                `md:shrink-0` preserva los 240px del aside hijo. Sombra solo
+                en mobile (drawer); en desktop el border-r del rail ya separa.
+                Tokens del shell en globals.css — la altura del top-bar y
+                el respeto del notch viven allí, no aquí. */}
+            <div
+              className="fixed left-0 z-50 md:static md:z-auto md:shrink-0 shadow-2xl md:shadow-none md:top-auto md:bottom-auto"
+              style={{
+                top: 'var(--mobile-topbar-offset)',
+                // Antes anclaba al bottom-nav; ahora ese nav ya no existe
+                // (toda nav móvil vive en el drawer del burger). El drawer
+                // sólo respeta el home-indicator del iPhone.
+                bottom: 'var(--safe-bottom)',
+              }}
+            >
+              <AgendaSideRail
+                currentDay={currentDay}
+                onSelectDate={(d) => {
+                  setCurrentDay(d);
+                  // Auto-cierre del drawer en mobile al elegir fecha/barbero
+                  // — patrón estándar (Booksy, GCal mobile): la acción se
+                  // cumplió, el barbero quiere volver a la agenda inmediatamente.
+                  if (isMobileViewport()) setRailCollapsed(true);
+                }}
+                barbers={barbers}
+                selectedBarber={selectedBarber}
+                onSelectBarber={(id) => {
+                  setSelectedBarber(id);
+                  if (isMobileViewport()) setRailCollapsed(true);
+                }}
+              />
+            </div>
+          </>
         )}
 
         <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
@@ -462,6 +540,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             <DayGrid
               date={currentDay}
               events={events}
+              blocks={blocks}
               barbers={barbers}
               blockedDates={blockedDates}
               hours={hours}
@@ -471,6 +550,38 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
                 setSelectedBooking(null);
                 setSlotMenu(null);
                 setBarberMenu(b);
+              }}
+              onBlockClick={async (block) => {
+                // Por ahora: confirm sencillo "¿Eliminar este descanso?".
+                // Edit-in-place requiere refactor del BlockModal a modo
+                // dual (new|edit); siguiente iteración. Mientras tanto el
+                // barbero puede borrar y recrear sin quedarse atrapado en
+                // la modal de "nueva cita" como pasaba antes.
+                const label =
+                  block.kind === 'absence'
+                    ? (!block.startTime && !block.endTime ? 'día libre' : 'ausencia')
+                    : 'descanso';
+                const range =
+                  block.startTime && block.endTime
+                    ? ` (${block.startTime}–${block.endTime})`
+                    : '';
+                const ok = await confirm({
+                  title: `Eliminar ${label}`,
+                  message: `Vas a quitar este ${label}${range}. ¿Seguro?`,
+                  confirmLabel: 'Eliminar',
+                  cancelLabel: 'Cancelar',
+                  variant: 'danger',
+                });
+                if (!ok) return;
+                const res = await fetch(
+                  `/api/barbers/${block.barberId}/blocks?blockId=${block.id}`,
+                  { method: 'DELETE' },
+                );
+                if (res.ok) {
+                  refetch();
+                } else {
+                  setMoveError('No se pudo eliminar el descanso.');
+                }
               }}
               onEventMove={handleEventMove}
             />

@@ -75,7 +75,12 @@ export async function POST(req: NextRequest) {
     duration,
     price,
     extraServices: extraServices.length > 0 ? extraServices : undefined,
-    source: 'bot',
+    // Esta ruta es la del dashboard (Nueva cita) — `requireClientAccess`
+    // arriba ya garantiza que viene de un barbero autenticado. El barbero
+    // es dueño de su agenda: salta lead_time + horizon. El bot WhatsApp
+    // escribe contra `createBooking()` directo, NO contra este endpoint,
+    // así que sus guardas no se ven afectadas.
+    source: 'dashboard',
     allowOverlap: body.allowOverlap === true,
   });
 

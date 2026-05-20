@@ -21,6 +21,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { paymentBadge } from './types';
 import type { CalendarEvent, Barber } from './types';
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 interface Props {
   booking: CalendarEvent | null;
@@ -465,14 +466,14 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     if (!booking) return;
     navigator.clipboard.writeText(booking.customerPhone);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), FEEDBACK_MS.copied);
   };
 
   const copyLink = () => {
     if (!paymentData?.payment.paymentUrl) return;
     navigator.clipboard.writeText(paymentData.payment.paymentUrl);
     setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
+    setTimeout(() => setLinkCopied(false), FEEDBACK_MS.copied);
   };
 
   const generateLink = useCallback(async () => {

@@ -34,6 +34,32 @@ export interface Barber {
   displayOrder: number;
 }
 
+/** Franja bloqueada del barbero (`barber_blocks` row). Cubre dos casos:
+ *   · `kind='block'`     → descanso/comida/reunión — `startTime`/`endTime`
+ *     definidos (ej. 14:00–15:00). El barbero NO acepta citas en esa franja.
+ *   · `kind='absence'`   → día libre — `startTime`/`endTime` pueden ser
+ *     null (día completo) o un rango (ausencia parcial, ej. "media tarde").
+ *
+ *  Lo carga la API `/api/dashboard/calendar` junto con `events`. La agenda
+ *  los pinta como overlays diagonales sobre la columna del barbero en el
+ *  rango horario indicado. No bloquean drag&drop por sí solos — el motor
+ *  de disponibilidad (`availability.ts`) los respeta server-side cuando se
+ *  intenta crear/mover una cita.
+ */
+export interface CalendarBlock {
+  id: string;
+  barberId: string;
+  /** YYYY-MM-DD (Europe/Madrid). */
+  date: string;
+  /** HH:MM o null = todo el día. */
+  startTime: string | null;
+  /** HH:MM o null = todo el día. */
+  endTime: string | null;
+  kind: 'block' | 'absence';
+  reason: string | null;
+  note: string | null;
+}
+
 /** Intención emitida al elegir una opción del menú contextual de slot
  *  (SlotActionMenu). NUEVA CITA la maneja CalendarView directamente; las
  *  otras dos se delegan a callbacks stub (WS-B es dueño de esos paneles). */

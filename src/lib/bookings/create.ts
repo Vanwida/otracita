@@ -12,6 +12,8 @@ import {
 import { canonicalPhone } from '@/lib/phone';
 import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
+import { BUSINESS_TIMEZONE } from '@/lib/time';
+import { publicAccountPath } from '@/lib/site';
 
 // -----------------------------------------------------------------------------
 // Shared booking creation pipeline.
@@ -265,11 +267,17 @@ export async function createBooking(
   const { durationMin: duration } = computeBookingSnapshot(primaryDuration, extras);
 
   // --- Standards: lead time + horizon ---------------------------------------
+  // Estas dos guardas protegen contra abuso EXTERNO (bot WhatsApp, PWA pública,
+  // voice). El barbero añadiendo una cita a mano desde el dashboard es DUEÑO
+  // de su agenda — puede meter una cita "en 5 minutos" (walk-in que llega
+  // ahora) o "en 18 meses" (cliente que reserva con antelación) sin que el
+  // sistema le diga "no puedes". Por eso `source === 'dashboard'` salta ambas.
+  const isManualFromDashboard = source === 'dashboard';
   const now = new Date();
-  const todayMadrid = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
-  if (date === todayMadrid) {
+  const todayMadrid = now.toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
+  if (!isManualFromDashboard && date === todayMadrid) {
     const nowMadrid = now.toLocaleTimeString('en-GB', {
-      timeZone: 'Europe/Madrid',
+      timeZone: BUSINESS_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -284,13 +292,15 @@ export async function createBooking(
       };
     }
   }
-  const horizonDays = daysBetween(todayMadrid, date);
-  if (horizonDays > client.maxBookingHorizonDays) {
-    return {
-      success: false,
-      error: 'horizon',
-      message: `Solo aceptamos reservas hasta ${client.maxBookingHorizonDays} días por adelantado.`,
-    };
+  if (!isManualFromDashboard) {
+    const horizonDays = daysBetween(todayMadrid, date);
+    if (horizonDays > client.maxBookingHorizonDays) {
+      return {
+        success: false,
+        error: 'horizon',
+        message: `Solo aceptamos reservas hasta ${client.maxBookingHorizonDays} días por adelantado.`,
+      };
+    }
   }
 
   // --- No-show fee: tarjeta consentida (web/PWA, fee activo) ----------------
@@ -602,7 +612,7 @@ export async function createBooking(
         await sendPushByPhone(canonicalCustomerPhone, client.id, {
           title: `Cita confirmada en ${client.businessName}`,
           body: `${created.service}${resolved ? ` con ${resolved.name}` : ''} · ${dateLabel} a las ${created.time}`,
-          url: client.publicSlug ? `/b/${client.publicSlug}/cuenta` : '/',
+          url: client.publicSlug ? publicAccountPath(client.publicSlug) : '/',
           tag: `booking-${created.id}`,
           data: { bookingId: created.id, kind: 'booking_confirmed' },
         });

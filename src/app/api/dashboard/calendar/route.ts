@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { bookings } from '@/db/schema';
-import { eq, and, gte, lte, ne } from 'drizzle-orm';
+import { bookings, barberBlocks } from '@/db/schema';
+import { eq, and, gte, lte } from 'drizzle-orm';
 import {
   requireClientAccess,
   accessErrorResponse,
@@ -21,25 +21,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'start and end required' }, { status: 400 });
   }
 
-  const conditions = [
+  // Las canceladas SÍ se devuelven al dashboard (se pintan tachadas/grises
+  // con tokens `--color-event-cancelled-*` en DayGrid). Razón de negocio:
+  // accountability ("yo no cancelé eso" → la ves), patrón de cliente
+  // (cancelaciones repetidas a primera vista), reproducir el hueco. Estándar
+  // industria (Booksy, GCal, Square, Fresha). El predicado de SOLAPE sigue
+  // excluyendo canceladas (`createBooking` y `availability`), donde no
+  // deberían contar como conflicto. Esta query es solo para PINTAR.
+  const bookingConditions = [
     eq(bookings.clientId, client.id),
     gte(bookings.date, start),
     lte(bookings.date, end),
-    ne(bookings.status, 'cancelled'),
   ];
 
-  const rows = await db
-    .select()
-    .from(bookings)
-    .where(and(...conditions));
+  // `barber_blocks` (descansos/ausencias) en paralelo. Antes la agenda los
+  // ignoraba — el barbero creaba un descanso, se guardaba en DB, pero la
+  // agenda no los conocía → "no se visualiza". Ahora se devuelven junto
+  // con los events para que DayGrid los pinte como overlays diagonales.
+  const [bookingRows, blockRows] = await Promise.all([
+    db.select().from(bookings).where(and(...bookingConditions)),
+    db
+      .select()
+      .from(barberBlocks)
+      .where(
+        and(
+          eq(barberBlocks.clientId, client.id),
+          gte(barberBlocks.date, start),
+          lte(barberBlocks.date, end),
+        ),
+      ),
+  ]);
 
   // Filter by barber in JS to handle 'all' and nulls cleanly
-  const filtered =
+  const filteredBookings =
     barber && barber !== 'all'
-      ? rows.filter(b => b.barber?.toLowerCase() === barber.toLowerCase())
-      : rows;
+      ? bookingRows.filter(b => b.barber?.toLowerCase() === barber.toLowerCase())
+      : bookingRows;
 
-  const events = filtered.map(b => ({
+  const events = filteredBookings.map(b => ({
     id: b.id,
     title: `${b.customerName || b.customerPhone} — ${b.service}`,
     date: b.date,
@@ -60,5 +79,16 @@ export async function GET(req: NextRequest) {
     barberRequested: b.barberRequested ?? false,
   }));
 
-  return NextResponse.json(events);
+  const blocks = blockRows.map(b => ({
+    id: b.id,
+    barberId: b.barberId,
+    date: b.date,
+    startTime: b.startTime,
+    endTime: b.endTime,
+    kind: b.kind as 'block' | 'absence',
+    reason: b.reason,
+    note: b.note,
+  }));
+
+  return NextResponse.json({ events, blocks });
 }

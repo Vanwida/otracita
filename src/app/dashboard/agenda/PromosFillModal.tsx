@@ -5,6 +5,7 @@ import { Loader2, Calendar, Users, Tag, Check, AlertCircle } from 'lucide-react'
 import Modal from '../_components/Modal'
 import { DISCOUNT_STOPS, DEFAULT_DISCOUNT_PCT } from '@/lib/promos/defaults'
 import type { WindowPreset } from '@/lib/promos/detect-gaps'
+import { daysAgo } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // PromosFillModal — el flujo "Llenar huecos" de una sola pantalla.
@@ -62,8 +63,7 @@ function formatTotalMinutes(minutes: number): string {
 
 function formatLastVisit(iso: string | null): string {
   if (!iso) return ''
-  const last = new Date(iso)
-  const days = Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24))
+  const days = daysAgo(new Date(iso))
   if (days <= 1) return 'ayer'
   if (days < 30) return `hace ${days}d`
   if (days < 60) return 'hace ~1 mes'

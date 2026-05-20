@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { format } from 'date-fns';
-import { Lock, ChevronDown } from 'lucide-react';
-import type { CalendarEvent, Barber } from './types';
+import { Lock, ChevronDown, Heart } from 'lucide-react';
+import type { CalendarEvent, CalendarBlock, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
@@ -27,6 +27,10 @@ function getCurrentTimeMinutes(): number {
 interface Props {
   date: Date;
   events: CalendarEvent[];
+  /** Descansos y ausencias del equipo en el rango cargado. La agenda los
+   *  pinta como overlays diagonales sobre la columna del barbero en el
+   *  rango horario indicado (clase `.blocked-overlay` ya tokenizada). */
+  blocks: CalendarBlock[];
   barbers: Barber[];
   blockedDates: string[];
   hours: Record<string, string> | null;
@@ -37,6 +41,10 @@ interface Props {
   /** Clic en la CABECERA de una columna de barbero → menú de acciones
    *  (editar horario · ausencia · falta disp. · qué ha hecho). Fix #2. */
   onBarberClick: (barber: Barber) => void;
+  /** Clic sobre un descanso/ausencia ya creado → abre menú para
+   *  eliminar/editar. Sin esto el clic caía en el slot vacío detrás y
+   *  abría "Nueva cita" (no podías modificar un descanso). */
+  onBlockClick: (block: CalendarBlock) => void;
   /**
    * Drag&drop: el usuario soltó la cita `id` en una nueva (date,time) y/o
    * columna de barbero. barberId=null → columna "Sin asignar" (mantener
@@ -86,12 +94,14 @@ function barberDayHoursLabel(
 export default function DayGrid({
   date,
   events,
+  blocks,
   barbers,
   blockedDates,
   hours,
   onEventClick,
   onSlotClick,
   onBarberClick,
+  onBlockClick,
   onEventMove,
 }: Props) {
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
@@ -282,9 +292,15 @@ export default function DayGrid({
             className="w-14 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
             style={{ height: totalHeight + COL_HEADER_H }}
           >
-            {/* header spacer — bg-surface (blanco) para que la esquina
-                sup-izq se funda con el resto del gutter. */}
-            <div className="h-[var(--agenda-col-header-h)] bg-surface border-b border-line sticky top-0 z-50" />
+            {/* header spacer — TRANSPARENTE + sin borde inferior. Antes
+                era `bg-surface border-b border-line`, lo que tapaba los
+                números de hora (especialmente el "10": empezaba debajo del
+                spacer y se cortaba). Quitando el fondo y el borde, los
+                hour labels pasan visibles por detrás del header de barberos
+                cuando se scrollea verticalmente — feedback Alex 2026-05-20.
+                pointer-events-none: es decorativo, no debe interferir con
+                clicks sobre los headers de columna que viven encima. */}
+            <div className="h-[var(--agenda-col-header-h)] sticky top-0 z-50 pointer-events-none" />
             <div className="relative" style={{ height: totalHeight }}>
               {currentTimePx !== null && (
                 <div
@@ -443,10 +459,50 @@ export default function DayGrid({
                     />
                   )}
 
-                  {/* Blocked overlay */}
+                  {/* Blocked overlay — día entero bloqueado a nivel TIENDA
+                      (clients.blockedDates). Toda la columna queda cerrada. */}
                   {isBlocked && (
                     <div className="absolute inset-0 z-20 pointer-events-none blocked-overlay" />
                   )}
+
+                  {/* Descansos y ausencias del BARBERO de esta columna en
+                      este día. `col.barber?.id` puede ser null en la
+                      columna "Sin asignar" — ahí no aplica. El predicado
+                      de disponibilidad server-side ya respeta estos blocks
+                      al validar nuevas citas; aquí solo lo pintamos. */}
+                  {col.barber && blocks
+                    .filter((b) => b.date === dateStr && b.barberId === col.barber!.id)
+                    .map((b) => {
+                      const blockStartMin = b.startTime ? toMinutes(b.startTime) : startMin;
+                      const blockEndMin = b.endTime ? toMinutes(b.endTime) : endMin;
+                      const top = Math.max(0, (blockStartMin - startMin) * PX_PER_MIN);
+                      const height = Math.max(8, (blockEndMin - blockStartMin) * PX_PER_MIN);
+                      const fullDay = !b.startTime && !b.endTime;
+                      const label =
+                        b.kind === 'absence' ? (fullDay ? 'Día libre' : 'Ausencia') : 'Descanso';
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={(e) => {
+                            // Evita que el clic burbujee al slot vacío del
+                            // fondo (abriría "Nueva cita"). Antes el overlay
+                            // era pointer-events-none → no se podía modificar
+                            // un descanso ya creado.
+                            e.stopPropagation();
+                            onBlockClick(b);
+                          }}
+                          className="absolute left-0 right-0 z-20 blocked-overlay flex items-start justify-center cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+                          style={{ top, height }}
+                          aria-label={`${label}${b.note ? ` — ${b.note}` : ''} (clic para gestionar)`}
+                          title={`${label}${b.note ? ` — ${b.note}` : ''}`}
+                        >
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-2 backdrop-blur-sm">
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
 
                   {/* Hour lines */}
                   {hourLabels.map(({ top }, i) => (
@@ -570,12 +626,26 @@ export default function DayGrid({
                           )}
                         </div>
 
-                        {/* Cliente — protagonista. headline-sm scale. */}
+                        {/* Cliente — protagonista. headline-sm scale.
+                            ♥ inline al lado del nombre cuando el cliente
+                            solicitó EXPLÍCITAMENTE a este barbero (no
+                            "cualquiera"). Antes vivía `absolute bottom-1
+                            left-1.5` y se solapaba/quedaba fuera cuando el
+                            bloque era estrecho por solape (2 citas a 1/N
+                            de ancho). Inline siempre cabe, siempre se ve. */}
                         <p
                           className="font-semibold truncate leading-tight mt-0.5"
                           style={{ fontSize: '0.8125rem' }}
                         >
                           {event.customerName || event.customerPhone}
+                          {event.barberRequested && !isBooksy && (
+                            <Heart
+                              className="ml-1 inline-block h-3 w-3 align-text-bottom text-danger fill-danger"
+                              aria-label="Cliente solicitó este barbero"
+                            >
+                              <title>Cliente solicitó este barbero</title>
+                            </Heart>
+                          )}
                         </p>
 
                         {/* Servicio — secundario, opacity reducida. */}
@@ -586,17 +656,6 @@ export default function DayGrid({
                           >
                             {event.service}
                           </p>
-                        )}
-
-                        {/* ♥ cliente solicitó este barbero — abajo-izq. */}
-                        {event.barberRequested && !isBooksy && (
-                          <span
-                            className="absolute bottom-1 left-1.5 text-[0.75rem] leading-none opacity-80"
-                            title="Solicitado por el cliente"
-                            aria-label="Solicitado por el cliente"
-                          >
-                            ♥
-                          </span>
                         )}
 
                         {/* Badge cobrado — esquina inf-der, glyph sobre pill
