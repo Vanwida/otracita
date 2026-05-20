@@ -18,17 +18,15 @@ export async function POST(req: NextRequest) {
     customerName?: string;
     customerPhone: string;
     service: string;
-    /** Either a barber name (legacy UI) or the new canonical id. Both resolve
-     *  to a real row in `barbers`; if neither is provided we auto-assign. */
     barber?: string;
     barberId?: string;
     date: string;
     time: string;
     duration: number;
     price?: number;
-    /** Servicios EXTRA (R7). Solo este caller (dashboard) los envía; los
-     *  otros 4 callers de createBooking no, así su comportamiento no cambia. */
     extraServices?: unknown;
+    /** Dashboard-only: el barbero ya confirmó "sí, solapa, lo creo igual". */
+    allowOverlap?: boolean;
   };
 
   try {
@@ -78,6 +76,7 @@ export async function POST(req: NextRequest) {
     price,
     extraServices: extraServices.length > 0 ? extraServices : undefined,
     source: 'bot',
+    allowOverlap: body.allowOverlap === true,
   });
 
   if (!result.success) {

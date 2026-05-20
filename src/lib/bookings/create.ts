@@ -96,6 +96,12 @@ export interface CreateBookingOptions {
    *  'card_required' (no se crea). Bot/dashboard nunca lo ponen → flujo
    *  idéntico al de hoy. */
   requireCard?: boolean;
+  /** Override de admin: permitir solape con citas existentes. Solo el
+   *  dashboard lo manda (tras confirm del barbero "esto se solapa, ¿seguro?").
+   *  Bot/PWA NUNCA — los clientes no pueden saltarse el solape. NO se salta
+   *  los descansos/bloqueos (esos no son "calendar conflict", son
+   *  imposibilidad física). */
+  allowOverlap?: boolean;
 }
 
 export type CreateBookingError =
@@ -214,6 +220,7 @@ export async function createBooking(
     attribution,
     cardConsent,
     requireCard = false,
+    allowOverlap = false,
   } = options;
 
   // --- Input validation -----------------------------------------------------
@@ -353,8 +360,11 @@ export async function createBooking(
   // Solape: predicado puro compartido (mismo buffer + match barberId|nombre
   // en `hasBookingOverlap`, fuente única) en vez de reimplementar el clash
   // aquí. Al CREAR no hay cita propia → selfId null.
-  const overlapsForBarber = (barber: BarberConfig): boolean =>
-    hasBookingOverlap(
+  const overlapsForBarber = (barber: BarberConfig): boolean => {
+    // Admin override (dashboard tras confirm del barbero): permitir solape
+    // explícito. NO afecta a descansos/bloqueos (esos son inviolables).
+    if (allowOverlap) return false;
+    return hasBookingOverlap(
       {
         selfId: null,
         startMinutes: newStart,
@@ -365,6 +375,7 @@ export async function createBooking(
       existingOnDay,
       bufferMin,
     );
+  };
 
   // Recurring breaks (R12) + ad-hoc blocks/absences (R2) — a manual booking
   // with an explicit barber must not land inside one either. The "any

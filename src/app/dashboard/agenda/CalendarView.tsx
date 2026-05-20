@@ -17,7 +17,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
 import DayGrid from './DayGrid';
@@ -29,6 +29,7 @@ import SlotActionMenu from './SlotActionMenu';
 import BarberActionMenu from './BarberActionMenu';
 import AbsenceModal from '../equipo/turnos/AbsenceModal';
 import BlockModal from '../equipo/turnos/BlockModal';
+import { useConfirm } from '../_components/ConfirmDialog';
 import type { CalendarEvent, Barber, SlotAction } from './types';
 
 interface Props {
@@ -52,10 +53,24 @@ interface Props {
 }
 
 export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
+  const confirm = useConfirm();
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('otracita_agenda_rail_collapsed_v1') === '1';
+  });
+  function toggleRail() {
+    setRailCollapsed(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('otracita_agenda_rail_collapsed_v1', next ? '1' : '0');
+      }
+      return next;
+    });
+  }
   const [selectedBooking, setSelectedBooking] = useState<CalendarEvent | null>(null);
   const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
   const [newBookingSlot, setNewBookingSlot] = useState<{
@@ -84,6 +99,10 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     kind: 'unavailability' | 'absence';
     barber: Barber;
     date: string;
+    /** Hora del slot clicado (HH:MM). El BlockModal la usa como defaultStart
+     *  para no resetear a 16:00 — antes parecía "no responde" porque se
+     *  saltaba al default y el barbero no notaba el cambio. */
+    time?: string;
   } | null>(null);
   // Error transitorio de un movimiento de cita (drag&drop / mover manual).
   // Se autolimpia; el rollback visual lo hace el revalidate de SWR.
@@ -181,7 +200,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     const barber =
       barbers.find((b) => b.id === action.barberId) ?? barbers[0];
     if (!barber) return; // sin equipo no hay a quién bloquear (defensivo)
-    setSlotBlock({ kind: action.type, barber, date: action.date });
+    setSlotBlock({ kind: action.type, barber, date: action.date, time: action.time });
   };
 
   // Etiqueta humana del slot para el subtítulo del menú: "lun 18 may · 10:30 · Reni".
@@ -239,24 +258,43 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       );
 
       // 2) PATCH al endpoint (re-valida solape en servidor).
-      try {
-        const res = await fetch(`/api/bookings/${id}`, {
+      const doPatch = (allowOverlap: boolean) =>
+        fetch(`/api/bookings/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             date: next.date,
             time: next.time,
             barberId: next.barberId,
+            ...(allowOverlap ? { allowOverlap: true } : {}),
           }),
         });
+
+      try {
+        let res = await doPatch(false);
+        if (res.status === 409) {
+          const body = await res.clone().json().catch(() => ({}));
+          // Si es solape, preguntamos al barbero antes de rechazar (Booksy/
+          // GCal-style). Si dice sí, reintentamos con allowOverlap=true.
+          if (body?.code === 'overlap') {
+            const ok = await confirm({
+              title: 'Esta cita se solapa con otra',
+              message: 'Ya hay una reserva en ese hueco. ¿Mueves la cita igualmente?',
+              confirmLabel: 'Mover igual',
+              cancelLabel: 'Cancelar',
+            });
+            if (ok) {
+              res = await doPatch(true);
+            } else {
+              setMoveError(null);
+              await refetch();
+              return;
+            }
+          }
+        }
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          setMoveError(
-            body?.error ||
-              (res.status === 409
-                ? 'Ese hueco ya está ocupado.'
-                : 'No se pudo mover la cita.'),
-          );
+          setMoveError(body?.error || 'No se pudo mover la cita.');
         }
       } catch {
         setMoveError('Sin conexión. La cita no se movió.');
@@ -266,7 +304,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         await refetch();
       }
     },
-    [events, barbers, refetch],
+    [events, barbers, refetch, confirm],
   );
 
   const handleEventClick = (event: CalendarEvent) => {
@@ -287,6 +325,20 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           <h1>Calendario</h1> aquí → título doblado y término divergente
           (G1/N2). Esto es sólo la barra de controles del calendario. */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface flex-wrap shrink-0">
+        {/* Rail toggle — solo en Día/Semana */}
+        {viewMode !== 'month' && (
+          <button
+            onClick={toggleRail}
+            className="p-1.5 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors"
+            title={railCollapsed ? 'Mostrar panel' : 'Ocultar panel'}
+            aria-label={railCollapsed ? 'Mostrar panel' : 'Ocultar panel'}
+          >
+            {railCollapsed
+              ? <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+              : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+            }
+          </button>
+        )}
         {/* Today */}
         <button
           onClick={handleTodayClick}
@@ -395,7 +447,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           sería redundante. La leyenda de equipo y el filtro de barbero
           viven ahora DENTRO del rail (fuente única, no duplicar). */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {viewMode !== 'month' && (
+        {viewMode !== 'month' && !railCollapsed && (
           <AgendaSideRail
             currentDay={currentDay}
             onSelectDate={(d) => setCurrentDay(d)}
@@ -488,6 +540,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             blocks: [],
           }}
           defaultDate={slotBlock.date}
+          defaultStart={slotBlock.time}
           onClose={() => setSlotBlock(null)}
           onSaved={() => {
             setSlotBlock(null);

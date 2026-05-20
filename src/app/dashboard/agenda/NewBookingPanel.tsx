@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import SlideOver from '../_components/SlideOver';
 import CustomerTypeahead from '../_components/CustomerTypeahead';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
+import { useConfirm } from '../_components/ConfirmDialog';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 
 import type { Barber } from './types';
@@ -43,6 +44,7 @@ export default function NewBookingPanel({
   onClose,
   onCreated,
 }: Props) {
+  const confirm = useConfirm();
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   // Cliente conocido adjuntado vía typeahead (mismo patrón que el TPV).
@@ -119,8 +121,8 @@ export default function NewBookingPanel({
     setLoading(true);
     setError(null);
 
-    try {
-      const res = await fetch('/api/bookings/create', {
+    const doPost = (allowOverlap: boolean) =>
+      fetch('/api/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -130,18 +132,30 @@ export default function NewBookingPanel({
           barber: barber || undefined,
           date,
           time,
-          // Duración del servicio PRINCIPAL. El backend suma los extras al
-          // snapshot bookings.duration vía computeBookingSnapshot.
           duration: duration ?? undefined,
           price: price ?? undefined,
           extraServices: extraServices.length > 0 ? extraServices : undefined,
+          ...(allowOverlap ? { allowOverlap: true } : {}),
         }),
       });
 
+    try {
+      let res = await doPost(false);
+
+      // 409 = solape. Preguntamos antes de rechazar (Booksy/GCal-style).
       if (res.status === 409) {
-        setError('Ya hay una reserva en ese horario.');
-        setLoading(false);
-        return;
+        const ok = await confirm({
+          title: 'Esta cita se solapa con otra',
+          message: 'Ya hay una reserva en ese hueco. ¿La creas igualmente?',
+          confirmLabel: 'Crear igual',
+          cancelLabel: 'Cancelar',
+        });
+        if (ok) {
+          res = await doPost(true);
+        } else {
+          setLoading(false);
+          return;
+        }
       }
 
       if (!res.ok) {

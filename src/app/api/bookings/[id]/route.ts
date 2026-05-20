@@ -70,6 +70,8 @@ export async function PATCH(
     notify?: unknown
     notifyMessage?: unknown
     paymentMethod?: unknown
+    /** Dashboard override tras confirm ("se solapa, ¿igual?"). */
+    allowOverlap?: unknown
   }
   try {
     body = await req.json()
@@ -228,22 +230,30 @@ export async function PATCH(
           ne(bookings.id, id),
         ),
       )
-    const clash = hasBookingOverlap(
-      {
-        selfId: id,
-        startMinutes: hhmmToMinutes(targetTime),
-        durationMin: booking.duration,
-        barberId: effectiveBarberId,
-        barber: effectiveBarberName,
-      },
-      sameDay,
-      access.client.serviceBufferMinutes,
-    )
-    if (clash) {
-      return Response.json(
-        { error: `${targetBarberLabel} ya tiene otra reserva a esa hora.` },
-        { status: 409 },
+    // Si el dashboard manda allowOverlap=true (tras confirm explícito del
+    // barbero "se solapa, lo muevo igual"), saltamos el check entero.
+    const allowOverlap = body.allowOverlap === true
+    if (!allowOverlap) {
+      const clash = hasBookingOverlap(
+        {
+          selfId: id,
+          startMinutes: hhmmToMinutes(targetTime),
+          durationMin: booking.duration,
+          barberId: effectiveBarberId,
+          barber: effectiveBarberName,
+        },
+        sameDay,
+        0, // Dashboard = sin buffer; buffer solo aplica en bot/PWA
       )
+      if (clash) {
+        return Response.json(
+          {
+            error: `${targetBarberLabel} ya tiene otra reserva a esa hora.`,
+            code: 'overlap',
+          },
+          { status: 409 },
+        )
+      }
     }
   }
 

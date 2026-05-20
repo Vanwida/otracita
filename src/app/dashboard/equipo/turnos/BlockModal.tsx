@@ -22,14 +22,26 @@ import type { TurnosBarber } from './TurnosManager'
 interface Props {
   barber: TurnosBarber
   defaultDate: string
+  /** Hora inicial preseleccionada (HH:MM). Cuando se abre desde un slot
+   *  clicado en la agenda, queremos respetar la franja que tocó el barbero
+   *  — no resetear a 16:00 (default antiguo). */
+  defaultStart?: string
   onClose: () => void
   onSaved: () => void
 }
 
-export default function BlockModal({ barber, defaultDate, onClose, onSaved }: Props) {
+function addMinutes(hhmm: string, mins: number): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const total = h * 60 + m + mins
+  const nh = Math.floor(total / 60) % 24
+  const nm = total % 60
+  return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`
+}
+
+export default function BlockModal({ barber, defaultDate, defaultStart, onClose, onSaved }: Props) {
   const [date, setDate] = useState(defaultDate)
-  const [start, setStart] = useState('16:00')
-  const [end, setEnd] = useState('16:15')
+  const [start, setStart] = useState(defaultStart && HHMM_RE.test(defaultStart) ? defaultStart : '16:00')
+  const [end, setEnd] = useState(defaultStart && HHMM_RE.test(defaultStart) ? addMinutes(defaultStart, 15) : '16:15')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
