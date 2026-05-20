@@ -171,11 +171,38 @@
    * cómodo + área táctil de 44px+ centrada. */
   --rail-width: 64px;
 
+  /* ─── Shell mobile (top-bar + safe-area) ──────────────────────────
+   * Tokens del chrome móvil del dashboard. Una sola definición — todo
+   * componente que necesite anclar contra el shell (drawers, sheets,
+   * stickies) consume estas variables.
+   *
+   * `--mobile-topbar-offset` ya incluye `env(safe-area-inset-top)`: es
+   * lo que un componente necesita reservar arriba para que su contenido
+   * quede por debajo del notch + de la top-bar.
+   *
+   * Antes existía un `--mobile-bottomnav-*` pero el bottom-nav se retiró
+   * por decisión de UX (2 menús apilados en mobile — burger drawer y
+   * bottom-nav — solapaban funcionalmente y el bottom-nav no cabía en
+   * 375px sin scroll horizontal). El navegacional móvil es 100% drawer
+   * del burger. Componentes que anclaban a `--mobile-bottomnav-offset`
+   * ahora usan `--safe-bottom` directamente. */
+  --mobile-topbar-h:        3.5rem;  /* 56px — alto top-bar (sin safe-area) */
+  --mobile-topbar-offset:   calc(var(--mobile-topbar-h) + env(safe-area-inset-top));
+  /* Aliases puros de las env() — para componentes que solo necesitan el
+   * inset (toasts, FABs, sheets, drawers) sin sumar shell adicional. */
+  --safe-top:    env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+
   /* Espaciado del shell. `page` = padding exterior del contenido,
    * `section` = separación entre bloques, `card` = padding interno
-   * de tarjetas. Más apretado que el editorial anterior. */
-  --space-page:    1.5rem;   /* 24px — antes p-4/p-8 (16/32) */
-  --space-section: 1.5rem;   /* 24px — antes mb-12 (48) */
+   * de tarjetas. Más apretado que el editorial anterior.
+   *
+   * Responsive vía clamp() — sin breakpoints. En iPhone SE (375px) los
+   * 16px del mínimo dejan ~343px útiles; en iPad portrait (768px) toca
+   * ~22px; en desktop (1024+) cierra en 24px. --space-card NO escala
+   * (padding interno de tarjeta, su contenido ya escala por sí mismo). */
+  --space-page:    clamp(1rem, 3.2vw, 1.5rem); /* 16→24px */
+  --space-section: clamp(1rem, 3.2vw, 1.5rem); /* idem */
   --space-card:    1rem;     /* 16px — padding interno tarjeta */
 
   /* Escala tipográfica del panel — sans (IBM Plex), NUNCA Fraunces.
@@ -209,6 +236,20 @@
   /* Sombra de control: más plana que el `shadow-lg` editorial.
    * Cálida (espresso-tinted) por coherencia con DESIGN.md. */
   --shadow-control: 0 1px 2px rgba(42, 29, 20, 0.06);
+
+  /* ─── Sombras (cálidas, espresso-tinted) ──────────────────────────
+   * PRODUCT.md regla dura: "sombras del sistema son cálidas o nulas.
+   * Sombras negras puras. JAMÁS." Estos tokens centralizan las tres
+   * sombras del sistema; cualquier componente que necesite elevation
+   * los consume vía las utilities `.shadow-warm-soft` / `-strong` /
+   * `.shadow-soft` (definidas abajo en @layer utilities).
+   *
+   * `warm-soft`  → hover de card/CTA (brand tint, sutil)
+   * `warm-strong` → toast/modal accent (ink tint, presencia)
+   * `soft`       → hover de hub/lista (ink tint, casi imperceptible) */
+  --shadow-warm-soft:   0  8px 30px rgba(201, 101, 60, 0.08);  /* brand 8% */
+  --shadow-warm-strong: 0 10px 40px rgba( 42,  29, 20, 0.12);  /* ink 12% */
+  --shadow-soft:        0  4px 20px rgba( 42,  29, 20, 0.04);  /* ink 4% (era #000) */
 }
 
 /* Foco accesible global. PRODUCT.md compromete WCAG AAA donde sea posible:
@@ -301,7 +342,30 @@ body {
     @apply bg-[var(--color-surface)] border border-[var(--color-line)] rounded-2xl transition-all duration-200;
   }
   .card-hover {
-    @apply hover:border-[var(--color-brand)] hover:shadow-[0_8px_30px_rgba(201,101,60,0.08)];
+    @apply hover:border-[var(--color-brand)] hover:shadow-[var(--shadow-warm-soft)];
+  }
+
+  /* ─── Sombras como utilities ─────────────────────────────────────
+   * Consumen los tokens --shadow-* (definidos arriba en @theme). Antes
+   * cada componente reescribía la sombra inline con `shadow-[0_8px...
+   * rgba(201,101,60,0.08)]` — 3 sitios divergiendo. Aquí, fuente única. */
+  .shadow-warm-soft   { box-shadow: var(--shadow-warm-soft); }
+  .shadow-warm-strong { box-shadow: var(--shadow-warm-strong); }
+  .shadow-soft        { box-shadow: var(--shadow-soft); }
+
+  /* ─── Panel: contenedor canónico de superficie informativa ───────
+   * Sustituye al patrón `rounded-control border border-line bg-surface
+   * overflow-hidden` repetido 13× en el dashboard. Si el ritmo del
+   * panel cambia (radius, color de borde, fondo) se cambia AQUÍ.
+   * `.panel-header` es la cabecera estándar de ese panel — `border-b
+   * border-line px-[var(--space-card)] py-3` aparecía 11×. */
+  .panel {
+    @apply rounded-control border border-line bg-surface overflow-hidden;
+  }
+  .panel-header {
+    @apply border-b border-line py-3;
+    padding-left: var(--space-card);
+    padding-right: var(--space-card);
   }
 
   /* ──────── Button system ──────────────────────────────────────────────────

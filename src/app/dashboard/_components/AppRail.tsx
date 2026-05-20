@@ -5,7 +5,12 @@ import DashboardSidebarNav from './DashboardSidebarNav'
 import RailUserMenu from './RailUserMenu'
 
 // -----------------------------------------------------------------------------
-// AppRail — nivel-1 nav: rail de iconos a la izquierda (desktop lg+).
+// AppRail — nivel-1 nav: rail de iconos a la izquierda (tablet/desktop md+).
+//
+// Visible desde md (768px) — iPad portrait y mayor entran en modo
+// desktop-compact (estándar tablet-as-POS: Square, Toast, Booksy iPad).
+// Bajo md (móvil hasta 767px) el chrome navegacional vive en top-bar +
+// bottom-nav + drawer del MobileSidebar.
 //
 // Sustituye al `<aside w-60>` editorial por un rail estrecho de iconos
 // (--rail-width = 64px) al estilo Booksy: logo arriba, iconos de sección
@@ -29,7 +34,7 @@ interface Props {
 export default function AppRail({ email, isAdmin, needsSetup }: Props) {
   return (
     <aside
-      className="hidden lg:flex lg:flex-col items-center shrink-0 border-r border-sidebar-line bg-sidebar py-4"
+      className="hidden md:flex md:flex-col items-center shrink-0 border-r border-sidebar-line bg-sidebar py-4"
       style={{ width: 'var(--rail-width)' }}
       aria-label="Navegación principal"
     >

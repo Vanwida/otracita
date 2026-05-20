@@ -58,10 +58,11 @@ interface Props {
   zClass?: string;
   /**
    * Comportamiento del scrim/fondo:
-   *   · 'mobile' (default) → el panel ACOMPAÑA a la página en desktop
-   *     (scrim solo en móvil, `lg:hidden`; sin bloqueo de scroll del body
+   *   · 'mobile' (default) → el panel ACOMPAÑA a la página en tablet/desktop
+   *     (scrim solo en móvil <md, `md:hidden`; sin bloqueo de scroll del body
    *     — la página de detrás sigue usable, p. ej. la agenda con el panel
-   *     de detalle acoplado a un lado).
+   *     de detalle acoplado a un lado). En iPad portrait (768+) ya hay
+   *     espacio para que el panel coexista con el contenido.
    *   · 'always' → modal real: scrim siempre + bloqueo de scroll del body
    *     (p. ej. la ficha de cliente apilada SOBRE el panel de detalle).
    * ESC y la gestión de foco aplican en ambos modos.
@@ -155,8 +156,10 @@ export default function SlideOver({
       {open && (
         <>
           {/* Scrim — clic cierra. Opacidad de marca (no negro). En modo
-              'mobile' es `lg:hidden`: en desktop el panel acompaña a la
-              página sin tapar nada; en 'always' tapa siempre (modal). */}
+              'mobile' es `md:hidden` (consistente con el nuevo shell:
+              iPad+desktop empiezan en md=768px); en 'always' tapa siempre
+              (modal). Antes era `lg:hidden` — iPad portrait quedaba con
+              scrim cuando ya tenía espacio para el panel acompañando. */}
           <motion.div
             key="slideover-scrim"
             initial={{ opacity: 0 }}
@@ -164,7 +167,7 @@ export default function SlideOver({
             exit={{ opacity: 0 }}
             onClick={onClose}
             className={`fixed inset-0 ${zClass} bg-[var(--color-scrim-light)]${
-              scrim === 'mobile' ? ' lg:hidden' : ''
+              scrim === 'mobile' ? ' md:hidden' : ''
             }`}
           />
 

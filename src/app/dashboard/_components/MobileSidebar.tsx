@@ -51,13 +51,13 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-[var(--color-scrim-light)] lg:hidden"
+          className="fixed inset-0 z-50 bg-[var(--color-scrim-light)] md:hidden"
           onClick={() => setOpen(false)}
         />
       )}
 
       <div
-        className={`fixed left-0 top-0 bottom-0 z-50 w-64 bg-sidebar flex flex-col p-5 shadow-2xl transition-transform duration-300 ease-in-out lg:hidden ${
+        className={`fixed left-0 top-0 bottom-0 z-50 w-64 bg-sidebar flex flex-col p-5 shadow-2xl transition-transform duration-300 ease-in-out md:hidden ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
