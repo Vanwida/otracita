@@ -8,6 +8,7 @@ import { barberColorVar, paymentBadge } from './types';
 import { appointmentBlockStyle, statusBadge } from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-window';
+import { computeOverlapLayout } from './_event-layout';
 
 // La VENTANA temporal (inicio/fin/alto/etiquetas) ya NO es fija — se deriva
 // de los datos del día visible en `_agenda-window` (fuente única, también
@@ -273,13 +274,17 @@ export default function DayGrid({
           it stays visible when the user scrolls horizontally across many
           barbers. */}
       <div className="flex-1 overflow-auto" ref={scrollRef}>
-        <div className="flex" style={{ minWidth: `${48 + columns.length * 160}px` }}>
-          {/* Time gutter (sticky left) */}
+        <div className="flex" style={{ minWidth: `${56 + columns.length * 180}px` }}>
+          {/* Time gutter (sticky left) — angosto w-14 (56px), label-caps
+              tracking, right-aligned. Patrón Stitch: el gutter no compite
+              por atención, comunica la hora con la mínima tinta posible. */}
           <div
-            className="w-12 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
+            className="w-14 shrink-0 bg-surface border-r border-line sticky left-0 z-30"
             style={{ height: totalHeight + COL_HEADER_H }}
           >
-            <div className="h-[var(--agenda-col-header-h)] bg-overlay border-b border-line sticky top-0 z-50" /> {/* header spacer — z-50: esquina sup-izq por encima de las cabeceras de columna (z-40) al scrollear ambos ejes */}
+            {/* header spacer — bg-surface (blanco) para que la esquina
+                sup-izq se funda con el resto del gutter. */}
+            <div className="h-[var(--agenda-col-header-h)] bg-surface border-b border-line sticky top-0 z-50" />
             <div className="relative" style={{ height: totalHeight }}>
               {currentTimePx !== null && (
                 <div
@@ -292,8 +297,8 @@ export default function DayGrid({
               {hourLabels.map(({ label, top }) => (
                 <div
                   key={label}
-                  className="absolute right-2 text-[10px] text-ink-2 select-none"
-                  style={{ top: top - 6 }}
+                  className="absolute right-2 text-ink-2 select-none tabular-nums font-semibold"
+                  style={{ top: top - 7, fontSize: '0.6875rem', letterSpacing: '0.04em' }}
                 >
                   {label}
                 </div>
@@ -303,6 +308,15 @@ export default function DayGrid({
 
           {columns.map(col => {
             const colEvents = getEventsForColumn(col.key);
+            // Layout de carriles para solape: citas concurrentes a 1/N
+            // anchura. Algoritmo en _event-layout.ts (puro, testeable).
+            const layout = computeOverlapLayout(
+              colEvents.map((e) => ({
+                id: e.id,
+                startMin: toMinutes(e.time),
+                durationMin: e.duration,
+              })),
+            );
             const colColor = col.barber
               ? barberColorVar(col.barber.displayOrder)
               : 'var(--color-line-strong)';
@@ -322,68 +336,62 @@ export default function DayGrid({
                     suben. La esquina sup-izq (gutter spacer) va a z-50 para
                     quedar sobre las cabeceras al scrollear en ambos ejes. */}
                 {(() => {
-                  // Subtítulo = horario que trabaja ese barbero ese día, o
-                  // "Hoy no trabaja" (paridad Booksy 09.39.31, en plano).
-                  // Solo para columnas que mapean a un barbero real.
                   const hoursLabel = col.barber
                     ? barberDayHoursLabel(dateStr, hours, isBlocked)
                     : null;
                   const headerInner = (
                     <>
-                      <span
-                        className="absolute top-0 left-0 right-0 h-[3px]"
-                        style={{ backgroundColor: colColor }}
-                        aria-hidden="true"
-                      />
                       {col.barber?.photoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={col.barber.photoUrl}
                           alt=""
-                          className="h-8 w-8 rounded-full object-cover ring-2 shrink-0"
-                          style={{ ['--tw-ring-color' as string]: colColor }}
+                          className="h-10 w-10 rounded-full object-cover border border-line shrink-0"
                         />
                       ) : (
                         <span
-                          className="h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                          className="h-10 w-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
                           style={{ backgroundColor: colColor }}
                           aria-hidden="true"
                         >
                           {col.barber ? initials(col.barber.name) : '∅'}
                         </span>
                       )}
-                      {/* Nombre (mayúsculas, Booksy) sobre el horario del
-                          día. min-w-0 + truncate para que no rompa columnas
-                          estrechas. */}
                       <span className="flex flex-col min-w-0 flex-1 text-left">
-                        <span className="text-[0.75rem] font-bold uppercase tracking-wide text-ink truncate leading-tight">
+                        {/* Nombre — Stitch usa headline-sm (Hanken Grotesk
+                            semibold 18px); aquí Inter semibold 14px uppercase
+                            mantiene la jerarquía y respeta nuestro stack. */}
+                        <span className="text-[0.875rem] font-semibold uppercase text-ink truncate leading-tight">
                           {col.label}
                         </span>
                         {hoursLabel && (
-                          <span className="text-[0.6875rem] text-ink-2 truncate leading-tight tabular-nums">
+                          <span
+                            className="text-ink-2 truncate leading-tight tabular-nums uppercase mt-0.5"
+                            style={{ fontSize: '0.6875rem', letterSpacing: '0.06em' }}
+                          >
                             {hoursLabel}
                           </span>
                         )}
                       </span>
                       {col.barber && (
                         <ChevronDown
-                          className="h-3.5 w-3.5 text-ink-3 shrink-0"
+                          className="h-5 w-5 text-ink-2 shrink-0"
                           aria-hidden="true"
                         />
                       )}
                     </>
                   );
+                  // Cabecera LIMPIA: bg-surface sólido (matches Stitch), sin
+                  // gradients ni tints. La identidad del barbero la lleva la
+                  // foto + nombre, no un tint de fondo (que ensucia el lienzo).
                   const headerClass =
-                    'h-[var(--agenda-col-header-h)] w-full flex flex-row items-center gap-2 px-2.5 border-b border-line bg-overlay shrink-0 sticky top-0 z-40';
-                  // Clic en la cabecera → menú de acciones del barbero
-                  // (fix #2). Solo si la columna mapea a un barbero real
-                  // (la fallback "Sin asignar"/"Todos" no es accionable).
+                    'h-[var(--agenda-col-header-h)] w-full flex flex-row items-center gap-3 px-3 border-b border-line shrink-0 sticky top-0 z-40 bg-surface hover:bg-overlay/40 transition-colors';
                   return col.barber ? (
                     <button
                       type="button"
                       onClick={() => onBarberClick(col.barber!)}
                       aria-label={`Acciones de ${col.barber.name}${hoursLabel ? `, ${hoursLabel}` : ''}`}
-                      className={`${headerClass} cursor-pointer hover:bg-overlay/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand transition-colors`}
+                      className={`${headerClass} cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand`}
                     >
                       {headerInner}
                     </button>
@@ -410,24 +418,27 @@ export default function DayGrid({
                   }}
                   onDrop={e => handleColumnDrop(e, col.barber?.id ?? null)}
                 >
-                  {/* Fuera de horario — antes de abrir. .offhours-overlay
-                      (FIX 3): tinte cálido + trama diagonal → "cerrado" se
-                      lee de un vistazo sin pisar el acento de barbero (barra
-                      sólida saturada, nunca compite con el tinte). */}
+                  {/* Fuera de horario — antes de abrir. Veil cálido + 1px
+                      line-strong al filo (donde arranca el día activo) para
+                      que el cambio de zona se lea sin diagonales. */}
                   {businessHours && businessHours.open > startMin && (
                     <div
                       className="absolute left-0 right-0 top-0 offhours-overlay pointer-events-none z-10"
-                      style={{ height: (businessHours.open - startMin) * PX_PER_MIN }}
+                      style={{
+                        height: (businessHours.open - startMin) * PX_PER_MIN,
+                        borderBottom: '1px solid var(--color-line-strong)',
+                      }}
                     />
                   )}
 
-                  {/* Fuera de horario — tras cerrar. */}
+                  {/* Fuera de horario — tras cerrar. Filo arriba (cierre). */}
                   {businessHours && businessHours.close < endMin && (
                     <div
                       className="absolute left-0 right-0 offhours-overlay pointer-events-none z-10"
                       style={{
                         top: (businessHours.close - startMin) * PX_PER_MIN,
                         height: (endMin - businessHours.close) * PX_PER_MIN,
+                        borderTop: '1px solid var(--color-line-strong)',
                       }}
                     />
                   )}
@@ -446,14 +457,14 @@ export default function DayGrid({
                     />
                   ))}
 
-                  {/* Half-hour lines — saltamos la última etiqueta: su +30min
-                      caería fuera de la ventana (el rango siempre cierra en
-                      hora en punto). */}
+                  {/* Half-hour line — muy sutil, sólo una capa. Las
+                      quarter-hour quitadas: el snap 5min ya cumple la
+                      precisión; visualmente eran ruido. */}
                   {hourLabels.slice(0, -1).map(({ top }, i) => (
                     <div
                       key={`half-${i}`}
-                      className="absolute left-0 right-0 border-t border-canvas"
-                      style={{ top: top + 30 * PX_PER_MIN }}
+                      className="absolute left-0 right-0 border-t border-line"
+                      style={{ top: top + 30 * PX_PER_MIN, opacity: 0.22 }}
                     />
                   ))}
 
@@ -467,22 +478,17 @@ export default function DayGrid({
                     </div>
                   )}
 
-                  {/* Events — fill codifica ESTADO (UI0 #3); el borde-acento
-                      izquierdo lleva el color del barbero de la columna. */}
+                  {/* Events — fill saturado del ESTADO (sin borde-izq 4px,
+                      banned). Layout con carriles para solape lateral
+                      (computeOverlapLayout). Rounded-md las 4 esquinas. */}
                   {colEvents.map(event => {
                     const evStartMin = toMinutes(event.time);
                     const top = (evStartMin - startMin) * PX_PER_MIN;
-                    // Alto mínimo legible: una cita corta (15min=30px) seguía
-                    // mostrando hora+cliente sin recortarse. 40px ≈ 2 líneas.
                     const height = Math.max(event.duration * PX_PER_MIN, 40);
-                    // Umbrales de densidad: con ≥56px caben las 3 líneas
-                    // (hora+estado / cliente / servicio); por debajo, 2.
+                    // Umbral de densidad: con ≥56px caben hora+cliente+servicio.
                     const showService = height >= 56;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    // Color = ESTADO de la cita (Booksy-exact, igual en
-                    // Semana/Mes) + ícono + etiqueta, nunca solo color. La
-                    // identidad del barbero vive en la cabecera de columna.
                     const { style: blockStyle, treatment } = appointmentBlockStyle(
                       col.barber?.displayOrder ?? null,
                       event.status,
@@ -494,11 +500,14 @@ export default function DayGrid({
                     const endM = evEndMin % 60;
                     const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 
-                    // Booksy = solo lectura (lo gestiona Booksy); las
-                    // citas canceladas no se mueven. El resto es arrastrable
-                    // para reprogramar (R1/R3).
                     const isDraggable = !isBooksy && !isCancelled;
                     const isDragging = draggingId === event.id;
+
+                    // Layout de carril: si la cita se solapa con otras en
+                    // esta columna, va a anchura 1/N. 2px de aire entre
+                    // carriles (calc) — sin que parezca pegado.
+                    const lay = layout.get(event.id) ?? { leftPct: 0, widthPct: 100 };
+                    const insetX = 2;
 
                     return (
                       <div
@@ -507,16 +516,12 @@ export default function DayGrid({
                         draggable={isDraggable}
                         onDragStart={e => {
                           if (!isDraggable) return;
-                          // Offset entre el cursor y el top del bloque, para
-                          // que al soltar la hora sea la del INICIO, no la
-                          // del punto agarrado.
                           const r = e.currentTarget.getBoundingClientRect();
                           dragRef.current = {
                             id: event.id,
                             grabOffsetPx: e.clientY - r.top,
                           };
                           e.dataTransfer.effectAllowed = 'move';
-                          // Firefox exige setData para iniciar el drag.
                           e.dataTransfer.setData('text/plain', event.id);
                           setDraggingId(event.id);
                         }}
@@ -528,34 +533,65 @@ export default function DayGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 flex flex-col gap-0.5 rounded-r px-2 py-1.5 overflow-hidden transition-opacity hover:opacity-80 ${
+                        className={`absolute z-20 flex flex-col rounded-md p-2 overflow-hidden shadow-sm transition-transform duration-150 hover:-translate-y-0.5 ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
-                          // Mientras se arrastra una cita, las OTRAS tiles
-                          // dejan de capturar puntero/drop → el dragover y el
-                          // drop SIEMPRE llegan al cuerpo de la columna,
-                          // aunque sueltes encima de otra cita.
-                          //
-                          // CRÍTICO: la tile ARRASTRADA (isDragging) NO debe
-                          // recibir pointer-events-none. Si la fuente del
-                          // drag pierde pointer-events a mitad de gesto, el
-                          // navegador (Chrome/Safari/FF) CANCELA el drag:
-                          // drop nunca dispara y "no pasa nada". Ese era el
-                          // bug — el fix anterior aplicó la clase a TODAS las
-                          // tiles, incluida la fuente, matando el propio drag.
                           draggingId && !isDragging ? 'pointer-events-none' : ''
                         }`}
-                        style={{ top, height, ...blockStyle }}
+                        style={{
+                          top,
+                          height,
+                          left: `calc(${lay.leftPct}% + ${insetX}px)`,
+                          width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
+                          ...blockStyle,
+                        }}
                         title={event.title}
                       >
-                        {/* Booksy lock icon — esquina, fuera del flujo. */}
-                        {isBooksy && !isCancelled && (
-                          <Lock className="absolute top-1.5 right-1.5 h-3 w-3 opacity-60" aria-hidden="true" />
+                        {/* Top row: hora tabular (mono) + icono estado/lock.
+                            Layout flex justify-between para que el icono no
+                            robe línea al texto del cliente. */}
+                        <div className="flex justify-between items-start leading-tight">
+                          <span
+                            className="tabular-nums font-medium opacity-90"
+                            style={{ fontSize: '0.6875rem', letterSpacing: '0.01em' }}
+                          >
+                            {event.time}<span className="opacity-70"> – {endTime}</span>
+                          </span>
+                          {isBooksy && !isCancelled ? (
+                            <Lock
+                              className="h-3 w-3 opacity-70 shrink-0 mt-0.5"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <badge.icon
+                              className="h-3 w-3 opacity-75 shrink-0 mt-0.5"
+                              aria-label={badge.label}
+                            />
+                          )}
+                        </div>
+
+                        {/* Cliente — protagonista. headline-sm scale. */}
+                        <p
+                          className="font-semibold truncate leading-tight mt-0.5"
+                          style={{ fontSize: '0.8125rem' }}
+                        >
+                          {event.customerName || event.customerPhone}
+                        </p>
+
+                        {/* Servicio — secundario, opacity reducida. */}
+                        {showService && (
+                          <p
+                            className="leading-tight truncate opacity-75 mt-0.5"
+                            style={{ fontSize: '0.6875rem' }}
+                          >
+                            {event.service}
+                          </p>
                         )}
-                        {/* A2 ♥ — cliente pidió este barbero explícitamente. */}
+
+                        {/* ♥ cliente solicitó este barbero — abajo-izq. */}
                         {event.barberRequested && !isBooksy && (
                           <span
-                            className="absolute top-1 right-1.5 text-[0.8125rem] leading-none"
+                            className="absolute bottom-1 left-1.5 text-[0.75rem] leading-none opacity-80"
                             title="Solicitado por el cliente"
                             aria-label="Solicitado por el cliente"
                           >
@@ -563,56 +599,19 @@ export default function DayGrid({
                           </span>
                         )}
 
-                        {/* Línea 1 — rango horario (bold, legible) +
-                            estado por ícono+etiqueta (NUNCA solo color). */}
-                        <div
-                          className="flex items-center gap-1 font-bold leading-tight tabular-nums"
-                          style={{ fontSize: 'var(--agenda-ev-time)' }}
-                        >
-                          <span className="truncate">
-                            {event.time}
-                            <span className="font-semibold opacity-55">
-                              {' '}– {endTime}
-                            </span>
-                          </span>
-                          {badge && (
-                            <span
-                              className={`inline-flex items-center gap-0.5 shrink-0 ${badge.tone}`}
-                              style={{ fontSize: 'var(--agenda-ev-meta)' }}
-                            >
-                              <badge.icon className="h-3 w-3" aria-hidden="true" />
-                              {showService && <span>{badge.label}</span>}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Línea 2 — cliente (protagonista del bloque). */}
-                        <p
-                          className="font-semibold leading-tight truncate"
-                          style={{ fontSize: 'var(--agenda-ev-client)' }}
-                        >
-                          {event.customerName || event.customerPhone}
-                        </p>
-
-                        {/* Línea 3 — servicio (sólo si hay alto). */}
-                        {showService && (
-                          <p
-                            className="leading-tight truncate opacity-80"
-                            style={{ fontSize: 'var(--agenda-ev-service)' }}
-                          >
-                            {event.service}
-                          </p>
-                        )}
-
-                        {/* R6 badge cobrado (display-only). Esquina inferior
-                            derecha, no roba línea de cliente/servicio. */}
+                        {/* Badge cobrado — esquina inf-der, glyph sobre pill
+                            translúcida para legibilidad sobre el fill. */}
                         {(() => {
                           const pb = paymentBadge(event.paymentMethod);
                           if (!pb) return null;
                           return (
                             <span
-                              className="absolute bottom-1 right-1 inline-flex items-center justify-center min-w-[1rem] h-4 px-1 rounded bg-surface/70 font-bold tabular-nums"
-                              style={{ fontSize: 'var(--agenda-ev-meta)' }}
+                              className="absolute bottom-1 right-1 inline-flex items-center justify-center min-w-[1rem] h-4 px-1 rounded font-bold tabular-nums"
+                              style={{
+                                fontSize: '0.625rem',
+                                backgroundColor: 'color-mix(in srgb, var(--color-surface) 85%, transparent)',
+                                color: 'var(--color-ink)',
+                              }}
                               title={pb.label}
                               aria-label={pb.label}
                             >

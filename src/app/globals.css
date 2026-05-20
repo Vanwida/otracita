@@ -262,32 +262,27 @@ body {
 
 /* Utilities */
 @layer utilities {
-  /* Fuera de horario (antes/después de abrir): tinte cálido + trama
-     diagonal suave. La textura hace inequívoca la zona "no reservable"
-     sin oscurecer tanto el tinte que pise el acento de barbero. */
+  /* Fuera de horario: VEIL cálido tenue (brand-soft 14%) sobre canvas.
+     Sin diagonales: la "carretera" se había comido el lienzo. La
+     transición con el horario activo la marca un 1px line-strong
+     inyectado por JSX (borderBottom en before / borderTop en after) →
+     la señal "aquí no se trabaja" la da el tinte; el filo, el cambio. */
   .offhours-overlay {
-    background:
-      var(--color-agenda-offhours)
-      repeating-linear-gradient(
-        -45deg,
-        transparent,
-        transparent 7px,
-        var(--color-agenda-offhours-line) 7px,
-        var(--color-agenda-offhours-line) 14px
-      );
+    background-color: color-mix(in srgb, var(--color-brand-soft) 14%, transparent);
   }
 
-  /* Día bloqueado: misma trama, más marcada (token, no negro 4% que no se
-     veía sobre el canvas cálido). Visible pero deja leer las citas debajo. */
+  /* Día bloqueado: veil más marcado que off-hours (es el día entero
+     cerrado, no franja). brand-soft 28% + 1px diagonales cada 22px
+     para texturizar suavemente sin invadir. */
   .blocked-overlay {
-    background:
-      repeating-linear-gradient(
-        -45deg,
-        transparent,
-        transparent 6px,
-        var(--color-agenda-blocked-line) 6px,
-        var(--color-agenda-blocked-line) 12px
-      );
+    background-color: color-mix(in srgb, var(--color-brand-soft) 28%, transparent);
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 22px,
+      color-mix(in srgb, var(--color-brand-strong) 8%, transparent) 22px,
+      color-mix(in srgb, var(--color-brand-strong) 8%, transparent) 23px
+    );
   }
 
   /* DataTable: fila densa con zebra + hover por tokens. La regla CSS

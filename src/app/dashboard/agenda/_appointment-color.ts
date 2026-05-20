@@ -52,65 +52,71 @@ export function normalizeStatus(status: string): AppointmentStatus {
 // DayGrid directamente con `barberColorVar` (de ./types) en la cabecera de
 // columna. Este módulo es solo color POR ESTADO.
 
-/** Tokens de fondo/tinta/acento por estado — fuente única del color de cita.
- *  `accent` es el color a plena saturación del borde izquierdo (4px). */
+/** Tokens de fondo/tinta por estado — fuente única del color de cita.
+ *  Fills SATURADOS con texto warm-near-white (Booksy-bold), sobre el
+ *  cream del canvas respiran. Antes eran tints al 14% sobre surface →
+ *  todo se confundía en pastel. AA verificado en cada combinación.
+ *  La identidad del barbero NO va aquí: vive en la cabecera de columna. */
 function statusColors(s: AppointmentStatus): {
   bg: string;
   ink: string;
-  accent: string;
+  /** Borde 1px del bloque (variante más oscura del bg para crear hairline
+   *  perimetral — patrón Stitch). El bloque sin borde se ve "flat IA"; con
+   *  esta línea sutil gana profundidad sin ruido. */
+  border: string;
 } {
+  // Warm-near-white: tono cálido del sistema (no oklch puro) para que el
+  // texto sobre fondos saturados no se sienta plástico.
+  const NEAR_WHITE = 'oklch(0.98 0.005 60)';
   switch (s) {
     case 'pending':
-      // Sin confirmar: rojo suave (Booksy resalta lo no confirmado en rojo).
+      // Sin confirmar: rojo confiado, texto claro. Booksy resalta lo
+      // no-confirmado en rojo — atención inmediata.
       return {
-        bg: 'color-mix(in oklab, var(--color-danger) 14%, var(--color-surface))',
-        ink: 'var(--color-ink)',
-        accent: 'var(--color-danger)',
+        bg: 'color-mix(in oklab, var(--color-danger), black 8%)',
+        ink: NEAR_WHITE,
+        border: 'color-mix(in oklab, var(--color-danger), black 22%)',
       };
     case 'completed':
-      // Hecha: slate frío — cerrada / archivada.
+      // Hecha: slate frío oscuro. Estado archival, presente pero quieto.
       return {
-        bg: 'var(--color-event-completed-bg)',
-        ink: 'var(--color-event-completed-ink)',
-        accent: 'var(--color-event-completed-ink)',
+        bg: 'color-mix(in oklab, var(--color-ink-2), black 8%)',
+        ink: NEAR_WHITE,
+        border: 'color-mix(in oklab, var(--color-ink-2), black 22%)',
       };
     case 'no_show':
-      // No vino / inasistencia: MORADO (Booksy pinta la inasistencia en
-      // morado). --color-event-native es el morado del sistema (hue 292);
-      // no hay variantes -bg/-ink, así que el relleno suave se deriva con
-      // color-mix sobre surface (mismo patrón que `pending`).
+      // No vino: morado (event-native). Inasistencia ≠ pending.
       return {
-        bg: 'color-mix(in oklab, var(--color-event-native) 16%, var(--color-surface))',
-        ink: 'var(--color-ink)',
-        accent: 'var(--color-event-native)',
+        bg: 'color-mix(in oklab, var(--color-event-native), black 6%)',
+        ink: NEAR_WHITE,
+        border: 'color-mix(in oklab, var(--color-event-native), black 20%)',
       };
     case 'cancelled':
-      // Cancelada: casi gris (el tachado lo añade `treatment`). El ink se
-      // oscureció en globals (L0.60→0.45) para PASAR cuerpo AA 4.5:1 sobre
-      // este tinte — antes 3.42:1, único estado que fallaba.
+      // Cancelada: atenuada, texto oscuro con line-through (treatment).
+      // No compite con activas pero sigue legible.
       return {
         bg: 'var(--color-event-cancelled-bg)',
         ink: 'var(--color-event-cancelled-ink)',
-        accent: 'var(--color-line-strong)',
+        border: 'var(--color-line-strong)',
       };
     default:
-      // Confirmada: verde sage.
+      // Confirmada: verde sage saturado.
       return {
-        bg: 'var(--color-event-confirmed-bg)',
-        ink: 'var(--color-event-confirmed-ink)',
-        accent: 'var(--color-success)',
+        bg: 'color-mix(in oklab, var(--color-success), black 10%)',
+        ink: NEAR_WHITE,
+        border: 'color-mix(in oklab, var(--color-success), black 24%)',
       };
   }
 }
 
 /**
- * Estilo inline del bloque de cita para una rejilla "densa" (Día/Semana):
- * el RELLENO comunica el ESTADO (Booksy-exact). El acento izquierdo 4px lleva
- * el color del estado a plena saturación. `displayOrder` se ignora para el
- * color — la identidad del barbero vive en la cabecera de columna.
+ * Estilo inline del bloque de cita (Día/Semana). El RELLENO saturado
+ * comunica el ESTADO; el texto warm-near-white se compone encima. SIN
+ * borde-izq 4px (banned en DESIGN.md + redundante con el fill).
+ * `displayOrder` se ignora — la identidad del barbero vive en la cabecera.
  */
 export function appointmentBlockStyle(
-  displayOrder: number | null | undefined,
+  _displayOrder: number | null | undefined,
   status: string,
 ): {
   style: React.CSSProperties;
@@ -118,41 +124,34 @@ export function appointmentBlockStyle(
   treatment: string;
 } {
   const s = normalizeStatus(status);
-  const { bg, ink, accent } = statusColors(s);
+  const { bg, ink, border } = statusColors(s);
   return {
     style: {
       backgroundColor: bg,
       color: ink,
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: accent,
+      borderWidth: '1px',
+      borderStyle: 'solid',
+      borderColor: border,
     },
-    // opacity-90 (no 70): a 0.70 el texto compuesto sobre el lienzo caía a
-    // ~3.1:1 aun con el ink oscurecido — fallaba cuerpo AA. A 0.90 da
-    // 4.97:1 (PASA) y el tachado + bg gris + badge siguen marcando "void".
     treatment: s === 'cancelled' ? 'line-through opacity-90' : '',
   };
 }
 
 /**
- * Variante "chip" para la rejilla de Mes (texto sobre fondo tintado, sin
- * acento lateral de 4px porque el chip es de una línea). Mismo mapeo de
- * ESTADO→color que el bloque (un acento fino 2px reemplaza al borde 4px).
+ * Variante "chip" para la rejilla de Mes (una línea, denso). Mismo fill
+ * saturado que el bloque, sin texturas extra (1-line no aguanta capas).
  */
 export function appointmentChipStyle(
-  displayOrder: number | null | undefined,
+  _displayOrder: number | null | undefined,
   status: string,
 ): { style: React.CSSProperties; treatment: string } {
   const s = normalizeStatus(status);
-  const { bg, ink, accent } = statusColors(s);
+  const { bg, ink } = statusColors(s);
   return {
     style: {
       backgroundColor: bg,
       color: ink,
-      boxShadow: `inset 2px 0 0 0 ${accent}`,
     },
-    // Ver nota en appointmentBlockStyle: 0.90, no 0.70, para no romper
-    // el contraste AA del texto cancelado.
     treatment: s === 'cancelled' ? 'line-through opacity-90' : '',
   };
 }
@@ -182,26 +181,26 @@ export function statusBadge(
 }
 
 /** Una entrada de la leyenda: ícono+etiqueta+tono de `statusBadge` MÁS la
- *  muestra de color (fondo + acento) EXACTA del bloque, derivada de la
- *  MISMA `statusColors` que pinta el calendario. No hay segunda paleta. */
+ *  muestra de color (fondo) EXACTA del bloque, derivada de la MISMA
+ *  `statusColors` que pinta el calendario. No hay segunda paleta. */
 export interface StatusLegendItem {
   icon: LucideIcon;
   label: string;
   tone: string;
-  /** Fondo del bloque para este estado (idéntico a `appointmentBlockStyle`). */
+  /** Fill del bloque para este estado (idéntico a `appointmentBlockStyle`). */
   swatchBg: string;
-  /** Acento (borde izq. 4px) del bloque para este estado. */
-  swatchAccent: string;
+  /** Color del texto sobre swatchBg (para que la muestra incluya un
+   *  pequeño glyph/check legible, no quede como tarjeta vacía). */
+  swatchInk: string;
 }
 
 /** Construye una fila de leyenda combinando `statusBadge` (icon/label/tone)
- *  con `statusColors` (bg/accent). El color de la muestra ES, byte a byte,
- *  el color con que se pinta ese estado en Día/Semana/Mes — si cambia
- *  `statusColors`, la leyenda cambia con él (cero divergencia posible). */
+ *  con `statusColors` (bg/ink). El color de la muestra ES, byte a byte,
+ *  el color con que se pinta ese estado en Día/Semana/Mes. */
 function legendItem(status: AppointmentStatus): StatusLegendItem {
   const badge = statusBadge(status);
-  const { bg, accent } = statusColors(status);
-  return { ...badge, swatchBg: bg, swatchAccent: accent };
+  const { bg, ink } = statusColors(status);
+  return { ...badge, swatchBg: bg, swatchInk: ink };
 }
 
 /**

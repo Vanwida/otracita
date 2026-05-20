@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   startOfMonth,
   endOfMonth,
@@ -15,13 +15,7 @@ import {
   format,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleDollarSign } from 'lucide-react';
 import type { Barber } from './types';
 import { barberColorVar } from './types';
 import { STATUS_LEGEND } from './_appointment-color';
@@ -47,13 +41,9 @@ import { STATUS_LEGEND } from './_appointment-color';
 // -----------------------------------------------------------------------------
 
 interface Props {
-  /** Día/ancla actual del calendario. */
   currentDay: Date;
-  /** Navega el calendario a una fecha concreta (clic en el mini-mes). */
   onSelectDate: (date: Date) => void;
-  /** Barberos activos del tenant — alimentan el filtro secundario. */
   barbers: Barber[];
-  /** Valor del filtro de barbero ('all' = todas las columnas). */
   selectedBarber: string;
   onSelectBarber: (value: string) => void;
 }
@@ -75,13 +65,6 @@ function monthGridDays(anchor: Date): Date[] {
 const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const WEEK_JUMP_OFFSETS = [1, 2, 3, 4, 5, 6];
 
-// Estado plegado del rail — persistido en localStorage (cliente-side,
-// un barbero = un navegador; mismo patrón y convención de nombre que
-// HomeIntroCard `otracita_*_v1`). Con 5+ barberos las columnas del día
-// se aplastan: plegar el rail les devuelve ~224px de ancho. El control
-// PRIMARIO de fecha siguen siendo los ◀▶ de la barra superior, así que
-// trabajar con el rail plegado no rompe nada.
-const RAIL_COLLAPSED_KEY = 'otracita_agenda_rail_collapsed_v1';
 
 export default function AgendaSideRail({
   currentDay,
@@ -93,77 +76,13 @@ export default function AgendaSideRail({
   const today = useMemo(() => new Date(), []);
   const days = useMemo(() => monthGridDays(currentDay), [currentDay]);
 
-  // Arranca expandido (false) en SSR y primer render para evitar saltos;
-  // el efecto reconcilia con la preferencia guardada en cuanto monta.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const isCollapsed =
-      window.localStorage.getItem(RAIL_COLLAPSED_KEY) === '1';
-    if (!isCollapsed) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCollapsed(true);
-  }, []);
-
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(RAIL_COLLAPSED_KEY, next ? '1' : '0');
-      }
-      return next;
-    });
-  }
-
-  // Plegado: tira fina con SOLO el botón de expandir, siempre visible y
-  // alcanzable (req. de accesibilidad: la reapertura no puede esconderse).
-  // El borde derecho se mantiene para que la tira lea como panel, no como
-  // parte de la rejilla. Sin esto el barbero no sabría cómo recuperar el
-  // mini-mes.
-  if (collapsed) {
-    return (
-      <aside
-        className="w-10 shrink-0 border-r border-line bg-surface flex flex-col items-center pt-3"
-        aria-label="Navegación de fecha y filtros (plegada)"
-      >
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-expanded={false}
-          aria-label="Mostrar navegación de fecha y filtros"
-          title="Mostrar panel"
-          className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-ink-2 hover:bg-overlay hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
-        >
-          <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </aside>
-    );
-  }
-
   return (
     <aside
       className="w-[15rem] shrink-0 border-r border-line bg-surface flex flex-col overflow-y-auto"
       aria-label="Navegación de fecha y filtros"
     >
-      {/* 0 · Barra de plegado — botón propio y separado de los ◀▶ del mes
-          para que "plegar panel" no se confunda con "mes anterior".
-          Hit area 36×36 (≥24×24 WCAG 2.5.8; los primitives van a 44, este
-          es un control terciario embebido — cómodo sin robar altura al
-          mini-mes). */}
-      <div className="flex items-center justify-end px-2 pt-2">
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-expanded={true}
-          aria-label="Ocultar navegación de fecha y filtros"
-          title="Plegar panel"
-          className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-ink-2 hover:bg-overlay hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
-        >
-          <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
-
-      {/* 1 · Mini-mes */}
+      {/* 1 · Mini-mes (el toggle del rail vive en el toolbar de CalendarView,
+          no aquí — un único control, sin duplicado). */}
       <div className="px-3 pt-1 pb-2">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[0.8125rem] font-semibold text-ink capitalize">
@@ -317,23 +236,21 @@ export default function AgendaSideRail({
           Estado de la cita
         </span>
         <ul className="space-y-1">
-          {STATUS_LEGEND.map(({ icon: Icon, label, tone, swatchBg, swatchAccent }) => (
+          {STATUS_LEGEND.map(({ icon: Icon, label, tone, swatchBg, swatchInk }) => (
             <li
               key={label}
               className="flex items-center gap-1.5 text-[0.75rem] text-ink"
             >
-              {/* Muestra = mini-bloque: mismo relleno tintado + acento
-                  izquierdo 4px que pinta el calendario para este estado
-                  (color de `statusColors`, fuente única). Sin esto la
-                  leyenda no decía que Confirmada=verde y Hecha=slate. */}
+              {/* Muestra = mini-bloque con el MISMO fill saturado del
+                  calendario para este estado (cero divergencia con el
+                  bloque real). Sin borde-izq (banned). */}
               <span
-                className="h-3.5 w-4 rounded-sm shrink-0"
-                style={{
-                  backgroundColor: swatchBg,
-                  borderLeft: `4px solid ${swatchAccent}`,
-                }}
+                className="inline-flex items-center justify-center h-4 w-5 rounded shrink-0"
+                style={{ backgroundColor: swatchBg, color: swatchInk }}
                 aria-hidden="true"
-              />
+              >
+                <Icon className="h-2.5 w-2.5" />
+              </span>
               <Icon className={`h-3.5 w-3.5 shrink-0 ${tone}`} aria-hidden="true" />
               {label}
             </li>
