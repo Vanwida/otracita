@@ -12,6 +12,7 @@ import StatStrip, { type Stat } from '../../_components/StatStrip'
 import DataTable, { type Column } from '../../_components/DataTable'
 import ReportLayout from '../_components/ReportLayout'
 import { MARKETING_RAIL } from '../_components/report-rail-config'
+import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -326,22 +327,11 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
       <AreaContent scroll="region" maxWidth="7xl">
         {!hasData ? (
           <div className="flex flex-1 items-center justify-center py-16">
-            <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-line bg-overlay">
-                <Send className="h-5 w-5 text-ink-2" aria-hidden="true" />
-              </div>
-              <h2
-                className="font-semibold text-ink"
-                style={{ fontSize: 'var(--text-section-title)' }}
-              >
-                Sin actividad de marketing
-              </h2>
-              <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-ink-2">
-                En este {periodLabel} no se enviaron promos ni se recogieron
-                reseñas. Activa las promos de huecos en Marketing y el bot
-                pedirá la reseña tras cada cita.
-              </p>
-            </div>
+            <EmptyState
+              icon={Send}
+              title="Sin actividad de marketing"
+              description={`En este ${periodLabel} no se enviaron promos ni se recogieron reseñas. Activa las promos de huecos en Marketing y el bot pedirá la reseña tras cada cita.`}
+            />
           </div>
         ) : (
           <ReportLayout rail={MARKETING_RAIL}>
@@ -352,7 +342,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Distribución de reseñas. */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -412,7 +402,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
               </section>
 
               {/* Eficacia de las promos. */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -469,7 +459,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
 
             {/* Promos enviadas — log detallado. */}
             {promosSent > 0 && (
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -493,7 +483,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
 
             {/* Últimas reseñas con comentario. */}
             {recentReviews.length > 0 && (
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}

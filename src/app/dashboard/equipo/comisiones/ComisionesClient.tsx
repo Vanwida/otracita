@@ -42,14 +42,12 @@ interface Props {
   view?: 'comisiones' | 'competicion'
 }
 
-const EUR = new Intl.NumberFormat('es-ES', {
-  style: 'currency',
-  currency: 'EUR',
-  minimumFractionDigits: 0,
-})
-
+// `eur` (compact) reusa el formatter compartido. ComisionesClient usa la
+// variante compact (omite ",00" en enteros) para que las filas densas
+// no rompan el ritmo visual.
+import { formatCents as formatCentsBase } from '@/lib/format'
 function eur(cents: number): string {
-  return EUR.format(cents / 100)
+  return formatCentsBase(cents, { compact: true })
 }
 
 export default function ComisionesClient({

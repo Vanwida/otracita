@@ -5,6 +5,7 @@ import { sendWhatsAppButtons, sendWhatsAppList, sendWhatsAppMessage } from '@/li
 import { createTipSession, recordRating } from '@/lib/tips';
 import { dispatchUserNotification } from '@/lib/notifications/dispatch';
 import { canonicalPhone } from '@/lib/phone';
+import { publicRatePath } from '@/lib/site';
 import type { InferSelectModel } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
@@ -165,7 +166,7 @@ export async function sendRatingFollowup(
     return sendRatingWhatsApp(client, booking, whatsappBody, token, phoneNumberId);
   }
 
-  const ratePath = `/b/${client.publicSlug}/cuenta/rate/${booking.id}`;
+  const ratePath = publicRatePath(client.publicSlug, booking.id);
   let dispatched: 'push' | 'whatsapp' | 'none' = 'none';
 
   try {

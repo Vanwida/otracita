@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { clients, conversations, analytics } from '@/db/schema';
 import { and, desc, eq, gte, isNotNull, lte, sql } from 'drizzle-orm';
 import { MessageSquare, AlertTriangle, Activity as ActivityIcon } from 'lucide-react';
+import { MS_IN_HOUR } from '@/lib/time';
 import {
   PageHeader,
   Section,
@@ -48,7 +49,7 @@ export default async function AdminBotPage() {
   expirySoon.setDate(expirySoon.getDate() + TOKEN_EXPIRY_DAYS);
   const expiryHorizon = new Date(now);
   expiryHorizon.setDate(expiryHorizon.getDate() + TOKEN_EXPIRY_LOOKAHEAD_DAYS);
-  const stuckCutoff = new Date(now.getTime() - STUCK_CONVERSATION_HOURS * 60 * 60 * 1000);
+  const stuckCutoff = new Date(now.getTime() - STUCK_CONVERSATION_HOURS * MS_IN_HOUR);
 
   const last24h = new Date(now);
   last24h.setDate(last24h.getDate() - 1);

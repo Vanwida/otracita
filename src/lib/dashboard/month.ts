@@ -12,10 +12,12 @@
 // lógica pura del proyecto.
 // -----------------------------------------------------------------------------
 
+import { BUSINESS_TIMEZONE } from '../time.ts'
+
 /** Mes actual en zona Europe/Madrid como `YYYY-MM`. */
 export function currentMonthMadrid(): string {
   const iso = new Date().toLocaleDateString('en-CA', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   })
   return iso.slice(0, 7)
 }

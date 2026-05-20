@@ -4,6 +4,7 @@ import { barbers as barbersTable, clients } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 import { ensureUniqueSlug, isValidSlug, slugifyName } from "@/lib/slug"
+import { publicPagePath } from "@/lib/site"
 
 // -----------------------------------------------------------------------------
 // POST /api/setup — Onboarding de un cliente nuevo (barbero).
@@ -223,7 +224,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       slug: publicSlug,
-      publicUrl: publicSlug ? `/b/${publicSlug}` : null,
+      publicUrl: publicSlug ? publicPagePath(publicSlug) : null,
     })
   } catch (e) {
     console.error("Setup error:", e)

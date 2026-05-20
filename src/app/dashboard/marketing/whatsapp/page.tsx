@@ -10,6 +10,7 @@ import { hasFeature } from '@/lib/billing/tier'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
+import FormGrid from '@/app/dashboard/_components/FormGrid'
 import {
   Bot,
   MessageCircle,
@@ -242,7 +243,7 @@ function ToneRadioGroup({ current }: { current: string }) {
     { value: 'formal', label: 'Formal', example: 'Buenos días, le busco hueco para mañana.' },
   ]
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+    <FormGrid cols={3} gap="tight">
       {options.map((opt) => (
         <label
           key={opt.value}
@@ -261,6 +262,6 @@ function ToneRadioGroup({ current }: { current: string }) {
           <p className="mt-2 text-xs text-ink-2 italic leading-relaxed">&ldquo;{opt.example}&rdquo;</p>
         </label>
       ))}
-    </div>
+    </FormGrid>
   )
 }

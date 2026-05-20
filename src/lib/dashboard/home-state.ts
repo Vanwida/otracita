@@ -1,4 +1,5 @@
 import { hoursForDate, type WeeklyHours } from '@/lib/availability'
+import { MS_IN_DAY } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // Home state machine — qué titular muestra /dashboard según hora del día,
@@ -120,7 +121,7 @@ function findNextOpenDay(
   if (!shopHours) return null
   const today = new Date(`${todayStr}T00:00:00`)
   for (let offset = 1; offset <= 7; offset++) {
-    const d = new Date(today.getTime() + offset * 86400000)
+    const d = new Date(today.getTime() + offset * MS_IN_DAY)
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     if (blockedDates.includes(iso)) continue
     const slot = hoursForDate(iso, shopHours)

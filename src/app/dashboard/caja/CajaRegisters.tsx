@@ -274,7 +274,7 @@ function RegisterList({
 }) {
   const hasAny = session || history.length > 0
   return (
-    <div className="rounded-control border border-line bg-surface overflow-hidden">
+    <div className="panel">
       <ul className="divide-y divide-line" role="list">
         {session && (
           <RegisterRow
@@ -806,18 +806,12 @@ function OpenCashModal({
         setError(body.error || 'No se pudo abrir la caja')
         return
       }
-      const data = await res.json().catch(() => null)
-      if (data?.backfilled) {
-        const { bookings: nb, productSales: nps } = data.backfilled as {
-          bookings: number
-          productSales: number
-        }
-        if (nb + nps > 0) {
-          console.info(
-            `[caja] Backfill: ${nb} bookings + ${nps} ventas importados al cuadre del día.`,
-          )
-        }
-      }
+      // El backfill (bookings + ventas existentes del día absorbidos al
+      // abrir caja) se refleja al barbero vía el revalidate de SWR en
+      // `onOpened`. Antes había aquí un `console.info` con el conteo —
+      // quitado: CLAUDE.md global ("No console.* en prod"). Si vuelve a
+      // hacer falta como señal de telemetría, integrar con el logger del
+      // proyecto (no `console`).
       onOpened()
       onClose()
     } catch {

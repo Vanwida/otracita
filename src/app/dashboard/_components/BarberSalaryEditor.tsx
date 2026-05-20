@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Check, Loader2, Coins } from 'lucide-react'
 import { SALARY_PRESETS } from '@/lib/payroll/presets'
 import type { SalaryType, BarberSalaryProfile } from '@/lib/payroll/types'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // BarberSalaryEditor — panel inline en BarbersManager para configurar el
@@ -68,7 +69,7 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
         return
       }
       setSavedAt(new Date())
-      setTimeout(() => setSavedAt(null), 2500)
+      setTimeout(() => setSavedAt(null), FEEDBACK_MS.saved)
       onSaved?.()
     } catch {
       setError('Error de red')

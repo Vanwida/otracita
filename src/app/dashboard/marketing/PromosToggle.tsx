@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Megaphone, Check } from 'lucide-react'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 interface Props {
   initialEnabled: boolean
@@ -35,7 +36,7 @@ export default function PromosToggle({ initialEnabled }: Props) {
         }
         setEnabled(next)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.copied)
       } catch {
         setError('Error de red')
       }

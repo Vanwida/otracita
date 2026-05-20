@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Tag, Check, Loader2, X, ExternalLink } from 'lucide-react'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // GtmSettings — input para configurar el Google Tag Manager container ID
@@ -52,7 +53,7 @@ export default function GtmSettings({ initial }: Props) {
       }
       setValue(trimmed)
       setState('saved')
-      setTimeout(() => setState('idle'), 1500)
+      setTimeout(() => setState('idle'), FEEDBACK_MS.idleFlash)
     } catch {
       setError('Error de red. Inténtalo otra vez.')
       setState('error')

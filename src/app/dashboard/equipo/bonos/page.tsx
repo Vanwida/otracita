@@ -11,6 +11,7 @@ import { Award, ClipboardCheck, Lock } from 'lucide-react'
 import AreaContent from '../../_components/AreaContent'
 import BonusesManager from '../../_components/BonusesManager'
 import BonusTracker from '../../caja/BonusTracker'
+import EmptyState from '../../_components/EmptyState'
 
 // -----------------------------------------------------------------------------
 // /dashboard/equipo/bonos — pestaña BONOS del área Equipo.
@@ -39,21 +40,12 @@ export default async function EquipoBonosPage() {
     return (
       <AreaContent scroll="fixed" maxWidth="5xl">
         <div className="flex flex-1 items-center justify-center">
-          <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-brand/20 bg-brand-softer">
-              <Lock className="h-5 w-5 text-brand" />
-            </div>
-            <h2
-              className="font-semibold text-ink"
-              style={{ fontSize: 'var(--text-section-title)' }}
-            >
-              Bonos del equipo
-            </h2>
-            <p className="mt-2 text-[0.8125rem] text-ink-2">
-              Define incentivos (reseñas, productos, asistencia…) y cuánto se
-              paga al alcanzarlos. Disponible en el plan Pro.
-            </p>
-          </div>
+          <EmptyState
+            icon={Lock}
+            tone="brand"
+            title="Bonos del equipo"
+            description="Define incentivos (reseñas, productos, asistencia…) y cuánto se paga al alcanzarlos. Disponible en el plan Pro."
+          />
         </div>
       </AreaContent>
     )

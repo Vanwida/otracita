@@ -5,6 +5,7 @@ import { Banknote, ChevronRight } from 'lucide-react'
 import AreaContent from '../../_components/AreaContent'
 import CajaRegisters from '../../caja/CajaRegisters'
 import CajaRollup from './CajaRollup'
+import EmptyState from '../../_components/EmptyState'
 import { loadVentasData } from '../_data'
 
 // -----------------------------------------------------------------------------
@@ -33,28 +34,18 @@ export default async function VentasCajaPage({ searchParams }: PageProps) {
     return (
       <AreaContent scroll="fixed" maxWidth="5xl">
         <div className="flex flex-1 items-center justify-center">
-          <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-brand/20 bg-brand-softer">
-              <Banknote className="h-5 w-5 text-brand" />
-            </div>
-            <h2
-              className="font-semibold text-ink"
-              style={{ fontSize: 'var(--text-section-title)' }}
-            >
-              La caja de efectivo está desactivada
-            </h2>
-            <p className="mt-2 text-[0.8125rem] text-ink-2">
-              Actívala para abrir y cerrar caja cada día, cuadrar efectivo y
-              datáfono, y llevar el histórico de sesiones.
-            </p>
-            <Link
-              href="/dashboard/ventas/cobros"
-              className="btn-primary mt-6"
-            >
-              Activar en Cobros
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
+          <EmptyState
+            icon={Banknote}
+            tone="brand"
+            title="La caja de efectivo está desactivada"
+            description="Actívala para abrir y cerrar caja cada día, cuadrar efectivo y datáfono, y llevar el histórico de sesiones."
+            action={
+              <Link href="/dashboard/ventas/cobros" className="btn-primary">
+                Activar en Cobros
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            }
+          />
         </div>
       </AreaContent>
     )

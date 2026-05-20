@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth/require-client-access'
 import { createBooking } from '@/lib/bookings/create'
 import { canonicalizePhone } from '@/lib/phone'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // Vision-based import — accepts 1-N screenshots (Booksy "Appointment List" or
@@ -25,10 +26,10 @@ import { canonicalizePhone } from '@/lib/phone'
 // -----------------------------------------------------------------------------
 
 function buildExtractionPrompt(): string {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }) // YYYY-MM-DD
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE }) // YYYY-MM-DD
   const weekday = new Date().toLocaleDateString('es-ES', {
     weekday: 'long',
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   })
   return `Eres un extractor de datos de una agenda de citas (Booksy, Treatwell, libreta, etc.). El usuario te pasa capturas de pantalla con reservas.
 

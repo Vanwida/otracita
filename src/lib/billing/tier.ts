@@ -14,6 +14,7 @@
 
 import type { InferSelectModel } from 'drizzle-orm';
 import type { clients } from '@/db/schema';
+import { MS_IN_DAY } from '../time.ts';
 
 export type Tier = 'solo' | 'pro' | 'estudio';
 export type BillingInterval = 'monthly' | 'annual';
@@ -98,7 +99,7 @@ export function trialDaysLeft(client: Client, now: Date = new Date()): number {
   if (!client.trialEndsAt) return 0;
   const ms = client.trialEndsAt.getTime() - now.getTime();
   if (ms <= 0) return 0;
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
+  return Math.ceil(ms / MS_IN_DAY);
 }
 
 /** ¿Tiene este cliente acceso a esta feature? Considera el tier efectivo

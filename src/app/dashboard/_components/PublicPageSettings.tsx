@@ -3,6 +3,9 @@
 import { useState, useTransition } from 'react'
 import { upload } from '@vercel/blob/client'
 import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2, Sun, Moon } from 'lucide-react'
+import { BRAND_TERRACOTA_HEX, PUBLIC_PWA_THEME } from '@/lib/brand-hex'
+import FormGrid from './FormGrid'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // PublicPageSettings — editor de la app/página pública del barbero.
@@ -30,7 +33,7 @@ interface Props {
   initial: PublicPageInitial
 }
 
-const SITE_ORIGIN = 'https://otracita.es'
+import { SITE_ORIGIN } from '@/lib/site'
 
 export default function PublicPageSettings({ initial }: Props) {
   const [slug, setSlug] = useState(initial.slug || '')
@@ -38,7 +41,7 @@ export default function PublicPageSettings({ initial }: Props) {
   const [brandLogoUrl, setBrandLogoUrl] = useState(initial.brandLogoUrl || '')
   const [brandLogoAltUrl, setBrandLogoAltUrl] = useState(initial.brandLogoAltUrl || '')
   const [brandCoverUrl, setBrandCoverUrl] = useState(initial.brandCoverUrl || '')
-  const [brandColor, setBrandColor] = useState(initial.brandColor || '#C9653C')
+  const [brandColor, setBrandColor] = useState(initial.brandColor || BRAND_TERRACOTA_HEX)
   const [brandTheme, setBrandTheme] = useState<'light' | 'dark'>(
     initial.brandTheme === 'dark' ? 'dark' : 'light',
   )
@@ -59,7 +62,7 @@ export default function PublicPageSettings({ initial }: Props) {
     try {
       await navigator.clipboard.writeText(publicUrl)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => setCopied(false), FEEDBACK_MS.copied)
     } catch {
       /* ignore */
     }
@@ -96,7 +99,7 @@ export default function PublicPageSettings({ initial }: Props) {
         // Server may have tweaked the slug to avoid collisions — adopt.
         if (data.slug) setSlug(data.slug)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2500)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
         setError('Error de red')
       }
@@ -174,7 +177,7 @@ export default function PublicPageSettings({ initial }: Props) {
       {/* Branding: upload de logo + portada. Guardamos en Vercel Blob y el
           URL devuelta se pega en el input. El barbero también puede pegar
           una URL directa (p.ej. la de su web) si prefiere no subir. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <ImageUpload
           label="Logo"
           kind="logo"
@@ -191,7 +194,7 @@ export default function PublicPageSettings({ initial }: Props) {
           hint="Imagen ancha para la cabecera (ej. interior del local)."
           aspect="wide"
         />
-      </div>
+      </FormGrid>
 
       {/* Logo alternativo para fondo oscuro — solo se usa si tu color
           principal es oscuro (negro, navy, burdeos). Si no lo subes,
@@ -219,16 +222,16 @@ export default function PublicPageSettings({ initial }: Props) {
               icon={Sun}
               active={brandTheme === 'light'}
               onClick={() => setBrandTheme('light')}
-              previewBg="#FAFAF7"
-              previewInk="#0F0F0F"
+              previewBg={PUBLIC_PWA_THEME.light.bg}
+              previewInk={PUBLIC_PWA_THEME.light.ink}
             />
             <ThemeOption
               label="Oscuro"
               icon={Moon}
               active={brandTheme === 'dark'}
               onClick={() => setBrandTheme('dark')}
-              previewBg="#18181C"
-              previewInk="#FAFAFA"
+              previewBg={PUBLIC_PWA_THEME.dark.bg}
+              previewInk={PUBLIC_PWA_THEME.dark.ink}
             />
           </div>
           <p className="text-xs text-ink-3 mt-2">
@@ -257,7 +260,11 @@ export default function PublicPageSettings({ initial }: Props) {
             <div className="flex gap-1.5 shrink-0">
               <div
                 className="h-12 w-12 rounded-lg flex items-center justify-center text-[10px] font-bold"
-                style={{ background: '#FAFAF7', color: '#0F0F0F', border: '1px solid #E5E7EB' }}
+                style={{
+                  background: PUBLIC_PWA_THEME.light.bg,
+                  color: PUBLIC_PWA_THEME.light.ink,
+                  border: `1px solid ${PUBLIC_PWA_THEME.light.border}`,
+                }}
                 title="Preview en tema claro"
               >
                 <span
@@ -267,7 +274,7 @@ export default function PublicPageSettings({ initial }: Props) {
               </div>
               <div
                 className="h-12 w-12 rounded-lg flex items-center justify-center text-[10px] font-bold"
-                style={{ background: '#18181C', color: '#FAFAFA' }}
+                style={{ background: PUBLIC_PWA_THEME.dark.bg, color: PUBLIC_PWA_THEME.dark.ink }}
                 title="Preview en tema oscuro"
               >
                 <span
@@ -293,12 +300,12 @@ export default function PublicPageSettings({ initial }: Props) {
         <p className="text-xs text-ink-3">{publicDescription.length}/600</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <Field label="Instagram (sin @)" value={instagramHandle} onChange={setInstagramHandle} placeholder="mi_barberia" />
         <Field label="TikTok (sin @)" value={tiktokHandle} onChange={setTiktokHandle} placeholder="mi_barberia" />
         <Field label="Facebook (URL)" value={facebookUrl} onChange={setFacebookUrl} placeholder="https://facebook.com/..." />
         <Field label="Web externa" value={websiteUrl} onChange={setWebsiteUrl} placeholder="https://mi-barberia.com" />
-      </div>
+      </FormGrid>
 
       <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
         {saved && (
@@ -445,7 +452,7 @@ function ImageUpload({
         className={`relative border border-line rounded-lg overflow-hidden ${
           aspect === 'square' ? 'aspect-square max-w-[180px]' : 'aspect-[16/6]'
         } flex items-center justify-center ${darkPreview ? '' : 'bg-overlay'}`}
-        style={darkPreview ? { background: '#0A0A0B' } : undefined}
+        style={darkPreview ? { background: PUBLIC_PWA_THEME.dark.editorPreviewBg } : undefined}
       >
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element

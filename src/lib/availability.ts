@@ -12,6 +12,7 @@ import {
   type HoursForDay,
   type WeeklyHours,
 } from '@/lib/availability-hours';
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // Re-export the pure hours/parsing surface so existing server callers keep
 // their `@/lib/availability` import path. The implementations live in the
@@ -110,7 +111,7 @@ export async function getAvailableSlotsFromDB(
 
   // Guard: date must be inside the horizon window. Older callers pre-filter
   // the date picker so this rarely fires, but belt-and-braces.
-  const todayMadrid = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const todayMadrid = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
   if (date < todayMadrid) return [];
   const horizonDate = new Date(`${todayMadrid}T00:00:00Z`);
   horizonDate.setUTCDate(horizonDate.getUTCDate() + maxBookingHorizonDays);
@@ -179,7 +180,7 @@ export async function getAvailableSlotsFromDB(
   let leadCutoff = -Infinity;
   if (date === todayMadrid) {
     const nowMadrid = new Date().toLocaleTimeString('en-GB', {
-      timeZone: 'Europe/Madrid',
+      timeZone: BUSINESS_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,

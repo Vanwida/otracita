@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { clients, subscriptions } from '@/db/schema';
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { CreditCard, AlertTriangle, Clock, TrendingUp } from 'lucide-react';
+import { MS_IN_DAY } from '@/lib/time';
 import {
   PageHeader,
   Section,
@@ -366,7 +367,7 @@ export default async function AdminBillingPage() {
               <tbody className={TABLE_BODY}>
                 {trialsExpiringSoon.map((r) => {
                   const daysLeft = r.trialEndsAt
-                    ? Math.ceil((r.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                    ? Math.ceil((r.trialEndsAt.getTime() - now.getTime()) / MS_IN_DAY)
                     : 0;
                   const tone: Tone = daysLeft <= 2 ? 'danger' : daysLeft <= 4 ? 'warning' : 'info';
                   return (

@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { barbers as barbersTable, bookings, productSales, ratings, tips } from '@/db/schema'
 import { sql } from 'drizzle-orm'
 import { Wallet, Receipt, CalendarCheck, Heart, Star, User, ShoppingBag, Trophy } from 'lucide-react'
+import DataTable, { type Column } from '@/app/dashboard/_components/DataTable'
 
 // -----------------------------------------------------------------------------
 // BarberBreakdown — desglose de la actividad financiera por barbero.
@@ -233,105 +234,181 @@ export default async function BarberBreakdown({
         <p className="text-xs text-ink-3 mt-0.5">{subtitle}</p>
       </header>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-overlay border-b border-line">
-            <tr className="text-left">
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest">Barbero</th>
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-center">
-                <CalendarCheck className="h-3 w-3 inline-block mr-1" />Servicios
-              </th>
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right">
-                <Wallet className="h-3 w-3 inline-block mr-1" />Facturado
-              </th>
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right hidden sm:table-cell">
-                <Receipt className="h-3 w-3 inline-block mr-1" />Ticket
-              </th>
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right hidden lg:table-cell">
-                <ShoppingBag className="h-3 w-3 inline-block mr-1" />Upsells
-              </th>
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-right hidden md:table-cell">
-                <Heart className="h-3 w-3 inline-block mr-1" />Propinas
-              </th>
-              <th className="px-4 py-2.5 font-semibold text-ink-2 text-[11px] uppercase tracking-widest text-center hidden md:table-cell">
-                <Star className="h-3 w-3 inline-block mr-1" />Nota
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {rows.map((r) => {
-              const billed = Number(r.billed_eur)
-              const tickets = r.completed_count
-              const ticketMedio = tickets > 0 ? billed / tickets : 0
-              const tipsEur = Number(r.tips_cents) / 100
-              const sharePct = grandTotalEur > 0 ? Math.round((billed / grandTotalEur) * 100) : 0
-              const isUnassigned = r.barber_key === '__unassigned__'
-              const isTop = topBarberKey === r.barber_key
-              return (
-                <tr key={r.barber_key} className="hover:bg-canvas/40 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`h-7 w-7 rounded-full flex items-center justify-center shrink-0 ${
-                        isUnassigned ? 'bg-overlay text-ink-3' : 'bg-brand-softer text-brand-strong'
-                      }`}>
-                        <User className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-medium text-ink truncate">{r.barber_name}</p>
-                          {isTop && (
-                            <span className="inline-flex items-center gap-0.5 shrink-0 rounded-full border border-brand/30 bg-brand-softer px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-brand-strong">
-                              <Trophy className="h-2.5 w-2.5" aria-hidden="true" />
-                              Top
-                            </span>
-                          )}
-                        </div>
-                        {r.active === false && (
-                          <span className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Inactivo</span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-center text-ink tabular-nums">{tickets}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    <span className="text-ink font-medium">{billed.toFixed(0)} €</span>
-                    {sharePct > 0 && (
-                      <span className="block text-[10px] text-ink-3">{sharePct}% del total</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-ink-2 tabular-nums hidden sm:table-cell">
-                    {tickets > 0 ? `${ticketMedio.toFixed(2)} €` : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right text-ink-2 tabular-nums hidden lg:table-cell">
-                    {Number(r.upsells_cents) > 0 ? (
-                      <>
-                        <span className="text-ink">{(Number(r.upsells_cents) / 100).toFixed(2)} €</span>
-                        <span className="block text-[10px] text-ink-3">{r.upsells_count} {r.upsells_count === 1 ? 'venta' : 'ventas'}</span>
-                      </>
-                    ) : (
-                      <span className="text-ink-3">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-ink-2 tabular-nums hidden md:table-cell">
-                    {tipsEur > 0 ? `${tipsEur.toFixed(2)} €` : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-center hidden md:table-cell">
-                    {r.avg_rating !== null ? (
-                      <span className="inline-flex items-center gap-1 text-ink">
-                        <Star className="h-3 w-3 text-warning fill-warning" />
-                        <span className="tabular-nums">{r.avg_rating.toFixed(1)}</span>
-                        <span className="text-[10px] text-ink-3">({r.rating_count})</span>
-                      </span>
-                    ) : (
-                      <span className="text-ink-3">—</span>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* DataTable — chrome canónico (sticky head, zebra/hover por tokens).
+          Las columnas Ticket / Upsells / Propinas / Nota se ocultan en
+          breakpoints más bajos vía `column.className` ("hidden md:table-cell"
+          etc) — patrón canónico documentado en DataTable JSDoc. */}
+      <DataTable<BarberRow>
+        ariaLabel={title}
+        rows={rows}
+        rowKey={(r) => r.barber_key}
+        columns={barberColumns({ topBarberKey, grandTotalEur })}
+      />
     </section>
   )
+}
+
+// Builder de columnas — necesita `topBarberKey` (badge "Top") y
+// `grandTotalEur` (calcular % share). Fuera del JSX para que `DataTable`
+// reciba un array tipado sin closures pesados inline.
+function barberColumns({
+  topBarberKey,
+  grandTotalEur,
+}: {
+  topBarberKey: string | null
+  grandTotalEur: number
+}): Column<BarberRow>[] {
+  return [
+    {
+      key: 'barber',
+      header: 'Barbero',
+      cell: (r) => {
+        const isUnassigned = r.barber_key === '__unassigned__'
+        const isTop = topBarberKey === r.barber_key
+        return (
+          <div className="flex items-center gap-2">
+            <div
+              className={`h-7 w-7 rounded-full flex items-center justify-center shrink-0 ${
+                isUnassigned ? 'bg-overlay text-ink-3' : 'bg-brand-softer text-brand-strong'
+              }`}
+            >
+              <User className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-medium text-ink truncate">{r.barber_name}</p>
+                {isTop && (
+                  <span className="inline-flex items-center gap-0.5 shrink-0 rounded-full border border-brand/30 bg-brand-softer px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-brand-strong">
+                    <Trophy className="h-2.5 w-2.5" aria-hidden="true" />
+                    Top
+                  </span>
+                )}
+              </div>
+              {r.active === false && (
+                <span className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Inactivo</span>
+              )}
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'tickets',
+      header: (
+        <span>
+          <CalendarCheck className="h-3 w-3 inline-block mr-1" />
+          Servicios
+        </span>
+      ),
+      align: 'center',
+      numeric: true,
+      cell: (r) => <span className="text-ink">{r.completed_count}</span>,
+    },
+    {
+      key: 'billed',
+      header: (
+        <span>
+          <Wallet className="h-3 w-3 inline-block mr-1" />
+          Facturado
+        </span>
+      ),
+      align: 'right',
+      numeric: true,
+      cell: (r) => {
+        const billed = Number(r.billed_eur)
+        const sharePct = grandTotalEur > 0 ? Math.round((billed / grandTotalEur) * 100) : 0
+        return (
+          <>
+            <span className="text-ink font-medium">{billed.toFixed(0)} €</span>
+            {sharePct > 0 && (
+              <span className="block text-[10px] text-ink-3">{sharePct}% del total</span>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      key: 'ticketMedio',
+      className: 'hidden sm:table-cell',
+      header: (
+        <span>
+          <Receipt className="h-3 w-3 inline-block mr-1" />
+          Ticket
+        </span>
+      ),
+      align: 'right',
+      numeric: true,
+      cell: (r) => {
+        const billed = Number(r.billed_eur)
+        const tickets = r.completed_count
+        const medio = tickets > 0 ? billed / tickets : 0
+        return (
+          <span className="text-ink-2">{tickets > 0 ? `${medio.toFixed(2)} €` : '—'}</span>
+        )
+      },
+    },
+    {
+      key: 'upsells',
+      className: 'hidden lg:table-cell',
+      header: (
+        <span>
+          <ShoppingBag className="h-3 w-3 inline-block mr-1" />
+          Upsells
+        </span>
+      ),
+      align: 'right',
+      numeric: true,
+      cell: (r) => {
+        const cents = Number(r.upsells_cents)
+        if (cents === 0) return <span className="text-ink-3">—</span>
+        return (
+          <>
+            <span className="text-ink">{(cents / 100).toFixed(2)} €</span>
+            <span className="block text-[10px] text-ink-3">
+              {r.upsells_count} {r.upsells_count === 1 ? 'venta' : 'ventas'}
+            </span>
+          </>
+        )
+      },
+    },
+    {
+      key: 'tips',
+      className: 'hidden md:table-cell',
+      header: (
+        <span>
+          <Heart className="h-3 w-3 inline-block mr-1" />
+          Propinas
+        </span>
+      ),
+      align: 'right',
+      numeric: true,
+      cell: (r) => {
+        const tipsEur = Number(r.tips_cents) / 100
+        return (
+          <span className="text-ink-2">{tipsEur > 0 ? `${tipsEur.toFixed(2)} €` : '—'}</span>
+        )
+      },
+    },
+    {
+      key: 'rating',
+      className: 'hidden md:table-cell',
+      header: (
+        <span>
+          <Star className="h-3 w-3 inline-block mr-1" />
+          Nota
+        </span>
+      ),
+      align: 'center',
+      cell: (r) =>
+        r.avg_rating !== null ? (
+          <span className="inline-flex items-center gap-1 text-ink">
+            <Star className="h-3 w-3 text-warning fill-warning" />
+            <span className="tabular-nums">{r.avg_rating.toFixed(1)}</span>
+            <span className="text-[10px] text-ink-3">({r.rating_count})</span>
+          </span>
+        ) : (
+          <span className="text-ink-3">—</span>
+        ),
+    },
+  ]
 }

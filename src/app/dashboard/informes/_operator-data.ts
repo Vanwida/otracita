@@ -3,6 +3,7 @@ import 'server-only'
 import { db } from '@/db'
 import { bookings, productSales, tips } from '@/db/schema'
 import { sql } from 'drizzle-orm'
+import { MS_IN_DAY } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // _operator-data — agregaciones del Panel del operador (la lectura de 10
@@ -141,12 +142,12 @@ export async function loadOperatorMetrics(
   const prevDays = Math.max(
     1,
     Math.round(
-      (new Date(end).getTime() - new Date(start).getTime()) / 86400000,
+      (new Date(end).getTime() - new Date(start).getTime()) / MS_IN_DAY,
     ),
   )
   const prevEnd = start
   const prevStart = new Date(
-    new Date(start).getTime() - prevDays * 86400000,
+    new Date(start).getTime() - prevDays * MS_IN_DAY,
   )
     .toISOString()
     .slice(0, 10)

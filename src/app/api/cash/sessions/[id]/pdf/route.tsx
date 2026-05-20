@@ -18,6 +18,7 @@ import {
   type MovementKind,
   type PaymentMethod,
 } from '@/lib/cash/compute'
+import { BUSINESS_TIMEZONE } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // GET /api/cash/sessions/[id]/pdf
@@ -33,7 +34,7 @@ export const dynamic = 'force-dynamic'
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('es-ES', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -46,7 +47,7 @@ function formatLongDate(date: Date): string {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   }).format(date)
   return formatted.charAt(0).toUpperCase() + formatted.slice(1)
 }

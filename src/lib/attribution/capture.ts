@@ -2,6 +2,7 @@
 
 import type { Attribution } from './types';
 import { deriveAttribution } from './derive-source';
+import { MS_IN_DAY } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // capture — helpers client-only para guardar/recuperar la atribución en
@@ -21,7 +22,7 @@ import { deriveAttribution } from './derive-source';
 // -----------------------------------------------------------------------------
 
 const STORAGE_KEY = 'otracita_attrib_v1';
-const TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 días
+const TTL_MS = 90 * MS_IN_DAY; // 90 días
 
 interface StoredAttribution extends Attribution {
   v: 1; // versión del schema; bump si cambiamos el shape

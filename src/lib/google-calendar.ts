@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { MS_IN_MINUTE, BUSINESS_TIMEZONE } from '@/lib/time';
 
 // ---------------------------------------------------------------------------
 // Google Calendar client (service account)
@@ -79,7 +80,7 @@ export async function getAvailableSlots(
   let current = new Date(timeMin);
 
   while (current < timeMax) {
-    const slotEnd = new Date(current.getTime() + serviceDuration * 60_000);
+    const slotEnd = new Date(current.getTime() + serviceDuration * MS_IN_MINUTE);
     if (slotEnd > timeMax) break;
 
     const isAvailable = !busyTimes.some(
@@ -90,30 +91,30 @@ export async function getAvailableSlots(
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-      timeZone: 'Europe/Madrid',
+      timeZone: BUSINESS_TIMEZONE,
     });
     const endHour = slotEnd.toLocaleTimeString('es-ES', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-      timeZone: 'Europe/Madrid',
+      timeZone: BUSINESS_TIMEZONE,
     });
 
     slots.push({ start: startHour, end: endHour, available: isAvailable });
 
     // Advance in 30-min increments
-    current = new Date(current.getTime() + 30 * 60_000);
+    current = new Date(current.getTime() + 30 * MS_IN_MINUTE);
   }
 
   const now = new Date();
-  const todayMadrid = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const todayMadrid = now.toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
   const isToday = date === todayMadrid;
 
   if (!isToday) return slots.filter(s => s.available);
 
   // Get current time as HH:MM in Madrid timezone (server runs UTC)
   const nowMadrid = now.toLocaleTimeString('en-GB', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -145,7 +146,7 @@ export async function createBooking(
     const calendar = getCalendarClient();
 
     const startDateTime = new Date(`${date}T${time}:00+02:00`);
-    const endDateTime = new Date(startDateTime.getTime() + serviceDuration * 60_000);
+    const endDateTime = new Date(startDateTime.getTime() + serviceDuration * MS_IN_MINUTE);
 
     const titleParts = [serviceName];
     if (barberName && barberName !== 'Sin preferencia') titleParts.push(barberName);
@@ -164,11 +165,11 @@ export async function createBooking(
         ].filter(Boolean).join('\n'),
         start: {
           dateTime: startDateTime.toISOString(),
-          timeZone: 'Europe/Madrid',
+          timeZone: BUSINESS_TIMEZONE,
         },
         end: {
           dateTime: endDateTime.toISOString(),
-          timeZone: 'Europe/Madrid',
+          timeZone: BUSINESS_TIMEZONE,
         },
         colorId: '2', // Green
       },
@@ -208,14 +209,14 @@ export async function deleteCalendarEvent(
 
 /** Today in YYYY-MM-DD (Europe/Madrid) */
 export function getTodayDate(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  return new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
 }
 
 /** Tomorrow in YYYY-MM-DD (Europe/Madrid) */
 export function getTomorrowDate(): string {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  return tomorrow.toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
 }
 
 /** Format a date for display: "Lunes 3 de abril" */
@@ -225,6 +226,6 @@ export function formatDateSpanish(dateStr: string): string {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   });
 }

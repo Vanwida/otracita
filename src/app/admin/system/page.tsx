@@ -18,6 +18,7 @@ import {
 } from '@/db/schema';
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { AlertTriangle, Activity } from 'lucide-react';
+import { MS_IN_DAY } from '@/lib/time';
 import { getRecentAdminActions } from '@/lib/admin/audit';
 import {
   PageHeader,
@@ -71,9 +72,9 @@ const CRONS: CronInfo[] = [
 
 export default async function AdminSystemPage() {
   const now = new Date();
-  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const staleCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const last24h = new Date(now.getTime() - MS_IN_DAY);
+  const last7d = new Date(now.getTime() - 7 * MS_IN_DAY);
+  const staleCutoff = new Date(now.getTime() - 30 * MS_IN_DAY);
 
   const [
     stripeEvent24h,

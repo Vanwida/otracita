@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   MessageCircle,
 } from 'lucide-react'
+import { daysAgo } from '@/lib/time'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButton'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
@@ -435,9 +436,9 @@ function computeStatus(lastBookingAt: Date | null, totalBookings: number): Custo
   if (totalBookings === 0) return 'normal'
   if (totalBookings === 1) return 'nuevo'
   if (!lastBookingAt) return 'inactivo'
-  const daysAgo = Math.floor((Date.now() - lastBookingAt.getTime()) / (1000 * 60 * 60 * 24))
-  if (daysAgo > INACTIVO_DAYS) return 'inactivo'
-  if (daysAgo <= HABITUAL_DAYS) return 'habitual'
+  const days = daysAgo(lastBookingAt)
+  if (days > INACTIVO_DAYS) return 'inactivo'
+  if (days <= HABITUAL_DAYS) return 'habitual'
   return 'normal'
 }
 
@@ -491,7 +492,7 @@ function StatusChip({ status, reputation }: { status: CustomerStatus; reputation
 
 function formatLastVisit(d: Date | null): React.ReactNode {
   if (!d) return <span className="text-ink-3">—</span>
-  const days = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24))
+  const days = daysAgo(d)
   if (days === 0) return 'hoy'
   if (days === 1) return 'ayer'
   if (days < 30) return `hace ${days}d`

@@ -37,10 +37,9 @@ interface Props {
 // y no diverge del cuadre.
 const INCOMING_KINDS = ALL_MOVEMENT_KINDS.filter((k) => isIncoming(k))
 
+import { formatCents as formatCentsBase } from '@/lib/format'
 function formatCents(cents: number): string {
-  const euros = cents / 100
-  if (Number.isInteger(euros)) return `${euros.toLocaleString('es-ES')} €`
-  return `${euros.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  return formatCentsBase(cents, { compact: true })
 }
 
 function descuadreLabel(cents: number): string {
@@ -153,7 +152,7 @@ export default async function CajaRollup({
   const descuadreOk = descuadreTotal === 0 && cierresDescuadre === 0
 
   return (
-    <section className="mb-4 rounded-control border border-line bg-surface overflow-hidden">
+    <section className="mb-4 panel">
       <header
         className="flex items-baseline justify-between gap-3 border-b border-line px-[var(--space-card)] py-3"
         style={{ background: 'var(--table-head-bg)' }}

@@ -14,8 +14,9 @@ import { notifyAlex } from '@/lib/notify-alex';
 import { recordRefundMovement } from '@/lib/cash/record-refund';
 import type Stripe from 'stripe';
 import type { ConnectStatus } from '@/lib/payments';
+import { SITE_URLS } from '@/lib/site';
 
-const ADMIN_URL = 'https://otracita.es/admin';
+const ADMIN_URL = SITE_URLS.admin();
 
 // Stripe retries webhooks aggressively (up to 3 days) whenever we return a
 // non-2xx. We must:

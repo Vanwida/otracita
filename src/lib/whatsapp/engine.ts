@@ -18,6 +18,7 @@ import { getAvailableSlotsFromDB } from '@/lib/availability';
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup';
 import { createBooking as createBookingDb } from '@/lib/bookings/create';
+import { MS_IN_MINUTE, BUSINESS_TIMEZONE } from '@/lib/time';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -239,7 +240,7 @@ async function trackAnalytics(
   field: 'messagesReceived' | 'messagesReplied' | 'bookingsMade' | 'bookingsCancelled'
 ) {
   try {
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
     const todayDate = new Date(`${todayStr}T00:00:00.000Z`);
 
     const [existing] = await db
@@ -1293,7 +1294,7 @@ function getNext7Days(
 ): Array<{ date: string; label: string }> {
   const days: Array<{ date: string; label: string }> = [];
   const now = new Date(
-    new Date().toLocaleString('en-US', { timeZone: 'Europe/Madrid' })
+    new Date().toLocaleString('en-US', { timeZone: BUSINESS_TIMEZONE })
   );
 
   for (let offset = 0; offset < 14 && days.length < 7; offset++) {
@@ -1318,7 +1319,7 @@ function getNext7Days(
     // Build human label
     const weekday = d.toLocaleDateString('es-ES', {
       weekday: 'long',
-      timeZone: 'Europe/Madrid',
+      timeZone: BUSINESS_TIMEZONE,
     });
     const dayNum = d.getDate();
 
@@ -2315,7 +2316,7 @@ async function notifyWaitlist(
   if (currentlyNotified.length > 0) {
     const notifiedEntry = currentlyNotified[0];
     const notifiedAt = notifiedEntry.notifiedAt;
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const thirtyMinAgo = new Date(Date.now() - 30 * MS_IN_MINUTE);
 
     if (notifiedAt && notifiedAt > thirtyMinAgo) {
       // Still within 30-min window — don't notify anyone else yet

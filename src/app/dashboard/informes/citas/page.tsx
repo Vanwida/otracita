@@ -12,6 +12,7 @@ import StatStrip, { type Stat } from '../../_components/StatStrip'
 import DataTable, { type Column } from '../../_components/DataTable'
 import ReportLayout from '../_components/ReportLayout'
 import { CITAS_RAIL } from '../_components/report-rail-config'
+import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -40,10 +41,9 @@ interface NoShowClientRow {
   cancellations: number
 }
 
+import { formatCents as formatCentsBase } from '@/lib/format'
 function formatCents(cents: number): string {
-  const euros = cents / 100
-  if (Number.isInteger(euros)) return `${euros.toLocaleString('es-ES')} €`
-  return `${euros.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  return formatCentsBase(cents, { compact: true })
 }
 
 const STATUS_META: Record<
@@ -258,24 +258,11 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
       <AreaContent scroll="region" maxWidth="7xl">
         {!hasData ? (
           <div className="flex flex-1 items-center justify-center py-16">
-            <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-line bg-overlay">
-                <CalendarCheck
-                  className="h-5 w-5 text-ink-2"
-                  aria-hidden="true"
-                />
-              </div>
-              <h2
-                className="font-semibold text-ink"
-                style={{ fontSize: 'var(--text-section-title)' }}
-              >
-                Sin datos en este periodo
-              </h2>
-              <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-ink-2">
-                No hay citas registradas en este {periodLabel}. Prueba otro
-                periodo arriba a la derecha.
-              </p>
-            </div>
+            <EmptyState
+              icon={CalendarCheck}
+              title="Sin datos en este periodo"
+              description={`No hay citas registradas en este ${periodLabel}. Prueba otro periodo arriba a la derecha.`}
+            />
           </div>
         ) : (
           <ReportLayout rail={CITAS_RAIL}>
@@ -286,7 +273,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Citas por estado. */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -329,7 +316,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
               </section>
 
               {/* Clientes con más no-shows. */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -354,7 +341,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
 
             {/* Evolución mensual de citas completadas. */}
             {monthly.length >= 2 && (
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header className="flex items-baseline justify-between gap-3 border-b border-line px-[var(--space-card)] py-3">
                   <h2 className="text-[0.8125rem] font-semibold text-ink">
                     Citas completadas por mes

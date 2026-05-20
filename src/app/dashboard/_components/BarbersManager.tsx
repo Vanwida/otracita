@@ -291,9 +291,13 @@ export default function BarbersManager({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 gap-4">
+      {/* Master-detail: en mobile (<md) stackean (master arriba, detail
+          debajo); en md+ master fijo a la izquierda 288px, detail flex-1.
+          El min-h-0 desktop se reemplaza por min-h-0 md:min-h-0 (idem) +
+          flex-col md:flex-row para el wrap. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         {/* ── Master: lista buscable del equipo ──────────────────────────── */}
-        <div className="flex w-72 shrink-0 flex-col rounded-control border border-line bg-surface">
+        <div className="flex w-full shrink-0 flex-col rounded-control border border-line bg-surface md:w-72 md:max-h-none max-h-[40vh]">
           <div className="border-b border-line p-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />

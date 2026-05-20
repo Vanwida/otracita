@@ -2,6 +2,7 @@ import { createHash, randomInt } from 'node:crypto'
 import { db } from '@/db'
 import { appOtpCodes } from '@/db/schema'
 import { and, eq, gt, isNull } from 'drizzle-orm'
+import { MS_IN_MINUTE } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // OTP helpers for PWA login. Codes are 6 digits, 10-minute lifetime, stored
@@ -27,7 +28,7 @@ export async function storeCode(opts: {
   clientId: string
   code: string
 }): Promise<void> {
-  const expiresAt = new Date(Date.now() + OTP_LIFETIME_MINUTES * 60 * 1000)
+  const expiresAt = new Date(Date.now() + OTP_LIFETIME_MINUTES * MS_IN_MINUTE)
   await db.insert(appOtpCodes).values({
     phone: opts.phone,
     clientId: opts.clientId,

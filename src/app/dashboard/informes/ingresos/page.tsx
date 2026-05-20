@@ -12,6 +12,7 @@ import DataTable, { type Column } from '../../_components/DataTable'
 import ReportLayout from '../_components/ReportLayout'
 import { INGRESOS_RAIL } from '../_components/report-rail-config'
 import BarberBreakdown from '../../caja/BarberBreakdown'
+import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -43,10 +44,9 @@ interface ProductRow {
   cents: number
 }
 
+import { formatCents as formatCentsBase } from '@/lib/format'
 function formatCents(cents: number): string {
-  const euros = cents / 100
-  if (Number.isInteger(euros)) return `${euros.toLocaleString('es-ES')} €`
-  return `${euros.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  return formatCentsBase(cents, { compact: true })
 }
 
 export default async function InformesIngresosPage({ searchParams }: PageProps) {
@@ -253,26 +253,16 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
       <AreaContent scroll="region" maxWidth="7xl">
         {!hasData ? (
           <div className="flex flex-1 items-center justify-center py-16">
-            <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-line bg-overlay">
-                <Wallet className="h-5 w-5 text-ink-2" aria-hidden="true" />
-              </div>
-              <h2
-                className="font-semibold text-ink"
-                style={{ fontSize: 'var(--text-section-title)' }}
-              >
-                Sin datos en este periodo
-              </h2>
-              <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-ink-2">
-                No hay ingresos registrados en este {periodLabel}. Prueba otro
-                periodo arriba a la derecha.
-              </p>
-            </div>
+            <EmptyState
+              icon={Wallet}
+              title="Sin datos en este periodo"
+              description={`No hay ingresos registrados en este ${periodLabel}. Prueba otro periodo arriba a la derecha.`}
+            />
           </div>
         ) : (
           <ReportLayout rail={INGRESOS_RAIL}>
             {/* Ingreso por tipo de venta. */}
-            <section className="rounded-control border border-line bg-surface overflow-hidden">
+            <section className="panel">
               <header
                 className="border-b border-line px-[var(--space-card)] py-3"
                 style={{ background: 'var(--table-head-bg)' }}
@@ -320,7 +310,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Ventas por servicio (top 10). */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -342,7 +332,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
               </section>
 
               {/* Ventas por producto. */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -380,7 +370,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
 
             {/* Evolución mensual de ingresos por servicios. */}
             {monthly.length >= 2 && (
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header className="flex items-baseline justify-between gap-3 border-b border-line px-[var(--space-card)] py-3">
                   <h2 className="text-[0.8125rem] font-semibold text-ink">
                     Evolución mensual

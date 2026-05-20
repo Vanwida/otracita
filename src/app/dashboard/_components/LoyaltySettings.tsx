@@ -3,6 +3,8 @@
 import { useState, useTransition } from 'react'
 import { Gift, Check, Loader2, Plus, X, Info } from 'lucide-react'
 import DropdownMenu from '@/components/DropdownMenu'
+import FormGrid from './FormGrid'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 import type {
   LoyaltyConfig,
   LoyaltyPointsConfig,
@@ -80,7 +82,7 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
           return
         }
         setSaved(true)
-        setTimeout(() => setSaved(false), 2500)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
         setError('Error de red')
       }
@@ -119,7 +121,7 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
         <legend className="text-xs uppercase tracking-widest font-bold text-ink-3 mb-3">
           Sistema
         </legend>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <FormGrid cols={2} gap="tight" className="mb-6">
           <ModeCard
             active={mode === 'stamps'}
             onSelect={() => setMode('stamps')}
@@ -132,7 +134,7 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
             title="Puntos por euro"
             hint="1 € gastado = X puntos, canjeables por descuento o servicio"
           />
-        </div>
+        </FormGrid>
 
         {/* Config específico del modo */}
         {mode === 'stamps' ? (

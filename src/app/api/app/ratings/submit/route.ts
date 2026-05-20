@@ -3,6 +3,7 @@ import { appUsers, bookings, clients } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { getAppSession } from '@/lib/app-auth/session'
 import { recordRating } from '@/lib/tips'
+import { MS_IN_MINUTE, BUSINESS_TIMEZONE } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // POST /api/app/ratings/submit
@@ -123,7 +124,7 @@ function bookingEndsAt(date: string, time: string, duration: number): Date {
   //
   // Solución: convertir wall clock de Madrid → instante UTC correctamente
   // teniendo en cuenta DST (CET = UTC+1, CEST = UTC+2) usando Intl.
-  return new Date(madridWallClockToUtcMs(date, time) + duration * 60_000)
+  return new Date(madridWallClockToUtcMs(date, time) + duration * MS_IN_MINUTE)
 }
 
 /**
@@ -140,7 +141,7 @@ function madridWallClockToUtcMs(date: string, time: string): number {
   const naiveUtc = Date.UTC(y, (mo ?? 1) - 1, d ?? 1, h ?? 0, m ?? 0)
 
   const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

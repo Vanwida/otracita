@@ -6,6 +6,8 @@ import type { LucideIcon } from 'lucide-react'
 import ServicesManager from './ServicesManager'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import BlockedDatesManager from './BlockedDatesManager'
+import FormGrid from './FormGrid'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 interface ServiceItem {
   name: string
@@ -109,7 +111,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
     startTransition(async () => {
       await save(formData)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
     })
   }
 
@@ -170,7 +172,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
               <p className="text-sm text-ink-2 mt-1">Los datos que el bot usa para presentarse a tus clientes.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormGrid cols={2}>
               <Field
                 name="businessName"
                 label="Nombre del negocio"
@@ -185,7 +187,7 @@ export default function NegocioForm({ clientId, initial, save }: Props) {
                 placeholder="+34 600 123 456"
                 required
               />
-            </div>
+            </FormGrid>
 
             <Field
               name="address"

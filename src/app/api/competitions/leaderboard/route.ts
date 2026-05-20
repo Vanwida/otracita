@@ -11,6 +11,7 @@ import {
   streakBonusFor,
   type BarberMetricRow,
 } from '@/lib/competitions/leaderboard'
+import { BUSINESS_TIMEZONE } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // /api/competitions/leaderboard?competitionId=&week=YYYY-MM-DD  (R10)
@@ -29,7 +30,7 @@ import {
 // -----------------------------------------------------------------------------
 
 function todayMadrid(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  return new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
 }
 
 export async function GET(request: Request) {

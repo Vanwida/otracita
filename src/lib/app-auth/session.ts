@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { db } from '@/db'
 import { appSessions, appUsers } from '@/db/schema'
 import { and, eq, gt } from 'drizzle-orm'
+import { MS_IN_DAY } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // PWA customer sessions.
@@ -40,7 +41,7 @@ export async function issueAppSession(opts: {
   userAgent?: string | null
 }): Promise<string> {
   const { token, tokenHash } = createSessionToken()
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000)
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * MS_IN_DAY)
 
   await db.insert(appSessions).values({
     userId: opts.userId,

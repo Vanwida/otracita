@@ -1,6 +1,7 @@
 import { Wallet, CalendarCheck, Receipt, Users, Scissors, ShoppingBag, Heart, TrendingUp } from 'lucide-react'
 import StatStrip, { type Stat } from '../_components/StatStrip'
 import { computeTrend } from '../_components/KpiCard'
+import EmptyState from '../_components/EmptyState'
 import { loadOperatorMetrics } from './_operator-data'
 
 // -----------------------------------------------------------------------------
@@ -28,10 +29,9 @@ interface Props {
   monthLabel: string
 }
 
+import { formatCents as formatCentsBase } from '@/lib/format'
 function formatCents(cents: number): string {
-  const euros = cents / 100
-  if (Number.isInteger(euros)) return `${euros.toLocaleString('es-ES')} €`
-  return `${euros.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  return formatCentsBase(cents, { compact: true })
 }
 
 // Sparkline — mismo lenguaje visual que el de FinanzasClient (stroke
@@ -93,21 +93,11 @@ export default async function OperatorPanel({
   if (!hasActivity) {
     return (
       <div className="flex flex-1 items-center justify-center py-16">
-        <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-line bg-overlay">
-            <TrendingUp className="h-5 w-5 text-ink-2" aria-hidden="true" />
-          </div>
-          <h2
-            className="font-semibold text-ink"
-            style={{ fontSize: 'var(--text-section-title)' }}
-          >
-            Sin datos en este periodo
-          </h2>
-          <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-ink-2">
-            No hay citas ni ingresos en {monthLabel}. Cambia de mes con las
-            flechas del Detalle financiero o espera a las primeras citas.
-          </p>
-        </div>
+        <EmptyState
+          icon={TrendingUp}
+          title="Sin datos en este periodo"
+          description={`No hay citas ni ingresos en ${monthLabel}. Cambia de mes con las flechas del Detalle financiero o espera a las primeras citas.`}
+        />
       </div>
     )
   }
@@ -176,7 +166,7 @@ export default async function OperatorPanel({
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Ingresos por tipo. */}
-        <section className="rounded-control border border-line bg-surface overflow-hidden">
+        <section className="panel">
           <header
             className="border-b border-line px-[var(--space-card)] py-3"
             style={{ background: 'var(--table-head-bg)' }}
@@ -223,7 +213,7 @@ export default async function OperatorPanel({
         </section>
 
         {/* Citas por estado. */}
-        <section className="rounded-control border border-line bg-surface overflow-hidden">
+        <section className="panel">
           <header
             className="border-b border-line px-[var(--space-card)] py-3"
             style={{ background: 'var(--table-head-bg)' }}
@@ -267,7 +257,7 @@ export default async function OperatorPanel({
 
       {/* Evolución de ingresos por servicios — últimos 12 meses. */}
       {m.trend.length >= 2 && (
-        <section className="rounded-control border border-line bg-surface overflow-hidden">
+        <section className="panel">
           <header className="flex items-baseline justify-between gap-3 border-b border-line px-[var(--space-card)] py-3">
             <h2 className="text-[0.8125rem] font-semibold text-ink">
               Evolución de ingresos

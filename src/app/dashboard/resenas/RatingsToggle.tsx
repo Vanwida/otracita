@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { Star, Check, Loader2 } from 'lucide-react'
 import NumberInput from '../_components/NumberInput'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // Card de configuración del flow post-servicio:
@@ -52,7 +53,7 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
           setSavedDelay(payload.followupMinutesAfter)
         }
         setSavedTag(tag)
-        setTimeout(() => setSavedTag(null), 2000)
+        setTimeout(() => setSavedTag(null), FEEDBACK_MS.copied)
       } catch {
         setError('Error de red')
       }

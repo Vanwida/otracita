@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { Wordmark } from '@/components/brand'
+import { SITE_ORIGIN, SITE_URLS } from '@/lib/site'
 
 // -----------------------------------------------------------------------------
 // /legal/verifactu — Declaración Responsable pública del SIF otracita conforme
@@ -56,9 +57,9 @@ const PRODUCTOR = {
   telefono: '[PENDIENTE: teléfono]',
   email: 'hola@otracita.es',
   marcaComercial: 'AI Studios (Vanwida)',
-  sitioWeb: 'https://otracita.es',
-  urlProducto: 'https://otracita.es',
-  urlHistoricoDR: 'https://otracita.es/legal/verifactu/historico',
+  sitioWeb: SITE_ORIGIN,
+  urlProducto: SITE_ORIGIN,
+  urlHistoricoDR: SITE_URLS.legalVerifactuHistorico(),
 }
 
 // ─── Fecha y lugar de suscripción (1.l) ─────────────────────────────────────

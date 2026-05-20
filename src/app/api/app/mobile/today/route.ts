@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { bookings } from '@/db/schema'
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import { requireMobileAuth, mobileAuthErrorResponse } from '@/lib/auth/mobile-session'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // GET /api/app/mobile/today
@@ -18,9 +19,9 @@ export async function GET(req: Request) {
   if (!auth.ok) return mobileAuthErrorResponse(auth)
   const { client } = auth
 
-  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
   const dayBeforeYesterdayStr = new Date(Date.now() - 2 * 86_400_000).toLocaleDateString('en-CA', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   })
 
   const rows = await db

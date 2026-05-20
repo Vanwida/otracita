@@ -7,6 +7,7 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 import { findEligibleCustomers } from '@/lib/promos/eligible-customers'
 import { resolveWindow, type WindowPreset } from '@/lib/promos/detect-gaps'
 import { DISCOUNT_STOPS } from '@/lib/promos/defaults'
+import { publicPagePath } from '@/lib/site'
 
 // -----------------------------------------------------------------------------
 // POST /api/promos/send
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
       push: {
         title: `Promo en ${client.businessName}`,
         body: message,
-        url: client.publicSlug ? `/b/${client.publicSlug}` : '/',
+        url: client.publicSlug ? publicPagePath(client.publicSlug) : '/',
         tag: `promo-${Date.now()}`,
         data: { kind: 'promo', discountPct },
       },

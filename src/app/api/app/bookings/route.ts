@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { bookings, clients } from '@/db/schema'
 import { and, desc, eq } from 'drizzle-orm'
 import { getAppSession } from '@/lib/app-auth/session'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // GET /api/app/bookings?slug=...
@@ -64,7 +65,7 @@ export async function GET(req: Request) {
     )
     .orderBy(desc(bookings.date), desc(bookings.time))
 
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
   const upcoming: Row[] = []
   const past: Row[] = []
   for (const r of rows) {

@@ -12,6 +12,7 @@ import type { BookingServiceLine } from '@/lib/bookings/duration'
 // /api/invoices/from-booking). Este endpoint solo registra la venta.
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // POST /api/pos/sale — venta de mostrador (TPV "Nueva venta", patrón Booksy).
@@ -81,9 +82,9 @@ function walkInPhone(): string {
 
 function nowMadridParts(): { date: string; time: string } {
   const now = new Date()
-  const date = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const date = now.toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
   const time = now.toLocaleTimeString('en-GB', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

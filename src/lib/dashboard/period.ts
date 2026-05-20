@@ -19,6 +19,8 @@
 // Pure: sin DB ni I/O. Testeable con node --test.
 // -----------------------------------------------------------------------------
 
+import { MS_IN_DAY } from '../time.ts';
+
 export interface PeriodOption {
   key: Period;
   label: string;
@@ -52,7 +54,7 @@ export function getPeriodStart(period: Period, now: Date): Date | null {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }
   if (period === 'week') {
-    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return new Date(now.getTime() - 7 * MS_IN_DAY);
   }
   if (period === 'month') {
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -108,10 +110,10 @@ export function getPreviousPeriod(
 
   if (period === 'day') {
     prevEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    prevStart = new Date(prevEnd.getTime() - 24 * 60 * 60 * 1000);
+    prevStart = new Date(prevEnd.getTime() - MS_IN_DAY);
   } else if (period === 'week') {
-    prevEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+    prevEnd = new Date(now.getTime() - 7 * MS_IN_DAY);
+    prevStart = new Date(prevEnd.getTime() - 7 * MS_IN_DAY);
   } else if (period === 'year') {
     prevStart = new Date(now.getFullYear() - 1, 0, 1);
     prevEnd = new Date(now.getFullYear(), 0, 1);

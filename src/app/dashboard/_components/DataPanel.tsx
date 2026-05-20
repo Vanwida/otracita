@@ -40,7 +40,7 @@ export default function DataPanel({
 }: Props) {
   return (
     <section
-      className={`flex flex-col rounded-control border border-line bg-surface overflow-hidden ${className}`}
+      className={`flex flex-col panel ${className}`}
     >
       <header
         className="flex items-start justify-between gap-3 border-b border-line px-[var(--space-card)] py-3"

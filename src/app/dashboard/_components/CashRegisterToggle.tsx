@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Banknote, Loader2, Check } from 'lucide-react'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // CashRegisterToggle — switch opt-in del control de caja efectivo.
@@ -45,7 +46,7 @@ export default function CashRegisterToggle({ initialEnabled }: Props) {
       }
       setEnabled(next)
       setSavedFlash(true)
-      setTimeout(() => setSavedFlash(false), 2000)
+      setTimeout(() => setSavedFlash(false), FEEDBACK_MS.copied)
       startTransition(() => router.refresh())
     } catch {
       setError('Error de red')

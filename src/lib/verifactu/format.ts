@@ -5,6 +5,8 @@
 // Cualquier cambio aquí afecta al hash → tests obligatorios.
 // -----------------------------------------------------------------------------
 
+import { BUSINESS_TIMEZONE } from '../time.ts'
+
 /**
  * Formatea una fecha a DD-MM-YYYY según el campo FechaExpedicionFactura AEAT.
  * Se toma siempre en zona horaria Madrid — el negocio opera ahí y AEAT usa
@@ -12,7 +14,7 @@
  */
 export function formatFechaExpedicion(date: Date): string {
   const parts = new Intl.DateTimeFormat('es-ES', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -31,7 +33,7 @@ export function formatFechaExpedicion(date: Date): string {
  */
 export function formatFechaHoraHusoGen(date: Date): string {
   // Obtener offset Madrid para esta fecha concreta (maneja DST).
-  const madridTime = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }))
+  const madridTime = new Date(date.toLocaleString('en-US', { timeZone: BUSINESS_TIMEZONE }))
   const utcTime = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }))
   const offsetMinutes = Math.round((madridTime.getTime() - utcTime.getTime()) / 60000)
   const sign = offsetMinutes >= 0 ? '+' : '-'
@@ -41,7 +43,7 @@ export function formatFechaHoraHusoGen(date: Date): string {
   const offset = `${sign}${hh}:${mm}`
 
   const parts = new Intl.DateTimeFormat('es-ES', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

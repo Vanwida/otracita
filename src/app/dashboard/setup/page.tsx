@@ -6,6 +6,8 @@ import {
   Check, ChevronRight, ChevronLeft, Scissors, ClipboardCheck, Search, Plus, X,
   Store, Users, Clock, Palette, Receipt, Sun, Moon, Shield, Globe, Loader2,
 } from "lucide-react"
+import { BRAND_TERRACOTA_HEX, PUBLIC_PWA_THEME } from "@/lib/brand-hex"
+import FormGrid from "@/app/dashboard/_components/FormGrid"
 
 // -----------------------------------------------------------------------------
 // Setup Wizard — onboarding de un barbero en 6 pasos + revisión.
@@ -74,7 +76,7 @@ export default function SetupPage() {
   const [publicSlug, setPublicSlug] = useState("")
   const [slugEdited, setSlugEdited] = useState(false) // si usuario tocó, no re-generamos
   const [brandTheme, setBrandTheme] = useState<"light" | "dark">("light")
-  const [brandColor, setBrandColor] = useState("#C9653C")
+  const [brandColor, setBrandColor] = useState(BRAND_TERRACOTA_HEX)
   const [publicDescription, setPublicDescription] = useState("")
 
   // Auto-generate slug from business name hasta que el usuario lo edite
@@ -310,12 +312,12 @@ export default function SetupPage() {
             </details>
 
             {/* Form principal */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormGrid cols={2}>
               <InputField label="Nombre del negocio" value={businessName} onChange={setBusinessName} placeholder="Barbería Central" required />
               <InputField label="Tu nombre" value={ownerName} onChange={setOwnerName} placeholder="Carlos García" required />
               <InputField label="Teléfono / WhatsApp" value={phone} onChange={setPhone} placeholder="+34 600 123 456" required />
               <InputField label="Ciudad" value={city} onChange={setCity} placeholder="Barcelona" />
-            </div>
+            </FormGrid>
             <InputField label="Dirección" value={address} onChange={setAddress} placeholder="Calle Gran Vía 123, Barcelona" />
           </div>
         )}
@@ -522,16 +524,16 @@ export default function SetupPage() {
                   icon={Sun}
                   active={brandTheme === "light"}
                   onClick={() => setBrandTheme("light")}
-                  previewBg="#FAFAF7"
-                  previewInk="#0F0F0F"
+                  previewBg={PUBLIC_PWA_THEME.light.bg}
+                  previewInk={PUBLIC_PWA_THEME.light.ink}
                 />
                 <ThemeOption
                   label="Oscuro"
                   icon={Moon}
                   active={brandTheme === "dark"}
                   onClick={() => setBrandTheme("dark")}
-                  previewBg="#18181C"
-                  previewInk="#FAFAFA"
+                  previewBg={PUBLIC_PWA_THEME.dark.bg}
+                  previewInk={PUBLIC_PWA_THEME.dark.ink}
                 />
               </div>
             </div>
@@ -616,10 +618,10 @@ export default function SetupPage() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormGrid cols={2}>
                   <InputField label="Nombre fiscal / razón social" value={fiscalName} onChange={setFiscalName} placeholder="Alejandro Sole / Barbería Central SL" required />
                   <InputField label="NIF / CIF" value={fiscalNif} onChange={setFiscalNif} placeholder="12345678Z" required />
-                </div>
+                </FormGrid>
                 <InputField label="Dirección fiscal" value={fiscalAddress} onChange={setFiscalAddress} placeholder="Calle Gran Vía 123" required />
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <InputField label="Código postal" value={fiscalPostalCode} onChange={setFiscalPostalCode} placeholder="08001" required />

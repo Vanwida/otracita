@@ -13,6 +13,7 @@ import DataTable, { type Column } from '../../_components/DataTable'
 import SourceBreakdown from '../../clientes/SourceBreakdown'
 import ReportLayout from '../_components/ReportLayout'
 import { CLIENTES_RAIL } from '../_components/report-rail-config'
+import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
@@ -54,10 +55,9 @@ interface RiskRow {
   daysSince: number
 }
 
+import { formatCents as formatCentsBase } from '@/lib/format'
 function formatCents(cents: number): string {
-  const euros = cents / 100
-  if (Number.isInteger(euros)) return `${euros.toLocaleString('es-ES')} €`
-  return `${euros.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  return formatCentsBase(cents, { compact: true })
 }
 
 export default async function InformesClientesPage({ searchParams }: PageProps) {
@@ -313,21 +313,11 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
       <AreaContent scroll="region" maxWidth="7xl">
         {!hasData ? (
           <div className="flex flex-1 items-center justify-center py-16">
-            <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-line bg-overlay">
-                <Users className="h-5 w-5 text-ink-2" aria-hidden="true" />
-              </div>
-              <h2
-                className="font-semibold text-ink"
-                style={{ fontSize: 'var(--text-section-title)' }}
-              >
-                Sin datos en este periodo
-              </h2>
-              <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-ink-2">
-                No hay clientes atendidos en este {periodLabel}. Prueba otro
-                periodo arriba a la derecha.
-              </p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="Sin datos en este periodo"
+              description={`No hay clientes atendidos en este ${periodLabel}. Prueba otro periodo arriba a la derecha.`}
+            />
           </div>
         ) : (
           <ReportLayout rail={CLIENTES_RAIL}>
@@ -340,7 +330,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Top clientes por € gastado. */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -362,7 +352,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
               </section>
 
               {/* Clientes en riesgo (cartera). */}
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}
@@ -386,7 +376,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
 
             {/* Nuevos vs habituales. */}
             {mixTotal > 0 && (
-              <section className="rounded-control border border-line bg-surface overflow-hidden">
+              <section className="panel">
                 <header
                   className="border-b border-line px-[var(--space-card)] py-3"
                   style={{ background: 'var(--table-head-bg)' }}

@@ -19,6 +19,19 @@ import type { ReactNode } from 'react'
 // Genérico por filas: el consumidor declara columnas (key, header, align,
 // render, clases responsive de ocultado) y pasa las filas ya resueltas.
 // Server-component-safe — sin estado, sin 'use client'.
+//
+// Patrón responsive (canónico — ver clientes/page.tsx):
+//   1. Columnas secundarias declaran `className: 'hidden md:table-cell'` o
+//      `'hidden sm:table-cell'` según prioridad. En <md desaparecen del thead
+//      y de cada fila — sin estilos rotos, simplemente menos columnas.
+//   2. La columna PRIMARIA renderiza, dentro de su `cell()`, un sub-bloque
+//      `<div className="md:hidden">` que vuelca los datos contextuales que
+//      desaparecieron arriba: importe, fecha, rating, lo que cuente. Así
+//      el barbero en 375px ve la misma info en menos espacio, no info
+//      mutilada.
+//   3. Si la matriz es inherentemente ancha (timegrid, semanal de turnos),
+//      no escondas columnas — envuelve en `<ScrollFade>` y deja al barbero
+//      scrollear con feedback visual.
 // -----------------------------------------------------------------------------
 
 export interface Column<Row> {

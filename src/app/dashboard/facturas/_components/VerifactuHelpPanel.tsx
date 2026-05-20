@@ -7,6 +7,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import VerifactuBadge from './VerifactuBadge'
+import FormGrid from '@/app/dashboard/_components/FormGrid'
 
 // -----------------------------------------------------------------------------
 // VerifactuHelpPanel — panel educativo destacado en /dashboard/facturas.
@@ -45,7 +46,7 @@ export default function VerifactuHelpPanel() {
 
       {/* ─── Tabla Tú / Nosotros ─────────────────────────────────────── */}
       <div className="px-5 md:px-7 py-5 md:py-6 border-t border-line">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
+        <FormGrid cols={2} gap="section">
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="h-7 w-7 rounded-full bg-overlay border border-line flex items-center justify-center">
@@ -83,7 +84,7 @@ export default function VerifactuHelpPanel() {
               <ChecklistItem brand>Rectificativas en 3 clics si te equivocas</ChecklistItem>
             </ul>
           </div>
-        </div>
+        </FormGrid>
       </div>
 
       {/* ─── Colapsables con dudas frecuentes ───────────────────────── */}

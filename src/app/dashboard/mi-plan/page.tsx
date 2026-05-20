@@ -96,7 +96,7 @@ export default async function MiPlanPage() {
       {/* CTA: point users to the NEW feature (facturas a sus clientes) */}
       <Link
         href="/dashboard/facturas"
-        className="group block bg-brand-softer border border-brand/20 rounded-2xl p-5 md:p-6 mb-6 hover:border-brand hover:shadow-[0_8px_30px_rgba(201,101,60,0.08)] transition-all"
+        className="group block bg-brand-softer border border-brand/20 rounded-2xl p-5 md:p-6 mb-6 hover:border-brand hover:shadow-warm-soft transition-all"
       >
         <div className="flex items-start gap-4 flex-wrap">
           <div className="h-12 w-12 rounded-xl bg-brand border border-brand flex items-center justify-center shrink-0">

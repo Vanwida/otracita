@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Copy, Check } from 'lucide-react'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 interface Props {
   url: string
@@ -14,7 +15,7 @@ export default function BotStatusCopyButton({ url }: Props) {
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => setCopied(false), FEEDBACK_MS.copied)
     } catch {
       /* ignore */
     }

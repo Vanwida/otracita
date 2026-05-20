@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { CreditCard, CheckCircle2, AlertTriangle, Loader2, ExternalLink } from 'lucide-react'
+import FormGrid from './FormGrid'
 
 // -----------------------------------------------------------------------------
 // Connect settings panel — lives under the "Cobros online" tab in the
@@ -132,7 +133,7 @@ export default function ConnectSettings({ initial }: Props) {
                 Ya puedes generar enlaces de pago desde la agenda. Stripe envía los fondos a tu
                 cuenta bancaria automáticamente.
               </p>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-ink-2">
+              <FormGrid cols={2} at="sm" gap="tight" className="mt-3 text-xs text-ink-2">
                 {maskedAccountId && (
                   <div>
                     <span className="text-ink-3">Cuenta Stripe:</span>{' '}
@@ -149,7 +150,7 @@ export default function ConnectSettings({ initial }: Props) {
                     })}
                   </div>
                 )}
-              </div>
+              </FormGrid>
             </div>
           </div>
           <button

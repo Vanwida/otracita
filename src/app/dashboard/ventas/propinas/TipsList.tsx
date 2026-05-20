@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { Loader2, Check, Heart } from 'lucide-react'
+import DataTable, { type Column } from '@/app/dashboard/_components/DataTable'
+import { formatCents } from '@/lib/format'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // TipsList — listado de propinas cobradas con asignación de barbero (fix #7).
@@ -31,10 +34,11 @@ interface Props {
   barberNames: string[]
 }
 
-function formatEur(cents: number): string {
-  const eur = cents / 100
-  return Number.isInteger(eur) ? `${eur} €` : `${eur.toFixed(2).replace('.', ',')} €`
-}
+// `formatEur` antes definido localmente — ahora consume el formatter
+// compartido (`@/lib/format`, opt `compact`). UI densa de propinas → omitimos
+// los ",00" cuando es entero (3 € en vez de 3,00 €) para encajar más filas
+// en pantalla. Fuente única para todo el dashboard.
+const formatEur = (cents: number) => formatCents(cents, { compact: true })
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -76,7 +80,7 @@ export default function TipsList({ tips, barberNames }: Props) {
         return
       }
       setSavedId(tipId)
-      setTimeout(() => setSavedId((s) => (s === tipId ? null : s)), 2000)
+      setTimeout(() => setSavedId((s) => (s === tipId ? null : s)), FEEDBACK_MS.copied)
     } catch {
       setRows(prev)
       setError('Error de red. La propina no se asignó.')
@@ -112,74 +116,92 @@ export default function TipsList({ tips, barberNames }: Props) {
         </p>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-overlay border-b border-line">
-            <tr className="text-left">
-              <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-ink-2">
-                Fecha
-              </th>
-              <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-ink-2">
-                Cliente
-              </th>
-              <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-ink-2 text-right">
-                Importe
-              </th>
-              <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-ink-2">
-                Barbero
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {rows.map((t) => (
-              <tr key={t.id} className="hover:bg-canvas/40 transition-colors">
-                <td className="px-4 py-3 text-ink-2 tabular-nums whitespace-nowrap">
-                  {formatDate(t.paidAt ?? t.createdAt)}
-                </td>
-                <td className="px-4 py-3 text-ink-2 tabular-nums">
-                  {t.customerPhone}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums font-semibold text-ink">
-                  {formatEur(t.amountCents)}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <label className="sr-only" htmlFor={`tip-barber-${t.id}`}>
-                      Barbero de esta propina
-                    </label>
-                    <select
-                      id={`tip-barber-${t.id}`}
-                      value={t.barberName ?? UNASSIGNED}
-                      onChange={(e) => assign(t.id, e.target.value)}
-                      disabled={savingId === t.id}
-                      className="bg-surface border border-line rounded-lg px-2.5 py-1.5 text-sm text-ink focus:border-brand outline-none transition-colors disabled:opacity-60"
-                    >
-                      <option value={UNASSIGNED}>Sin asignar</option>
-                      {barberNames.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                    {savingId === t.id && (
-                      <Loader2
-                        className="h-3.5 w-3.5 text-ink-3 animate-spin shrink-0"
-                        aria-label="Guardando"
-                      />
-                    )}
-                    {savedId === t.id && savingId !== t.id && (
-                      <Check
-                        className="h-3.5 w-3.5 text-success shrink-0"
-                        aria-label="Guardado"
-                      />
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* DataTable consume el chrome canónico (sticky head, zebra/hover por
+          tokens). Patrón responsive: columna "Cliente" oculta en <sm
+          (teléfono ya cabe junto a la fecha); "Fecha" oculta en <md (el
+          barbero suele ver propinas del día/semana en curso). */}
+      <DataTable<TipRow>
+        ariaLabel="Propinas cobradas"
+        rows={rows}
+        rowKey={(t) => t.id}
+        columns={TIP_COLUMNS({ formatEur, formatDate, assign, savingId, savedId, barberNames })}
+      />
     </div>
   )
+}
+
+// Builder factory — las columnas necesitan acceso al estado y a los
+// handlers de la fila. Encapsulado fuera del JSX para que `DataTable<Row>`
+// reciba un array tipado limpio sin closures inline en cada render.
+function TIP_COLUMNS({
+  formatEur,
+  formatDate,
+  assign,
+  savingId,
+  savedId,
+  barberNames,
+}: {
+  formatEur: (cents: number) => string
+  formatDate: (iso: string | null) => string
+  assign: (tipId: string, value: string) => Promise<void>
+  savingId: string | null
+  savedId: string | null
+  barberNames: string[]
+}): Column<TipRow>[] {
+  return [
+    {
+      key: 'date',
+      header: 'Fecha',
+      className: 'hidden md:table-cell',
+      cell: (t) => (
+        <span className="text-ink-2 tabular-nums whitespace-nowrap">
+          {formatDate(t.paidAt ?? t.createdAt)}
+        </span>
+      ),
+    },
+    {
+      key: 'customer',
+      header: 'Cliente',
+      className: 'hidden sm:table-cell',
+      cell: (t) => <span className="text-ink-2 tabular-nums">{t.customerPhone}</span>,
+    },
+    {
+      key: 'amount',
+      header: 'Importe',
+      align: 'right',
+      numeric: true,
+      cell: (t) => <span className="font-semibold text-ink">{formatEur(t.amountCents)}</span>,
+    },
+    {
+      key: 'barber',
+      header: 'Barbero',
+      cell: (t) => (
+        <div className="flex items-center gap-2">
+          <label className="sr-only" htmlFor={`tip-barber-${t.id}`}>
+            Barbero de esta propina
+          </label>
+          <select
+            id={`tip-barber-${t.id}`}
+            value={t.barberName ?? UNASSIGNED}
+            onChange={(e) => assign(t.id, e.target.value)}
+            disabled={savingId === t.id}
+            className="bg-surface border border-line rounded-lg px-2.5 py-1.5 text-sm text-ink focus:border-brand outline-none transition-colors disabled:opacity-60"
+          >
+            <option value={UNASSIGNED}>Sin asignar</option>
+            {barberNames.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          {savingId === t.id && (
+            <Loader2 className="h-3.5 w-3.5 text-ink-3 animate-spin shrink-0" aria-label="Guardando" />
+          )}
+          {savedId === t.id && savingId !== t.id && (
+            <Check className="h-3.5 w-3.5 text-success shrink-0" aria-label="Guardado" />
+          )}
+        </div>
+      ),
+    },
+  ]
 }

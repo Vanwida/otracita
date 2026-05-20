@@ -6,6 +6,8 @@ import { formatDateSpanish } from '@/lib/google-calendar';
 import { requireCron } from '@/lib/auth/require-cron';
 import { dispatchUserNotification } from '@/lib/notifications/dispatch';
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
+import { MS_IN_DAY, BUSINESS_TIMEZONE } from '@/lib/time';
+import { publicAccountPath } from '@/lib/site';
 
 type Lang = 'es' | 'en';
 
@@ -16,7 +18,7 @@ export async function GET(request: Request) {
   // Get tomorrow's date in Spain timezone
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const tomorrowStr = tomorrow.toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
 
   // Find confirmed bookings for tomorrow that haven't been reminded
   const upcomingBookings = await db
@@ -79,7 +81,7 @@ export async function GET(request: Request) {
         push: {
           title: `Mañana tu cita en ${client.businessName}`,
           body: `${booking.service}${booking.barber ? ` con ${booking.barber}` : ''} · ${formatDateSpanish(booking.date)} a las ${booking.time}`,
-          url: client.publicSlug ? `/b/${client.publicSlug}/cuenta` : '/',
+          url: client.publicSlug ? publicAccountPath(client.publicSlug) : '/',
           tag: `reminder-${booking.id}`,
           data: { bookingId: booking.id, kind: 'reminder_24h' },
         },
@@ -133,8 +135,8 @@ export async function GET(request: Request) {
   // romper el contrato del cron / monitorización existente.
   // ────────────────────────────────────────────────────────────────────────
   const SAFETY_NET_DAYS = 3;
-  const safetyCutoff = new Date(Date.now() - SAFETY_NET_DAYS * 86400000)
-    .toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const safetyCutoff = new Date(Date.now() - SAFETY_NET_DAYS * MS_IN_DAY)
+    .toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
 
   let completedCount = 0;
   let decrementedCount = 0;

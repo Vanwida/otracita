@@ -5,6 +5,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // /api/barbers/[id]
@@ -17,12 +18,12 @@ import {
 // -----------------------------------------------------------------------------
 
 function today(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  return new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
 }
 
 function nowHHMM(): string {
   return new Date().toLocaleTimeString('en-GB', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

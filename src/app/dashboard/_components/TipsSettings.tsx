@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { Heart, Check, AlertCircle, Loader2 } from 'lucide-react'
+import FormGrid from './FormGrid'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 export interface TipsInitial {
   tipsEnabled: boolean
@@ -78,7 +80,7 @@ export default function TipsSettings({ initial }: Props) {
           return
         }
         setSaved(true)
-        setTimeout(() => setSaved(false), 2500)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
         setError('Error de red')
       }
@@ -137,7 +139,7 @@ export default function TipsSettings({ initial }: Props) {
       )}
 
       <div className={enabled ? '' : 'opacity-60 pointer-events-none'}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <FormGrid cols={3} gap="tight">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex flex-col gap-1.5">
               <label className="text-xs text-ink-2">Importe sugerido {i + 1} (€)</label>
@@ -151,7 +153,7 @@ export default function TipsSettings({ initial }: Props) {
               />
             </div>
           ))}
-        </div>
+        </FormGrid>
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">

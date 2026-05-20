@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { cashSessions, bookings, productSales } from '@/db/schema'
 import { sql } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // POST /api/cash/open — abre una nueva sesión de caja para el cliente.
@@ -108,7 +109,7 @@ async function backfillTodayMovements(
   // formato. Usamos ::date casts en SQL crudo porque el join contra
   // cash_movements es inverso.
   const todayMadrid = new Date().toLocaleDateString('en-CA', {
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   })
 
   // 1. Backfill bookings

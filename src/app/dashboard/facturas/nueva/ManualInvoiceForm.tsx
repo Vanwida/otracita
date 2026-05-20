@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { Loader2, AlertCircle, Info } from 'lucide-react'
+import FormGrid from '@/app/dashboard/_components/FormGrid'
 
 // -----------------------------------------------------------------------------
 // ManualInvoiceForm — client-side form for walk-in invoices.
@@ -188,7 +189,7 @@ export default function ManualInvoiceForm({
       </div>
 
       {/* Customer fields */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <div>
           <label className={LABEL_CLASS} htmlFor="customerName">
             Nombre del cliente <span className="text-danger">*</span>
@@ -264,10 +265,10 @@ export default function ManualInvoiceForm({
             </p>
           )}
         </div>
-      </div>
+      </FormGrid>
 
       {/* Service + professional */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <div>
           <label className={LABEL_CLASS} htmlFor="serviceName">
             Servicio / concepto <span className="text-danger">*</span>
@@ -317,7 +318,7 @@ export default function ManualInvoiceForm({
             />
           )}
         </div>
-      </div>
+      </FormGrid>
 
       {/* Price */}
       <div>

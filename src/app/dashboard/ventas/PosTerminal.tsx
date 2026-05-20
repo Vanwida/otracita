@@ -106,12 +106,15 @@ const CATEGORIES: { key: Category; label: string; icon: typeof Zap }[] = [
   { key: 'personalizada', label: 'Cantidad personalizada', icon: Calculator },
 ]
 
+// `eur` y `eurFromEuros` son aliases del formatter compartido. PosTerminal
+// es ámbito FISCAL (genera factura VeriFactu) — siempre 2 decimales, sin
+// compact. La función global cubre los dos casos (cents ↔ euros).
+import { formatCents as formatCentsBase, formatEuros as formatEurosBase } from '@/lib/format'
 function eur(cents: number): string {
-  return `${(cents / 100).toFixed(2).replace('.', ',')} €`
+  return formatCentsBase(cents)
 }
-
 function eurFromEuros(euros: number): string {
-  return `${euros.toFixed(2).replace('.', ',')} €`
+  return formatEurosBase(euros)
 }
 
 function lineTotalCents(l: CartLine): number {
@@ -683,11 +686,18 @@ export default function PosTerminal({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
+    // Mobile (<md): los 3 zonas (categorías, tiles, carrito) stackean
+    // verticalmente y la página entera scrollea — un TPV en 375px no puede
+    // mantener 3 columnas en paralelo (cart alone = 320px). Categorías se
+    // vuelven chips horizontales en la parte alta, tiles full-width en el
+    // medio, carrito full-width abajo. Desktop+iPad (md+) mantienen el
+    // 3-zone layout Booksy original.
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
       {/* ── 1. Rail de categorías ─────────────────────────────────────── */}
       <nav
         aria-label="Categorías de venta"
-        className="flex w-44 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-overlay/40 p-3"
+        className="flex shrink-0 gap-1 overflow-x-auto border-b border-line bg-overlay/40 p-2
+                   md:w-44 md:flex-col md:overflow-x-visible md:overflow-y-auto md:border-b-0 md:border-r md:p-3"
       >
         {CATEGORIES.map((c) => {
           const active = category === c.key
@@ -754,7 +764,7 @@ export default function PosTerminal({
       {/* ── 3. Carrito acoplado ───────────────────────────────────────── */}
       <aside
         aria-label="Carrito de venta"
-        className="flex w-80 shrink-0 flex-col border-l border-line bg-surface"
+        className="flex w-full shrink-0 flex-col border-t border-line bg-surface md:w-80 md:border-t-0 md:border-l"
       >
         {/* Cliente opcional (typeahead) + barbero */}
         <div className="space-y-2 border-b border-line p-4">

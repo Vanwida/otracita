@@ -8,6 +8,7 @@ import {
   NO_SHOW_EXCLUDE_THRESHOLD,
   RATE_LIMIT_DAYS,
 } from './defaults'
+import { BUSINESS_TIMEZONE } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // "Cliente fiel elegible" para una promo contextual.
@@ -41,7 +42,7 @@ export async function findEligibleCustomers(clientId: string): Promise<EligibleC
   // last_booking = MAX createdAt entre esos.
   // upcoming = bool, tiene reserva confirmed/completed en próximos 7 días.
   // last_promo = MAX createdAt en promo_pushes para este (clientId, phone).
-  const todayMadrid = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const todayMadrid = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
 
   const rows = await db.execute(sql`
     WITH recent_visits AS (

@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { emailParseLog } from '@/db/schema';
 import { sql, gte } from 'drizzle-orm';
+import { MS_IN_DAY } from '@/lib/time';
 
 /** Shape of the stats payload returned by the API and consumed by the dashboard. */
 export interface EmailHealthStats {
@@ -24,7 +25,7 @@ type StatusKey = (typeof STATUS_KEYS)[number];
  * Kept as a single SQL round-trip for dashboard latency.
  */
 export async function getEmailHealthStats(days: number): Promise<EmailHealthStats> {
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const since = new Date(Date.now() - days * MS_IN_DAY);
 
   const rows = await db
     .select({

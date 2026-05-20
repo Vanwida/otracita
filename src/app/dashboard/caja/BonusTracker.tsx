@@ -5,6 +5,8 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import { Award, Check, Loader2, CheckCircle2, Info } from 'lucide-react'
 import Link from 'next/link'
 import { computeBonusProgress, formatBonusValue, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // BonusTracker — vista única que combina progreso del mes + log diario.
@@ -51,7 +53,7 @@ const entriesFetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<{ entries: EntryRow[] }>)
 
 function todayMadrid(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  return new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
 }
 
 const MONTH_NAMES = [
@@ -173,7 +175,9 @@ export default function BonusTracker() {
       globalMutate(entriesUrl)
       setSavedAt(new Date())
       setValues({})
-      setTimeout(() => setSavedAt(null), 3000)
+      // Antes 3000ms (outlier sin justificar). Bajado a FEEDBACK_MS.saved
+      // (2500) — consistencia con el resto del dashboard.
+      setTimeout(() => setSavedAt(null), FEEDBACK_MS.saved)
     } catch {
       setError('Error de red')
     } finally {

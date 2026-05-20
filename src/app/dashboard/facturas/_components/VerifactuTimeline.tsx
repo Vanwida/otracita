@@ -1,5 +1,6 @@
 import { Check, Loader2, AlertCircle, Circle, AlertTriangle } from 'lucide-react'
 import VerifactuBadge, { type VerifactuStatus } from './VerifactuBadge'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // Timeline visual del ciclo de vida VeriFactu de una factura individual.
@@ -30,7 +31,7 @@ function fmt(d: Date | string | null): string | null {
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'Europe/Madrid',
+    timeZone: BUSINESS_TIMEZONE,
   }).format(date)
 }
 

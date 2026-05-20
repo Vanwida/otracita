@@ -19,7 +19,7 @@ interface PlanDef {
   trialDays: number | null;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://otracita.es';
+import { SITE_ORIGIN as SITE_URL } from '@/lib/site';
 
 function buildPlan(tier: Tier, interval: BillingInterval): PlanDef | null {
   if (tier === 'solo') return null; // gratis, no checkout

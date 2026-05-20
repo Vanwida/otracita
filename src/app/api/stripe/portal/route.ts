@@ -1,5 +1,6 @@
 import { stripe } from '@/lib/stripe'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { SITE_URLS } from '@/lib/site'
 
 /**
  * POST /api/stripe/portal
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: client.stripeCustomerId,
-      return_url: 'https://otracita.es/dashboard/mi-plan',
+      return_url: SITE_URLS.miPlan(),
     })
 
     return Response.json({ url: session.url })

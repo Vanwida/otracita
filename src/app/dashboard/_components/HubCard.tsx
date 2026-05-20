@@ -27,7 +27,7 @@ export function HubCard({ href, icon: Icon, title, status, children }: HubCardPr
   return (
     <Link
       href={href}
-      className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-surface p-5 hover:border-line-strong hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all"
+      className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-surface p-5 hover:border-line-strong hover:shadow-soft transition-all"
     >
       <div className="flex items-start gap-3">
         <div className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0 bg-brand-softer text-brand-strong">

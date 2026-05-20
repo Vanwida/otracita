@@ -195,9 +195,9 @@ export function UndoToastHost() {
       role="status"
       aria-live="polite"
       className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] max-w-[calc(100vw-2rem)]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      style={{ paddingBottom: 'var(--safe-bottom)' }}
     >
-      <div className="flex items-center gap-3 bg-surface border border-line rounded-xl shadow-[0_10px_40px_rgba(42,29,20,0.12)] pl-4 pr-2 py-2 min-w-[280px]">
+      <div className="flex items-center gap-3 bg-surface border border-line rounded-xl shadow-warm-strong pl-4 pr-2 py-2 min-w-[280px]">
         <p className="text-sm text-ink flex-1 truncate font-medium">{toast.message}</p>
         <button
           type="button"

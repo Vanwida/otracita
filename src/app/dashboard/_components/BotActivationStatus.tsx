@@ -36,7 +36,7 @@ interface Props {
   publicEnabled: boolean
 }
 
-const SITE_ORIGIN = 'https://otracita.es'
+import { SITE_ORIGIN } from '@/lib/site'
 
 export default function BotActivationStatus({
   whatsappPhoneNumberId,

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Pencil, Check, Loader2, Mail } from 'lucide-react'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // Editor inline del email del cliente. Espejo de CustomerNotesEditor pero
@@ -64,7 +65,7 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
         setDraft(next)
         setEditing(false)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.copied)
       } catch {
         setError('Error de red')
       }

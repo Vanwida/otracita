@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { publicPagePath } from '@/lib/site'
 
 // -----------------------------------------------------------------------------
 // GET /manifest/[slug]/manifest.webmanifest
@@ -69,8 +70,8 @@ export async function GET(
     description:
       client.publicDescription ||
       `Reserva tu cita en ${client.businessName} directamente desde el móvil.`,
-    start_url: `/b/${slug}?utm_source=pwa`,
-    scope: `/b/${slug}`,
+    start_url: `${publicPagePath(slug)}?utm_source=pwa`,
+    scope: publicPagePath(slug),
     display: 'standalone',
     orientation: 'portrait-primary',
     lang: 'es',

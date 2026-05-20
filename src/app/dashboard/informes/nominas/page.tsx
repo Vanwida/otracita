@@ -11,6 +11,7 @@ import { Lock } from 'lucide-react'
 import { parseMonth } from '@/lib/dashboard/month'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
+import EmptyState from '../../_components/EmptyState'
 import PayrollMonthView from './PayrollMonthView'
 
 // -----------------------------------------------------------------------------
@@ -50,22 +51,12 @@ export default async function InformesNominasPage({ searchParams }: PageProps) {
       <AreaShell area="informes">
         <AreaContent scroll="fixed" maxWidth="5xl">
           <div className="flex flex-1 items-center justify-center">
-            <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-brand/20 bg-brand-softer">
-                <Lock className="h-5 w-5 text-brand" />
-              </div>
-              <h2
-                className="font-semibold text-ink"
-                style={{ fontSize: 'var(--text-section-title)' }}
-              >
-                Nóminas del equipo
-              </h2>
-              <p className="mt-2 text-[0.8125rem] text-ink-2">
-                Calcula automáticamente lo que cobra cada barbero desde sus
-                servicios, productos, propinas y bonos. Disponible en el plan
-                Pro.
-              </p>
-            </div>
+            <EmptyState
+              icon={Lock}
+              tone="brand"
+              title="Nóminas del equipo"
+              description="Calcula automáticamente lo que cobra cada barbero desde sus servicios, productos, propinas y bonos. Disponible en el plan Pro."
+            />
           </div>
         </AreaContent>
       </AreaShell>

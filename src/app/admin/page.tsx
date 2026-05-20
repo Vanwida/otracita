@@ -12,6 +12,7 @@ import {
   emailParseLog,
 } from '@/db/schema';
 import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { MS_IN_DAY } from '@/lib/time';
 import {
   Users,
   CreditCard,
@@ -44,12 +45,12 @@ const TRIAL_EXPIRY_DAYS = 7;
 
 export default async function AdminOverview() {
   const now = new Date();
-  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const last24h = new Date(now.getTime() - MS_IN_DAY);
   const tokenSoon = new Date(now);
   tokenSoon.setDate(tokenSoon.getDate() + TOKEN_EXPIRY_DAYS);
   const trialSoon = new Date(now);
   trialSoon.setDate(trialSoon.getDate() + TRIAL_EXPIRY_DAYS);
-  const parserSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const parserSince = new Date(now.getTime() - MS_IN_DAY);
 
   const [
     activeClientsAgg,

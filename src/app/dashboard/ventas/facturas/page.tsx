@@ -21,6 +21,7 @@ import { MonthSelect, TypeSelect, VoidedToggle } from '../../facturas/FiltersBar
 import AreaContent from '../../_components/AreaContent'
 import StatStrip from '../../_components/StatStrip'
 import DataTable, { type Column } from '../../_components/DataTable'
+import EmptyState from '../../_components/EmptyState'
 import VerifactuBadge, {
   type VerifactuStatus,
 } from '../../facturas/_components/VerifactuBadge'
@@ -106,25 +107,18 @@ export default async function VentasFacturasPage({
     return (
       <AreaContent scroll="fixed" maxWidth="5xl">
         <div className="flex flex-1 items-center justify-center">
-          <div className="max-w-md rounded-control border border-line bg-surface p-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-control border border-brand/20 bg-brand-softer">
-              <Receipt className="h-5 w-5 text-brand" />
-            </div>
-            <h2
-              className="font-semibold text-ink"
-              style={{ fontSize: 'var(--text-section-title)' }}
-            >
-              Activa la facturación
-            </h2>
-            <p className="mt-2 text-[0.8125rem] text-ink-2">
-              Emite tickets y facturas automáticamente con cada reserva
-              confirmada. Exporta cada mes un CSV para tu gestor.
-            </p>
-            <Link href="/dashboard/ventas/cobros" className="btn-primary mt-6">
-              Activar facturación
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
+          <EmptyState
+            icon={Receipt}
+            tone="brand"
+            title="Activa la facturación"
+            description="Emite tickets y facturas automáticamente con cada reserva confirmada. Exporta cada mes un CSV para tu gestor."
+            action={
+              <Link href="/dashboard/ventas/cobros" className="btn-primary">
+                Activar facturación
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            }
+          />
         </div>
       </AreaContent>
     )

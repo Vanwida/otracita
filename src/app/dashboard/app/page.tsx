@@ -19,8 +19,8 @@ import AreaContent from '@/app/dashboard/_components/AreaContent'
 import GtmSettings from './GtmSettings'
 import Link from 'next/link'
 import { hasFeature } from '@/lib/billing/tier'
-
-const SITE_ORIGIN = 'https://otracita.es'
+import { BRAND_INK_HEX, QR_WHITE_HEX } from '@/lib/brand-hex'
+import { SITE_ORIGIN } from '@/lib/site'
 
 export default async function AppPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -30,8 +30,12 @@ export default async function AppPage() {
   if (!client) redirect('/dashboard/setup')
 
   const url = client.publicSlug ? `${SITE_ORIGIN}/b/${client.publicSlug}` : null
+  // Color del QR: si el cliente eligió brandColor (PWA white-label), lo
+  // usamos. Si no, fallback al ink espresso del design system (NO `#000`
+  // puro — PRODUCT.md lo prohíbe). Hex literal porque la librería QR no
+  // resuelve CSS vars.
   const brand =
-    client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor) ? client.brandColor : '#111111'
+    client.brandColor && /^#[0-9a-f]{6}$/i.test(client.brandColor) ? client.brandColor : BRAND_INK_HEX
 
   // QR for printing on flyers / in-store.
   let qrDataUrl: string | null = null
@@ -40,7 +44,7 @@ export default async function AppPage() {
       qrDataUrl = await QRCode.toDataURL(url, {
         margin: 1,
         width: 320,
-        color: { dark: brand, light: '#FFFFFF' },
+        color: { dark: brand, light: QR_WHITE_HEX },
       })
     } catch {
       qrDataUrl = null

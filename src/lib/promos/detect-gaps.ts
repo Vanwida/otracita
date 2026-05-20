@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { bookings as bookingsTable, barbers as barbersTable } from '@/db/schema'
 import { and, eq, gte, lte, ne } from 'drizzle-orm'
 import { hoursForDate, type WeeklyHours } from '@/lib/availability'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // Detección de huecos en una ventana de fechas para "Promos contextuales".
@@ -120,11 +121,11 @@ export async function detectGaps(opts: DetectOptions): Promise<DetectGapsResult>
   }
 
   // Cutoff de hoy: no contamos minutos pasados.
-  const todayMadrid = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const todayMadrid = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
   let nowMinutes = 0
   if (rangeStart <= todayMadrid && todayMadrid <= rangeEnd) {
     const t = new Date().toLocaleTimeString('en-GB', {
-      timeZone: 'Europe/Madrid',
+      timeZone: BUSINESS_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -221,7 +222,7 @@ export async function detectGaps(opts: DetectOptions): Promise<DetectGapsResult>
 export type WindowPreset = 'today' | 'tomorrow' | 'weekend' | 'next7'
 
 export function resolveWindow(preset: WindowPreset): { start: string; end: string; label: string } {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
   const t = new Date(`${today}T00:00:00Z`)
 
   switch (preset) {

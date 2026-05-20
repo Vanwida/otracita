@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Pencil, Check, Loader2, StickyNote } from 'lucide-react'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // Editor inline para notas privadas del barbero sobre un cliente.
@@ -50,7 +51,7 @@ export default function CustomerNotesEditor({ customerId, initialNotes }: Props)
         setNotes(draft)
         setEditing(false)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.copied)
       } catch {
         setError('Error de red')
       }

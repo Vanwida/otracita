@@ -3,6 +3,8 @@
 import { useState, useTransition } from 'react'
 import { AlertTriangle, Info, Check, Loader2 } from 'lucide-react'
 import NumberInput from './NumberInput'
+import FormGrid from './FormGrid'
+import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // InvoicingSettings — panel de datos fiscales + numeración + toggle de
@@ -121,7 +123,7 @@ export default function InvoicingSettings({ initial }: Props) {
         // bajó a false porque faltaban campos).
         if (typeof d.invoicingEnabled === 'boolean') setEnabled(d.invoicingEnabled)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2500)
+        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
         setError('Error de red')
       }
@@ -165,7 +167,7 @@ export default function InvoicingSettings({ initial }: Props) {
       </label>
 
       {/* Fiscal details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <TextField
           label="Nombre fiscal"
           value={fiscalName}
@@ -192,7 +194,7 @@ export default function InvoicingSettings({ initial }: Props) {
             </p>
           )}
         </div>
-      </div>
+      </FormGrid>
 
       <TextField
         label="Dirección fiscal"
@@ -202,7 +204,7 @@ export default function InvoicingSettings({ initial }: Props) {
         required
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <TextField
           label="Ciudad"
           value={fiscalCity}
@@ -217,9 +219,9 @@ export default function InvoicingSettings({ initial }: Props) {
           placeholder="08001"
           required
         />
-      </div>
+      </FormGrid>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormGrid cols={2}>
         <div className="flex flex-col gap-2">
           <label htmlFor="ivaRate" className="text-sm font-medium text-ink-2">
             IVA aplicado
@@ -258,7 +260,7 @@ export default function InvoicingSettings({ initial }: Props) {
             <code className="font-mono text-ink">{numberPreview || `0000`}</code>. Deja vacío para usar solo números.
           </p>
         </div>
-      </div>
+      </FormGrid>
 
       <div className="flex flex-col gap-2 max-w-xs">
         <label htmlFor="invoiceNumberNext" className="text-sm font-medium text-ink-2">

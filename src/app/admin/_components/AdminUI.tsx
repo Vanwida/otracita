@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
+import { MS_IN_MINUTE, MS_IN_HOUR, MS_IN_DAY } from '@/lib/time';
 
 /**
  * Shared layout primitives for admin pages. Keep the visual language
@@ -261,20 +262,17 @@ export function relativeFromNow(d: Date | string | null | undefined): string {
   if (!date) return '—';
   const ms = date.getTime() - Date.now();
   const abs = Math.abs(ms);
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
 
   let value: number;
   let unit: 'minuto' | 'hora' | 'día';
-  if (abs < hour) {
-    value = Math.round(abs / minute);
+  if (abs < MS_IN_HOUR) {
+    value = Math.round(abs / MS_IN_MINUTE);
     unit = 'minuto';
-  } else if (abs < day) {
-    value = Math.round(abs / hour);
+  } else if (abs < MS_IN_DAY) {
+    value = Math.round(abs / MS_IN_HOUR);
     unit = 'hora';
   } else {
-    value = Math.round(abs / day);
+    value = Math.round(abs / MS_IN_DAY);
     unit = 'día';
   }
   const plural = value === 1 ? unit : `${unit}s`;

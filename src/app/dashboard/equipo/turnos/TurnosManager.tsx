@@ -25,9 +25,11 @@ import {
   weekdayToHoursDay,
 } from './weekdays'
 import Modal from '../../_components/Modal'
+import ScrollFade from '../../_components/ScrollFade'
 import ScheduleEditorModal from './ScheduleEditorModal'
 import AbsenceModal from './AbsenceModal'
 import BlockModal from './BlockModal'
+import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // TurnosManager — timeline de turnos del equipo (R12 horario/descansos, R2
@@ -90,7 +92,7 @@ const AXIS_END_MIN = 22 * 60
 const AXIS_SPAN = AXIS_END_MIN - AXIS_START_MIN
 
 function madridToday(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })
+  return new Date().toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE })
 }
 
 function addDays(date: string, n: number): string {
@@ -406,7 +408,7 @@ function DayTimeline({
   const hoursDay = hoursDayForDate(date)
 
   return (
-    <div className="rounded-control border border-line bg-surface overflow-hidden">
+    <div className="panel">
       {/* Cabecera eje horario */}
       <div className="flex items-stretch border-b border-line bg-overlay/60">
         <div className="w-48 shrink-0 border-r border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
@@ -645,28 +647,34 @@ function WeekGrid({
   const todayStr = madridToday()
 
   return (
-    <div className="rounded-control border border-line bg-surface overflow-x-auto">
-      {/* Cabecera: nombres de día */}
-      <div className="flex min-w-[44rem] items-stretch border-b border-line bg-overlay/60">
-        <div className="w-44 shrink-0 border-r border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
-          Empleado
-        </div>
-        {days.map((d) => (
-          <div
-            key={d}
-            className={`flex-1 px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide ${
-              d === todayStr ? 'text-ink' : 'text-ink-3'
-            }`}
-          >
-            <span className="capitalize">{formatWeekdayShort(d)}</span>{' '}
-            <span className="tabular-nums">
-              {new Date(`${d}T00:00:00Z`).getUTCDate()}
-            </span>
+    // overflow-hidden: contiene las sombras edge de ScrollFade dentro del
+    // shell redondeado. ScrollFade aporta el scroll horizontal con feedback
+    // visual en mobile (en iPhone SE 375px la matriz ancha 44rem requiere
+    // scroll-X explícito; sin las sombras el barbero no sabe que puede
+    // arrastrar). En md+ la matriz cabe y los gradientes se autoocultan.
+    <div className="panel">
+      <ScrollFade>
+        {/* Cabecera: nombres de día */}
+        <div className="flex min-w-[44rem] items-stretch border-b border-line bg-overlay/60">
+          <div className="w-44 shrink-0 border-r border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+            Empleado
           </div>
-        ))}
-      </div>
+          {days.map((d) => (
+            <div
+              key={d}
+              className={`flex-1 px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide ${
+                d === todayStr ? 'text-ink' : 'text-ink-3'
+              }`}
+            >
+              <span className="capitalize">{formatWeekdayShort(d)}</span>{' '}
+              <span className="tabular-nums">
+                {new Date(`${d}T00:00:00Z`).getUTCDate()}
+              </span>
+            </div>
+          ))}
+        </div>
 
-      <div className="min-w-[44rem] divide-y divide-line">
+        <div className="min-w-[44rem] divide-y divide-line">
         {barbers.map((barber) => (
           <div key={barber.id} className="flex items-stretch">
             <button
@@ -724,7 +732,8 @@ function WeekGrid({
             })}
           </div>
         ))}
-      </div>
+        </div>
+      </ScrollFade>
     </div>
   )
 }

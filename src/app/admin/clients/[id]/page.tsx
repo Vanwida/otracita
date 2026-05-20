@@ -25,6 +25,8 @@ import {
   payments,
 } from '@/db/schema';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { MS_IN_DAY } from '@/lib/time';
+import { publicPagePath } from '@/lib/site';
 import { getAdminUser } from '@/lib/auth/require-admin';
 import { SecretInput } from './_components/SecretInput';
 import { AutoGenerateBooksyEmail } from './_components/AutoGenerateBooksyEmail';
@@ -112,7 +114,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
   // ─── Context queries (read-only) ─────────────────────────────────
   const now = new Date();
-  const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const last30Days = new Date(now.getTime() - 30 * MS_IN_DAY);
 
   const [
     activeSub,
@@ -225,7 +227,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
     } else if (intent === 'extend_trial_7d') {
       // Bump trialEndsAt by 7 days. If already past, extend from now instead.
       const base = existing.trialEndsAt && existing.trialEndsAt > actionNow ? existing.trialEndsAt : actionNow;
-      const extended = new Date(base.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const extended = new Date(base.getTime() + 7 * MS_IN_DAY);
       await db
         .update(clients)
         .set({ trialEndsAt: extended, updatedAt: actionNow })
@@ -329,7 +331,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
   const inTrial = Boolean(client.trialEndsAt && client.trialEndsAt > now);
   const trialDaysLeft =
     client.trialEndsAt && inTrial
-      ? Math.ceil((client.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.ceil((client.trialEndsAt.getTime() - now.getTime()) / MS_IN_DAY)
       : null;
 
   return (
@@ -574,12 +576,12 @@ export default async function ClientDetailPage({ params }: PageProps) {
             <p className="mt-3 text-xs text-ink-3">
               URL pública:{' '}
               <a
-                href={`/b/${client.publicSlug}`}
+                href={publicPagePath(client.publicSlug!)}
                 target="_blank"
                 rel="noreferrer"
                 className="text-brand hover:underline"
               >
-                /b/{client.publicSlug}
+                {publicPagePath(client.publicSlug!)}
               </a>
             </p>
           )}

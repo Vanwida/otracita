@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { mobilePins } from '@/db/schema'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 import { hashPin } from '@/lib/auth/mobile-session'
+import { MS_IN_MINUTE } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // POST /api/app/mobile/pin/generate
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
   const { client, user } = access
 
   const pin = generateRandomPin()
-  const expiresAt = new Date(Date.now() + PIN_TTL_MINUTES * 60_000)
+  const expiresAt = new Date(Date.now() + PIN_TTL_MINUTES * MS_IN_MINUTE)
 
   await db.insert(mobilePins).values({
     clientId: client.id,

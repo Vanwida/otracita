@@ -55,7 +55,7 @@ export default function ReportRail({ items }: Props) {
   return (
     <aside
       aria-label="Informes"
-      className="rounded-control border border-line bg-surface overflow-hidden"
+      className="panel"
     >
       <header
         className="border-b border-line px-[var(--space-card)] py-3"

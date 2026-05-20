@@ -2,6 +2,7 @@ import { MessageCircle, Mail, HelpCircle, ExternalLink, ChevronDown } from 'luci
 import { HELP_SECTIONS } from '@/lib/help-faqs'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
+import FormGrid from '@/app/dashboard/_components/FormGrid'
 
 // Centralised so the Ayuda page mirrors the chat widget contact details.
 const SUPPORT_WHATSAPP = '+34 644 288 663'
@@ -48,7 +49,7 @@ export default function AyudaPage() {
       </p>
 
       {/* Contact cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <FormGrid cols={2} className="mb-8">
         <a
           href={SUPPORT_WHATSAPP_LINK}
           target="_blank"
@@ -92,7 +93,7 @@ export default function AyudaPage() {
             </div>
           </div>
         </a>
-      </div>
+      </FormGrid>
 
       {/* FAQs by section */}
       <div className="space-y-6">

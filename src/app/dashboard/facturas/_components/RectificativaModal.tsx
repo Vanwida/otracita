@@ -35,9 +35,9 @@ const MOTIVOS: Array<{ code: Motivo; label: string; desc: string }> = [
   { code: 'R5', label: 'R5 — Otro motivo', desc: 'Cualquier otra situación' },
 ]
 
-function formatCents(cents: number): string {
-  return (cents / 100).toFixed(2).replace('.', ',')
-}
+// Strict (siempre 2 decimales) — es ámbito FISCAL (rectificativa AEAT), donde
+// "25 €" sería ambiguo. La función global ya incluye el símbolo " €".
+import { formatCents } from '@/lib/format'
 
 export default function RectificativaModal({
   originalInvoiceId,
@@ -154,7 +154,7 @@ export default function RectificativaModal({
           <h3 className="text-base font-semibold text-ink">Emitir rectificativa</h3>
           <p className="text-xs text-ink-2 mt-0.5">
             Rectificando <span className="font-mono">{originalNumber}</span> · Original:{' '}
-            {formatCents(originalTotalCents)} €
+            {formatCents(originalTotalCents)}
           </p>
         </div>
         <button
@@ -230,7 +230,7 @@ export default function RectificativaModal({
               </div>
             </div>
             <p className="mt-1.5 text-xs text-ink-3">
-              IVA calculado: {newIvaAmountCents !== null ? formatCents(newIvaAmountCents) : '—'} € (tipo {originalIvaRate}%
+              IVA calculado: {newIvaAmountCents !== null ? formatCents(newIvaAmountCents) : '— €'} (tipo {originalIvaRate}%
               asumido).
               {motivo === 'R3' && ' Devolución total — todo a 0.'}
             </p>
