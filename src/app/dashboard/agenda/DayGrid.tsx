@@ -193,6 +193,13 @@ export default function DayGrid({
   // queda viejo entre frames si el state cambia rápido).
   const resizingRef = useRef<ResizeState | null>(null);
   resizingRef.current = resizing;
+  // Tras un resize, el browser dispara un `click` sintético sobre el
+  // elemento bajo el cursor al soltar el mouseup. Si ese elemento es el
+  // slot vacío de la columna, `handleColumnClick` abre "Nueva cita"
+  // fantasma (bug Alex 2026-05-21). Este flag se levanta en el mouseup
+  // del resize y se baja en el siguiente microtask — el click sintético
+  // (que llega en el mismo tick justo después) lo lee y aborta.
+  const justResizedRef = useRef(false);
 
   const dateStr = format(date, 'yyyy-MM-dd');
   const isBlocked = blockedDates.includes(dateStr);
@@ -286,6 +293,14 @@ export default function DayGrid({
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      // Marcar ANTES de limpiar state para que el `click` sintético que
+      // el browser dispara justo después del mouseup encuentre el flag
+      // levantado en `handleColumnClick` y aborte. queueMicrotask lo baja
+      // tras el click — más fiable que setTimeout(0) en Safari.
+      justResizedRef.current = true;
+      queueMicrotask(() => {
+        justResizedRef.current = false;
+      });
       const final = resizingRef.current;
       resizingRef.current = null;
       setResizing(null);
@@ -505,6 +520,11 @@ export default function DayGrid({
     e: React.MouseEvent<HTMLDivElement>,
     barberId: string | null,
   ) => {
+    // Click sintético que el browser dispara tras soltar un resize: si
+    // el cursor cayó sobre un slot vacío, llegaba aquí y abría "Nueva
+    // cita" fantasma. El flag se levanta en el mouseup del resize y se
+    // baja en el siguiente microtask (ver `startResize` / `onUp`).
+    if (justResizedRef.current) return;
     if ((e.target as HTMLElement).closest('[data-event]')) return;
     // Bloques (descansos/ausencias) ahora son draggable wrappers — el clic
     // sobre su área (fuera del label inner button) llegaría aquí y abriría
