@@ -285,11 +285,15 @@ export const barbers = pgTable('barbers', {
   // Tres presets en UI: fijo (solo base), mixto (base + comisiones),
   // autonomo (comisiones + alquiler de silla). Pero TODOS los campos son
   // independientes — el dueño puede combinar como quiera.
-  salaryType: text('salary_type'),                                   // 'fijo' | 'mixto' | 'autonomo' | null
+  salaryType: text('salary_type'),                                   // 'fijo' | 'mixto' | 'autonomo' | 'salaried_with_tier_bonus' | null
   salaryBaseCents: integer('salary_base_cents').default(0).notNull(),
   commissionServicesPct: integer('commission_services_pct').default(0).notNull(),  // 0-100
   commissionProductsPct: integer('commission_products_pct').default(0).notNull(),  // 0-100
   chairRentCents: integer('chair_rent_cents').default(0).notNull(),  // Lo que el barbero PAGA al local (autónomo)
+  // F1 — Tramos de bono por facturación (4º preset "asalariado_with_tier_bonus").
+  // Lista ordenable de {thresholdCents, bonusCents}; solo se paga el bono del
+  // tramo MÁS ALTO alcanzado (no acumulativo). null o [] ⇒ sin bonos.
+  tierBonuses: jsonb('tier_bonuses').$type<{ thresholdCents: number; bonusCents: number }[]>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

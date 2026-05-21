@@ -67,6 +67,7 @@ export async function PATCH(
     commissionServicesPct?: unknown;
     commissionProductsPct?: unknown;
     chairRentCents?: unknown;
+    tierBonuses?: unknown;
   };
   try {
     body = await req.json();
@@ -202,7 +203,12 @@ export async function PATCH(
   if ('salaryType' in body) {
     if (body.salaryType === null) {
       patch.salaryType = null;
-    } else if (body.salaryType === 'fijo' || body.salaryType === 'mixto' || body.salaryType === 'autonomo') {
+    } else if (
+      body.salaryType === 'fijo' ||
+      body.salaryType === 'mixto' ||
+      body.salaryType === 'autonomo' ||
+      body.salaryType === 'salaried_with_tier_bonus'
+    ) {
       patch.salaryType = body.salaryType;
     } else {
       return Response.json({ error: 'salaryType inválido.' }, { status: 400 });
@@ -226,6 +232,41 @@ export async function PATCH(
         return Response.json({ error: `${field} debe ser 0-100.` }, { status: 400 });
       }
       patch[field] = n;
+    }
+  }
+  // F1 — Tramos de bono por facturación. Aceptamos null (sin tramos) o
+  // array de {thresholdCents, bonusCents}. Capamos a 10 tramos y a importes
+  // razonables (≤ 1.000.000 € cada uno). Filtramos entradas inválidas y
+  // ordenamos por threshold asc para que el storage sea canónico.
+  if ('tierBonuses' in body) {
+    if (body.tierBonuses === null) {
+      patch.tierBonuses = null;
+    } else if (Array.isArray(body.tierBonuses)) {
+      const MAX_TIERS = 10;
+      const MAX_CENTS = 1_000_000_00;
+      const clean: { thresholdCents: number; bonusCents: number }[] = [];
+      for (const t of body.tierBonuses as unknown[]) {
+        if (!t || typeof t !== 'object') {
+          return Response.json({ error: 'tierBonuses: entrada inválida.' }, { status: 400 });
+        }
+        const obj = t as { thresholdCents?: unknown; bonusCents?: unknown };
+        const threshold = typeof obj.thresholdCents === 'number' ? Math.round(obj.thresholdCents) : NaN;
+        const bonus = typeof obj.bonusCents === 'number' ? Math.round(obj.bonusCents) : NaN;
+        if (!Number.isFinite(threshold) || threshold < 0 || threshold > MAX_CENTS) {
+          return Response.json({ error: 'tierBonuses: thresholdCents fuera de rango.' }, { status: 400 });
+        }
+        if (!Number.isFinite(bonus) || bonus < 0 || bonus > MAX_CENTS) {
+          return Response.json({ error: 'tierBonuses: bonusCents fuera de rango.' }, { status: 400 });
+        }
+        clean.push({ thresholdCents: threshold, bonusCents: bonus });
+      }
+      if (clean.length > MAX_TIERS) {
+        return Response.json({ error: `tierBonuses: máximo ${MAX_TIERS} tramos.` }, { status: 400 });
+      }
+      clean.sort((a, b) => a.thresholdCents - b.thresholdCents);
+      patch.tierBonuses = clean;
+    } else {
+      return Response.json({ error: 'tierBonuses debe ser array o null.' }, { status: 400 });
     }
   }
 

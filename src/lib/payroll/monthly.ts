@@ -275,6 +275,7 @@ export async function computeMonthlyPayroll(
       commissionServicesPct: barber.commissionServicesPct,
       commissionProductsPct: barber.commissionProductsPct,
       chairRentCents: barber.chairRentCents,
+      tierBonuses: barber.tierBonuses ?? null,
     }
     if (!isProfileConfigured(profile)) continue
 
