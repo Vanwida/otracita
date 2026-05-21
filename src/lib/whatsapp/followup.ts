@@ -144,10 +144,10 @@ export function isFollowupReplyId(id: string): boolean {
 export async function sendRatingFollowup(
   client: Client,
   booking: Booking,
-): Promise<boolean> {
+): Promise<'push' | 'whatsapp' | 'none'> {
   if (isOwnBusinessPhone(booking.customerPhone, client)) {
     console.log(`[followup] skipping booking ${booking.id} — own business phone`);
-    return false;
+    return 'none';
   }
 
   const token = client.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '';
@@ -198,17 +198,17 @@ export async function sendRatingFollowup(
     dispatched = result.channel;
   } catch (err) {
     console.error(`[followup] dispatch failed for booking ${booking.id}:`, err);
-    return false;
+    return 'none';
   }
 
-  if (dispatched === 'none') return false;
+  if (dispatched === 'none') return 'none';
 
   await db
     .update(bookings)
     .set({ followupSentAt: new Date() })
     .where(eq(bookings.id, booking.id));
 
-  return true;
+  return dispatched;
 }
 
 /**
@@ -238,7 +238,25 @@ export function tryRatingFollowupForCompletedBooking(bookingId: string): void {
       if (row.booking.followupSentAt) return;
       if (row.booking.status === 'cancelled' || row.booking.status === 'no_show') return;
 
-      await sendRatingFollowup(row.client, row.booking);
+      // Walk-in guard — bookings creados sin teléfono (cliente que entra a la
+      // barbería sin reserva previa) no tienen canal donde mandar el followup.
+      // dispatchUserNotification devolvería 'none' y como no marcamos
+      // followupSentAt, el cron safety-net del día siguiente lo recogería
+      // otra vez en bucle. Salida silenciosa para cortar el loop sin falsear
+      // que sí se envió.
+      if (!row.booking.customerPhone || row.booking.customerPhone.trim() === '') {
+        console.info('[followup] skipped — walk-in sin teléfono', { bookingId });
+        return;
+      }
+
+      const channel = await sendRatingFollowup(row.client, row.booking);
+
+      console.info('[followup]', {
+        booking: bookingId,
+        channel,
+        tipsEnabled: Boolean(row.client.tipsEnabled),
+        hasConnect: Boolean(row.client.stripeConnectAccountId),
+      });
     } catch (err) {
       console.error('[followup] tryRatingFollowupForCompletedBooking failed:', bookingId, err);
     }
@@ -255,10 +273,10 @@ async function sendRatingWhatsApp(
   body: string,
   token: string,
   phoneNumberId: string | null,
-): Promise<boolean> {
+): Promise<'push' | 'whatsapp' | 'none'> {
   if (!token || !phoneNumberId) {
     console.warn(`[followup] client ${client.id} missing WhatsApp config — skipping`);
-    return false;
+    return 'none';
   }
   try {
     await sendRatingWhatsAppList(phoneNumberId, booking.customerPhone, body, token);
@@ -270,10 +288,10 @@ async function sendRatingWhatsApp(
       bookingId: booking.id,
       step: 'awaiting_rating',
     });
-    return true;
+    return 'whatsapp';
   } catch (err) {
     console.error(`[followup] whatsapp send failed for booking ${booking.id}:`, err);
-    return false;
+    return 'none';
   }
 }
 
