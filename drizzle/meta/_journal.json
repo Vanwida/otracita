@@ -134,6 +134,13 @@
       "when": 1779101323531,
       "tag": "0029_agenda_barber_requested",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1779356434986,
+      "tag": "0030_tips_method_and_barber",
+      "breakpoints": true
     }
   ]
 }

@@ -913,6 +913,23 @@ export const tips = pgTable('tips', {
   // Snapshots (so history stays correct even if barber renames)
   customerPhone: text('customer_phone').notNull(),
   barberName: text('barber_name'),
+  /**
+   * Método de pago de la propina.
+   * - 'card' → flow Stripe Checkout (post-booking-followup, FK paymentLinkUrl).
+   * - 'cash' → propina en efectivo registrada manualmente en /caja (espejo en cash_movements).
+   * - NULL  → filas legacy anteriores a este split (asumir 'card' implícito en queries).
+   *
+   * Lo dejamos nullable para no romper datos pre-migración. UI nueva siempre lo rellena.
+   */
+  paymentMethod: text('payment_method'),                                   // 'cash' | 'card' | null (legacy = card)
+  /**
+   * Barbero al que va la propina (100% suyo, no entra en motor de comisión).
+   * Snapshot histórico — si se borra el barbero el FK pasa a NULL (ON DELETE SET NULL)
+   * y queda `barberName` como referencia de auditoría.
+   * Nullable porque tips legacy (pre-V1 Reni) no tenían barbero asignado a nivel directo
+   * y se resolvían vía bookings.barber_id; ahora la asignación es explícita.
+   */
+  barberId: uuid('barber_id').references(() => barbers.id, { onDelete: 'set null' }),
   // Rating (1-5). Null = customer didn't rate (e.g. only paid a tip).
   rating: integer('rating'),
   ratingComment: text('rating_comment'),
@@ -1171,6 +1188,14 @@ export const cashMovements = pgTable('cash_movements', {
   // auditoría inversa: "¿de qué venta vino este cash de 25€?").
   referenceType: text('reference_type'),                                   // 'booking' | 'product_sale' | null
   referenceId: uuid('reference_id'),
+
+  /**
+   * Barbero asignado al movimiento (relevante sobre todo para kind='tip_cash'
+   * — la propina es 100% del barbero y necesitamos atribuirla en Payroll /
+   * BarberBreakdown). Para otros kinds (expense, withdrawal…) suele ser NULL.
+   * ON DELETE SET NULL: si se borra el barbero, conservamos el movimiento.
+   */
+  barberId: uuid('barber_id').references(() => barbers.id, { onDelete: 'set null' }),
 
   // Idempotencia para SumUp polling: si el polling trae una transaction
   // que ya está en la tabla (mismo id), lo salta. UNIQUE garantiza que
