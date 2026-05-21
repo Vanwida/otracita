@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Check, Heart } from 'lucide-react'
+import { Loader2, Check, Heart, Banknote, CreditCard } from 'lucide-react'
 import DataTable, { type Column } from '@/app/dashboard/_components/DataTable'
 import { formatCents } from '@/lib/format'
 import { FEEDBACK_MS } from '@/lib/ui-timings'
@@ -24,6 +24,11 @@ export interface TipRow {
   amountCents: number
   customerPhone: string
   barberName: string | null
+  /**
+   * Método de pago. Filas legacy pre-V1 vienen con NULL y se renderizan como
+   * 'card' implícito (todas eran Stripe Checkout antes del split Reni V1).
+   */
+  paymentMethod: 'cash' | 'card' | null
   paidAt: string | null
   createdAt: string
 }
@@ -171,6 +176,30 @@ function TIP_COLUMNS({
       align: 'right',
       numeric: true,
       cell: (t) => <span className="font-semibold text-ink">{formatEur(t.amountCents)}</span>,
+    },
+    {
+      key: 'method',
+      header: 'Método',
+      align: 'center',
+      // Filas legacy (paymentMethod NULL) se renderizan como 'card' implícito
+      // — antes del split V1 todas las propinas venían por Stripe Checkout.
+      cell: (t) => {
+        const method = t.paymentMethod ?? 'card'
+        if (method === 'cash') {
+          return (
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-softer/50 text-brand-strong px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest">
+              <Banknote className="h-2.5 w-2.5" aria-hidden="true" />
+              Cash
+            </span>
+          )
+        }
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-overlay text-ink-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest">
+            <CreditCard className="h-2.5 w-2.5" aria-hidden="true" />
+            Card
+          </span>
+        )
+      },
     },
     {
       key: 'barber',
