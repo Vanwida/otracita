@@ -160,7 +160,36 @@ export default function Payroll({ month }: Props) {
                       value={item.breakdown.commissionProductsCents}
                       hint={`sobre ${formatEuros(item.raw.productsRevenueCents)} vendidos`}
                     />
-                    <Row label="Propinas" value={item.breakdown.tipsCents} hint="íntegras al barbero" />
+                    {/* R-T3 — Liquidación distinta de propinas:
+                          · CARD = pendiente, se paga al barbero en esta nómina.
+                          · CASH = ya entregada en mano al cliente; informativa,
+                            NO suma al total (sumarla sería doble-contar). */}
+                    <Row
+                      label="Propinas card del mes"
+                      value={item.breakdown.tipsCardCents}
+                      hint="pendientes de pagar al barbero en esta nómina"
+                    />
+                    {item.breakdown.tipsCashCents > 0 && (
+                      <div className="flex items-baseline justify-between gap-3 py-2.5 opacity-60">
+                        <div className="min-w-0">
+                          <p className="text-sm text-ink-2 truncate">
+                            Propinas cash del mes
+                            <span
+                              className="ml-1.5 inline-flex items-center rounded-full bg-overlay px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-ink-3 align-middle"
+                              aria-hidden="true"
+                            >
+                              Informativo
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-ink-3">
+                            ya cobradas en mano por el barbero — no entran al total a pagar
+                          </p>
+                        </div>
+                        <p className="tabular-nums shrink-0 text-ink-2">
+                          {formatEuros(item.breakdown.tipsCashCents)}
+                        </p>
+                      </div>
+                    )}
                     <Row label="Bonos cobrados" value={item.breakdown.bonusesPayoutCents} />
                     {item.breakdown.tierBonus && (
                       <Row

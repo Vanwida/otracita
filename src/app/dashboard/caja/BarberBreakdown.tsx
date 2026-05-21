@@ -403,15 +403,19 @@ function barberColumns({
         const cashEur = Number(r.tips_cash_cents) / 100
         const cardEur = Number(r.tips_card_cents) / 100
         if (totalEur <= 0) return <span className="text-ink-3">—</span>
-        // Solo mostramos el split cuando hay ambos métodos. Si todo es de
-        // un único método el desglose ruido visual (ya se ve en /ventas/propinas).
+        // R-T3 — Solo mostramos el split cuando hay AMBOS métodos. Con
+        // todo de un único método el desglose es ruido (ya se ve en el
+        // detalle de /ventas/propinas).
         const showSplit = cashEur > 0 && cardEur > 0
         return (
           <>
             <span className="text-ink-2">{totalEur.toFixed(2)} €</span>
             {showSplit && (
-              <span className="block text-[10px] text-ink-3 tabular-nums">
-                Cash {cashEur.toFixed(0)} € · Card {cardEur.toFixed(0)} €
+              <span
+                className="block text-[10px] text-ink-3 tabular-nums opacity-80"
+                title="Cash: ya entregado en mano al barbero. Card: pendiente de pago vía nómina."
+              >
+                Cash {cashEur.toFixed(0)} € (entregado) · Card {cardEur.toFixed(0)} € (pendiente nómina)
               </span>
             )}
           </>

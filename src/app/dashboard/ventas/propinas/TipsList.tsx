@@ -183,18 +183,26 @@ function TIP_COLUMNS({
       align: 'center',
       // Filas legacy (paymentMethod NULL) se renderizan como 'card' implícito
       // — antes del split V1 todas las propinas venían por Stripe Checkout.
+      // R-T3: el `title` aclara la diferencia de liquidación (cash = ya
+      // entregada en mano; card = pendiente vía nómina).
       cell: (t) => {
         const method = t.paymentMethod ?? 'card'
         if (method === 'cash') {
           return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-softer/50 text-brand-strong px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest">
+            <span
+              title="Entregada en mano al barbero"
+              className="inline-flex items-center gap-1 rounded-full bg-brand-softer/50 text-brand-strong px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest"
+            >
               <Banknote className="h-2.5 w-2.5" aria-hidden="true" />
               Cash
             </span>
           )
         }
         return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-overlay text-ink-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest">
+          <span
+            title="Pendiente de pagar al barbero en la nómina"
+            className="inline-flex items-center gap-1 rounded-full bg-overlay text-ink-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest"
+          >
             <CreditCard className="h-2.5 w-2.5" aria-hidden="true" />
             Card
           </span>

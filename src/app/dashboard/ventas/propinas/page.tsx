@@ -6,11 +6,11 @@ import { db } from '@/db'
 import { clients, tips as tipsTable, barbers as barbersTable } from '@/db/schema'
 import { and, desc, eq, gte, lt, sql, type SQL } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { Heart, Banknote, CreditCard, Trophy } from 'lucide-react'
+import { Heart, Banknote, Hourglass, Trophy } from 'lucide-react'
 import AreaContent from '../../_components/AreaContent'
 import TipsSettings from '../../_components/TipsSettings'
 import TipsList, { type TipRow } from './TipsList'
-import { resolvePeriodSelection } from '@/lib/dashboard/period'
+import { resolvePeriodSelection, type Period } from '@/lib/dashboard/period'
 import { formatCents } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
@@ -181,11 +181,11 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
         }}
       />
 
-      {/* KPIs del periodo — total + split cash/card + top 3 barberos. Solo
-          rendereamos si hay propinas en el periodo: si está vacío la lista
-          ya muestra el empty-state, no hace falta duplicar mensajes. */}
+      {/* KPIs del periodo — total + cash entregada + card pendiente nómina +
+          top 3 barberos. Solo rendereamos si hay propinas en el periodo: si
+          está vacío la lista ya muestra el empty-state. */}
       {totalCount > 0 && (
-        <section className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-surface border border-line rounded-2xl p-4">
             <div className="flex items-center gap-2 text-xs text-ink-3 uppercase tracking-widest font-semibold">
               <Heart className="h-3.5 w-3.5 text-gold" aria-hidden="true" />
@@ -199,19 +199,26 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
             </p>
           </div>
 
+          {/* Cash: ya entregada en mano al barbero (self-liquidated). */}
           <div className="bg-surface border border-line rounded-2xl p-4">
             <div className="flex items-center gap-2 text-xs text-ink-3 uppercase tracking-widest font-semibold">
               <Banknote className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
-              Cash
+              Cash entregada
             </div>
             <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">
               {formatCents(cashCents)}
             </p>
-            <p className="text-xs text-ink-3 mt-0.5">
-              <CreditCard className="inline h-3 w-3 mr-1 align-text-bottom" />
-              Card: <span className="tabular-nums">{formatCents(cardCents)}</span>
-            </p>
+            <p className="text-xs text-ink-3 mt-0.5">en mano al barbero</p>
           </div>
+
+          {/* R-T3 — KPI "Pendiente entregar" = total card del periodo. El dueño
+              debe pagarlo al barbero en la nómina del mes. Tinte warning si el
+              periodo es DAY/WEEK (recordatorio: no olvidar pagar fin de mes). */}
+          <PendingTipsKpi
+            cardCents={cardCents}
+            periodKind={selection.period}
+            periodLabel={periodLabel}
+          />
 
           <div className="bg-surface border border-line rounded-2xl p-4">
             <div className="flex items-center gap-2 text-xs text-ink-3 uppercase tracking-widest font-semibold">
@@ -246,5 +253,72 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
         <TipsList tips={tips} barberNames={barberNames} />
       </div>
     </AreaContent>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// PendingTipsKpi — R-T3.
+//
+// Card "Pendiente entregar" = total de propinas CARD del periodo. Es lo que
+// el dueño todavía DEBE pagar al barbero en la nómina (las CASH ya están
+// entregadas en mano). Cuando el periodo seleccionado es day/week se aplica
+// un tinte warning sutil para recordarle "no olvides pagar fin de mes".
+//
+// Copia del subtítulo según el periodo:
+//   day/week → "vía nómina del mes"
+//   month    → "vía nómina del mes"
+//   year     → "vía nóminas del año"
+//   lifetime/range → "vía nóminas futuras"
+// -----------------------------------------------------------------------------
+function PendingTipsKpi({
+  cardCents,
+  periodKind,
+  periodLabel,
+}: {
+  cardCents: number
+  periodKind: Period
+  periodLabel: string
+}) {
+  const showWarningTint = periodKind === 'day' || periodKind === 'week'
+  const subtitle =
+    periodKind === 'day' || periodKind === 'week' || periodKind === 'month'
+      ? 'vía nómina del mes'
+      : periodKind === 'year'
+        ? 'vía nóminas del año'
+        : 'vía nóminas futuras'
+
+  // Tinte warning: borde + halo sutil. Mantenemos bg-surface para no
+  // gritar — el tinte está solo en el borde y la línea bajo el título.
+  const cardClass = showWarningTint
+    ? 'bg-surface border border-warning/40 rounded-2xl p-4 ring-1 ring-warning/15'
+    : 'bg-surface border border-line rounded-2xl p-4'
+
+  return (
+    <div className={cardClass}>
+      <div className="flex items-center gap-2 text-xs text-ink-3 uppercase tracking-widest font-semibold">
+        <Hourglass
+          className={
+            showWarningTint
+              ? 'h-3.5 w-3.5 text-warning'
+              : 'h-3.5 w-3.5 text-ink-3'
+          }
+          aria-hidden="true"
+        />
+        Pendiente entregar
+      </div>
+      <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">
+        {formatCents(cardCents)}
+      </p>
+      <p
+        className={
+          showWarningTint
+            ? 'text-xs text-warning mt-0.5'
+            : 'text-xs text-ink-3 mt-0.5'
+        }
+      >
+        {subtitle}
+        <span className="sr-only"> ({periodLabel})</span>
+      </p>
+    </div>
   )
 }
