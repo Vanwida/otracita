@@ -31,7 +31,7 @@ import { loadReportContext } from '../_report-data'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{ period?: string; date?: string; start?: string; end?: string }>
 }
 
 interface NoShowClientRow {
@@ -58,9 +58,9 @@ const STATUS_META: Record<
 const STATUS_ORDER = ['completed', 'confirmed', 'no_show', 'cancelled'] as const
 
 export default async function InformesCitasPage({ searchParams }: PageProps) {
-  const { period: rawPeriod } = await searchParams
+  const params = await searchParams
   const { client, periodLabel, periodStartIso, periodEndIso } =
-    await loadReportContext(rawPeriod)
+    await loadReportContext(params)
 
   const dateLo = periodStartIso ?? '0001-01-01'
 

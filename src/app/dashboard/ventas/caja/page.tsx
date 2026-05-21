@@ -23,12 +23,12 @@ import { loadVentasData } from '../_data'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{ period?: string; date?: string; start?: string; end?: string }>
 }
 
 export default async function VentasCajaPage({ searchParams }: PageProps) {
-  const { period: rawPeriod } = await searchParams
-  const d = await loadVentasData(rawPeriod)
+  const params = await searchParams
+  const d = await loadVentasData(params)
 
   if (!d.client.cashRegisterEnabled) {
     return (

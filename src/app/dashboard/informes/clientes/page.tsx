@@ -38,7 +38,7 @@ import { loadReportContext } from '../_report-data'
 const RISK_DAYS = 45
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{ period?: string; date?: string; start?: string; end?: string }>
 }
 
 interface TopClientRow {
@@ -61,9 +61,9 @@ function formatCents(cents: number): string {
 }
 
 export default async function InformesClientesPage({ searchParams }: PageProps) {
-  const { period: rawPeriod } = await searchParams
+  const params = await searchParams
   const { client, periodLabel, periodStartIso, periodEndIso } =
-    await loadReportContext(rawPeriod)
+    await loadReportContext(params)
 
   const dateLo = periodStartIso ?? '0001-01-01'
 

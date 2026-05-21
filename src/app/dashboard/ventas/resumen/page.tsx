@@ -23,12 +23,12 @@ import { formatEuros, pluralizeEs } from '@/lib/i18n/plural-es'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{ period?: string; date?: string; start?: string; end?: string }>
 }
 
 export default async function VentasResumenPage({ searchParams }: PageProps) {
-  const { period: rawPeriod } = await searchParams
-  const d = await loadVentasData(rawPeriod)
+  const params = await searchParams
+  const d = await loadVentasData(params)
 
   const stats: Stat[] = [
     {

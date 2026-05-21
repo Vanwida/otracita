@@ -17,10 +17,9 @@ import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   type Period,
-  resolvePeriod,
-  getPeriodStart,
+  type PeriodSelectionInput,
+  resolvePeriodSelection,
   getPreviousPeriod,
-  PERIOD_OPTIONS,
 } from '@/lib/dashboard/period'
 import type { ClosedRegister } from '../caja/CajaRegisters'
 
@@ -65,10 +64,8 @@ export interface VentasData {
 /** Resuelve sesión + client + KPIs del periodo. Idéntico al caja/page.tsx
  *  original (mismas queries, mismos casts, mismo orden). */
 export async function loadVentasData(
-  rawPeriod: string | undefined,
+  input: PeriodSelectionInput,
 ): Promise<VentasData> {
-  const period: Period = resolvePeriod(rawPeriod, 'month')
-
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -79,14 +76,38 @@ export async function loadVentasData(
   if (!client) redirect('/dashboard/setup')
 
   const now = new Date()
-  const periodStart = getPeriodStart(period, now)
-  const periodStartIso = periodStart
-    ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-${String(periodStart.getDate()).padStart(2, '0')}`
-    : null
+  const selection = resolvePeriodSelection(input, now, 'month')
+  const period: Period = selection.period
+  const periodStart = selection.periodStart
+  const periodEnd = selection.periodEnd
+  const periodStartIso = selection.periodStartIso
+  const periodEndIso = selection.periodEndIso
 
-  const previousPeriod = getPreviousPeriod(period, periodStart, now)
+  const previousPeriod = getPreviousPeriod(period, periodStart, now, {
+    date: selection.date,
+    start: selection.rangeStart,
+    end: selection.rangeEnd,
+  })
+  // Acotamos por arriba con `periodEndIso` cuando lo hay (day, range, week,
+  // month, year). En lifetime queda sin tope superior — mismo comportamiento
+  // que antes (solo había `AND date >= …` o nada).
   const periodWhereDate = periodStartIso
-    ? sql`AND date >= ${periodStartIso}`
+    ? periodEndIso
+      ? sql`AND date >= ${periodStartIso} AND date < ${periodEndIso}`
+      : sql`AND date >= ${periodStartIso}`
+    : sql``
+  // Para tips/productSales el filtro va contra timestamps (paid_at, sold_at).
+  // Cuando hay tope superior `periodEnd` lo aplicamos también — sin él, un
+  // `day=2026-05-03` sumaba propinas POSTERIORES al 3 de mayo, bug.
+  const tipsWhere = periodStart
+    ? periodEnd
+      ? sql`AND paid_at >= ${periodStart} AND paid_at < ${periodEnd}`
+      : sql`AND paid_at >= ${periodStart}`
+    : sql``
+  const upsellsWhere = periodStart
+    ? periodEnd
+      ? sql`AND sold_at >= ${periodStart} AND sold_at < ${periodEnd}`
+      : sql`AND sold_at >= ${periodStart}`
     : sql``
 
   // ─── KPIs principales ────────────────────────────────────────────────────
@@ -102,13 +123,13 @@ export async function loadVentasData(
         ${periodWhereDate})::int AS completed_count,
       (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
         WHERE client_id = ${client.id} AND status = 'paid'
-        ${periodStart ? sql`AND paid_at >= ${periodStart}` : sql``})::bigint AS tips_cents,
+        ${tipsWhere})::bigint AS tips_cents,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
         WHERE client_id = ${client.id}
-        ${periodStart ? sql`AND sold_at >= ${periodStart}` : sql``})::bigint AS upsells_cents,
+        ${upsellsWhere})::bigint AS upsells_cents,
       (SELECT COUNT(*) FROM ${productSales}
         WHERE client_id = ${client.id}
-        ${periodStart ? sql`AND sold_at >= ${periodStart}` : sql``})::int AS upsells_count
+        ${upsellsWhere})::int AS upsells_count
   `)
       .then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? []
 
@@ -210,8 +231,7 @@ export async function loadVentasData(
     }))
   }
 
-  const periodLabel =
-    PERIOD_OPTIONS.find((p) => p.key === period)?.label.toLowerCase() ?? period
+  const periodLabel = selection.periodLabel
   const ticketMedio = completedCount > 0 ? billedEur / completedCount : 0
 
   return {

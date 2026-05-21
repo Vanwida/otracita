@@ -20,12 +20,12 @@ import { loadVentasData } from '../_data'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{ period?: string; date?: string; start?: string; end?: string }>
 }
 
 export default async function VentasCobrosPage({ searchParams }: PageProps) {
-  const { period: rawPeriod } = await searchParams
-  const { client } = await loadVentasData(rawPeriod)
+  const params = await searchParams
+  const { client } = await loadVentasData(params)
 
   return (
     <AreaContent scroll="region" maxWidth="5xl">

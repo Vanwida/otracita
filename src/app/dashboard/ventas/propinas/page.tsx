@@ -4,13 +4,13 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { clients, tips as tipsTable, barbers as barbersTable } from '@/db/schema'
-import { and, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, lt, sql, type SQL } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { Heart, Banknote, CreditCard, Trophy } from 'lucide-react'
 import AreaContent from '../../_components/AreaContent'
 import TipsSettings from '../../_components/TipsSettings'
 import TipsList, { type TipRow } from './TipsList'
-import { getPeriodStart, PERIOD_OPTIONS, resolvePeriod } from '@/lib/dashboard/period'
+import { resolvePeriodSelection } from '@/lib/dashboard/period'
 import { formatCents } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
@@ -30,14 +30,12 @@ import { formatCents } from '@/lib/format'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
-}
-
-function toLocalIso(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  searchParams: Promise<{
+    period?: string
+    date?: string
+    start?: string
+    end?: string
+  }>
 }
 
 interface TopBarberRow {
@@ -55,28 +53,28 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
     .where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  // Periodo: default 'month' (coherente con informes). Para 'lifetime' no
-  // se aplica filtro de fecha.
-  const { period: rawPeriod } = await searchParams
-  const period = resolvePeriod(rawPeriod, 'month')
-  const periodLabel =
-    PERIOD_OPTIONS.find((p) => p.key === period)?.label.toLowerCase() ?? period
-  const now = new Date()
-  const periodStart = getPeriodStart(period, now)
-  const periodStartIso = periodStart ? toLocalIso(periodStart) : null
+  // Periodo: default 'month' (coherente con informes). 'lifetime' = sin
+  // filtro. Soporta 'day' (con ?date=) y 'range' (con ?start=&end=).
+  const params = await searchParams
+  const selection = resolvePeriodSelection(params, new Date(), 'month')
+  const { periodLabel, periodStart, periodEnd, periodStartIso } = selection
 
-  // Filtro común — tips pagadas del tenant en el periodo (paidAt).
-  // Para 'lifetime' simplemente omitimos el filtro de fecha.
-  const periodFilter = periodStartIso
-    ? gte(tipsTable.paidAt, new Date(`${periodStartIso}T00:00:00`))
-    : undefined
-  const baseWhere = periodFilter
-    ? and(
-        eq(tipsTable.clientId, client.id),
-        eq(tipsTable.status, 'paid'),
-        periodFilter,
-      )
-    : and(eq(tipsTable.clientId, client.id), eq(tipsTable.status, 'paid'))
+  // Filtro común — tips pagadas del tenant en el periodo (paidAt). Para
+  // 'day'/'range' acotamos también por arriba con `periodEnd`: sin tope,
+  // un day=hoy sumaría propinas POSTERIORES al día seleccionado.
+  const whereParts: SQL[] = [
+    eq(tipsTable.clientId, client.id),
+    eq(tipsTable.status, 'paid'),
+  ]
+  if (periodStart) whereParts.push(gte(tipsTable.paidAt, periodStart))
+  if (periodEnd) whereParts.push(lt(tipsTable.paidAt, periodEnd))
+  const baseWhere = and(...whereParts)
+  // Fragmento SQL equivalente para los SUM/COUNT con `db.execute(sql`)`.
+  const periodSqlFragment = periodStartIso
+    ? selection.periodEndIso
+      ? sql`AND ${tipsTable.paidAt} >= ${periodStartIso}::date AND ${tipsTable.paidAt} < ${selection.periodEndIso}::date`
+      : sql`AND ${tipsTable.paidAt} >= ${periodStartIso}::date`
+    : sql``
 
   // Carga paralela: lista detallada + agregados por método + top barberos
   // por importe + barberos activos para selector.
@@ -105,7 +103,7 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
       FROM ${tipsTable}
       WHERE ${tipsTable.clientId} = ${client.id}
         AND ${tipsTable.status} = 'paid'
-        ${periodStartIso ? sql`AND ${tipsTable.paidAt} >= ${periodStartIso}::date` : sql``}
+        ${periodSqlFragment}
       GROUP BY 1
     `),
 
@@ -119,7 +117,7 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
       WHERE ${tipsTable.clientId} = ${client.id}
         AND ${tipsTable.status} = 'paid'
         AND ${tipsTable.barberName} IS NOT NULL
-        ${periodStartIso ? sql`AND ${tipsTable.paidAt} >= ${periodStartIso}::date` : sql``}
+        ${periodSqlFragment}
       GROUP BY ${tipsTable.barberName}
       ORDER BY total_cents DESC
       LIMIT 3

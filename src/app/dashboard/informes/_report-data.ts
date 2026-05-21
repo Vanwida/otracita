@@ -8,48 +8,42 @@ import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import {
   type Period,
-  resolvePeriod,
-  getPeriodStart,
-  PERIOD_OPTIONS,
+  type PeriodSelectionInput,
+  resolvePeriodSelection,
+  toLocalIso,
 } from '@/lib/dashboard/period'
 
 // -----------------------------------------------------------------------------
 // _report-data — resolución compartida de sesión + tenant + periodo para las
-// pestañas de reporte de Informes (Ingresos · Clientes · Citas). DRY: las
-// tres resuelven igual el contexto; solo cambia la query de cada una.
+// pestañas de reporte de Informes (Ingresos · Clientes · Citas · Marketing).
+// DRY: las cuatro resuelven igual el contexto; solo cambia la query de cada
+// una.
 //
 // Multi-tenancy: el client SIEMPRE se resuelve de la sesión (email), nunca
 // del request — mismo patrón que loadVentasData / atribucion. El periodo
-// llega por `?period=` (StatsPeriodTabs) y se valida con el helper puro.
+// llega por `?period=` + opcionalmente `?date=` (day) o `?start=&end=`
+// (range), y se valida con el helper puro `resolvePeriodSelection`.
 //
-// `periodStartIso` = YYYY-MM-DD inclusive, o null para "lifetime" (sin
-// filtro de fecha). `periodEndIso` = mañana (exclusivo) — incluye hoy
-// completo sin depender de la hora del servidor.
+// `periodStartIso` = YYYY-MM-DD inclusive, o null para "lifetime"/range
+// inválido (sin filtro de fecha). `periodEndIso` = YYYY-MM-DD exclusive — la
+// página siempre tiene un límite superior salvo en lifetime puro.
 // -----------------------------------------------------------------------------
 
 export interface ReportContext {
   client: typeof clients.$inferSelect
   period: Period
-  /** Etiqueta legible en minúsculas (ej. "mes", "total"). */
+  /** Etiqueta legible en minúsculas (ej. "mes", "rango"). */
   periodLabel: string
   /** YYYY-MM-DD inclusive · null = lifetime (sin filtro de fecha). */
   periodStartIso: string | null
-  /** YYYY-MM-DD exclusive (mañana). Acota el límite superior. */
+  /** YYYY-MM-DD exclusive. Si null (lifetime puro o range incompleto),
+   *  fallback a "mañana" para que las queries `< periodEndIso` no rompan. */
   periodEndIso: string
 }
 
-function toLocalIso(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 export async function loadReportContext(
-  rawPeriod: string | undefined,
+  input: PeriodSelectionInput,
 ): Promise<ReportContext> {
-  const period = resolvePeriod(rawPeriod, 'month')
-
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -60,15 +54,24 @@ export async function loadReportContext(
   if (!client) redirect('/dashboard/setup')
 
   const now = new Date()
-  const periodStart = getPeriodStart(period, now)
-  const periodStartIso = periodStart ? toLocalIso(periodStart) : null
+  const selection = resolvePeriodSelection(input, now, 'month')
 
-  // Límite superior = mañana (exclusivo) → hoy entra completo.
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-  const periodEndIso = toLocalIso(tomorrow)
+  // Fallback para `periodEndIso`: lifetime no tiene tope superior natural,
+  // pero las queries existentes usan `< periodEndIso` para acotar arriba e
+  // incluir hoy completo. Mantenemos "mañana" como tope cuando el resolver
+  // no devuelve uno — comportamiento idéntico al previo.
+  const tomorrow = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+  )
+  const periodEndIso = selection.periodEndIso ?? toLocalIso(tomorrow)
 
-  const periodLabel =
-    PERIOD_OPTIONS.find((p) => p.key === period)?.label.toLowerCase() ?? period
-
-  return { client, period, periodLabel, periodStartIso, periodEndIso }
+  return {
+    client,
+    period: selection.period,
+    periodLabel: selection.periodLabel,
+    periodStartIso: selection.periodStartIso,
+    periodEndIso,
+  }
 }

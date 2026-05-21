@@ -8,7 +8,7 @@ import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
-import { resolvePeriod, getPeriodStart, PERIOD_OPTIONS } from '@/lib/dashboard/period'
+import { resolvePeriodSelection } from '@/lib/dashboard/period'
 import AreaContent from '../_components/AreaContent'
 import BarbersManager from '../_components/BarbersManager'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
@@ -39,11 +39,17 @@ import BarberBreakdown from '../caja/BarberBreakdown'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string; breakdown?: string }>
+  searchParams: Promise<{
+    period?: string
+    date?: string
+    start?: string
+    end?: string
+    breakdown?: string
+  }>
 }
 
 export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
-  const { period: rawPeriod, breakdown } = await searchParams
+  const { period: rawPeriod, date, start, end, breakdown } = await searchParams
 
   // Drill-down de Informes ("Citas/Ingresos por empleado"): el rail enlaza
   // aquí con ?breakdown=open para que el dueño aterrice en el dato YA
@@ -80,14 +86,13 @@ export default async function EquipoEmpleadosPage({ searchParams }: PageProps) {
     : []
 
   // Periodo del desglose por barbero (default "mes": lo que el dueño mira a
-  // diario). periodStartIso null = lifetime (sin filtro de fecha).
-  const period = resolvePeriod(rawPeriod, 'month')
-  const periodStart = getPeriodStart(period, new Date())
-  const periodStartIso = periodStart
-    ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-${String(periodStart.getDate()).padStart(2, '0')}`
-    : null
-  const periodLabel =
-    PERIOD_OPTIONS.find((p) => p.key === period)?.label.toLowerCase() ?? period
+  // diario). periodStartIso null = lifetime / rango inválido. Soporta 'day'
+  // (?date=) y 'range' (?start=&end=) además de las chips fijas.
+  const { periodStartIso, periodLabel } = resolvePeriodSelection(
+    { period: rawPeriod, date, start, end },
+    new Date(),
+    'month',
+  )
 
   return (
     <AreaContent scroll="region" maxWidth="full" bleed>
