@@ -55,6 +55,40 @@ interface Props {
     id: string,
     next: { date: string; time: string; barberId: string | null },
   ) => void;
+  /**
+   * Resize por drag de bordes (U1, feedback Reni V1 P2). El padre PATCHea
+   * /api/bookings/[id] con { duration } y, si se arrastró el borde
+   * superior, también { time }. Optimista en SWR (mismo patrón que move).
+   */
+  onEventResize: (
+    id: string,
+    next: { time: string; duration: number },
+  ) => void;
+  /**
+   * Resize por drag de bordes para descansos / ausencias parciales (U1).
+   * El padre PATCHea /api/barbers/[barberId]/blocks?blockId=... con
+   * { startTime, endTime }. Día-libre completo NO se resizea (no tiene
+   * rango horario — UI filtra fuera el handle).
+   */
+  onBlockResize: (
+    block: CalendarBlock,
+    next: { startTime: string; endTime: string },
+  ) => void;
+}
+
+/** Mínimo de duración tras resize. Coincide con el snap del cliente y el
+ *  mínimo aceptado por el endpoint. Bajarlo más rompería el predicado de
+ *  solape (`end > start`). */
+const RESIZE_MIN_MIN = 5;
+
+/** Alto del handle invisible en cada borde del bloque, en píxeles. Pequeño
+ *  pero suficiente para agarrar con ratón sin pelear con el clic del bloque. */
+const RESIZE_HANDLE_PX = 6;
+
+function minutesToHHMM(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 // El color de la cita = color del BARBERO (consistente Día/Semana/Mes); el
@@ -103,6 +137,8 @@ export default function DayGrid({
   onBarberClick,
   onBlockClick,
   onEventMove,
+  onEventResize,
+  onBlockResize,
 }: Props) {
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -112,6 +148,34 @@ export default function DayGrid({
   // bloque y no la del punto donde se agarró.
   const dragRef = useRef<{ id: string; grabOffsetPx: number } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Pointer fino (desktop). En touch / iPad con dedo el resize por bordes
+  // es frágil — directiva explícita del producto (U1). matchMedia se
+  // resuelve cliente-side; por defecto false en SSR para no pintar handles
+  // que después desaparecen (sin flicker / sin mismatch de hidratación).
+  const [pointerFine, setPointerFine] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(pointer: fine)');
+    setPointerFine(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setPointerFine(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // Estado en vivo del resize. Mientras el barbero arrastra un borde, este
+  // objeto sustituye visualmente el bloque (start/end overrideados) para
+  // que el preview no dependa del round-trip al servidor. Al soltar, el
+  // padre hace el update optimista en SWR + PATCH; este estado se limpia.
+  type ResizeState =
+    | { kind: 'event'; id: string; edge: 'top' | 'bottom'; startMin: number; endMin: number }
+    | { kind: 'block'; id: string; edge: 'top' | 'bottom'; startMin: number; endMin: number };
+  const [resizing, setResizing] = useState<ResizeState | null>(null);
+  // Ref para tener acceso síncrono dentro de los listeners globales (en
+  // React 19+ el closure de useState capturado en addEventListener se
+  // queda viejo entre frames si el state cambia rápido).
+  const resizingRef = useRef<ResizeState | null>(null);
+  resizingRef.current = resizing;
 
   const dateStr = format(date, 'yyyy-MM-dd');
   const isBlocked = blockedDates.includes(dateStr);
@@ -140,6 +204,93 @@ export default function DayGrid({
   const businessHours = dayHours
     ? { open: toMinutes(dayHours.start), close: toMinutes(dayHours.end) }
     : null;
+
+  // Inicia un resize por drag de bordes (U1). Captura la posición inicial
+  // del ratón y los minutos start/end del bloque, engancha listeners
+  // globales (mousemove/mouseup) y los limpia al soltar. En cada frame
+  // recalcula start/end snapped a SNAP_MIN, respetando el mínimo de
+  // duración y la "espina" opuesta (no permitir cruzar el otro borde).
+  // Al soltar, si hubo cambio real, delega en el padre vía
+  // `onEventResize` u `onBlockResize`.
+  const startResize = (
+    e: React.MouseEvent,
+    target:
+      | { kind: 'event'; id: string; startMin: number; endMin: number }
+      | { kind: 'block'; block: CalendarBlock; startMin: number; endMin: number },
+    edge: 'top' | 'bottom',
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const initialY = e.clientY;
+    const initialStart = target.startMin;
+    const initialEnd = target.endMin;
+    const id = target.kind === 'event' ? target.id : target.block.id;
+
+    const initialState: ResizeState = {
+      kind: target.kind,
+      id,
+      edge,
+      startMin: initialStart,
+      endMin: initialEnd,
+    };
+    setResizing(initialState);
+    resizingRef.current = initialState;
+
+    const onMove = (ev: MouseEvent) => {
+      const deltaPx = ev.clientY - initialY;
+      const deltaMinRaw = deltaPx / PX_PER_MIN;
+      // Snap del DELTA, no del valor final — así un drag mínimo (1-2 px)
+      // no salta al múltiplo más cercano del valor original, sólo cuando
+      // realmente cruzas un step de SNAP_MIN.
+      const deltaMin = Math.round(deltaMinRaw / SNAP_MIN) * SNAP_MIN;
+      let nextStart = initialStart;
+      let nextEnd = initialEnd;
+      if (edge === 'top') {
+        nextStart = initialStart + deltaMin;
+        // Clamp dentro de la ventana visible y por debajo del end −min.
+        nextStart = Math.max(startMin, nextStart);
+        nextStart = Math.min(nextStart, initialEnd - RESIZE_MIN_MIN);
+      } else {
+        nextEnd = initialEnd + deltaMin;
+        nextEnd = Math.min(endMin, nextEnd);
+        nextEnd = Math.max(nextEnd, initialStart + RESIZE_MIN_MIN);
+      }
+      const next: ResizeState = {
+        kind: target.kind,
+        id,
+        edge,
+        startMin: nextStart,
+        endMin: nextEnd,
+      };
+      resizingRef.current = next;
+      setResizing(next);
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      const final = resizingRef.current;
+      resizingRef.current = null;
+      setResizing(null);
+      if (!final) return;
+      // No-op si el barbero soltó sin cruzar ni un step (delta=0).
+      if (final.startMin === initialStart && final.endMin === initialEnd) return;
+      if (target.kind === 'event') {
+        onEventResize(target.id, {
+          time: minutesToHHMM(final.startMin),
+          duration: final.endMin - final.startMin,
+        });
+      } else {
+        onBlockResize(target.block, {
+          startTime: minutesToHHMM(final.startMin),
+          endTime: minutesToHHMM(final.endMin),
+        });
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
 
   // Soltar una cita en una columna: calcula la (date,time,barberId)
   // destino y delega en el padre (update optimista + PATCH + revalida).
@@ -473,34 +624,82 @@ export default function DayGrid({
                   {col.barber && blocks
                     .filter((b) => b.date === dateStr && b.barberId === col.barber!.id)
                     .map((b) => {
-                      const blockStartMin = b.startTime ? toMinutes(b.startTime) : startMin;
-                      const blockEndMin = b.endTime ? toMinutes(b.endTime) : endMin;
+                      const fullDay = !b.startTime && !b.endTime;
+                      // Si este bloque está siendo redimensionado, override
+                      // start/end con el estado en vivo. Sólo aplica a
+                      // bloqueos parciales — los de día completo no se resizean.
+                      const liveBlock =
+                        resizing && resizing.kind === 'block' && resizing.id === b.id
+                          ? resizing
+                          : null;
+                      const baseStartMin = b.startTime ? toMinutes(b.startTime) : startMin;
+                      const baseEndMin = b.endTime ? toMinutes(b.endTime) : endMin;
+                      const blockStartMin = liveBlock ? liveBlock.startMin : baseStartMin;
+                      const blockEndMin = liveBlock ? liveBlock.endMin : baseEndMin;
                       const top = Math.max(0, (blockStartMin - startMin) * PX_PER_MIN);
                       const height = Math.max(8, (blockEndMin - blockStartMin) * PX_PER_MIN);
-                      const fullDay = !b.startTime && !b.endTime;
                       const label =
                         b.kind === 'absence' ? (fullDay ? 'Día libre' : 'Ausencia') : 'Descanso';
+                      // Resize sólo para franjas parciales (start+end no
+                      // null). Día completo (start/end null) no tiene rango
+                      // horario que arrastrar — el barbero edita el motivo
+                      // o la borra y recrea.
+                      const canResize = pointerFine && !fullDay && b.startTime !== null && b.endTime !== null;
                       return (
-                        <button
+                        <div
                           key={b.id}
-                          type="button"
-                          onClick={(e) => {
-                            // Evita que el clic burbujee al slot vacío del
-                            // fondo (abriría "Nueva cita"). Antes el overlay
-                            // era pointer-events-none → no se podía modificar
-                            // un descanso ya creado.
-                            e.stopPropagation();
-                            onBlockClick(b);
-                          }}
-                          className="absolute left-0 right-0 z-20 blocked-overlay flex items-start justify-center cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+                          className="absolute left-0 right-0 z-20 blocked-overlay"
                           style={{ top, height }}
-                          aria-label={`${label}${b.note ? ` — ${b.note}` : ''} (clic para gestionar)`}
-                          title={`${label}${b.note ? ` — ${b.note}` : ''}`}
                         >
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-2 backdrop-blur-sm">
-                            {label}
-                          </span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              // Evita que el clic burbujee al slot vacío del
+                              // fondo (abriría "Nueva cita"). Antes el overlay
+                              // era pointer-events-none → no se podía modificar
+                              // un descanso ya creado.
+                              e.stopPropagation();
+                              onBlockClick(b);
+                            }}
+                            className="absolute inset-0 flex items-start justify-center cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+                            aria-label={`${label}${b.note ? ` — ${b.note}` : ''} (clic para gestionar)`}
+                            title={`${label}${b.note ? ` — ${b.note}` : ''}`}
+                          >
+                            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-2 backdrop-blur-sm">
+                              {label}
+                            </span>
+                          </button>
+                          {canResize && (
+                            <>
+                              <div
+                                role="presentation"
+                                onMouseDown={(e) =>
+                                  startResize(
+                                    e,
+                                    { kind: 'block', block: b, startMin: baseStartMin, endMin: baseEndMin },
+                                    'top',
+                                  )
+                                }
+                                className="absolute left-0 right-0 top-0 z-10 cursor-ns-resize"
+                                style={{ height: RESIZE_HANDLE_PX }}
+                                aria-hidden="true"
+                              />
+                              <div
+                                role="presentation"
+                                onMouseDown={(e) =>
+                                  startResize(
+                                    e,
+                                    { kind: 'block', block: b, startMin: baseStartMin, endMin: baseEndMin },
+                                    'bottom',
+                                  )
+                                }
+                                className="absolute left-0 right-0 bottom-0 z-10 cursor-ns-resize"
+                                style={{ height: RESIZE_HANDLE_PX }}
+                                aria-hidden="true"
+                              />
+                            </>
+                          )}
+                        </div>
                       );
                     })}
 
@@ -538,9 +737,21 @@ export default function DayGrid({
                       banned). Layout con carriles para solape lateral
                       (computeOverlapLayout). Rounded-md las 4 esquinas. */}
                   {colEvents.map(event => {
-                    const evStartMin = toMinutes(event.time);
+                    const baseStartMin = toMinutes(event.time);
+                    const baseEndMin = baseStartMin + event.duration;
+                    // Override en vivo durante un resize de ESTA cita. Mientras
+                    // el cursor está agarrado al borde, el bloque pinta con
+                    // start/end del estado local — el commit al servidor llega
+                    // al soltar (onMouseUp en startResize).
+                    const liveResize =
+                      resizing && resizing.kind === 'event' && resizing.id === event.id
+                        ? resizing
+                        : null;
+                    const evStartMin = liveResize ? liveResize.startMin : baseStartMin;
+                    const evEndMin = liveResize ? liveResize.endMin : baseEndMin;
+                    const durationMin = evEndMin - evStartMin;
                     const top = (evStartMin - startMin) * PX_PER_MIN;
-                    const height = Math.max(event.duration * PX_PER_MIN, 40);
+                    const height = Math.max(durationMin * PX_PER_MIN, 40);
                     // Umbral de densidad: con ≥56px caben hora+cliente+servicio.
                     const showService = height >= 56;
                     const isBooksy = event.source === 'booksy';
@@ -551,13 +762,18 @@ export default function DayGrid({
                     );
                     const badge = statusBadge(event.status);
 
-                    const evEndMin = evStartMin + event.duration;
-                    const endH = Math.floor(evEndMin / 60);
-                    const endM = evEndMin % 60;
-                    const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                    const endTime = minutesToHHMM(evEndMin);
+                    // Durante un resize por el borde TOP, la hora de inicio
+                    // del bloque cambia en vivo — refleja el preview en el
+                    // pill horario de la cabecera, no la snapshot.
+                    const displayStartTime = liveResize ? minutesToHHMM(evStartMin) : event.time;
 
                     const isDraggable = !isBooksy && !isCancelled;
                     const isDragging = draggingId === event.id;
+                    // Mismo guard que el drag&drop: las citas legacy de Booksy
+                    // y las canceladas no se resizean. Sólo en desktop
+                    // (pointerFine).
+                    const isResizable = pointerFine && !isBooksy && !isCancelled;
 
                     // Layout de carril: si la cita se solapa con otras en
                     // esta columna, va a anchura 1/N. 2px de aire entre
@@ -611,7 +827,7 @@ export default function DayGrid({
                             className="tabular-nums font-medium opacity-90"
                             style={{ fontSize: '0.6875rem', letterSpacing: '0.01em' }}
                           >
-                            {event.time}<span className="opacity-70"> – {endTime}</span>
+                            {displayStartTime}<span className="opacity-70"> – {endTime}</span>
                           </span>
                           {isBooksy && !isCancelled ? (
                             <Lock
@@ -678,6 +894,42 @@ export default function DayGrid({
                             </span>
                           );
                         })()}
+
+                        {/* Resize handles (U1) — bordes invisibles, 6px,
+                            cursor ns-resize. Desktop only (pointerFine).
+                            Top edge: cambia hora de inicio + duración.
+                            Bottom edge: solo duración. mouseDown.preventDefault
+                            evita que dispare el drag&drop nativo del bloque. */}
+                        {isResizable && (
+                          <>
+                            <div
+                              role="presentation"
+                              onMouseDown={(e) =>
+                                startResize(
+                                  e,
+                                  { kind: 'event', id: event.id, startMin: baseStartMin, endMin: baseEndMin },
+                                  'top',
+                                )
+                              }
+                              className="absolute left-0 right-0 top-0 cursor-ns-resize"
+                              style={{ height: RESIZE_HANDLE_PX }}
+                              aria-hidden="true"
+                            />
+                            <div
+                              role="presentation"
+                              onMouseDown={(e) =>
+                                startResize(
+                                  e,
+                                  { kind: 'event', id: event.id, startMin: baseStartMin, endMin: baseEndMin },
+                                  'bottom',
+                                )
+                              }
+                              className="absolute left-0 right-0 bottom-0 cursor-ns-resize"
+                              style={{ height: RESIZE_HANDLE_PX }}
+                              aria-hidden="true"
+                            />
+                          </>
+                        )}
                       </div>
                     );
                   })}

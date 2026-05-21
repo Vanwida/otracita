@@ -13,6 +13,11 @@ import {
 //
 // GET    → lista; ?from=YYYY-MM-DD&to=YYYY-MM-DD opcional para acotar.
 // POST   → crea un bloqueo.
+// PATCH  → ?blockId=<uuid> actualiza startTime/endTime de un bloqueo
+//          (U1 — resize por drag de bordes en la agenda). Solo acepta
+//          franjas parciales (start+end válidos) — un bloqueo de día
+//          completo (start/end null) no se "resizea" porque no tiene
+//          rango horario. Aditivo, idempotente.
 // DELETE → ?blockId=<uuid> borra uno.
 //
 // Tenant SIEMPRE vía requireClientAccess — nunca clientId del body
@@ -151,6 +156,81 @@ export async function POST(
     })
     .returning();
   return Response.json({ block: created }, { status: 201 });
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const access = await requireClientAccess(req);
+  if (!access.ok) return accessErrorResponse(access);
+  const { id } = await params;
+
+  const barber = await loadOwnedBarber(access.client.id, id);
+  if (!barber) return Response.json({ error: 'No existe.' }, { status: 404 });
+
+  const { searchParams } = new URL(req.url);
+  const blockId = searchParams.get('blockId');
+  if (!blockId) {
+    return Response.json({ error: 'Falta blockId.' }, { status: 400 });
+  }
+
+  let body: { startTime?: unknown; endTime?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  // Solo permitimos editar el rango horario (no kind ni date) — el caso de
+  // uso es el resize de bordes en la agenda. Si el caller manda otros
+  // campos, los ignoramos silenciosamente.
+  if (body.startTime == null || body.endTime == null) {
+    return Response.json(
+      { error: 'startTime y endTime son obligatorios.' },
+      { status: 400 },
+    );
+  }
+  const startTime = String(body.startTime);
+  const endTime = String(body.endTime);
+  if (!HHMM_RE.test(startTime) || !HHMM_RE.test(endTime)) {
+    return Response.json({ error: 'Horas deben ser HH:MM.' }, { status: 400 });
+  }
+  if (startTime >= endTime) {
+    return Response.json(
+      { error: 'El fin debe ser posterior al inicio.' },
+      { status: 400 },
+    );
+  }
+
+  // Scope al barbero+tenant: defensa en profundidad (mismo patrón que DELETE).
+  // Un bloqueo de día completo (startTime/endTime null en DB) puede recibir
+  // un PATCH que le añada franja — es un caso degenerado pero válido (el
+  // barbero decidió convertir "día libre" en "ausencia parcial"). No lo
+  // bloqueamos explícitamente.
+  const [row] = await db
+    .select()
+    .from(barberBlocks)
+    .where(
+      and(
+        eq(barberBlocks.clientId, access.client.id),
+        eq(barberBlocks.id, blockId),
+        eq(barberBlocks.barberId, id),
+      ),
+    );
+  if (!row) return Response.json({ error: 'No existe.' }, { status: 404 });
+
+  const [updated] = await db
+    .update(barberBlocks)
+    .set({ startTime, endTime, updatedAt: new Date() })
+    .where(
+      and(
+        eq(barberBlocks.clientId, access.client.id),
+        eq(barberBlocks.id, blockId),
+      ),
+    )
+    .returning();
+  return Response.json({ block: updated });
 }
 
 export async function DELETE(

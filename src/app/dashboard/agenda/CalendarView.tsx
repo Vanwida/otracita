@@ -348,6 +348,129 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     [events, barbers, refetch, confirm],
   );
 
+  // Resize de una cita por drag de bordes (U1). Optimista: pintamos
+  // duration/time YA en SWR, luego PATCH, luego revalidate. Si el server
+  // responde 409 por solape, ofrecemos forzar (mismo flow que move).
+  const handleEventResize = useCallback(
+    async (id: string, next: { time: string; duration: number }) => {
+      const current = events.find((e) => e.id === id);
+      if (!current) return;
+      // No-op si nada cambia (delta=0). Defensa en profundidad — DayGrid
+      // ya filtra esto en el mouseUp, pero un doble disparo no rompería.
+      if (current.time === next.time && current.duration === next.duration) {
+        return;
+      }
+      setMoveError(null);
+
+      await refetch(
+        (prev) => {
+          const safe = prev ?? EMPTY_PAYLOAD;
+          return {
+            events: safe.events.map((e) =>
+              e.id === id ? { ...e, time: next.time, duration: next.duration } : e,
+            ),
+            blocks: safe.blocks,
+          };
+        },
+        { revalidate: false },
+      );
+
+      const doPatch = (allowOverlap: boolean) =>
+        fetch(`/api/bookings/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            time: next.time,
+            duration: next.duration,
+            ...(allowOverlap ? { allowOverlap: true } : {}),
+          }),
+        });
+
+      try {
+        let res = await doPatch(false);
+        if (res.status === 409) {
+          const body = await res.clone().json().catch(() => ({}));
+          if (body?.code === 'overlap') {
+            const ok = await confirm({
+              title: 'La cita se solapa con otra',
+              message: 'La nueva duración pisa otra reserva. ¿Cambiar igualmente?',
+              confirmLabel: 'Cambiar igual',
+              cancelLabel: 'Cancelar',
+            });
+            if (ok) {
+              res = await doPatch(true);
+            } else {
+              setMoveError(null);
+              await refetch();
+              return;
+            }
+          }
+        }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setMoveError(body?.error || 'No se pudo cambiar la duración.');
+        }
+      } catch {
+        setMoveError('Sin conexión. La duración no se cambió.');
+      } finally {
+        await refetch();
+      }
+    },
+    [events, refetch, confirm],
+  );
+
+  // Resize de un descanso/ausencia parcial (U1). Endpoint distinto
+  // (/api/barbers/[id]/blocks?blockId=) pero misma forma: optimista +
+  // PATCH + revalidate. No hay flujo de "force overlap" — los bloqueos
+  // del barbero no chocan entre sí en este endpoint (validar choque
+  // con citas es trabajo de availability.ts al CREAR la cita, no aquí).
+  const handleBlockResize = useCallback(
+    async (block: CalendarBlock, next: { startTime: string; endTime: string }) => {
+      if (block.startTime === next.startTime && block.endTime === next.endTime) {
+        return;
+      }
+      setMoveError(null);
+
+      await refetch(
+        (prev) => {
+          const safe = prev ?? EMPTY_PAYLOAD;
+          return {
+            events: safe.events,
+            blocks: safe.blocks.map((b) =>
+              b.id === block.id
+                ? { ...b, startTime: next.startTime, endTime: next.endTime }
+                : b,
+            ),
+          };
+        },
+        { revalidate: false },
+      );
+
+      try {
+        const res = await fetch(
+          `/api/barbers/${block.barberId}/blocks?blockId=${block.id}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              startTime: next.startTime,
+              endTime: next.endTime,
+            }),
+          },
+        );
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setMoveError(body?.error || 'No se pudo cambiar el bloqueo.');
+        }
+      } catch {
+        setMoveError('Sin conexión. El bloqueo no se cambió.');
+      } finally {
+        await refetch();
+      }
+    },
+    [refetch],
+  );
+
   const handleEventClick = (event: CalendarEvent) => {
     setIsNewBookingOpen(false);
     setSelectedBooking(event);
@@ -584,6 +707,8 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
                 }
               }}
               onEventMove={handleEventMove}
+              onEventResize={handleEventResize}
+              onBlockResize={handleBlockResize}
             />
           ) : viewMode === 'week' ? (
             <WeekGrid

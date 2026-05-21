@@ -21,13 +21,19 @@ import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 //   · barberId (string | null)   → reasignar a otro barbero (o "cualquiera")
 //   · date (YYYY-MM-DD)          → mover la cita de día (drag&drop / manual)
 //   · time (HH:MM)               → mover la cita de hora (drag&drop / manual)
+//   · duration (min, entero ≥5)  → cambiar duración (U1 — resize por
+//                                   drag de bordes). El snapshot
+//                                   `bookings.duration` alimenta el chequeo
+//                                   de solape, así que un PATCH de
+//                                   duración re-valida contra el nuevo
+//                                   end-time. allowOverlap aplica igual.
 //   · status ('cancelled'        → cancelar
 //             | 'completed')     → cerrar cita: dispara auto-facturación
 //                                  (servicio + productos vendidos)
 //
-// date/time/barberId se pueden combinar libremente (mover hora, barbero,
-// o ambos). La re-validación de solape corre UNA vez contra los valores
-// FINALES (destino), usando el predicado puro compartido
+// date/time/barberId/duration se pueden combinar libremente. La
+// re-validación de solape corre UNA vez contra los valores FINALES
+// (destino + duración nueva), usando el predicado puro compartido
 // `hasBookingOverlap` (mismo buffer + match barberId|nombre que create.ts).
 // R1/R3: snap a 5 min lo hace el cliente; el servidor acepta cualquier HH:MM.
 //
@@ -66,6 +72,7 @@ export async function PATCH(
     barberId?: unknown
     date?: unknown
     time?: unknown
+    duration?: unknown
     status?: unknown
     notify?: unknown
     notifyMessage?: unknown
@@ -133,6 +140,12 @@ export async function PATCH(
 
   let targetDate = booking.date
   let targetTime = booking.time
+  // Duración destino. La usa el chequeo de solape (newEnd = start + duration).
+  // Foot-gun: `bookings.duration` alimenta el motor de availability — un PATCH
+  // que reduce la duración debe asegurar que la franja resultante no choca
+  // con la siguiente cita (el caso típico de Reni V1: bajo de 30 a 20 min
+  // para dejar hueco). Y un PATCH que amplía hace el check obvio.
+  let targetDuration = booking.duration
   // barberId destino: undefined = no se toca; null = "cualquiera";
   // string = barbero concreto (validado contra el tenant).
   let targetBarberId: string | null | undefined = undefined
@@ -156,6 +169,25 @@ export async function PATCH(
     }
     targetTime = body.time
     patch.time = body.time
+  }
+
+  if ('duration' in body) {
+    // U1 — resize por drag de bordes. Acepta entero ≥ 5 (mismo mínimo
+    // que el snap del cliente). Sin límite superior duro: una cita larga
+    // (color + corte + barba) puede pasar de hora; ya lo valida el solape.
+    if (
+      typeof body.duration !== 'number' ||
+      !Number.isFinite(body.duration) ||
+      !Number.isInteger(body.duration) ||
+      body.duration < 5
+    ) {
+      return Response.json(
+        { error: 'duration debe ser un entero ≥ 5 minutos.' },
+        { status: 400 },
+      )
+    }
+    targetDuration = body.duration
+    patch.duration = body.duration
   }
 
   if ('barberId' in body) {
@@ -195,6 +227,7 @@ export async function PATCH(
   // cita cancelada no puede chocar con nada). "Cualquiera" (barberId
   // null) no se valida: el resolver de disponibilidad elegirá al vuelo.
   const movedTime = 'date' in body || 'time' in body
+  const resized = 'duration' in body
   const reassignedToConcrete = targetBarberId !== undefined && targetBarberId !== null
   // El barbero efectivo contra el que validar: el destino si se reasignó,
   // si no el actual de la reserva.
@@ -204,7 +237,7 @@ export async function PATCH(
   if (
     patch.status !== 'cancelled' &&
     effectiveBarberId &&
-    (movedTime || reassignedToConcrete)
+    (movedTime || resized || reassignedToConcrete)
   ) {
     // Nombre del barbero efectivo: el del destino si se reasignó, si no el
     // de la reserva actual. `targetBarberLabel` ya lo resuelve así arriba
@@ -238,7 +271,7 @@ export async function PATCH(
         {
           selfId: id,
           startMinutes: hhmmToMinutes(targetTime),
-          durationMin: booking.duration,
+          durationMin: targetDuration,
           barberId: effectiveBarberId,
           barber: effectiveBarberName,
         },
