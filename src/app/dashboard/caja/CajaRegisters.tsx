@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import {
   Banknote,
@@ -1187,13 +1188,35 @@ const MOVEMENT_KINDS_FOR_MANUAL: Array<{
   },
 ]
 
+interface BarberOption {
+  id: string
+  name: string
+  active: boolean
+}
+
+const barberOptionsFetcher = (url: string) =>
+  fetch(url).then((r) => r.json() as Promise<{ barbers: BarberOption[] }>)
+
 function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
   const [kind, setKind] = useState<MovementKind>('expense')
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [amountEur, setAmountEur] = useState('')
   const [notes, setNotes] = useState('')
+  const [barberId, setBarberId] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Barberos activos del tenant — necesarios para el selector de tip_cash
+  // (Reni V1: la propina es 100% del barbero, atribuirla es obligatorio).
+  // SWR solo dispara cuando el modal está abierto para no fetchear de más.
+  const { data: barbersData, isLoading: loadingBarbers } = useSWR(
+    open ? '/api/barbers' : null,
+    barberOptionsFetcher,
+  )
+  const activeBarbers = useMemo(
+    () => (barbersData?.barbers ?? []).filter((b) => b.active),
+    [barbersData],
+  )
 
   useEffect(() => {
     if (open) {
@@ -1201,9 +1224,19 @@ function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
       setMethod('cash')
       setAmountEur('')
       setNotes('')
+      setBarberId('')
       setError(null)
     }
   }, [open])
+
+  // Cuando entra a tip_cash, prefill al primer barbero si solo hay 1 (caso
+  // Solo) — ahorra un click. Con equipo (≥2) lo deja vacío para forzar
+  // decisión consciente.
+  useEffect(() => {
+    if (kind === 'tip_cash' && barberId === '' && activeBarbers.length === 1) {
+      setBarberId(activeBarbers[0].id)
+    }
+  }, [kind, barberId, activeBarbers])
 
   async function submit() {
     setError(null)
@@ -1212,6 +1245,39 @@ function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
       setError('Importe inválido')
       return
     }
+
+    // Propina cash → endpoint dedicado que crea tip + cash_movement atómico.
+    if (kind === 'tip_cash') {
+      if (!barberId) {
+        setError('Elige el barbero de la propina')
+        return
+      }
+      setSubmitting(true)
+      try {
+        const res = await fetch('/api/tips/cash', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amountCents: Math.round(amount * 100),
+            barberId,
+            notes: notes.trim() || undefined,
+          }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          setError(body.error || 'No se pudo registrar la propina')
+          return
+        }
+        onCreated()
+        onClose()
+      } catch {
+        setError('Error de red')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch('/api/cash/movements', {
@@ -1273,25 +1339,59 @@ function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
           </div>
         </div>
 
-        <div>
-          <p className="text-xs font-medium text-ink-2 mb-1">Método</p>
-          <div className="flex gap-1 bg-overlay border border-line rounded-lg p-1">
-            {(['cash', 'card', 'online'] as PaymentMethod[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethod(m)}
-                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  method === m
-                    ? 'bg-surface shadow-sm text-ink'
-                    : 'text-ink-2 hover:text-ink'
-                }`}
-              >
-                {PAYMENT_METHOD_LABELS[m]}
-              </button>
-            ))}
+        {kind === 'tip_cash' ? (
+          // Propina en cash → barbero obligatorio (100% suya). El método es
+          // siempre 'cash' (no se muestran tabs — la propia opción ya lo dice).
+          <div>
+            <label
+              htmlFor="caja-movement-barber"
+              className="text-xs font-medium text-ink-2"
+            >
+              Barbero <span className="text-danger">*</span>
+            </label>
+            <select
+              id="caja-movement-barber"
+              value={barberId}
+              onChange={(e) => setBarberId(e.target.value)}
+              disabled={loadingBarbers}
+              className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors disabled:opacity-60"
+            >
+              <option value="">
+                {loadingBarbers ? 'Cargando equipo…' : 'Elige barbero'}
+              </option>
+              {activeBarbers.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {activeBarbers.length === 0 && !loadingBarbers && (
+              <p className="mt-1 text-[10px] text-ink-3">
+                Crea un barbero en Equipo antes de registrar propinas en efectivo.
+              </p>
+            )}
           </div>
-        </div>
+        ) : (
+          <div>
+            <p className="text-xs font-medium text-ink-2 mb-1">Método</p>
+            <div className="flex gap-1 bg-overlay border border-line rounded-lg p-1">
+              {(['cash', 'card', 'online'] as PaymentMethod[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMethod(m)}
+                  className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    method === m
+                      ? 'bg-surface shadow-sm text-ink'
+                      : 'text-ink-2 hover:text-ink'
+                  }`}
+                >
+                  {PAYMENT_METHOD_LABELS[m]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <label

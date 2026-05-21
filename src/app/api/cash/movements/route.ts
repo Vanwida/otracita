@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { cashSessions, cashMovements } from '@/db/schema'
+import { cashSessions, cashMovements, barbers } from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 
@@ -23,7 +23,12 @@ import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-cli
 //     method: 'cash' | 'card' | 'online',
 //     amountCents: number (> 0),
 //     notes?: string,
+//     barberId?: string (uuid) — relevante sobre todo para tip_cash (Reni V1).
 //   }
+//
+// Nota: para `tip_cash` el flujo preferido es POST /api/tips/cash (crea la
+// fila tips espejo + cash_movement en transacción). Este endpoint sigue
+// aceptando tip_cash directo (compat / app móvil) y rellena barberId si viene.
 // -----------------------------------------------------------------------------
 
 const ALLOWED_KINDS = ['tip_cash', 'expense', 'withdrawal', 'deposit', 'adjustment']
@@ -34,6 +39,7 @@ interface Body {
   method?: unknown
   amountCents?: unknown
   notes?: unknown
+  barberId?: unknown
 }
 
 export async function POST(req: Request) {
@@ -78,6 +84,32 @@ export async function POST(req: Request) {
 
   const notes = typeof body.notes === 'string' ? body.notes.slice(0, 500) : null
 
+  // barberId opcional — si viene, validamos que existe y está activo en el
+  // tenant. Útil sobre todo para tip_cash (atribución a barbero) pero no
+  // restringimos a ese kind: un expense también podría querer marcar al
+  // barbero (p.ej. ticket comprado por X).
+  const rawBarberId = typeof body.barberId === 'string' ? body.barberId.trim() : ''
+  let barberId: string | null = null
+  if (rawBarberId.length > 0) {
+    const [b] = await db
+      .select({ id: barbers.id })
+      .from(barbers)
+      .where(
+        and(
+          eq(barbers.clientId, client.id),
+          eq(barbers.id, rawBarberId),
+          eq(barbers.active, true),
+        ),
+      )
+    if (!b) {
+      return Response.json(
+        { error: 'Ese barbero no existe o no está activo.' },
+        { status: 400 },
+      )
+    }
+    barberId = b.id
+  }
+
   // Sesión activa
   const [session] = await db
     .select()
@@ -98,6 +130,7 @@ export async function POST(req: Request) {
       kind,
       method,
       amountCents,
+      barberId,
       notes,
       createdByEmail: user.email,
     })
