@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { Suspense } from 'react'
 import { Send, CalendarCheck, Star, MessageSquare } from 'lucide-react'
 import { db } from '@/db'
-import { promoPushes, ratings } from '@/db/schema'
+import { promoPushes, ratings, bookings } from '@/db/schema'
 import { sql } from 'drizzle-orm'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
@@ -14,6 +14,8 @@ import ReportLayout from '../_components/ReportLayout'
 import { MARKETING_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
+import { SOURCE_LABEL } from '@/lib/attribution/types'
+import { MANUAL_SOURCE_LABEL } from '@/lib/attribution/source-manual'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/marketing — pestaña MARKETING del área Informes.
@@ -230,7 +232,63 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
     createdAt: new Date(r.created_at).toISOString(),
   }))
 
-  const hasData = promosSent > 0 || reviewTotal > 0
+  // ── F3 Reni — Origen de clientes en el periodo.
+  // Por reserva no-cancelada cuya `date` cae en el periodo, el canal
+  // EFECTIVO es:
+  //   1) `source_manual` si el barbero lo marcó (override explícito al
+  //      cerrar la cita: "¿de dónde te conoció?" + chip)
+  //   2) si no, `referrer_source` (atribución pasiva por UTM/referrer
+  //      capturada al crear la reserva desde PWA/web)
+  //   3) si tampoco hay → null (no se cuenta como "atribuido")
+  // Implementado con COALESCE(source_manual, referrer_source). El barbero ve
+  // un único ranking; el contador `manual_count` revela cuántas vienen del
+  // override manual (señal de adopción de la feature F3).
+  const sourceRows =
+    (await db
+      .execute(sql`
+    SELECT
+      COALESCE(source_manual, referrer_source) AS source,
+      COUNT(*)::int AS count,
+      COUNT(*) FILTER (WHERE source_manual IS NOT NULL)::int AS manual_count
+    FROM ${bookings}
+    WHERE client_id = ${client.id}
+      AND date >= ${dateLo}
+      AND date < ${periodEndIso}
+      AND status <> 'cancelled'
+    GROUP BY COALESCE(source_manual, referrer_source)
+    ORDER BY count DESC
+  `)
+      .then(
+        (r) =>
+          (
+            r as unknown as {
+              rows: { source: string | null; count: number; manual_count: number }[]
+            }
+          ).rows,
+      )) ?? []
+
+  const sourceAttributed = sourceRows
+    .filter((r) => r.source !== null && r.source !== '')
+    .map((r) => ({
+      source: r.source as string,
+      count: Number(r.count),
+      manualCount: Number(r.manual_count),
+    }))
+  const sourceUnattributed = Number(
+    sourceRows.find((r) => r.source === null || r.source === '')?.count ?? 0,
+  )
+  const sourceAttributedTotal = sourceAttributed.reduce(
+    (a, b) => a + b.count,
+    0,
+  )
+  const sourceMaxCount = Math.max(1, ...sourceAttributed.map((r) => r.count))
+  const sourceManualTotal = sourceAttributed.reduce(
+    (a, b) => a + b.manualCount,
+    0,
+  )
+
+  const hasData =
+    promosSent > 0 || reviewTotal > 0 || sourceAttributedTotal > 0
 
   const stats: Stat[] = [
     {
@@ -339,6 +397,92 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
               stats={stats}
               ariaLabel={`Resumen de marketing · ${periodLabel}`}
             />
+
+            {/* F3 Reni — Origen de clientes (override manual + atribución
+                pasiva). Pinta UNA tira ordenada por canal efectivo. */}
+            {sourceAttributedTotal > 0 && (
+              <section className="panel">
+                <header
+                  className="border-b border-line px-[var(--space-card)] py-3"
+                  style={{ background: 'var(--table-head-bg)' }}
+                >
+                  <h2 className="text-[0.8125rem] font-semibold text-ink">
+                    Origen de clientes
+                  </h2>
+                  <p className="mt-0.5 text-[0.75rem] text-ink-2">
+                    {sourceAttributedTotal}{' '}
+                    {sourceAttributedTotal === 1
+                      ? 'cita atribuida'
+                      : 'citas atribuidas'}
+                    {sourceManualTotal > 0 && (
+                      <>
+                        {' '}
+                        · {sourceManualTotal}{' '}
+                        {sourceManualTotal === 1 ? 'marcada' : 'marcadas'} a
+                        mano al cerrar la cita
+                      </>
+                    )}
+                    {sourceUnattributed > 0 && (
+                      <>
+                        {' '}
+                        · {sourceUnattributed} sin atribuir
+                      </>
+                    )}
+                  </p>
+                </header>
+                <ul className="divide-y divide-line">
+                  {sourceAttributed.map((row) => {
+                    const label =
+                      MANUAL_SOURCE_LABEL[
+                        row.source as keyof typeof MANUAL_SOURCE_LABEL
+                      ] ??
+                      SOURCE_LABEL[row.source as keyof typeof SOURCE_LABEL] ??
+                      row.source
+                    const sharePct =
+                      sourceAttributedTotal > 0
+                        ? Math.round((row.count / sourceAttributedTotal) * 100)
+                        : 0
+                    const widthPct = Math.max(
+                      2,
+                      Math.round((row.count / sourceMaxCount) * 100),
+                    )
+                    return (
+                      <li
+                        key={row.source}
+                        className="flex items-center gap-3 px-[var(--space-card)] py-2.5"
+                      >
+                        <span className="w-32 shrink-0 truncate text-[0.8125rem] text-ink">
+                          {label}
+                        </span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-overlay">
+                          <div
+                            className="h-full rounded-full bg-brand"
+                            style={{ width: `${widthPct}%` }}
+                          />
+                        </div>
+                        <span className="w-24 shrink-0 text-right text-[0.75rem] tabular-nums text-ink-2">
+                          {row.count}{' '}
+                          <span className="text-ink-3">({sharePct}%)</span>
+                        </span>
+                        {row.manualCount > 0 && (
+                          <span
+                            className="w-16 shrink-0 text-right text-[0.6875rem] tabular-nums text-ink-3"
+                            title={`${row.manualCount} marcadas a mano al cerrar la cita`}
+                          >
+                            {row.manualCount} ✋
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+                <p className="border-t border-line px-[var(--space-card)] py-2 text-[0.6875rem] text-ink-3">
+                  Pregunta al cliente al cerrar la cita y marca el origen
+                  desde el panel de detalle. Si no marcas, contamos la
+                  atribución automática (UTM / referrer).
+                </p>
+              </section>
+            )}
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Distribución de reseñas. */}

@@ -1,6 +1,7 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, RotateCcw, AlertTriangle } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, RotateCcw, AlertTriangle, Camera, ThumbsUp, MapPin, Music2, UserPlus, DoorOpen, Ban } from 'lucide-react';
+import { MANUAL_SOURCES, MANUAL_SOURCE_LABEL, type ManualSource } from '@/lib/attribution/source-manual';
 import AddProductSaleModal from './AddProductSaleModal';
 import SlideOver from '../_components/SlideOver';
 import Modal from '../_components/Modal';
@@ -70,6 +71,24 @@ interface PaymentLinkData {
 const MIN_AMOUNT_EUROS = 0.5;
 const MAX_AMOUNT_EUROS = 5000;
 
+// F3 Reni — icono por canal. lucide-react retiró los logos de marca
+// (Instagram/Facebook/TikTok) en v0.452 por trademark. Usamos icons
+// genéricos cuyo significado es legible + tooltip lleva el label exacto:
+//   · Instagram → Camera (red social de fotos)
+//   · TikTok    → Music2  (vídeos con música — equivalente comercial)
+//   · Facebook  → ThumbsUp (símbolo histórico del "like")
+//   · Google Maps → MapPin
+//   · Referral   → UserPlus
+//   · Walk-in    → DoorOpen
+const SOURCE_ICON: Record<ManualSource, typeof Camera> = {
+  instagram: Camera,
+  tiktok: Music2,
+  facebook: ThumbsUp,
+  google_maps: MapPin,
+  referral: UserPlus,
+  walk_in: DoorOpen,
+};
+
 export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false, barbers = [], services = [], onMoved }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -118,6 +137,49 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const canMove = booking?.status === 'confirmed' && booking?.source !== 'booksy';
+
+  // F3 Reni — selector de origen al cierre de cita ("¿de dónde te conoció?").
+  // Optimistic: actualizamos `sourceManualLocal` al click; si el PATCH falla
+  // revertimos. Click en el chip activo → desmarca (envía null). Visible en
+  // cualquier estado (no bloquea, no obliga). Booksy ES solo-lectura → fuera.
+  const [sourceManualLocal, setSourceManualLocal] = useState<ManualSource | null>(
+    null,
+  );
+  const [sourcePending, setSourcePending] = useState<ManualSource | null | 'clear'>(
+    null,
+  );
+  useEffect(() => {
+    const v = booking?.sourceManual ?? null;
+    setSourceManualLocal(
+      v && (MANUAL_SOURCES as readonly string[]).includes(v)
+        ? (v as ManualSource)
+        : null,
+    );
+  }, [booking?.id, booking?.sourceManual]);
+
+  async function persistSourceManual(next: ManualSource | null) {
+    if (!booking) return;
+    const prev = sourceManualLocal;
+    setSourceManualLocal(next);
+    setSourcePending(next === null ? 'clear' : next);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceManual: next }),
+      });
+      if (!res.ok) {
+        // Revert silently — no toast, este selector es low-stakes.
+        setSourceManualLocal(prev);
+      } else {
+        startTransition(() => router.refresh());
+      }
+    } catch {
+      setSourceManualLocal(prev);
+    } finally {
+      setSourcePending(null);
+    }
+  }
 
   // Sembrar el editor con los valores actuales cada vez que cambia la
   // reserva o se abre el editor.
@@ -935,6 +997,79 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   </div>
                 );
               })()}
+
+              {/* F3 Reni — selector de origen ("¿de dónde te conoció?"). Sin
+                  nudge, sin obligar: chips icon-only con tooltip. Click marca,
+                  click en el activo desmarca. Optimistic. Convive con la
+                  atribución pasiva (UTM/referrer) y la gana en reporting. */}
+              {!isBooksy && (
+                <div className="pt-2 border-t border-line space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
+                    ¿De dónde te conoció?
+                  </p>
+                  <div
+                    className="flex flex-wrap gap-1.5"
+                    role="group"
+                    aria-label="Marcar origen del cliente"
+                  >
+                    {MANUAL_SOURCES.map((src) => {
+                      const Icon = SOURCE_ICON[src];
+                      const label = MANUAL_SOURCE_LABEL[src];
+                      const isActive = sourceManualLocal === src;
+                      const isPending = sourcePending === src;
+                      return (
+                        <button
+                          key={src}
+                          type="button"
+                          onClick={() => persistSourceManual(isActive ? null : src)}
+                          disabled={sourcePending !== null}
+                          title={label}
+                          aria-label={
+                            isActive ? `${label} — pulsa para desmarcar` : label
+                          }
+                          aria-pressed={isActive}
+                          className={
+                            'inline-flex items-center justify-center h-9 w-9 rounded-full border transition-colors disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ' +
+                            (isActive
+                              ? 'bg-brand border-brand text-brand-ink hover:bg-brand-strong'
+                              : 'bg-surface border-line text-ink-2 hover:border-brand hover:text-brand')
+                          }
+                        >
+                          {isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Icon className="h-4 w-4" aria-hidden="true" />
+                          )}
+                        </button>
+                      );
+                    })}
+                    {/* Chip "Sin marcar" — solo aparece cuando hay un override
+                        activo, como acceso rápido a desmarcar (equivalente a
+                        click en el chip activo). */}
+                    {sourceManualLocal !== null && (
+                      <button
+                        type="button"
+                        onClick={() => persistSourceManual(null)}
+                        disabled={sourcePending !== null}
+                        title="Sin marcar"
+                        aria-label="Sin marcar — quitar el origen"
+                        className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-line bg-surface text-ink-3 hover:border-danger hover:text-danger transition-colors disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                      >
+                        {sourcePending === 'clear' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Ban className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  {sourceManualLocal && (
+                    <p className="text-[11px] text-ink-3">
+                      Marcado: <span className="text-ink-2 font-medium">{MANUAL_SOURCE_LABEL[sourceManualLocal]}</span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* A3 — editar servicio/precio ANTES de cerrar la cita. Sin
                   documento fiscal aún → edición libre (PUT services). Tras
