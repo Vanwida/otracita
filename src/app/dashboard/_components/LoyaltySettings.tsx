@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Gift, Check, Loader2, Plus, X, Info } from 'lucide-react'
 import DropdownMenu from '@/components/DropdownMenu'
 import FormGrid from './FormGrid'
+import NumberInput from './NumberInput'
 import { FEEDBACK_MS } from '@/lib/ui-timings'
 import type {
   LoyaltyConfig,
@@ -228,17 +229,23 @@ function StampsEditor({
         <label className="text-xs text-ink-2 block mb-1.5">
           ¿Cuántos sellos para la recompensa?
         </label>
-        <input
-          type="number"
+        {/* NumberInput permite vaciar el campo mientras el barbero edita
+            (feedback Reni V1 Parte 2: "sin que se fuerce a 0 al borrar").
+            Coerción al rango [2,50] en blur; durante la escritura puede
+            estar vacío sin forzar fallback. */}
+        <NumberInput
+          value={value.stampsNeeded}
+          onValueChange={(n) =>
+            onChange({ ...value, stampsNeeded: n ?? value.stampsNeeded })
+          }
+          onBlur={(final) => {
+            if (final !== null) {
+              onChange({ ...value, stampsNeeded: Math.max(2, Math.min(50, final)) })
+            }
+          }}
           min={2}
           max={50}
-          value={value.stampsNeeded}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              stampsNeeded: Math.max(2, Math.min(50, Number.parseInt(e.target.value, 10) || 10)),
-            })
-          }
+          decimals={0}
           className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
         />
         <p className="text-xs text-ink-3 mt-1">Entre 2 y 50 sellos.</p>
@@ -287,18 +294,20 @@ function PointsEditor({
     <div className="space-y-5 mb-6">
       <div className="max-w-xs">
         <label className="text-xs text-ink-2 block mb-1.5">Puntos por cada 1 €</label>
-        <input
-          type="number"
+        <NumberInput
+          value={value.euroToPoints}
+          onValueChange={(n) =>
+            onChange({ ...value, euroToPoints: n ?? value.euroToPoints })
+          }
+          onBlur={(final) => {
+            if (final !== null) {
+              onChange({ ...value, euroToPoints: Math.max(0.1, Math.min(100, final)) })
+            }
+          }}
           min={0.1}
           max={100}
+          decimals={1}
           step={0.1}
-          value={value.euroToPoints}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              euroToPoints: Math.max(0.1, Math.min(100, Number.parseFloat(e.target.value) || 1)),
-            })
-          }
           className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
         />
         <p className="text-xs text-ink-3 mt-1">
@@ -338,19 +347,23 @@ function PointsEditor({
               )}
               <div className="mb-3 max-w-xs">
                 <label className="text-xs text-ink-2 block mb-1.5">Cuesta (puntos)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100000}
+                <NumberInput
                   value={tier.pointsCost}
-                  onChange={(e) => {
+                  onValueChange={(n) => {
                     const next = [...value.redeemTiers]
-                    next[i] = {
-                      ...tier,
-                      pointsCost: Math.max(1, Number.parseInt(e.target.value, 10) || 1),
-                    }
+                    next[i] = { ...tier, pointsCost: n ?? tier.pointsCost }
                     onChange({ ...value, redeemTiers: next })
                   }}
+                  onBlur={(final) => {
+                    if (final !== null) {
+                      const next = [...value.redeemTiers]
+                      next[i] = { ...tier, pointsCost: Math.max(1, Math.min(100000, final)) }
+                      onChange({ ...value, redeemTiers: next })
+                    }
+                  }}
+                  min={1}
+                  max={100000}
+                  decimals={0}
                   className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
                 />
               </div>
@@ -429,17 +442,23 @@ function RewardEditor({
       )}
       {value.type === 'discount_amount' && (
         <div className="flex items-center gap-2 max-w-xs">
-          <input
-            type="number"
-            min={1}
-            max={1000}
-            value={((value.cents ?? 0) / 100).toFixed(2)}
-            onChange={(e) =>
+          <NumberInput
+            value={(value.cents ?? 0) / 100}
+            onValueChange={(euros) =>
               onChange({
                 type: 'discount_amount',
-                cents: Math.round((Number.parseFloat(e.target.value) || 0) * 100),
+                cents: euros !== null ? Math.round(euros * 100) : (value.cents ?? 0),
               })
             }
+            onBlur={(final) => {
+              if (final !== null) {
+                const clamped = Math.max(1, Math.min(1000, final))
+                onChange({ type: 'discount_amount', cents: Math.round(clamped * 100) })
+              }
+            }}
+            min={1}
+            max={1000}
+            decimals={2}
             className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
           />
           <span className="text-sm text-ink-2">€</span>
@@ -447,17 +466,19 @@ function RewardEditor({
       )}
       {value.type === 'discount_pct' && (
         <div className="flex items-center gap-2 max-w-xs">
-          <input
-            type="number"
+          <NumberInput
+            value={value.pct ?? null}
+            onValueChange={(n) =>
+              onChange({ type: 'discount_pct', pct: n ?? (value.pct ?? 1) })
+            }
+            onBlur={(final) => {
+              if (final !== null) {
+                onChange({ type: 'discount_pct', pct: Math.max(1, Math.min(100, final)) })
+              }
+            }}
             min={1}
             max={100}
-            value={value.pct ?? 0}
-            onChange={(e) =>
-              onChange({
-                type: 'discount_pct',
-                pct: Math.max(1, Math.min(100, Number.parseInt(e.target.value, 10) || 1)),
-              })
-            }
+            decimals={0}
             className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
           />
           <span className="text-sm text-ink-2">%</span>
@@ -543,16 +564,22 @@ function CommonEditor({
         <label className="text-xs text-ink-2 block mb-1.5">
           Precio mínimo del booking (€) para sumar
         </label>
-        <input
-          type="number"
-          min={0}
-          max={1000}
-          value={((value.minPriceCents ?? 0) / 100).toFixed(2)}
-          onChange={(e) =>
+        <NumberInput
+          value={(value.minPriceCents ?? 0) / 100}
+          onValueChange={(euros) =>
             onChange({
-              minPriceCents: Math.round((Number.parseFloat(e.target.value) || 0) * 100),
+              minPriceCents: euros !== null ? Math.round(euros * 100) : (value.minPriceCents ?? 0),
             })
           }
+          onBlur={(final) => {
+            if (final !== null) {
+              const clamped = Math.max(0, Math.min(1000, final))
+              onChange({ minPriceCents: Math.round(clamped * 100) })
+            }
+          }}
+          min={0}
+          max={1000}
+          decimals={2}
           className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
         />
         <p className="text-xs text-ink-3 mt-1">Evita que reservas triviales generen recompensas.</p>
