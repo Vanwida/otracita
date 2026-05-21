@@ -74,6 +74,17 @@ interface Props {
     block: CalendarBlock,
     next: { startTime: string; endTime: string },
   ) => void;
+  /**
+   * Drag&drop para descansos / ausencias (Reni V1 P3 — "cualquier bloque
+   * en la agenda se tiene que poder mover con el mouse"). El padre PATCHea
+   * /api/barbers/[barberId]/blocks?blockId=... con los campos que cambien.
+   * Día-libre completo (start/end null) se mueve SIN cambio de horario —
+   * solo cambia date y/o barberId.
+   */
+  onBlockMove: (
+    block: CalendarBlock,
+    next: { date: string; startTime: string | null; endTime: string | null; barberId: string },
+  ) => void;
 }
 
 /** Mínimo de duración tras resize. Coincide con el snap del cliente y el
@@ -139,14 +150,20 @@ export default function DayGrid({
   onEventMove,
   onEventResize,
   onBlockResize,
+  onBlockMove,
 }: Props) {
   const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Drag&drop nativo (HTML5, sin dependencia nueva). Guardamos el id de la
-  // cita arrastrada y el offset (px) entre el cursor y el borde superior
+  // Drag&drop nativo (HTML5, sin dependencia nueva). Guardamos el kind +
+  // id arrastrado y el offset (px) entre el cursor y el borde superior
   // del bloque, para que al soltar la hora destino sea la del INICIO del
-  // bloque y no la del punto donde se agarró.
-  const dragRef = useRef<{ id: string; grabOffsetPx: number } | null>(null);
+  // bloque y no la del punto donde se agarró. kind='event' (citas) o
+  // 'block' (descansos/ausencias) — el handler de drop decide el callback
+  // y, en el caso de día-libre completo, ignora la posición vertical.
+  type DragPayload =
+    | { kind: 'event'; id: string; grabOffsetPx: number }
+    | { kind: 'block'; block: CalendarBlock; grabOffsetPx: number; fullDay: boolean };
+  const dragRef = useRef<DragPayload | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   // Pointer fino (desktop). En touch / iPad con dedo el resize por bordes
@@ -292,8 +309,11 @@ export default function DayGrid({
     document.addEventListener('mouseup', onUp);
   };
 
-  // Soltar una cita en una columna: calcula la (date,time,barberId)
-  // destino y delega en el padre (update optimista + PATCH + revalida).
+  // Soltar una cita o un descanso/ausencia en una columna. Para citas
+  // calcula (date,time,barberId) destino y llama `onEventMove`. Para
+  // bloques llama `onBlockMove` (parcial: cambia rango+date+barberId;
+  // día-libre completo: solo cambia date+barberId, rango queda null).
+  // Update optimista + PATCH + revalida los hace el padre.
   const handleColumnDrop = (
     e: React.DragEvent<HTMLDivElement>,
     barberId: string | null,
@@ -301,24 +321,95 @@ export default function DayGrid({
     e.preventDefault();
     const drag = dragRef.current;
     // Fallback: si el ref se perdió entre frames (Safari/FF nulan refs
-    // custom en algunos drags), recuperamos el id del dataTransfer que
-    // SIEMPRE seteamos en onDragStart. Sin offset → asumimos agarre por
-    // el borde superior del bloque (0px), suficiente con el snap de 5min.
-    const dragId = drag?.id ?? (e.dataTransfer.getData('text/plain') || null);
+    // custom en algunos drags), recuperamos kind+id del dataTransfer que
+    // SIEMPRE seteamos en onDragStart con prefijo `event:` o `block:`.
+    // Sin offset → asumimos agarre por el borde superior (0px), suficiente
+    // con el snap de 5min.
+    const raw = e.dataTransfer.getData('text/plain') || '';
     const grabOffsetPx = drag?.grabOffsetPx ?? 0;
     dragRef.current = null;
     setDraggingId(null);
-    if (!dragId) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    // y del cursor → restamos el offset de agarre → top del bloque.
-    const topPx = e.clientY - rect.top - grabOffsetPx;
-    const startMinutes = Math.round(topPx / PX_PER_MIN) + startMin;
-    const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
-    const clamped = Math.max(startMin, Math.min(endMin - SNAP_MIN, snapped));
-    const h = Math.floor(clamped / 60);
-    const m = clamped % 60;
-    const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    onEventMove(dragId, { date: dateStr, time, barberId });
+
+    // Resolución del kind/id: prioridad al ref (lleva el block completo
+    // sin volver a buscarlo en `blocks`); fallback al dataTransfer parseado.
+    let kind: 'event' | 'block' | null = drag?.kind ?? null;
+    let eventId: string | null = null;
+    let block: CalendarBlock | null = null;
+    if (drag?.kind === 'event') {
+      eventId = drag.id;
+    } else if (drag?.kind === 'block') {
+      block = drag.block;
+    } else if (raw.startsWith('block:')) {
+      kind = 'block';
+      const id = raw.slice('block:'.length);
+      block = blocks.find((b) => b.id === id) ?? null;
+    } else if (raw.startsWith('event:')) {
+      kind = 'event';
+      eventId = raw.slice('event:'.length);
+    } else if (raw) {
+      // Compat: payloads viejos sin prefijo se tratan como cita (R1/R3 original).
+      kind = 'event';
+      eventId = raw;
+    }
+    if (!kind) return;
+
+    // Día-libre completo: ignoramos la posición vertical — el bloque cubre
+    // toda la columna, no tiene "hora de inicio" que ajustar al cursor.
+    // Solo cambian date y barberId (en este DayGrid date es la del día
+    // visible — drag entre columnas dentro del mismo día). Bloquea drop
+    // sobre la columna "Sin asignar".
+    if (kind === 'block' && block) {
+      if (!barberId) {
+        // No-op silencioso visualmente; el padre puede sacar un toast si
+        // quiere — por ahora cancelamos sin error (consistente con el
+        // patrón de cita sobre "Sin asignar", que sí permite el reset a
+        // null; bloques NO pueden quedar sin barbero por shape del schema).
+        return;
+      }
+      const fullDay = block.startTime === null && block.endTime === null;
+      if (fullDay) {
+        onBlockMove(block, {
+          date: dateStr,
+          startTime: null,
+          endTime: null,
+          barberId,
+        });
+        return;
+      }
+      // Bloque parcial: respetar la duración original, mover el INICIO al
+      // punto donde el barbero soltó (menos el offset de agarre). Clamp
+      // dentro de la ventana visible para que el end no se salga.
+      const rect = e.currentTarget.getBoundingClientRect();
+      const topPx = e.clientY - rect.top - grabOffsetPx;
+      const startMinutes = Math.round(topPx / PX_PER_MIN) + startMin;
+      const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
+      const durationMin = toMinutes(block.endTime!) - toMinutes(block.startTime!);
+      const clampedStart = Math.max(
+        startMin,
+        Math.min(endMin - durationMin, snapped),
+      );
+      const newStart = minutesToHHMM(clampedStart);
+      const newEnd = minutesToHHMM(clampedStart + durationMin);
+      onBlockMove(block, {
+        date: dateStr,
+        startTime: newStart,
+        endTime: newEnd,
+        barberId,
+      });
+      return;
+    }
+
+    if (kind === 'event' && eventId) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const topPx = e.clientY - rect.top - grabOffsetPx;
+      const startMinutes = Math.round(topPx / PX_PER_MIN) + startMin;
+      const snapped = Math.round(startMinutes / SNAP_MIN) * SNAP_MIN;
+      const clamped = Math.max(startMin, Math.min(endMin - SNAP_MIN, snapped));
+      const h = Math.floor(clamped / 60);
+      const m = clamped % 60;
+      const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      onEventMove(eventId, { date: dateStr, time, barberId });
+    }
   };
 
   useEffect(() => {
@@ -415,6 +506,10 @@ export default function DayGrid({
     barberId: string | null,
   ) => {
     if ((e.target as HTMLElement).closest('[data-event]')) return;
+    // Bloques (descansos/ausencias) ahora son draggable wrappers — el clic
+    // sobre su área (fuera del label inner button) llegaría aquí y abriría
+    // "Nueva cita" sobre el descanso. Lo cortamos en seco igual que con citas.
+    if ((e.target as HTMLElement).closest('[data-block]')) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const clickedMinutes = Math.floor(y / PX_PER_MIN) + startMin;
@@ -645,10 +740,41 @@ export default function DayGrid({
                       // horario que arrastrar — el barbero edita el motivo
                       // o la borra y recrea.
                       const canResize = pointerFine && !fullDay && b.startTime !== null && b.endTime !== null;
+                      // Drag&drop: descansos parciales se mueven libremente.
+                      // Día-libre completo también — solo cambia columna
+                      // (barbero), no posición vertical. Mismo gate desktop.
+                      const isBlockDraggable = pointerFine;
+                      const isBlockDragging = draggingId === b.id;
                       return (
                         <div
                           key={b.id}
-                          className="absolute left-0 right-0 z-20 blocked-overlay"
+                          data-block="true"
+                          draggable={isBlockDraggable}
+                          onDragStart={(e) => {
+                            if (!isBlockDraggable) return;
+                            const r = e.currentTarget.getBoundingClientRect();
+                            dragRef.current = {
+                              kind: 'block',
+                              block: b,
+                              grabOffsetPx: e.clientY - r.top,
+                              fullDay,
+                            };
+                            e.dataTransfer.effectAllowed = 'move';
+                            // Prefijo `block:` para que el handler de drop
+                            // distinga de citas — sin esto un block se movería
+                            // por el flujo de eventos (PATCH /bookings 404).
+                            e.dataTransfer.setData('text/plain', `block:${b.id}`);
+                            setDraggingId(b.id);
+                          }}
+                          onDragEnd={() => {
+                            dragRef.current = null;
+                            setDraggingId(null);
+                          }}
+                          className={`absolute left-0 right-0 z-20 blocked-overlay ${
+                            isBlockDraggable ? 'cursor-grab active:cursor-grabbing' : ''
+                          } ${isBlockDragging ? 'opacity-40' : ''} ${
+                            draggingId && !isBlockDragging ? 'pointer-events-none' : ''
+                          }`}
                           style={{ top, height }}
                         >
                           <button
@@ -661,7 +787,7 @@ export default function DayGrid({
                               e.stopPropagation();
                               onBlockClick(b);
                             }}
-                            className="absolute inset-0 flex items-start justify-center cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+                            className="absolute inset-0 flex items-start justify-center hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
                             aria-label={`${label}${b.note ? ` — ${b.note}` : ''} (clic para gestionar)`}
                             title={`${label}${b.note ? ` — ${b.note}` : ''}`}
                           >
@@ -790,11 +916,15 @@ export default function DayGrid({
                           if (!isDraggable) return;
                           const r = e.currentTarget.getBoundingClientRect();
                           dragRef.current = {
+                            kind: 'event',
                             id: event.id,
                             grabOffsetPx: e.clientY - r.top,
                           };
                           e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', event.id);
+                          // Prefijo `event:` para distinguir de bloques en
+                          // el handler de drop. Compat con payloads viejos:
+                          // el handler también acepta id sin prefijo.
+                          e.dataTransfer.setData('text/plain', `event:${event.id}`);
                           setDraggingId(event.id);
                         }}
                         onDragEnd={() => {

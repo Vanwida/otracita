@@ -13,11 +13,14 @@ import {
 //
 // GET    → lista; ?from=YYYY-MM-DD&to=YYYY-MM-DD opcional para acotar.
 // POST   → crea un bloqueo.
-// PATCH  → ?blockId=<uuid> actualiza startTime/endTime de un bloqueo
-//          (U1 — resize por drag de bordes en la agenda). Solo acepta
-//          franjas parciales (start+end válidos) — un bloqueo de día
-//          completo (start/end null) no se "resizea" porque no tiene
-//          rango horario. Aditivo, idempotente.
+// PATCH  → ?blockId=<uuid> actualiza el bloqueo. Acepta:
+//            · startTime/endTime → resize de bordes (U1, franjas parciales).
+//            · date              → drag&drop entre días (Reni V1 P3).
+//            · barberId          → drag&drop entre columnas de barbero.
+//          Día-libre completo (start/end null en DB): solo permite cambio
+//          de date y/o barberId — el rango horario queda null. Si la fila
+//          tiene rango parcial, se permiten todos los campos. Aditivo,
+//          idempotente.
 // DELETE → ?blockId=<uuid> borra uno.
 //
 // Tenant SIEMPRE vía requireClientAccess — nunca clientId del body
@@ -175,39 +178,21 @@ export async function PATCH(
     return Response.json({ error: 'Falta blockId.' }, { status: 400 });
   }
 
-  let body: { startTime?: unknown; endTime?: unknown };
+  let body: {
+    startTime?: unknown;
+    endTime?: unknown;
+    date?: unknown;
+    barberId?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Solo permitimos editar el rango horario (no kind ni date) — el caso de
-  // uso es el resize de bordes en la agenda. Si el caller manda otros
-  // campos, los ignoramos silenciosamente.
-  if (body.startTime == null || body.endTime == null) {
-    return Response.json(
-      { error: 'startTime y endTime son obligatorios.' },
-      { status: 400 },
-    );
-  }
-  const startTime = String(body.startTime);
-  const endTime = String(body.endTime);
-  if (!HHMM_RE.test(startTime) || !HHMM_RE.test(endTime)) {
-    return Response.json({ error: 'Horas deben ser HH:MM.' }, { status: 400 });
-  }
-  if (startTime >= endTime) {
-    return Response.json(
-      { error: 'El fin debe ser posterior al inicio.' },
-      { status: 400 },
-    );
-  }
-
-  // Scope al barbero+tenant: defensa en profundidad (mismo patrón que DELETE).
-  // Un bloqueo de día completo (startTime/endTime null en DB) puede recibir
-  // un PATCH que le añada franja — es un caso degenerado pero válido (el
-  // barbero decidió convertir "día libre" en "ausencia parcial"). No lo
-  // bloqueamos explícitamente.
+  // Carga el bloque ANTES de validar campos: necesitamos saber si es
+  // día-libre completo (startTime/endTime null) para decidir qué campos
+  // son legales. Scope al barbero+tenant (defensa en profundidad).
   const [row] = await db
     .select()
     .from(barberBlocks)
@@ -220,9 +205,97 @@ export async function PATCH(
     );
   if (!row) return Response.json({ error: 'No existe.' }, { status: 404 });
 
+  const isFullDay = row.startTime === null && row.endTime === null;
+
+  // Construimos el patch incremental — solo escribimos los campos que el
+  // caller envió explícitamente. Los demás se preservan.
+  const patch: {
+    startTime?: string;
+    endTime?: string;
+    date?: string;
+    barberId?: string;
+    updatedAt: Date;
+  } = { updatedAt: new Date() };
+
+  // Rango horario: solo si ambos vienen, y solo si la fila ORIGINAL tenía
+  // rango (no era día-libre completo). Mover un día-libre completo NUNCA
+  // le añade franja por accidente — eso requiere borrar y recrear.
+  const wantsTimes = body.startTime !== undefined || body.endTime !== undefined;
+  if (wantsTimes) {
+    if (isFullDay) {
+      return Response.json(
+        { error: 'Un día libre completo no tiene rango horario que cambiar.' },
+        { status: 400 },
+      );
+    }
+    if (body.startTime == null || body.endTime == null) {
+      return Response.json(
+        { error: 'startTime y endTime deben venir juntos.' },
+        { status: 400 },
+      );
+    }
+    const startTime = String(body.startTime);
+    const endTime = String(body.endTime);
+    if (!HHMM_RE.test(startTime) || !HHMM_RE.test(endTime)) {
+      return Response.json({ error: 'Horas deben ser HH:MM.' }, { status: 400 });
+    }
+    if (startTime >= endTime) {
+      return Response.json(
+        { error: 'El fin debe ser posterior al inicio.' },
+        { status: 400 },
+      );
+    }
+    patch.startTime = startTime;
+    patch.endTime = endTime;
+  }
+
+  // Fecha: drag&drop entre días.
+  if (body.date !== undefined) {
+    const date = String(body.date);
+    if (!DATE_RE.test(date)) {
+      return Response.json(
+        { error: 'date debe ser YYYY-MM-DD.' },
+        { status: 400 },
+      );
+    }
+    patch.date = date;
+  }
+
+  // Barbero destino: drag&drop entre columnas. Debe pertenecer al mismo
+  // tenant — verificamos cargándolo con loadOwnedBarber.
+  if (body.barberId !== undefined) {
+    const nextBarberId = String(body.barberId);
+    if (nextBarberId !== row.barberId) {
+      const targetBarber = await loadOwnedBarber(
+        access.client.id,
+        nextBarberId,
+      );
+      if (!targetBarber) {
+        return Response.json(
+          { error: 'Barbero destino no existe.' },
+          { status: 404 },
+        );
+      }
+      patch.barberId = nextBarberId;
+    }
+  }
+
+  // Si el caller no mandó NADA editable, no hay nada que hacer. 400 (en
+  // vez de no-op silencioso) facilita debugging al cliente.
+  if (
+    patch.startTime === undefined &&
+    patch.date === undefined &&
+    patch.barberId === undefined
+  ) {
+    return Response.json(
+      { error: 'No hay campos para actualizar.' },
+      { status: 400 },
+    );
+  }
+
   const [updated] = await db
     .update(barberBlocks)
-    .set({ startTime, endTime, updatedAt: new Date() })
+    .set(patch)
     .where(
       and(
         eq(barberBlocks.clientId, access.client.id),

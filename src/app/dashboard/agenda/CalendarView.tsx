@@ -471,6 +471,102 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     [refetch],
   );
 
+  // Drag&drop de un descanso/ausencia (feedback Reni V1 P3: "cualquier
+  // bloque en la agenda se tiene que poder mover con el mouse"). Mismo
+  // patrón que move de cita pero PATCH a /api/barbers/[id]/blocks. Para
+  // día-libre completo el rango llega null y solo cambian date/barberId
+  // (DayGrid garantiza esa shape). Optimista en `payload.blocks`. Los
+  // bloqueos del barbero no chocan entre sí en este endpoint — sin flow
+  // de force-overlap. Si el barberId destino cambia, el endpoint verifica
+  // ownership y devuelve 404 (revalidate revierte el optimismo).
+  const handleBlockMove = useCallback(
+    async (
+      block: CalendarBlock,
+      next: {
+        date: string;
+        startTime: string | null;
+        endTime: string | null;
+        barberId: string;
+      },
+    ) => {
+      // No-op si nada cambia.
+      if (
+        block.date === next.date &&
+        block.startTime === next.startTime &&
+        block.endTime === next.endTime &&
+        block.barberId === next.barberId
+      ) {
+        return;
+      }
+      setMoveError(null);
+
+      // 1) Optimista en SWR — sólo mutamos blocks (events intactos).
+      await refetch(
+        (prev) => {
+          const safe = prev ?? EMPTY_PAYLOAD;
+          return {
+            events: safe.events,
+            blocks: safe.blocks.map((b) =>
+              b.id === block.id
+                ? {
+                    ...b,
+                    date: next.date,
+                    startTime: next.startTime,
+                    endTime: next.endTime,
+                    barberId: next.barberId,
+                  }
+                : b,
+            ),
+          };
+        },
+        { revalidate: false },
+      );
+
+      // 2) PATCH al endpoint del barbero ORIGINAL (URL lleva su id; el
+      // endpoint valida que el block le pertenece y, si barberId cambia
+      // en el body, mueve la propiedad). Solo mandamos los campos que
+      // realmente cambian — el endpoint hace patch incremental.
+      const patch: {
+        date?: string;
+        startTime?: string;
+        endTime?: string;
+        barberId?: string;
+      } = {};
+      if (block.date !== next.date) patch.date = next.date;
+      if (block.barberId !== next.barberId) patch.barberId = next.barberId;
+      if (
+        next.startTime !== null &&
+        next.endTime !== null &&
+        (block.startTime !== next.startTime || block.endTime !== next.endTime)
+      ) {
+        patch.startTime = next.startTime;
+        patch.endTime = next.endTime;
+      }
+
+      try {
+        const res = await fetch(
+          `/api/barbers/${block.barberId}/blocks?blockId=${block.id}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+          },
+        );
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setMoveError(body?.error || 'No se pudo mover el bloqueo.');
+        }
+      } catch {
+        setMoveError('Sin conexión. El bloqueo no se movió.');
+      } finally {
+        // 3) Revalidar SIEMPRE — si el PATCH falló, esto devuelve el
+        // block a su sitio (rollback del optimismo).
+        await refetch();
+      }
+    },
+    [refetch],
+  );
+
   const handleEventClick = (event: CalendarEvent) => {
     setIsNewBookingOpen(false);
     setSelectedBooking(event);
@@ -709,6 +805,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               onEventMove={handleEventMove}
               onEventResize={handleEventResize}
               onBlockResize={handleBlockResize}
+              onBlockMove={handleBlockMove}
             />
           ) : viewMode === 'week' ? (
             <WeekGrid
