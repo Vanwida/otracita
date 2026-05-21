@@ -13,6 +13,7 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { bookingTotalCents } from '@/lib/bookings/total'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
+import { MANUAL_SOURCES, isManualSource } from '@/lib/attribution/source-manual'
 
 // -----------------------------------------------------------------------------
 // /api/bookings/[id] — PATCH para acciones del dashboard sobre una reserva.
@@ -54,6 +55,7 @@ function parseMinutes(hhmm: string): number {
   return h * 60 + m
 }
 
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -77,6 +79,10 @@ export async function PATCH(
     notify?: unknown
     notifyMessage?: unknown
     paymentMethod?: unknown
+    /** F3 Reni — OVERRIDE manual del origen al cerrar la cita. Enum cerrado:
+     *  'instagram' | 'tiktok' | 'facebook' | 'google_maps' | 'referral' | 'walk_in'
+     *  o `null` para desmarcar. Cualquier otro valor → 400. */
+    sourceManual?: unknown
     /** Dashboard override tras confirm ("se solapa, ¿igual?"). */
     allowOverlap?: unknown
   }
@@ -218,6 +224,25 @@ export async function PATCH(
       patch.barber = newBarber.name
     } else {
       return Response.json({ error: 'barberId debe ser string o null.' }, { status: 400 })
+    }
+  }
+
+  // ── F3 Reni — sourceManual (override al cerrar la cita) ─────────────
+  // Conjunto cerrado. `null` desmarca → vuelve a aplicar la atribución
+  // pasiva (bookings.referrer_source / customers.first_source) en
+  // reporting. No depende del status del booking (puede marcarse antes
+  // o después de completed). Aditivo: si la key no viene, no se toca.
+  if ('sourceManual' in body) {
+    const v = body.sourceManual
+    if (v === null) {
+      patch.sourceManual = null
+    } else if (isManualSource(v)) {
+      patch.sourceManual = v
+    } else {
+      return Response.json(
+        { error: 'sourceManual debe ser uno de: ' + MANUAL_SOURCES.join(', ') + ' o null.' },
+        { status: 400 },
+      )
     }
   }
 

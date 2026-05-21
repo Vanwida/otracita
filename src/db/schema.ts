@@ -613,6 +613,15 @@ export const bookings = pgTable('bookings', {
   referrerSource: text('referrer_source'),
   referrerMedium: text('referrer_medium'),
   referrerCampaign: text('referrer_campaign'),
+  // F3 Reni — OVERRIDE manual del barbero al cerrar la cita ("preguntale al
+  // cliente de dónde te conoció y marca el chip"). Convive con la atribución
+  // pasiva (`referrerSource`/customer `firstSource`): si está set, gana sobre
+  // ellos en los reportes (COALESCE(source_manual, derived_from_referrer)).
+  // Opcional — null = sin override, queda la pasiva. Valores cerrados:
+  // 'instagram' | 'tiktok' | 'facebook' | 'google_maps' | 'referral' | 'walk_in'.
+  // Click en el chip activo lo desmarca (vuelve a null). Aditivo: callers
+  // existentes no necesitan tocar nada.
+  sourceManual: text('source_manual'),
   booksyBookingId: text('booksy_booking_id'), // Booksy reference ID for dedup + update matching
   rawEmailSnippet: text('raw_email_snippet'), // first 500 chars of parsed email, for debugging
   reminderSent: boolean('reminder_sent').default(false),

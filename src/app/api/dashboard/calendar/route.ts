@@ -77,6 +77,9 @@ export async function GET(req: NextRequest) {
     // mantiene el contrato del tipo estable aunque la columna aún no exista
     // en una DB sin migrar (se aplica lazy — ver convención #6 del repo).
     barberRequested: b.barberRequested ?? false,
+    // F3 Reni — override manual del origen al cerrar la cita. `?? null`
+    // mismo motivo (columna lazy, ver convención #6).
+    sourceManual: b.sourceManual ?? null,
   }));
 
   const blocks = blockRows.map(b => ({

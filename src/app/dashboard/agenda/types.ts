@@ -23,6 +23,10 @@ export interface CalendarEvent {
   /** true si el cliente pidió EXPLÍCITAMENTE a este barbero al reservar
    *  (vs auto-asignado por el resolver). Pinta el ♥ A2. */
   barberRequested: boolean;
+  /** F3 Reni — override manual del origen al cerrar la cita. Null si el
+   *  barbero aún no marcó (queda la atribución pasiva en reporting).
+   *  Mismo enum cerrado que `ManualSource` en src/lib/attribution/source-manual.ts. */
+  sourceManual: string | null;
 }
 
 /** Barbero del equipo — shape compartido por la cabecera de columna, el
