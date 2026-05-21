@@ -58,6 +58,10 @@ interface BarberRow {
   completed_count: number
   billed_eur: number | string
   tips_cents: number | string
+  /** Sub-total cash de la columna Propinas (Reni V1). COALESCE legacy → 0. */
+  tips_cash_cents: number | string
+  /** Sub-total card de la columna Propinas (Reni V1). NULL legacy → card implícito. */
+  tips_card_cents: number | string
   rating_count: number
   avg_rating: number | null
   upsells_cents: number | string
@@ -130,6 +134,10 @@ export default async function BarberBreakdown({
     tips_by_barber AS (
       SELECT
         COALESCE(
+          -- Reni V1: si la propina tiene barber_id directo (cash registrada
+          -- vía /caja o card V2), úsalo. Prioridad MÁXIMA — no pasa por el
+          -- snapshot de nombre, así sobrevive a renames y cambios futuros.
+          t.barber_id::text,
           (SELECT tbk.barber_id::text FROM bookings tbk
              WHERE tbk.id = t.booking_id AND tbk.barber_id IS NOT NULL),
           (SELECT tb.id::text FROM barbers tb
@@ -139,11 +147,15 @@ export default async function BarberBreakdown({
           lower(t.barber_name),
           '__unassigned__'
         ) AS barber_key,
-        COALESCE(SUM(t.amount_cents), 0)::bigint AS tips_cents
+        COALESCE(SUM(t.amount_cents), 0)::bigint AS tips_cents,
+        -- Split por método. COALESCE(payment_method, 'card') porque las
+        -- filas legacy pre-V1 son todas Stripe Checkout = card.
+        COALESCE(SUM(t.amount_cents) FILTER (WHERE t.payment_method = 'cash'), 0)::bigint AS tips_cash_cents,
+        COALESCE(SUM(t.amount_cents) FILTER (WHERE COALESCE(t.payment_method, 'card') = 'card'), 0)::bigint AS tips_card_cents
       FROM ${tips} t
       WHERE t.client_id = ${clientId}
         AND t.status = 'paid'
-        AND t.barber_name IS NOT NULL
+        AND (t.barber_name IS NOT NULL OR t.barber_id IS NOT NULL)
         ${tipsPeriodWhere}
       GROUP BY barber_key
     ),
@@ -184,6 +196,8 @@ export default async function BarberBreakdown({
       bb.completed_count,
       bb.billed_eur,
       COALESCE(t.tips_cents, 0)::bigint AS tips_cents,
+      COALESCE(t.tips_cash_cents, 0)::bigint AS tips_cash_cents,
+      COALESCE(t.tips_card_cents, 0)::bigint AS tips_card_cents,
       COALESCE(r.rating_count, 0)::int AS rating_count,
       r.avg_rating,
       COALESCE(s.upsells_cents, 0)::bigint AS upsells_cents,
@@ -205,6 +219,8 @@ export default async function BarberBreakdown({
     ...r,
     billed_eur: Number(r.billed_eur),
     tips_cents: Number(r.tips_cents),
+    tips_cash_cents: Number(r.tips_cash_cents),
+    tips_card_cents: Number(r.tips_card_cents),
     completed_count: Number(r.completed_count),
     rating_count: Number(r.rating_count),
     avg_rating: r.avg_rating !== null ? Number(r.avg_rating) : null,
@@ -383,9 +399,22 @@ function barberColumns({
       align: 'right',
       numeric: true,
       cell: (r) => {
-        const tipsEur = Number(r.tips_cents) / 100
+        const totalEur = Number(r.tips_cents) / 100
+        const cashEur = Number(r.tips_cash_cents) / 100
+        const cardEur = Number(r.tips_card_cents) / 100
+        if (totalEur <= 0) return <span className="text-ink-3">—</span>
+        // Solo mostramos el split cuando hay ambos métodos. Si todo es de
+        // un único método el desglose ruido visual (ya se ve en /ventas/propinas).
+        const showSplit = cashEur > 0 && cardEur > 0
         return (
-          <span className="text-ink-2">{tipsEur > 0 ? `${tipsEur.toFixed(2)} €` : '—'}</span>
+          <>
+            <span className="text-ink-2">{totalEur.toFixed(2)} €</span>
+            {showSplit && (
+              <span className="block text-[10px] text-ink-3 tabular-nums">
+                Cash {cashEur.toFixed(0)} € · Card {cardEur.toFixed(0)} €
+              </span>
+            )}
+          </>
         )
       },
     },
