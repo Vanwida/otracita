@@ -115,6 +115,39 @@ export default function Payroll({ month }: Props) {
 
               {open && (
                 <div className="px-5 pb-4 border-t border-line bg-overlay/20">
+                  {/* F1 — Si usa "salaried_with_tier_bonus", banner con la
+                      facturación alcanzada y el tramo activo (o "no llegó"). */}
+                  {item.salaryType === 'salaried_with_tier_bonus' && (
+                    <div className="mt-3 mb-1 rounded-lg border border-line bg-canvas px-3 py-2.5">
+                      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Facturación del mes</p>
+                          <p className="text-base font-bold text-ink tabular-nums mt-0.5">
+                            {formatEuros(item.breakdown.facturadoCents)}
+                          </p>
+                          <p className="text-[11px] text-ink-3 mt-0.5">servicios + productos (sin propinas)</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Tramo activado</p>
+                          {item.breakdown.tierBonus ? (
+                            <>
+                              <p className="text-base font-bold text-brand-strong tabular-nums mt-0.5">
+                                +{formatEuros(item.breakdown.tierBonus.bonusCents)}
+                              </p>
+                              <p className="text-[11px] text-ink-3 mt-0.5">
+                                desde {formatEuros(item.breakdown.tierBonus.thresholdCents)}
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-base font-bold text-ink-3 tabular-nums mt-0.5">—</p>
+                              <p className="text-[11px] text-ink-3 mt-0.5">no alcanzó ningún tramo</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <dl className="divide-y divide-line text-sm">
                     <Row label="Base" value={item.breakdown.baseCents} />
                     <Row
@@ -129,6 +162,13 @@ export default function Payroll({ month }: Props) {
                     />
                     <Row label="Propinas" value={item.breakdown.tipsCents} hint="íntegras al barbero" />
                     <Row label="Bonos cobrados" value={item.breakdown.bonusesPayoutCents} />
+                    {item.breakdown.tierBonus && (
+                      <Row
+                        label="Bono por tramo de facturación"
+                        value={item.breakdown.tierBonus.bonusCents}
+                        hint={`alcanzó ${formatEuros(item.breakdown.tierBonus.thresholdCents)}`}
+                      />
+                    )}
                     {item.breakdown.chairRentCents > 0 && (
                       <Row
                         label="Alquiler de silla"

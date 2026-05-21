@@ -66,11 +66,12 @@ interface BarberRow {
   permissionLevel: 'empleado' | 'admin'
   onlineBookable: boolean
   // Perfil de pago — feature Pro. Null en salaryType = sin configurar.
-  salaryType: 'fijo' | 'mixto' | 'autonomo' | null
+  salaryType: 'fijo' | 'mixto' | 'autonomo' | 'salaried_with_tier_bonus' | null
   salaryBaseCents: number
   commissionServicesPct: number
   commissionProductsPct: number
   chairRentCents: number
+  tierBonuses: { thresholdCents: number; bonusCents: number }[] | null
   createdAt: string
   updatedAt: string
 }
@@ -871,6 +872,7 @@ function BarberDetail({
                 commissionServicesPct: barber.commissionServicesPct,
                 commissionProductsPct: barber.commissionProductsPct,
                 chairRentCents: barber.chairRentCents,
+                tierBonuses: barber.tierBonuses,
               }}
               onSaved={onSalaryUpdated}
             />
