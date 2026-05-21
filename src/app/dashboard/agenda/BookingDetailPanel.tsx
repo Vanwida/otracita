@@ -426,12 +426,48 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
+  // F5 Reni: badge Nuevo/Habitual debajo del nombre. Fetch ligero a
+  // /api/customers/by-phone/visits (solo cuenta de reservas). No carga la
+  // ficha completa: 1 SELECT contra customers (vs la profile que hace ~6).
+  const [visitInfo, setVisitInfo] = useState<{
+    isNew: boolean
+    visitNumber: number
+  } | null>(null);
+
   // Resetea la ficha al cambiar de reserva (evita ver el cliente anterior).
   useEffect(() => {
     setProfileOpen(false);
     setProfileData(null);
     setProfileError(null);
+    setVisitInfo(null);
   }, [booking?.id]);
+
+  // Lookup ligero de visitas — dispara al abrir/cambiar de reserva. El badge
+  // queda vacío si falla (no es crítico para el flow de la agenda).
+  useEffect(() => {
+    if (!booking?.customerPhone) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/customers/by-phone/visits?phone=${encodeURIComponent(booking.customerPhone)}`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          isNew: boolean;
+          visitNumber: number;
+        };
+        if (!cancelled) {
+          setVisitInfo({ isNew: data.isNew, visitNumber: data.visitNumber });
+        }
+      } catch {
+        // silencioso — el badge simplemente no aparece
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [booking?.id, booking?.customerPhone]);
 
   const openClientProfile = useCallback(async () => {
     if (!booking) return;
@@ -675,6 +711,30 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     Ver ficha del cliente →
                   </span>
                 </button>
+
+                {/* F5 Reni · badge Nuevo/Habitual. Renderiza solo cuando hay
+                    info (silencioso si falla el fetch). Tokens semánticos:
+                    brand-softer para Nuevo (positivo, captación) · overlay
+                    neutro para Habitual (fidelización implícita). */}
+                {visitInfo && (
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                      visitInfo.isNew
+                        ? 'bg-brand-softer text-brand-strong border border-brand/30'
+                        : 'bg-overlay text-ink-2 border border-line'
+                    }`}
+                    aria-label={
+                      visitInfo.isNew
+                        ? 'Cliente nuevo'
+                        : `Cliente habitual, visita ${visitInfo.visitNumber}`
+                    }
+                  >
+                    {visitInfo.isNew
+                      ? 'Nuevo cliente'
+                      : `Habitual · ${visitInfo.visitNumber}ª visita`}
+                  </span>
+                )}
+
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm text-ink-2 tabular-nums">{booking.customerPhone}</p>
                   <button

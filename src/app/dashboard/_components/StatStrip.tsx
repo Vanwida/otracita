@@ -36,11 +36,16 @@ interface Props {
 }
 
 export default function StatStrip({ stats, ariaLabel }: Props) {
+  // Adapta el número de columnas al nº de stats — antes se forzaba 4 y con
+  // 5 quedaba una tile huérfana en la segunda fila (F5 Reni: panel ahora
+  // tiene 5 KPIs). Mobile: siempre 2 cols (legibilidad). md+: bloque de
+  // 5 cuando son 5; bloque de 4 en el resto (default histórico).
+  const desktopCols = stats.length === 5 ? 'md:grid-cols-5' : 'sm:grid-cols-4'
   return (
     <div
       role="group"
       aria-label={ariaLabel}
-      className="grid grid-cols-2 divide-x divide-y divide-line border border-line rounded-control bg-surface overflow-hidden sm:grid-cols-4 sm:divide-y-0"
+      className={`grid grid-cols-2 divide-x divide-y divide-line border border-line rounded-control bg-surface overflow-hidden ${desktopCols} sm:divide-y-0`}
     >
       {stats.map((s) => (
         <StatCell key={s.label} stat={s} />

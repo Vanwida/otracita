@@ -46,6 +46,12 @@ export interface OperatorMetrics {
   /** Clientes únicos atendidos (completed) en el periodo. */
   clientesNuevos: number
   clientesRecurrentes: number
+  /**
+   * Clientes nuevos del periodo INMEDIATAMENTE anterior de igual tamaño,
+   * para la flecha de tendencia del tile "Clientes nuevos" (F5 Reni).
+   * null si no aplica.
+   */
+  prevClientesNuevos: number | null
   /** Serie ~12 meses de ingresos por servicios (céntimos) para sparkline. */
   trend: { month: string; cents: number }[]
 }
@@ -164,7 +170,17 @@ export async function loadOperatorMetrics(
         AND sold_at >= ${prevStart}::date AND sold_at < ${prevEnd}::date)::bigint AS productos_cents,
       (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
         WHERE client_id = ${clientId} AND status = 'paid'
-        AND paid_at >= ${prevStart}::date AND paid_at < ${prevEnd}::date)::bigint AS propinas_cents
+        AND paid_at >= ${prevStart}::date AND paid_at < ${prevEnd}::date)::bigint AS propinas_cents,
+      -- F5 Reni: clientes nuevos del periodo anterior, MISMA definición que
+      -- el principal: phones cuya primera completada de SIEMPRE cae dentro
+      -- del rango. Permite tendencia ±% vs mes anterior.
+      (SELECT COUNT(*) FROM (
+        SELECT customer_phone, MIN(date) AS first_date
+        FROM ${bookings}
+        WHERE client_id = ${clientId} AND status = 'completed'
+        GROUP BY customer_phone
+        HAVING MAX(CASE WHEN date >= ${prevStart} AND date < ${prevEnd} THEN 1 ELSE 0 END) = 1
+      ) q WHERE first_date >= ${prevStart} AND first_date < ${prevEnd})::int AS clientes_nuevos
   `)
       .then(
         (r) =>
@@ -174,6 +190,7 @@ export async function loadOperatorMetrics(
                 servicios_eur: string | number
                 productos_cents: string | number
                 propinas_cents: string | number
+                clientes_nuevos: number
               }[]
             }
           ).rows,
@@ -184,6 +201,7 @@ export async function loadOperatorMetrics(
       Number(prevRow.productos_cents) +
       Number(prevRow.propinas_cents)
     : null
+  const prevClientesNuevos = prevRow ? Number(prevRow.clientes_nuevos ?? 0) : null
 
   const counts: Record<BookingStatusBreakdown['status'], number> = {
     completed: Number(row?.completed_count ?? 0),
@@ -235,6 +253,7 @@ export async function loadOperatorMetrics(
     totalCitas,
     clientesNuevos: Number(row?.clientes_nuevos ?? 0),
     clientesRecurrentes: Number(row?.clientes_recurrentes ?? 0),
+    prevClientesNuevos,
     trend,
   }
 }

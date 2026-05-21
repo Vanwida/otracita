@@ -1,4 +1,4 @@
-import { Wallet, CalendarCheck, Receipt, Users, Scissors, ShoppingBag, Heart, TrendingUp } from 'lucide-react'
+import { Wallet, CalendarCheck, Receipt, Users, UserPlus, Scissors, ShoppingBag, Heart, TrendingUp } from 'lucide-react'
 import StatStrip, { type Stat } from '../_components/StatStrip'
 import { computeTrend } from '../_components/KpiCard'
 import EmptyState from '../_components/EmptyState'
@@ -116,6 +116,10 @@ export default async function OperatorPanel({
     clientesTotal > 0
       ? Math.round((m.clientesNuevos / clientesTotal) * 100)
       : 0
+  // F5 Reni: tendencia de clientes NUEVOS vs el mismo periodo anterior.
+  // Muestra ±% en la nueva tile dedicada — el barbero necesita saber si
+  // está captando más caras nuevas o solo fidelizando las de siempre.
+  const nuevosTrend = computeTrend(m.clientesNuevos, m.prevClientesNuevos)
 
   const stats: Stat[] = [
     {
@@ -139,6 +143,16 @@ export default async function OperatorPanel({
       value: ticketMedioCents > 0 ? formatCents(ticketMedioCents) : '—',
       icon: Receipt,
       hint: 'Por servicio completado',
+    },
+    {
+      label: 'Clientes nuevos',
+      value: m.clientesNuevos.toLocaleString('es-ES'),
+      icon: UserPlus,
+      trend: nuevosTrend,
+      hint:
+        m.prevClientesNuevos !== null
+          ? `vs ${m.prevClientesNuevos.toLocaleString('es-ES')} el mes anterior`
+          : 'primera cita registrada en este periodo',
     },
     {
       label: 'Clientes',
