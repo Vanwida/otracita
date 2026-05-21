@@ -114,22 +114,34 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
 
   // Client-side validation mirroring the API rules so errors surface before
   // a round-trip (the API still re-validates — never trust the client).
+  // Convención: los descansos con campos VACÍOS (usuario añadió uno y no
+  // rellenó) NO son error — los filtramos en el submit. Solo es error
+  // cuando hay valor pero está mal formado o end<=start. Feedback Reni
+  // 2026-05-20: "Fallaron los descansos" venía típicamente de un break
+  // recién añadido con DEFAULT_BREAK editado a campo vacío.
   const validationError = useMemo<string | null>(() => {
     for (const day of HOURS_DAYS) {
       const d = days[day]
       if (!d.open) continue
       if (!HHMM_RE.test(d.start) || !HHMM_RE.test(d.end)) {
-        return `${DAY_LABELS_LONG[day]}: horas en formato HH:MM.`
+        return `${DAY_LABELS_LONG[day]}: pon horas válidas (formato HH:MM).`
       }
       if (toMinutes(d.start) >= toMinutes(d.end)) {
-        return `${DAY_LABELS_LONG[day]}: el fin debe ser posterior al inicio.`
+        return `${DAY_LABELS_LONG[day]}: la hora de cierre tiene que ser después de la de apertura.`
       }
       for (const br of d.breaks) {
+        // Break "vacío" (al menos un campo sin rellenar) → no es error,
+        // se omite en el submit. Solo validamos breaks con AMBOS campos
+        // puestos pero mal formados.
+        if (!br.start && !br.end) continue
+        if (!br.start || !br.end) {
+          return `${DAY_LABELS_LONG[day]}: rellena la hora de inicio y fin del descanso (o elimínalo).`
+        }
         if (!HHMM_RE.test(br.start) || !HHMM_RE.test(br.end)) {
-          return `${DAY_LABELS_LONG[day]}: descanso en formato HH:MM.`
+          return `${DAY_LABELS_LONG[day]}: el descanso tiene horas en formato raro (${br.start || '?'} – ${br.end || '?'}).`
         }
         if (toMinutes(br.start) >= toMinutes(br.end)) {
-          return `${DAY_LABELS_LONG[day]}: el descanso debe terminar después de empezar.`
+          return `${DAY_LABELS_LONG[day]}: el descanso ${br.start}–${br.end} no es válido (fin debe ser posterior al inicio).`
         }
       }
     }
@@ -162,11 +174,18 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
       }
 
       // 2. breaks — flatten to the API shape (weekday integer per day).
+      // Filtra silenciosamente breaks vacíos (campos sin rellenar) — la
+      // validación cliente ya rechazó los a-medio-rellenar; los TOTALMENTE
+      // vacíos son inputs huérfanos que el usuario añadió y no rellenó:
+      // no son error, simplemente no existen. Antes el editor los enviaba
+      // como `startTime: ""` y la API respondía 400 → mensaje genérico
+      // "Fallaron los descansos" (feedback Reni 2026-05-20).
       const breaks: { weekday: number; startTime: string; endTime: string }[] = []
       for (const day of HOURS_DAYS) {
         const d = days[day]
         if (!d.open) continue // breaks on a closed day are meaningless
         for (const br of d.breaks) {
+          if (!br.start || !br.end) continue // silently skip empty
           breaks.push({
             weekday: HOURS_DAY_TO_WEEKDAY[day],
             startTime: br.start,
@@ -181,7 +200,10 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
       })
       if (!breaksRes.ok) {
         const d = await breaksRes.json().catch(() => ({}))
-        setError(d?.error || 'Horario guardado, pero fallaron los descansos.')
+        // El error de la API ahora se muestra tal cual (ya son copy de
+        // barbero — ver /api/barbers/[id]/breaks). El fallback solo aplica
+        // a fallos de red / 500.
+        setError(d?.error || 'Se guardó el horario pero los descansos no. Inténtalo otra vez.')
         return
       }
 

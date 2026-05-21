@@ -71,11 +71,16 @@ export async function PUT(
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+  // Copy castellano-de-barbero — estos mensajes llegan al editor del
+  // dashboard tal cual. Nada de "weekday" ni "HH:MM" en texto al usuario.
   if (!Array.isArray(body.breaks)) {
-    return Response.json({ error: 'breaks debe ser un array.' }, { status: 400 });
+    return Response.json({ error: 'Formato de descansos inválido.' }, { status: 400 });
   }
   if (body.breaks.length > 50) {
-    return Response.json({ error: 'Demasiados descansos.' }, { status: 400 });
+    return Response.json(
+      { error: 'Demasiados descansos (máximo 50).' },
+      { status: 400 },
+    );
   }
 
   const clean: {
@@ -87,22 +92,28 @@ export async function PUT(
   }[] = [];
   for (const raw of body.breaks) {
     if (!raw || typeof raw !== 'object') {
-      return Response.json({ error: 'Descanso inválido.' }, { status: 400 });
+      return Response.json({ error: 'Hay un descanso con datos inválidos.' }, { status: 400 });
     }
     const r = raw as Record<string, unknown>;
     const weekday =
       typeof r.weekday === 'number' ? r.weekday : Number.parseInt(String(r.weekday), 10);
     if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
-      return Response.json({ error: 'weekday debe ser 0-6.' }, { status: 400 });
+      return Response.json(
+        { error: 'Hay un descanso asignado a un día inválido.' },
+        { status: 400 },
+      );
     }
     const startTime = String(r.startTime ?? '');
     const endTime = String(r.endTime ?? '');
     if (!HHMM_RE.test(startTime) || !HHMM_RE.test(endTime)) {
-      return Response.json({ error: 'Horas deben ser HH:MM.' }, { status: 400 });
+      return Response.json(
+        { error: 'Las horas de un descanso no son válidas (debe ser tipo 13:00).' },
+        { status: 400 },
+      );
     }
     if (startTime >= endTime) {
       return Response.json(
-        { error: 'El fin del descanso debe ser posterior al inicio.' },
+        { error: `Un descanso (${startTime}–${endTime}) no es válido: el fin debe ser posterior al inicio.` },
         { status: 400 },
       );
     }
