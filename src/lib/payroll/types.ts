@@ -37,11 +37,32 @@ export interface BarberSalaryProfile {
   tierBonuses: TierBonus[] | null
 }
 
-/** Datos brutos del mes para UN barbero, ya filtrados/agregados desde DB. */
+/** Datos brutos del mes para UN barbero, ya filtrados/agregados desde DB.
+ *
+ *  R-T3 (Reni V1 Parte 2) — `tipsCents` se mantiene como SUMA total para
+ *  compat retro (UI antigua / informes); el split en cash/card vive en los
+ *  campos dedicados. Reglas:
+ *    · CASH = el barbero ya cobró en mano al cliente (self-liquidated).
+ *      NO entra al "total a pagar" del local — ya está en su bolsillo.
+ *    · CARD = pendiente de pagar al barbero en la nómina del mes.
+ *      Entra al total a pagar como ha sido siempre.
+ *    · Legacy (payment_method NULL en DB) ⇒ contar como CARD implícito.
+ *
+ *  Invariante: `tipsCents === tipsCashCents + tipsCardCents` siempre. Los
+ *  callers que rellenan `tipsCents` directo (sin split) DEBEN tratarse como
+ *  card (compat retro — todas las propinas pre-V1 eran Stripe Checkout =
+ *  card). El motor lo enforza vía `normalizeTipsSplit` en compute.ts. */
 export interface BarberMonthRaw {
   servicesRevenueCents: number       // SUM(bookings.price * 100) WHERE barberId
   productsRevenueCents: number       // SUM(product_sales.amount_cents) WHERE barberId
-  tipsCents: number                   // SUM(tips.amount_cents) WHERE barberId, paid
+  tipsCents: number                   // SUM(tips.amount_cents) — total informativo
+  /** Propinas CASH (ya entregadas en mano al barbero). Informativo en nómina
+   *  — NO se suman al total a pagar. Opcional para compat retro. */
+  tipsCashCents?: number
+  /** Propinas CARD (pendientes de pagar al barbero vía nómina). Entran al
+   *  total a pagar. Opcional: si no se pasa, se asume == tipsCents (todo
+   *  card, comportamiento pre-V1). */
+  tipsCardCents?: number
   bonusesPayoutCents: number          // Suma de recompensas de bonos que ESE barbero alcanzó
 }
 
@@ -50,7 +71,12 @@ export interface PayrollBreakdown {
   baseCents: number
   commissionServicesCents: number
   commissionProductsCents: number
+  /** Total de propinas del mes (cash + card). Informativo. */
   tipsCents: number
+  /** R-T3 — Propinas CASH (ya entregadas en mano). NO entran al `totalCents`. */
+  tipsCashCents: number
+  /** R-T3 — Propinas CARD (pendientes pago vía nómina). SÍ entran al `totalCents`. */
+  tipsCardCents: number
   bonusesPayoutCents: number
   chairRentCents: number             // RESTA (entra como negativo en el total)
   /** F1 — Facturación total considerada para evaluar tramos (servicios +

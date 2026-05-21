@@ -7,7 +7,7 @@ import type { BarberMonthRaw, BarberSalaryProfile, PayrollBreakdown, TierBonus }
 //   total = base
 //         + servicios_facturados × (commissionServicesPct/100)
 //         + productos_vendidos   × (commissionProductsPct/100)
-//         + propinas (íntegras)
+//         + propinas_card (pendientes — entran al pago de nómina)
 //         + bonos_cobrados (R9 — bonos por actividades)
 //         + tier_bonus (F1 — bono por tramo de facturación, si aplica)
 //         − alquiler_silla
@@ -29,6 +29,16 @@ import type { BarberMonthRaw, BarberSalaryProfile, PayrollBreakdown, TierBonus }
 // barbero y NO computan como facturación a efectos de comisión/tramos).
 // Solo se paga el bono del tramo MÁS ALTO alcanzado (no acumulativo).
 // Para cualquier OTRO `salaryType`, los tramos se ignoran completamente.
+//
+// R-T3 (Reni V1 Parte 2 — liquidación distinta cash vs card):
+//   Las propinas CASH ya las cobró el barbero EN MANO al cliente: están en
+//   su bolsillo, NO se las debe el local. Solo entran al `totalCents` las
+//   propinas CARD (las cobradas vía Stripe/SumUp, que están en la cuenta
+//   del local y se le pagan vía nómina fin de mes). Cash sale informativa.
+//
+//   Compatibilidad: si el caller pasa SÓLO `tipsCents` (camino pre-V1, sin
+//   split), se asume "todo card" — mismo comportamiento de siempre. El
+//   helper `normalizeTipsSplit` lo enforza.
 // -----------------------------------------------------------------------------
 
 function clampPct(n: number): number {
@@ -67,6 +77,43 @@ export function selectTierBonus(
   return active
 }
 
+/** R-T3 — Normaliza el split cash/card de propinas en un raw, garantizando
+ *  el invariante `tipsCents === tipsCashCents + tipsCardCents`:
+ *    · Si el caller pasa ambos sub-totales, se respetan (clampeados ≥ 0) y
+ *      `tipsCents` se recalcula como su suma (ignora cualquier valor que
+ *      hubiera entrado por error en `raw.tipsCents`).
+ *    · Si pasa SOLO `tipsCents` (legacy / pre-V1), se asume "todo card" —
+ *      idéntico comportamiento al de siempre (Stripe Checkout).
+ *    · Si pasa sólo uno de los dos, el otro se infiere por diferencia y se
+ *      clampea a 0 si la diferencia es negativa. */
+function normalizeTipsSplit(raw: BarberMonthRaw): {
+  tipsCents: number
+  tipsCashCents: number
+  tipsCardCents: number
+} {
+  const total = Math.max(0, Math.round(raw.tipsCents ?? 0))
+  const hasCash = typeof raw.tipsCashCents === 'number'
+  const hasCard = typeof raw.tipsCardCents === 'number'
+
+  if (hasCash && hasCard) {
+    const cash = Math.max(0, Math.round(raw.tipsCashCents as number))
+    const card = Math.max(0, Math.round(raw.tipsCardCents as number))
+    return { tipsCents: cash + card, tipsCashCents: cash, tipsCardCents: card }
+  }
+  if (hasCard && !hasCash) {
+    const card = Math.max(0, Math.round(raw.tipsCardCents as number))
+    const cash = Math.max(0, total - card)
+    return { tipsCents: cash + card, tipsCashCents: cash, tipsCardCents: card }
+  }
+  if (hasCash && !hasCard) {
+    const cash = Math.max(0, Math.round(raw.tipsCashCents as number))
+    const card = Math.max(0, total - cash)
+    return { tipsCents: cash + card, tipsCashCents: cash, tipsCardCents: card }
+  }
+  // Legacy: solo tipsCents → asumir todo card (Stripe Checkout pre-V1).
+  return { tipsCents: total, tipsCashCents: 0, tipsCardCents: total }
+}
+
 export function computeBarberPayroll(
   profile: BarberSalaryProfile,
   raw: BarberMonthRaw,
@@ -82,7 +129,7 @@ export function computeBarberPayroll(
   const commissionProductsCents = Math.round(
     raw.productsRevenueCents * (clampPct(profile.commissionProductsPct) / 100),
   )
-  const tipsCents = Math.max(0, Math.round(raw.tipsCents))
+  const { tipsCents, tipsCashCents, tipsCardCents } = normalizeTipsSplit(raw)
   const bonusesPayoutCents = Math.max(0, Math.round(raw.bonusesPayoutCents))
   const chairRentCents = Math.max(0, Math.round(profile.chairRentCents))
 
@@ -100,11 +147,14 @@ export function computeBarberPayroll(
       : null
   const tierBonusCents = tierBonus ? tierBonus.bonusCents : 0
 
+  // R-T3: solo las propinas CARD entran al total. Las CASH ya están en el
+  // bolsillo del barbero (las cobró en mano al cliente) — sumarlas sería
+  // doble-contar.
   const totalCents =
     base +
     commissionServicesCents +
     commissionProductsCents +
-    tipsCents +
+    tipsCardCents +
     bonusesPayoutCents +
     tierBonusCents -
     chairRentCents
@@ -114,6 +164,8 @@ export function computeBarberPayroll(
     commissionServicesCents,
     commissionProductsCents,
     tipsCents,
+    tipsCashCents,
+    tipsCardCents,
     bonusesPayoutCents,
     chairRentCents,
     facturadoCents,

@@ -29,13 +29,18 @@ describe('computeBarberPayroll — perfil fijo (solo base)', () => {
     assert.equal(r.commissionServicesCents, 0)
   })
 
-  it('base 1250€ + propinas 50€ → total = 1300€ (propinas íntegras)', () => {
+  it('base 1250€ + propinas 50€ (legacy sin split = card implícito) → total = 1300€', () => {
+    // R-T3: tipsCents sin split se trata como "todo card" (legacy pre-V1
+    // venía 100% de Stripe Checkout) — el barbero las cobra en nómina y por
+    // eso entran al total. Mismo resultado que antes del split.
     const r = computeBarberPayroll(
       profile({ salaryBaseCents: 125000 }),
       { ...ZERO_RAW, tipsCents: 5000 },
     )
     assert.equal(r.totalCents, 130000)
     assert.equal(r.tipsCents, 5000)
+    assert.equal(r.tipsCashCents, 0)
+    assert.equal(r.tipsCardCents, 5000)
   })
 })
 
@@ -343,5 +348,129 @@ describe('computeBarberPayroll — F1 salaried_with_tier_bonus', () => {
     )
     assert.equal(r.facturadoCents, 350000)
     assert.equal(r.tierBonus, null)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// R-T3 — Split propinas cash vs card en el total de nómina.
+// ----------------------------------------------------------------------------
+
+describe('computeBarberPayroll — R-T3 split cash/card de propinas', () => {
+  it('barbero con SOLO tips cash → total no incluye las propinas (ya las cobró en mano)', () => {
+    // 50€ cash + base 1250€. Las cash NO entran al total (ya están en el
+    // bolsillo del barbero) pero SÍ se reflejan en el desglose informativo.
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 5000, tipsCashCents: 5000, tipsCardCents: 0 },
+    )
+    assert.equal(r.tipsCents, 5000)
+    assert.equal(r.tipsCashCents, 5000)
+    assert.equal(r.tipsCardCents, 0)
+    // total = base (125000) + 0 card. Cash no suma.
+    assert.equal(r.totalCents, 125000)
+  })
+
+  it('barbero con SOLO tips card → total incluye las propinas (pendiente nómina)', () => {
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 5000, tipsCashCents: 0, tipsCardCents: 5000 },
+    )
+    assert.equal(r.tipsCashCents, 0)
+    assert.equal(r.tipsCardCents, 5000)
+    assert.equal(r.totalCents, 125000 + 5000)
+  })
+
+  it('mix cash+card → solo el card entra al total, cash queda informativo', () => {
+    // 30€ cash + 20€ card. Total a pagar = base + 20€ card.
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 5000, tipsCashCents: 3000, tipsCardCents: 2000 },
+    )
+    assert.equal(r.tipsCents, 5000)
+    assert.equal(r.tipsCashCents, 3000)
+    assert.equal(r.tipsCardCents, 2000)
+    assert.equal(r.totalCents, 125000 + 2000)
+  })
+
+  it('split combinado con comisiones + bonos: cash no suma, card sí', () => {
+    const r = computeBarberPayroll(
+      profile({
+        salaryBaseCents: 125000,
+        commissionServicesPct: 25,
+        commissionProductsPct: 10,
+      }),
+      {
+        servicesRevenueCents: 200000,   // 2.000 € × 25% = 500€
+        productsRevenueCents: 50000,    // 500 € × 10% = 50€
+        tipsCents: 8000,
+        tipsCashCents: 5000,             // 50€ cash (no entra al total)
+        tipsCardCents: 3000,             // 30€ card (entra al total)
+        bonusesPayoutCents: 5000,
+      },
+    )
+    // base + comisiones + card + bonos. Sin cash.
+    assert.equal(r.totalCents, 125000 + 50000 + 5000 + 3000 + 5000)
+    assert.equal(r.tipsCashCents, 5000)
+    assert.equal(r.tipsCardCents, 3000)
+  })
+
+  it('caller pasa SOLO tipsCardCents (sin tipsCashCents) → cash se infiere por diferencia', () => {
+    // tipsCents 8000 - tipsCardCents 3000 → tipsCashCents 5000 inferido.
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 8000, tipsCardCents: 3000 },
+    )
+    assert.equal(r.tipsCashCents, 5000)
+    assert.equal(r.tipsCardCents, 3000)
+    assert.equal(r.totalCents, 125000 + 3000)
+  })
+
+  it('caller pasa SOLO tipsCashCents (sin tipsCardCents) → card se infiere por diferencia', () => {
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 8000, tipsCashCents: 5000 },
+    )
+    assert.equal(r.tipsCashCents, 5000)
+    assert.equal(r.tipsCardCents, 3000)
+    assert.equal(r.totalCents, 125000 + 3000)
+  })
+
+  it('invariante tipsCents === cash + card (recalculado si caller pasa ambos)', () => {
+    // Aunque el caller pase un tipsCents inconsistente, si pasa ambos sub-
+    // totales, se respetan y se reescribe tipsCents = cash + card.
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 999999, tipsCashCents: 3000, tipsCardCents: 2000 },
+    )
+    assert.equal(r.tipsCents, 5000)              // 3000 + 2000
+    assert.equal(r.totalCents, 125000 + 2000)    // solo card
+  })
+
+  it('valores negativos en cash/card se clampean a 0', () => {
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, tipsCents: 5000, tipsCashCents: -100, tipsCardCents: 5000 },
+    )
+    assert.equal(r.tipsCashCents, 0)
+    assert.equal(r.tipsCardCents, 5000)
+  })
+
+  it('barbero autónomo con cash: cash NO entra al total, comisiones sí, alquiler resta', () => {
+    // 60% sobre 3000€ servicios = 1800€; 100€ propinas TODAS cash (no entran);
+    // 150€ alquiler resta. Total = 1800 − 150 = 1650€.
+    const r = computeBarberPayroll(
+      profile({ commissionServicesPct: 60, chairRentCents: 15000 }),
+      {
+        servicesRevenueCents: 300000,
+        productsRevenueCents: 0,
+        tipsCents: 10000,
+        tipsCashCents: 10000,
+        tipsCardCents: 0,
+        bonusesPayoutCents: 0,
+      },
+    )
+    assert.equal(r.tipsCashCents, 10000)
+    assert.equal(r.tipsCardCents, 0)
+    assert.equal(r.totalCents, 180000 - 15000)
   })
 })

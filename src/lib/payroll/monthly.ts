@@ -197,10 +197,18 @@ export async function computeMonthlyPayroll(
   }
 
   // 4) Propinas por barbero (matched por nombre, schema legacy sin FK).
+  //
+  // R-T3 — split CASH / CARD para que la nómina solo "deba" las CARD (las
+  // CASH ya las cobró el barbero en mano). Legacy NULL → CARD implícito.
+  // FILTER (WHERE ...) en SQL agrega ambos sub-totales en la misma query.
   const tipsByName = await db
     .select({
       barberName: tips.barberName,
       totalCents: sum(tips.amountCents).as('total'),
+      cashCents:
+        sql<string>`COALESCE(SUM(${tips.amountCents}) FILTER (WHERE ${tips.paymentMethod} = 'cash'), 0)`,
+      cardCents:
+        sql<string>`COALESCE(SUM(${tips.amountCents}) FILTER (WHERE COALESCE(${tips.paymentMethod}, 'card') = 'card'), 0)`,
     })
     .from(tips)
     .where(
@@ -214,12 +222,16 @@ export async function computeMonthlyPayroll(
     .groupBy(tips.barberName)
 
   const tipsMap = new Map<string, number>()
+  const tipsCashMap = new Map<string, number>()
+  const tipsCardMap = new Map<string, number>()
   for (const row of tipsByName) {
     if (!row.barberName) continue
     const norm = row.barberName.trim().toLowerCase()
     const match = barbers.find((b) => b.name.trim().toLowerCase() === norm)
     if (!match) continue
     tipsMap.set(match.id, (tipsMap.get(match.id) ?? 0) + Number(row.totalCents ?? 0))
+    tipsCashMap.set(match.id, (tipsCashMap.get(match.id) ?? 0) + Number(row.cashCents ?? 0))
+    tipsCardMap.set(match.id, (tipsCardMap.get(match.id) ?? 0) + Number(row.cardCents ?? 0))
   }
 
   // 5) Bonos cobrados por barbero.
@@ -283,6 +295,8 @@ export async function computeMonthlyPayroll(
       servicesRevenueCents: servicesRevenueMap.get(barber.id) ?? 0,
       productsRevenueCents: productsRevenueMap.get(barber.id) ?? 0,
       tipsCents: tipsMap.get(barber.id) ?? 0,
+      tipsCashCents: tipsCashMap.get(barber.id) ?? 0,
+      tipsCardCents: tipsCardMap.get(barber.id) ?? 0,
       bonusesPayoutCents: bonusesPayoutMap.get(barber.id) ?? 0,
     }
 

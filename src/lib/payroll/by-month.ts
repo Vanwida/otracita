@@ -147,6 +147,12 @@ export async function computePayrollTotalsByMonth(
         month: tipMonth,
         barberName: tips.barberName,
         totalCents: sql<string>`COALESCE(SUM(${tips.amountCents}), 0)`,
+        // R-T3 — split cash/card por mes para que el total de nómina
+        // solo cuente el CARD (CASH ya está en el bolsillo del barbero).
+        cashCents:
+          sql<string>`COALESCE(SUM(${tips.amountCents}) FILTER (WHERE ${tips.paymentMethod} = 'cash'), 0)`,
+        cardCents:
+          sql<string>`COALESCE(SUM(${tips.amountCents}) FILTER (WHERE COALESCE(${tips.paymentMethod}, 'card') = 'card'), 0)`,
       })
       .from(tips)
       .where(and(eq(tips.clientId, clientId), eq(tips.status, 'paid'), gte(tips.paidAt, new Date(spanStart)), lt(tips.paidAt, new Date(spanEnd))))
@@ -173,6 +179,8 @@ export async function computePayrollTotalsByMonth(
   const serviceRows = new Map<string, Map<string, ServiceRevenueRow[]>>()
   const productsRevenue = new Map<string, Map<string, number>>()
   const tipsByBarber = new Map<string, Map<string, number>>()
+  const tipsCashByBarber = new Map<string, Map<string, number>>()
+  const tipsCardByBarber = new Map<string, Map<string, number>>()
 
   const mset = <V>(m: Map<string, Map<string, V>>, mk: string): Map<string, V> => {
     let inner = m.get(mk)
@@ -218,6 +226,10 @@ export async function computePayrollTotalsByMonth(
     if (!match) continue
     const inner = mset(tipsByBarber, r.month)
     inner.set(match.id, (inner.get(match.id) ?? 0) + Number(r.totalCents ?? 0))
+    const cashInner = mset(tipsCashByBarber, r.month)
+    cashInner.set(match.id, (cashInner.get(match.id) ?? 0) + Number(r.cashCents ?? 0))
+    const cardInner = mset(tipsCardByBarber, r.month)
+    cardInner.set(match.id, (cardInner.get(match.id) ?? 0) + Number(r.cardCents ?? 0))
   }
 
   // Overrides por barbero (no temporales, igual que computeMonthlyPayroll).
@@ -273,6 +285,8 @@ export async function computePayrollTotalsByMonth(
         servicesRevenueCents: servicesRevenue.get(mk)?.get(barber.id) ?? 0,
         productsRevenueCents: productsRevenue.get(mk)?.get(barber.id) ?? 0,
         tipsCents: tipsByBarber.get(mk)?.get(barber.id) ?? 0,
+        tipsCashCents: tipsCashByBarber.get(mk)?.get(barber.id) ?? 0,
+        tipsCardCents: tipsCardByBarber.get(mk)?.get(barber.id) ?? 0,
         bonusesPayoutCents: bonusesPayout.get(mk)?.get(barber.id) ?? 0,
       }
 
