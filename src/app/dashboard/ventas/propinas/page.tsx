@@ -88,6 +88,10 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
         paymentMethod: tipsTable.paymentMethod,
         paidAt: tipsTable.paidAt,
         createdAt: tipsTable.createdAt,
+        // Épica Reni #28 parte 3b — estado de liquidación al barbero.
+        paidOutAt: tipsTable.paidOutAt,
+        paidOutMethod: tipsTable.paidOutMethod,
+        paidOutByEmail: tipsTable.paidOutByEmail,
       })
       .from(tipsTable)
       .where(baseWhere)
@@ -141,6 +145,10 @@ export default async function VentasPropinasPage({ searchParams }: PageProps) {
       (t.paymentMethod as 'cash' | 'card' | null) ?? null,
     paidAt: t.paidAt ? t.paidAt.toISOString() : null,
     createdAt: t.createdAt.toISOString(),
+    paidOutAt: t.paidOutAt ? t.paidOutAt.toISOString() : null,
+    paidOutMethod:
+      (t.paidOutMethod as 'cash' | 'transfer' | 'card_payroll' | null) ?? null,
+    paidOutByEmail: t.paidOutByEmail,
   }))
   const barberNames = barberRows.map((b) => b.name)
 
