@@ -3,10 +3,20 @@ import { auth } from "@/lib/auth/server";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { helpAsPlainText } from "@/lib/help-faqs";
 
+// -----------------------------------------------------------------------------
+// LLM provider — OpenRouter (compatible OpenAI SDK).
+//
+// Modelo: deepseek/deepseek-v4-pro vía OpenRouter. Migrado desde xAI Grok
+// (XAI_API_KEY) — stack unificado para todo el chat del dashboard. La key
+// vive en OPENROUTER_API_KEY (.env.local + Vercel prod).
+// -----------------------------------------------------------------------------
+
 const client = new OpenAI({
-  apiKey: process.env.XAI_API_KEY,
-  baseURL: "https://api.x.ai/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
 });
+
+const MODEL = "deepseek/deepseek-v4-pro";
 
 // Dashboard-chat upper bound per user. Conservative because a single chatty
 // tab can burn through our LLM budget quickly. Raise only after adding
@@ -79,7 +89,7 @@ Reglas (ESTRICTAS — seguirlas al pie de la letra):
 
 6. **Tono amigable, como un colega — nunca corporativo ni con jerga técnica.**
 
-7. **No menciones tecnologías internas** (Neon, Vercel, xAI, Drizzle, etc.). Son irrelevantes para el barbero.
+7. **No menciones tecnologías internas** (Neon, Vercel, Drizzle, etc.). Son irrelevantes para el barbero.
 
 8. **Preguntas fuera de scope** (cómo cortar pelo, política, etc.): redirige amablemente al tema.
 
@@ -101,7 +111,7 @@ export async function POST(request: Request) {
   }
 
   // Rate-limit BEFORE the LLM call — an abusive session must not run up our
-  // Grok bill. Keyed on the stable user id so multiple tabs share the budget.
+  // LLM bill. Keyed on the stable user id so multiple tabs share the budget.
   const limit = checkRateLimit(
     `dashboard-chat:${session.user.id}`,
     DASHBOARD_CHAT_MAX_PER_MINUTE,
@@ -110,11 +120,19 @@ export async function POST(request: Request) {
     return rateLimitResponse(limit);
   }
 
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.error('[dashboard-chat] OPENROUTER_API_KEY no configurada');
+    return Response.json(
+      { message: "Error de configuración del asistente. Avisa a soporte." },
+      { status: 500 },
+    );
+  }
+
   try {
     const { messages } = await request.json();
 
     const completion = await client.chat.completions.create({
-      model: "grok-4-1-fast-non-reasoning",
+      model: MODEL,
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       max_tokens: 300,
       // Low temperature — support answers should be deterministic and
