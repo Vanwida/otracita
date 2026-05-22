@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Reni · Propina post-venta · 22 may 2026</title>
+<style>
+  :root {
+    --brand: #C9653C;
+    --brand-strong: #A34F2C;
+    --brand-soft: #F4E3D4;
+    --canvas: #F7F3EE;
+    --surface: #FFFFFF;
+    --ink: #2A1D14;
+    --ink-2: #6B5D4F;
+    --ink-3: #9C8F7E;
+    --line: #E8DDD0;
+    --success: #5E8B6B;
+    --warning: #C9924D;
+    --danger: #B24D3F;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--canvas);
+    color: var(--ink);
+    line-height: 1.55;
+    margin: 0;
+    padding: clamp(1rem, 4vw, 3rem);
+    max-width: 920px;
+    margin-inline: auto;
+  }
+  header {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+  }
+  .eyebrow {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-2);
+    margin: 0 0 0.25rem;
+    font-weight: 700;
+  }
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .meta {
+    color: var(--ink-3);
+    font-size: 0.8125rem;
+    margin-top: 0.5rem;
+  }
+  h2 {
+    font-size: 1.125rem;
+    margin: 2.5rem 0 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+  }
+  h3 {
+    font-size: 0.9375rem;
+    margin: 1.5rem 0 0.5rem;
+    color: var(--brand-strong);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin: 1rem 0;
+  }
+  .verdict {
+    background: var(--brand-soft);
+    border-color: var(--brand);
+    border-left: 4px solid var(--brand);
+  }
+  .verdict strong { color: var(--brand-strong); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.875rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    background: var(--canvas);
+    font-weight: 600;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+  }
+  ol, ul { padding-left: 1.5rem; }
+  ol li, ul li { margin: 0.4rem 0; }
+  code {
+    background: var(--canvas);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    color: var(--brand-strong);
+  }
+  .check {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid var(--ink-3);
+    border-radius: 4px;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+  }
+  .step {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.5rem 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .step:last-child { border-bottom: none; }
+  .step-n {
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: var(--brand);
+    color: var(--surface);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8125rem;
+  }
+  .step-body { flex: 1; }
+  .step-body em {
+    display: block;
+    color: var(--brand-strong);
+    font-style: italic;
+    font-weight: 500;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+  }
+  .pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .pill-ok { background: rgba(94, 139, 107, 0.15); color: var(--success); }
+  .pill-warn { background: rgba(201, 146, 77, 0.15); color: var(--warning); }
+  .pill-fail { background: rgba(178, 77, 63, 0.15); color: var(--danger); }
+  .risk {
+    background: rgba(201, 146, 77, 0.08);
+    border-left: 3px solid var(--warning);
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+  }
+  .quote {
+    background: var(--canvas);
+    border-left: 3px solid var(--brand);
+    padding: 0.75rem 1rem;
+    font-style: italic;
+    margin: 0.5rem 0;
+    color: var(--ink-2);
+  }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.75rem;
+    color: var(--ink-3);
+  }
+  @media print {
+    body { padding: 1.5cm; }
+    .step { break-inside: avoid; }
+    .panel { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">otracita · Demo</p>
+  <h1>Demo Reni — Propina post-venta</h1>
+  <p class="meta">22 mayo 2026 · ~20 min · Stack en LIVE (no test mode)</p>
+</header>
+
+<div class="panel verdict">
+  <p style="margin:0 0 0.5rem"><strong>Veredicto:</strong> demo en <strong>tu tenant <code>private-studio</code></strong> (Connect active) con propina real de <strong>2 €</strong>, refund inmediato.</p>
+  <p style="margin:0">Roles: <strong>tú = barbero</strong> · <strong>Reni = cliente</strong> (recibe WhatsApp en su móvil). Coste asumido ~7 c de comisión Stripe (no se devuelve en el refund).</p>
+</div>
+
+<h2>Estado actual</h2>
+<table>
+  <thead>
+    <tr><th>Item</th><th>Estado</th><th>Notas</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>private-studio</code> (Alex)</td>
+      <td><span class="pill pill-ok">listo</span></td>
+      <td>Connect active · falta activar <code>tipsEnabled</code></td>
+    </tr>
+    <tr>
+      <td><code>reni-test</code></td>
+      <td><span class="pill pill-fail">no listo</span></td>
+      <td>Connect restricted, sin onboarding · no usar</td>
+    </tr>
+    <tr>
+      <td>Stripe mode</td>
+      <td><span class="pill pill-warn">LIVE</span></td>
+      <td>No hay test mode disponible · cobros reales</td>
+    </tr>
+    <tr>
+      <td>WhatsApp Cloud API</td>
+      <td><span class="pill pill-ok">configurado</span></td>
+      <td>Canal por defecto si Reni no tiene PWA</td>
+    </tr>
+    <tr>
+      <td>VAPID / Push web</td>
+      <td><span class="pill pill-warn">verificar</span></td>
+      <td><code>vercel env ls production | grep VAPID</code> · si falta, cae a WhatsApp (igual de wow)</td>
+    </tr>
+    <tr>
+      <td>Triggers followup</td>
+      <td><span class="pill pill-ok">activos</span></td>
+      <td>Dashboard PATCH · POS sale · SumUp callback · cron safety-net</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Pre-llamada (15 min antes)</h2>
+
+<div class="panel">
+  <p><span class="check"></span> <strong>1. Activar tipsEnabled</strong><br>
+  <span style="color:var(--ink-2);font-size:0.875rem">Login en <code>otracita.es</code> con <code>alexsole@gmail.com</code> → <code>/dashboard/ventas/propinas</code> → toggle "Activar propinas online" → ON · botones <code>[2€, 3€, 5€]</code> · Guardar.</span></p>
+
+  <p><span class="check"></span> <strong>2. Pedir a Reni su número de WhatsApp</strong><br>
+  <span style="color:var(--ink-2);font-size:0.875rem">Formato E.164 (<code>+34…</code>). No hace falta pre-registrarlo como customer — la cita usa el phone directo.</span></p>
+
+  <p><span class="check"></span> <strong>3. Abrir 3 pestañas</strong><br>
+  <span style="color:var(--ink-2);font-size:0.875rem">
+    · <code>otracita.es/dashboard/agenda</code> (crear/cerrar cita)<br>
+    · <code>otracita.es/dashboard/ventas/propinas</code> (ver la propina entrar)<br>
+    · <code>dashboard.stripe.com/payments</code> (refund 1-clic)
+  </span></p>
+
+  <p><span class="check"></span> <strong>4. Tarjeta a mano</strong> (real, será refundeada). Cuenta Connect destino: <code>acct_1TP2jYBoJYgPM213</code> (la tuya — autotransferencia).</p>
+
+  <p><span class="check"></span> <strong>5. Verificar anti-self-booking</strong><br>
+  <span style="color:var(--ink-2);font-size:0.875rem">El teléfono de Reni NO debe coincidir con <code>clients.phone</code> ni <code>clients.whatsappNumber</code> del tenant — verificar en <code>/dashboard/negocio</code>. Si coincide, <code>followup.ts:isOwnBusinessPhone</code> bloquea el envío silenciosamente.</span></p>
+
+  <p><span class="check"></span> <strong>6. (Opcional) Verificar VAPID en prod</strong><br>
+  <span style="color:var(--ink-2);font-size:0.875rem"><code>vercel env ls production | grep VAPID</code>. Si no están, demo cae a WhatsApp y ok.</span></p>
+</div>
+
+<h2>Durante la llamada (15-20 min)</h2>
+
+<h3>Setup (3 min)</h3>
+
+<div class="quote">"Te voy a enseñar el flow desde dentro: yo soy el barbero, tú eres el cliente. Hago como que te he hecho un corte ahora mismo."</div>
+
+<div class="step">
+  <div class="step-n">1</div>
+  <div class="step-body">
+    <strong>En <code>/dashboard/agenda</code> → "+ Nueva reserva"</strong>
+    <ul style="margin:0.25rem 0 0">
+      <li>Cliente: nombre <strong>"Reni"</strong> · teléfono de Reni en E.164</li>
+      <li>Servicio: <strong>"Corte clásico"</strong> (15 € · 30 min)</li>
+      <li>Barbero: cualquiera</li>
+      <li>Fecha/hora: <strong>HOY · hora actual −30 min</strong></li>
+    </ul>
+  </div>
+</div>
+
+<h3>Cierre + rating (5 min)</h3>
+
+<div class="quote">"Acabo el corte, te cobro y marco la cita como completada — esto es lo que haría un barbero mil veces al día."</div>
+
+<div class="step">
+  <div class="step-n">2</div>
+  <div class="step-body">
+    <strong>Abrir la cita</strong> → selector método de pago (Efectivo o Tarjeta — no afecta al followup) → <strong>"Marcar completada"</strong>.
+    <em>Bajo el capó: <code>tryRatingFollowupForCompletedBooking</code> se dispara fire-and-forget.</em>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-n">3</div>
+  <div class="step-body">
+    <em>"Mira tu WhatsApp ahora mismo, Reni."</em><br>
+    Reni recibe mensaje interactivo con <strong>5 estrellas</strong>.
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-n">4</div>
+  <div class="step-body">
+    <strong>Reni toca ⭐⭐⭐⭐⭐ "Genial"</strong>
+    <em>"Como me has puesto 5 estrellas, el sistema te ofrece propina automáticamente — solo aparece en ≥4★. Si me hubieras dado 3 o menos, te daría las gracias y se acabaría."</em>
+  </div>
+</div>
+
+<h3>Propina + pago (5 min)</h3>
+
+<div class="step">
+  <div class="step-n">5</div>
+  <div class="step-body">
+    Llega segundo mensaje WhatsApp con <strong>3 botones</strong>: <code>2 €</code> · <code>3 €</code> · <code>No, gracias</code>.
+    <em>Límite Meta = 3 botones, por eso solo 2 importes + skip. Configurado en followup.ts.</em>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-n">6</div>
+  <div class="step-body">
+    <strong>Reni toca 2 €</strong> (el mínimo — queremos minimizar el refund).
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-n">7</div>
+  <div class="step-body">
+    Bot responde con link a Stripe Checkout: <em>"¡Genial! Paga tu propina de 2 € aquí: …"</em>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-n">8</div>
+  <div class="step-body">
+    <strong>Pago</strong> — opciones:<br>
+    <ul style="margin:0.25rem 0 0">
+      <li>Reni paga con su Apple Pay/tarjeta · tú le devuelves 2 € por Bizum + refund el cargo</li>
+      <li>O tú le pasas tu tarjeta para que la introduzca (si confía en compartir pantalla)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-n">9</div>
+  <div class="step-body">
+    Webhook Stripe → <code>tips.status='paid'</code>.<br>
+    <strong>Refrescas <code>/dashboard/ventas/propinas</code></strong> → la propina aparece con nota "5★".
+  </div>
+</div>
+
+<h3>Wow moment + refund (3 min)</h3>
+
+<div class="quote">"Esto es lo que vendemos. El barbero literalmente no ha hecho nada — el sistema le ha conseguido una reseña Y una propina sin pedir nada. Booksy no hace esto."</div>
+
+<div class="step">
+  <div class="step-n">10</div>
+  <div class="step-body">
+    En Stripe Dashboard → Payments → busca el payment intent de 2 € → <strong>Refund</strong> → "Full refund" → confirmar.<br>
+    <em>"Ya devuelto."</em>
+  </div>
+</div>
+
+<h2>Plan B si algo falla</h2>
+
+<table>
+  <thead><tr><th>Falla</th><th>Acción</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Push no llega</td>
+      <td>Esperado si VAPID no está en prod. Cae a WhatsApp automático — mismo efecto wow.</td>
+    </tr>
+    <tr>
+      <td>WhatsApp no llega</td>
+      <td>Verificar <code>client.whatsappPhoneNumberId</code> en el tenant. Si null, usa global. Si tampoco hay thread abierto con Reni, abrir conversación manual antes.</td>
+    </tr>
+    <tr>
+      <td>Stripe Checkout falla</td>
+      <td>Mostrar <code>/dashboard/ventas/propinas</code> con datos previos o pasar a captura/grabación.</td>
+    </tr>
+    <tr>
+      <td>Followup no se dispara</td>
+      <td>Verificar <code>client.ratingsEnabled=true</code> en <code>/dashboard/resenas</code>. Mirar consola del navegador para <code>[followup]</code>.</td>
+    </tr>
+    <tr>
+      <td>Reni no quiere dar tarjeta</td>
+      <td>Tú pagas desde tu móvil con pantalla compartida. Reni igual ve las 2 etapas (rating + propina).</td>
+    </tr>
+    <tr>
+      <td>Todo lo anterior falla</td>
+      <td><strong>Plan C:</strong> grabar screencast de 60s la noche antes con 2 móviles (tú-barbero + tú-cliente PWA). Menos wow pero reproducible.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Riesgos</h2>
+
+<div class="risk">
+  <strong>Demo con dinero real.</strong> 2 € van a tu cuenta Connect <code>acct_1TP2jY…</code> — autotransferencia. Refund inmediato. Comisión Stripe ~7c NO se devuelve (coste asumido).
+</div>
+
+<div class="risk">
+  <strong>Anti-fraude self-booking.</strong> Si el teléfono de Reni coincide con <code>clients.phone</code> o <code>clients.whatsappNumber</code> del tenant, <code>isOwnBusinessPhone</code> bloquea silenciosamente. Verificar en pre-llamada paso 5.
+</div>
+
+<div class="risk">
+  <strong>Idempotencia.</strong> Una vez marcada completed, <code>followupSentAt</code> impide reenvío. Para una segunda toma usar una reserva nueva.
+</div>
+
+<div class="risk">
+  <strong>VAPID no verificado.</strong> Si no están las claves en prod, cae a WhatsApp. No es problema — igual de impactante.
+</div>
+
+<div class="risk">
+  <strong>Walk-in guard.</strong> Si por error la cita se crea sin teléfono, el followup se salta. Pre-llamada paso 2: confirmar teléfono al crear la reserva.
+</div>
+
+<h2>Archivos clave (referencia técnica)</h2>
+
+<ul>
+  <li><code>src/lib/whatsapp/followup.ts</code> — owner del flow</li>
+  <li><code>src/lib/tips.ts</code> — createTipSession, validación importes</li>
+  <li><code>src/app/api/bookings/[id]/route.ts</code> — trigger al marcar completed</li>
+  <li><code>src/app/dashboard/_components/TipsSettings.tsx</code> — toggle tipsEnabled</li>
+  <li><code>src/app/dashboard/ventas/propinas/page.tsx</code> — dashboard donde aparece</li>
+  <li><code>src/app/b/[slug]/cuenta/rate/[bookingId]/RateForm.tsx</code> — UI PWA si push deep-link funciona</li>
+</ul>
+
+<footer>
+  Documento generado 21 may 2026 · Versión runbook para la llamada del 22 may 2026 · ~20 min de demo
+</footer>
+
+</body>
+</html>
