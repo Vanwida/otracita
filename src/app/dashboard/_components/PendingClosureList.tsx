@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, UserX, AlertCircle, Loader2 } from 'lucide-react'
-import PaymentMethodPrompt, { type CashPaymentMethod } from './PaymentMethodPrompt'
-import SumupCheckoutPrompt from './SumupCheckoutPrompt'
+import { CheckCircle2, CreditCard, UserX, AlertCircle, Loader2 } from 'lucide-react'
+import ChargeFlow from './ChargeFlow'
 import { pushUndoToast } from './UndoToast'
+import { formatCents } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
 // PendingClosureList — citas confirmadas de días pasados sin cerrar.
@@ -14,30 +14,17 @@ import { pushUndoToast } from './UndoToast'
 // Permite al barbero cerrar al final del día (o al día siguiente) sin
 // tener que ir a agenda y abrir una a una. Cada fila tiene 2 botones:
 //
-//   · "Completada"  → PATCH /api/bookings/[id] { status: 'completed' }
-//                    Dispara auto-facturación en background (servicio +
-//                    productos vendidos durante la cita).
-//   · "No vino"     → POST /api/bookings/no-show
-//                    Marca no-show, anula factura si la hubiera, suma al
-//                    contador del cliente (reputation).
+//   · "Cobrar"    → abre ChargeFlow (motor unificado de cobro de la épica
+//                    Reni). Selección de método/fraccionado + propina inline.
+//                    Al éxito: optimistic remove de la fila + router.refresh.
+//   · "Completar" → cuando la cita no tiene precio (cortesía/gratis): PATCH
+//                    directo /api/bookings/[id] { status: 'completed' } con
+//                    ventana de undo 5s (mismo patrón legacy).
+//   · "No vino"   → POST /api/bookings/no-show. Marca no-show, anula factura
+//                    si la hubiera, suma al contador del cliente.
 //
-// Tras cada acción, hacemos optimistic remove de la fila local + router.refresh
-// en background para que la lista del servidor se mantenga sincronizada
-// con KPIs y AttentionPanel.
-//
-// Ventana de deshacer (5s) — añadida por /impeccable harden:
-//   · Path simple "Completada" (sin caja efectivo) → la PATCH se programa
-//     para dentro de 5s. La fila desaparece optimista; si el barbero
-//     pulsa "Deshacer" en el toast, la PATCH nunca se llama y la fila
-//     vuelve. Si cierra el navegador antes de 5s, la acción se pierde —
-//     el cron safety-net (3d) la cierra automáticamente.
-//   · Path "No vino" → la POST se llama inmediatamente (servidor anula la
-//     factura, suma no-show al contador). Toast ofrece deshacer vía
-//     /api/bookings/undo-no-show, que revierte status, restaura factura y
-//     resta no-show del cliente.
-//   · Caja efectivo (modal) y SumUp (datáfono) → sin ventana de deshacer.
-//     El barbero ya hizo input deliberado (eligió método o cobró tarjeta);
-//     un undo aquí descuadraria caja o reembolsaría una tarjeta real.
+// Tras cada acción, hacemos optimistic remove + router.refresh para
+// mantener KPIs y AttentionPanel sincronizados.
 // -----------------------------------------------------------------------------
 
 export interface PendingClosureBooking {
@@ -48,34 +35,45 @@ export interface PendingClosureBooking {
   customerPhone: string
   service: string
   barber: string | null
+  /** ID del barbero (para atribuir propina). Null si no asignado. */
+  barberId?: string | null
   /** Precio en EUROS (foot-gun del schema). Null si la cita no tiene precio. */
   price: number | null
+}
+
+interface BarberMin {
+  id: string
+  displayName: string
 }
 
 interface Props {
   bookings: PendingClosureBooking[]
   todayStr: string // YYYY-MM-DD
   yesterdayStr: string // YYYY-MM-DD
-  /** Cuando true, al "Completada" pedimos método de pago para alimentar caja. */
-  cashRegisterEnabled?: boolean
-  /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal manual. */
-  sumupReaderConnected?: boolean
+  /** Barberos activos — para atribuir tip en ChargeFlow cuando la cita no
+   *  tiene barbero fijo. Si no se pasan, el tip prompt forzará al barbero
+   *  a elegir uno (o la cita ya tiene barberId). */
+  barbers?: BarberMin[]
+  /** Tenant tiene Stripe Connect activo → método `card_online` visible. */
+  stripeConnectActive?: boolean
+  /** Sesión de caja abierta hoy → suprime warning "caja cerrada". */
+  cashSessionOpen?: boolean
 }
 
 export default function PendingClosureList({
   bookings,
   todayStr,
   yesterdayStr,
-  cashRegisterEnabled = false,
-  sumupReaderConnected = false,
+  barbers = [],
+  stripeConnectActive = false,
+  cashSessionOpen = true,
 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(null)
-  const [pendingClosureBooking, setPendingClosureBooking] = useState<PendingClosureBooking | null>(null)
-  const [sumupBooking, setSumupBooking] = useState<PendingClosureBooking | null>(null)
+  const [chargeBooking, setChargeBooking] = useState<PendingClosureBooking | null>(null)
 
   const visible = bookings.filter((b) => !removedIds.has(b.id))
   if (visible.length === 0) return null
@@ -96,60 +94,39 @@ export default function PendingClosureList({
     })
   }
 
-  async function patchComplete(
-    b: PendingClosureBooking,
-    method: CashPaymentMethod | null,
-    opts: { skipOptimisticRemove?: boolean } = {},
-  ) {
-    setBusyId(b.id)
-    setErrorId(null)
-    try {
-      const res = await fetch(`/api/bookings/${b.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          method ? { status: 'completed', paymentMethod: method } : { status: 'completed' },
-        ),
-      })
-      if (!res.ok) {
-        if (opts.skipOptimisticRemove) {
-          // El toast ya quitó la fila optimista. Restaurar para que el
-          // barbero vea el error y pueda reintentar.
+  // Cierre sin cobro (cita cortesía / gratis). Mantiene la ventana de
+  // deshacer del flow legacy: si el barbero se equivoca, 5s para revertir.
+  function closeFree(b: PendingClosureBooking) {
+    removeOptimistic(b.id)
+    pushUndoToast({
+      message: 'Cita cerrada',
+      onCommit: async () => {
+        try {
+          const res = await fetch(`/api/bookings/${b.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'completed' }),
+          })
+          if (!res.ok) {
+            restoreOptimistic(b.id)
+            const body = await res.json().catch(() => ({}))
+            setErrorId({
+              id: b.id,
+              message: body.error || 'No se pudo cerrar la cita.',
+            })
+            return
+          }
+          startTransition(() => router.refresh())
+        } catch {
           restoreOptimistic(b.id)
+          setErrorId({
+            id: b.id,
+            message: 'Sin conexión. Revisa tu wifi e inténtalo otra vez.',
+          })
         }
-        const body = await res.json().catch(() => ({}))
-        setErrorId({ id: b.id, message: body.error || 'No se ha podido cerrar la cita. Vuelve a intentarlo.' })
-        return
-      }
-      if (!opts.skipOptimisticRemove) {
-        removeOptimistic(b.id)
-      }
-      setPendingClosureBooking(null)
-      startTransition(() => router.refresh())
-    } catch {
-      if (opts.skipOptimisticRemove) restoreOptimistic(b.id)
-      setErrorId({ id: b.id, message: 'Sin conexión. Revisa tu wifi e inténtalo otra vez.' })
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  function markCompleted(b: PendingClosureBooking) {
-    if (!cashRegisterEnabled) {
-      // Path simple: optimistic remove + commit en 5s vía toast.
-      removeOptimistic(b.id)
-      pushUndoToast({
-        message: 'Cita cerrada',
-        onCommit: () => patchComplete(b, null, { skipOptimisticRemove: true }),
-        onUndo: () => restoreOptimistic(b.id),
-      })
-      return
-    }
-    if (sumupReaderConnected && b.price && b.price > 0) {
-      setSumupBooking(b)
-    } else {
-      setPendingClosureBooking(b)
-    }
+      },
+      onUndo: () => restoreOptimistic(b.id),
+    })
   }
 
   async function markNoShow(b: PendingClosureBooking) {
@@ -207,36 +184,31 @@ export default function PendingClosureList({
         </h2>
       </div>
       <p className="text-xs text-ink-2 mb-4 leading-relaxed">
-        Marca quién vino y quién no. Tienes 5 segundos para deshacer cada acción.
+        Cobra o marca quién no vino. Las acciones sin cobro tienen 5 segundos para deshacerse.
       </p>
 
-      <PaymentMethodPrompt
-        open={pendingClosureBooking !== null}
-        onClose={() => setPendingClosureBooking(null)}
-        onPick={(m) => pendingClosureBooking && void patchComplete(pendingClosureBooking, m)}
-        subtitle={
-          pendingClosureBooking
-            ? `${pendingClosureBooking.service}. ${pendingClosureBooking.customerName ?? pendingClosureBooking.customerPhone}`
-            : undefined
-        }
-        pending={busyId !== null && busyId === pendingClosureBooking?.id}
-      />
-
-      {sumupBooking && sumupBooking.price != null && sumupBooking.price > 0 && (
-        <SumupCheckoutPrompt
-          open={sumupBooking !== null}
-          bookingId={sumupBooking.id}
-          amountCents={Math.round(sumupBooking.price * 100)}
-          subtitle={`${sumupBooking.service}. ${sumupBooking.customerName ?? sumupBooking.customerPhone}`}
-          onClose={() => setSumupBooking(null)}
-          onSettled={() => {
-            const id = sumupBooking.id
-            removeOptimistic(id)
-            startTransition(() => router.refresh())
+      {/* ChargeFlow — único motor de cobro. Reutiliza la lógica del panel
+          de agenda; aquí se invoca para cerrar una cita desde Inicio sin
+          tener que entrar a su detalle. */}
+      {chargeBooking && chargeBooking.price !== null && chargeBooking.price > 0 && (
+        <ChargeFlow
+          booking={{
+            id: chargeBooking.id,
+            price: chargeBooking.price,
+            customerName: chargeBooking.customerName,
+            barberId: chargeBooking.barberId ?? null,
+            serviceLabel: chargeBooking.service,
           }}
-          onFallback={() => {
-            setPendingClosureBooking(sumupBooking)
-            setSumupBooking(null)
+          barbers={barbers}
+          stripeConnectActive={stripeConnectActive}
+          cashSessionOpen={cashSessionOpen}
+          open={chargeBooking !== null}
+          onClose={() => setChargeBooking(null)}
+          onCharged={() => {
+            const id = chargeBooking.id
+            removeOptimistic(id)
+            setChargeBooking(null)
+            startTransition(() => router.refresh())
           }}
         />
       )}
@@ -247,6 +219,7 @@ export default function PendingClosureList({
           const customerLine = b.customerName?.trim() || b.customerPhone
           const barberLine = b.barber ? ` · ${b.barber}` : ''
           const error = errorId?.id === b.id ? errorId.message : null
+          const hasPrice = b.price !== null && b.price > 0
           return (
             <li
               key={b.id}
@@ -260,23 +233,47 @@ export default function PendingClosureList({
                 <p className="text-xs text-ink-2 truncate">
                   {b.service}
                   {barberLine}
+                  {hasPrice && (
+                    <>
+                      <span className="text-ink-3 mx-1">·</span>
+                      <span className="tabular-nums text-ink">
+                        {formatCents(Math.round((b.price ?? 0) * 100))}
+                      </span>
+                    </>
+                  )}
                 </p>
                 {error && <p className="text-xs text-danger mt-1">{error}</p>}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => markCompleted(b)}
-                  disabled={isBusy}
-                  className="btn-primary btn-sm"
-                >
-                  {isBusy ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  )}
-                  Completada
-                </button>
+                {hasPrice ? (
+                  <button
+                    type="button"
+                    onClick={() => setChargeBooking(b)}
+                    disabled={isBusy}
+                    className="btn-primary btn-sm"
+                  >
+                    {isBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Cobrar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => closeFree(b)}
+                    disabled={isBusy}
+                    className="btn-primary btn-sm"
+                  >
+                    {isBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Completada
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => markNoShow(b)}

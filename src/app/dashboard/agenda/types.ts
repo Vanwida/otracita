@@ -73,20 +73,30 @@ export type SlotAction =
   | { type: 'absence'; date: string; time: string; barberId: string | null };
 
 /** Glifo corto del método de cobro para el badge R6 (display-only — la
- *  CAPTURA del método la hace WS-D al completar la cita). null → sin
- *  badge (aún no cobrada / tenant sin caja). Mapeo Booksy:
- *    cash → "€" (efectivo) · card → "card" (datáfono) · online → "B"
- *    (Bizum / pago online vía Stripe). */
+ *  CAPTURA del método la hace ChargeFlow al cobrar). null → sin badge (aún
+ *  no cobrada / sin precio). Cubre el dominio extendido `PaymentMethod` +
+ *  el pseudo-método `mixed` (split payment) + valores legacy ('card',
+ *  'online') que pueden quedar en filas antiguas hasta que se migren. */
 export function paymentBadge(
   method: string | null,
 ): { glyph: string; label: string } | null {
   switch (method) {
     case 'cash':
       return { glyph: '€', label: 'Cobrado en efectivo' };
+    case 'card_physical':
+      return { glyph: 'T', label: 'Cobrado con tarjeta · Datáfono' };
+    case 'bizum':
+      return { glyph: 'B', label: 'Cobrado con Bizum' };
+    case 'card_online':
+      return { glyph: '↗', label: 'Cobrado online (link de pago)' };
+    case 'mixed':
+      return { glyph: '≡', label: 'Pago fraccionado' };
+    // Legacy — bookings cerradas antes de la migración a PAYMENT_METHODS.
+    // Mantenemos el badge para que históricos no aparezcan vacíos.
     case 'card':
-      return { glyph: 'card', label: 'Cobrado con tarjeta' };
+      return { glyph: 'T', label: 'Cobrado con tarjeta' };
     case 'online':
-      return { glyph: 'B', label: 'Cobrado online (Bizum/tarjeta)' };
+      return { glyph: '↗', label: 'Cobrado online' };
     default:
       return null;
   }

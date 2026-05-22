@@ -1,46 +1,48 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Link as LinkIcon, Loader2, QrCode, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, RotateCcw, AlertTriangle, Camera, ThumbsUp, MapPin, Music2, UserPlus, DoorOpen, Ban } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, Camera, ThumbsUp, MapPin, Music2, UserPlus, DoorOpen, Ban } from 'lucide-react';
 import { MANUAL_SOURCES, MANUAL_SOURCE_LABEL, type ManualSource } from '@/lib/attribution/source-manual';
 import AddProductSaleModal from './AddProductSaleModal';
 import SlideOver from '../_components/SlideOver';
 import Modal from '../_components/Modal';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
-import PaymentMethodPrompt, { type CashPaymentMethod } from '../_components/PaymentMethodPrompt';
-import SumupCheckoutPrompt from '../_components/SumupCheckoutPrompt';
+import ChargeFlow from '../_components/ChargeFlow';
 import RectificativaModal from '../facturas/_components/RectificativaModal';
-import NumberInput from '../_components/NumberInput';
 import { pushUndoToast } from '../_components/UndoToast';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import ClientProfile from '../clientes/[id]/ClientProfile';
 import type { ClientProfileData } from '@/lib/clients/profile';
 import { useState, useTransition, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { paymentBadge } from './types';
 import type { CalendarEvent, Barber } from './types';
+import { formatCents } from '@/lib/format';
 import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 interface Props {
   booking: CalendarEvent | null;
   onClose: () => void;
   /**
-   * Stripe Connect account state for the current tenant. Drives the gate
-   * between "activa cobros" CTA and the real payment link generator.
+   * Stripe Connect account state for the current tenant. Drives whether the
+   * `card_online` method appears in the ChargeFlow grid + the "activa
+   * cobros" CTA when no method is online-capable yet.
    */
   stripeConnectStatus: 'none' | 'pending' | 'active' | 'restricted' | string;
-  /** Cuando true, al completar se pide método de pago (cash/card/online) y
-   *  se alimenta el cuadre del día. Sin esto, comportamiento legacy. */
+  /** Cuando true, el cobro alimenta el cuadre de caja del día (cash_movements
+   *  en backend). Informativo — el ChargeFlow registra todos los métodos
+   *  igual; este flag pinta el aviso "caja cerrada" si procede. */
   cashRegisterEnabled?: boolean;
-  /** Cuando true, el barbero tiene SumUp conectado y un Reader pareado.
-   *  Al pulsar "Marcar completada" lanzamos cobro en el datáfono en vez
-   *  del modal manual cash/card/online. */
+  /** True si la sesión de caja de hoy está abierta. Mostramos un warning
+   *  suave en el ChargeFlow si está cerrada (no bloquea el cobro). */
+  cashSessionOpen?: boolean;
+  /** @deprecated SumUp Cloud Reader se ha unificado en ChargeFlow (método
+   *  `card_physical`). El prop se mantiene para no romper callers existentes
+   *  hasta que se actualice CalendarView; se ignora internamente. */
   sumupReaderConnected?: boolean;
   /** Equipo activo — para el selector de barbero del editor "mover cita"
-   *  (R3: mover sin entrar en Horarios y cambios). */
+   *  (R3) y para atribuir tip cuando la cita no tiene barbero fijo. */
   barbers?: Barber[];
   /** Catálogo de servicios de la tienda — el editor "Editar servicio o
    *  precio" lo usa para el picker (FIX C: principal+extras = dropdown,
@@ -50,26 +52,6 @@ interface Props {
    *  revalida la agenda. */
   onMoved?: () => void;
 }
-
-interface PaymentSnapshot {
-  id: string;
-  status: 'pending' | 'succeeded' | 'failed' | 'refunded' | 'cancelled' | string;
-  amountCents: number;
-  currency: string;
-  paymentUrl: string | null;
-  paidAt: string | null;
-  description: string | null;
-  createdAt: string;
-}
-
-// Used both for the existing-payment fetch and the newly-created one.
-interface PaymentLinkData {
-  payment: PaymentSnapshot;
-  qrCodeDataUrl: string | null; // only present after generation (not for already-paid rows)
-}
-
-const MIN_AMOUNT_EUROS = 0.5;
-const MAX_AMOUNT_EUROS = 5000;
 
 // F3 Reni — icono por canal. lucide-react retiró los logos de marca
 // (Instagram/Facebook/TikTok) en v0.452 por trademark. Usamos icons
@@ -89,30 +71,23 @@ const SOURCE_ICON: Record<ManualSource, typeof Camera> = {
   walk_in: DoorOpen,
 };
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, sumupReaderConnected = false, barbers = [], services = [], onMoved }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMoved }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // Payment state — separate from the no-show state above.
-  const [paymentData, setPaymentData] = useState<PaymentLinkData | null>(null);
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [amountEuros, setAmountEuros] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
+  // ChargeFlow — único motor de cobro unificado (épica Reni).
+  const [chargeOpen, setChargeOpen] = useState(false);
 
-  // Refund state — separado del cobro. `refundConfirm` abre el paso de
-  // confirmación (un reembolso es irreversible y mueve dinero real).
-  const [refundConfirm, setRefundConfirm] = useState(false);
-  const [refundLoading, setRefundLoading] = useState(false);
-  const [refundError, setRefundError] = useState<string | null>(null);
+  // "Cerrar sin cobrar" — citas cortesía / gratis: PATCH legacy a
+  // completed sin método. Convive con ChargeFlow porque ChargeFlow exige
+  // un total > 0 (el grid de métodos no tiene sentido si el precio es 0).
+  const [closingFree, setClosingFree] = useState(false);
 
   const isNoShow = booking?.status === 'no_show';
   const isCompleted = booking?.status === 'completed';
   // Solo se completa una cita confirmada (no no-show, no completed, no cancelled).
-  const canMarkCompleted = booking?.status === 'confirmed';
   const canMarkNoShow = booking?.status === 'confirmed' || booking?.status === 'no_show';
   const canCancel = booking?.status === 'confirmed' || booking?.status === 'no_show';
   // Ventas de producto solo durante la cita activa: tras completar, la
@@ -249,84 +224,20 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const canCharge =
     !!booking &&
     booking.price !== null &&
-    (booking.status === 'confirmed' || booking.status === 'no_show');
+    booking.price > 0 &&
+    booking.status === 'confirmed';
 
   const connectActive = stripeConnectStatus === 'active';
 
-  // Reset payment state whenever the booking changes.
+  // Reset al cambiar de cita — sólo state local del panel.
   useEffect(() => {
-    setPaymentData(null);
-    setPaymentError(null);
-    setLinkCopied(false);
-    setRefundConfirm(false);
-    setRefundError(null);
+    setChargeOpen(false);
+    setClosingFree(false);
     // A3 — cierra cualquier modal de edición/rectificativa al cambiar de cita.
     setEditOpen(false);
     setRectInvoice(null);
     setRectError(null);
-    if (booking) {
-      setAmountEuros(booking.price != null ? String(booking.price) : '');
-      const customer = booking.customerName || booking.customerPhone;
-      setDescription(`${booking.service} · ${customer}`);
-    } else {
-      setAmountEuros('');
-      setDescription('');
-    }
-  }, [booking?.id, booking?.price, booking?.service, booking?.customerName, booking?.customerPhone, booking]);
-
-  // Fetch existing payment for this booking on open — so we can surface
-  // "already paid" or "pending link" state without the barber clicking.
-  useEffect(() => {
-    if (!booking || !canCharge || !connectActive) return;
-    const controller = new AbortController();
-    fetch(`/api/payments/by-booking?bookingId=${encodeURIComponent(booking.id)}`, {
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        return res.json();
-      })
-      .then((data) => {
-        if (!data || !data.payment) return;
-        setPaymentData({ payment: data.payment, qrCodeDataUrl: null });
-      })
-      .catch(() => {
-        /* aborted or network — ignore silently */
-      });
-    return () => controller.abort();
-  }, [booking, booking?.id, canCharge, connectActive]);
-
-  // Poll a 'pending' payment every ~4s so the UI flips to "paid" without
-  // a manual refresh once the customer completes checkout. Stops on unmount
-  // or when status transitions away from 'pending'.
-  useEffect(() => {
-    if (!paymentData || paymentData.payment.status !== 'pending') return;
-    const id = paymentData.payment.id;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/payments/${id}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.status && data.status !== paymentData.payment.status) {
-          setPaymentData((prev) =>
-            prev
-              ? {
-                  qrCodeDataUrl: prev.qrCodeDataUrl,
-                  payment: {
-                    ...prev.payment,
-                    status: data.status,
-                    paidAt: data.paidAt,
-                  },
-                }
-              : prev,
-          );
-        }
-      } catch {
-        /* ignore */
-      }
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [paymentData]);
+  }, [booking?.id]);
 
   async function toggleNoShow() {
     if (!booking) return;
@@ -370,77 +281,30 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     }
   }
 
-  // Cierra la cita: dispara la auto-facturación (servicio + productos
-  // vendidos durante la cita) en el servidor. Si el tenant tiene caja
-  // activa, primero pedimos el método de pago (modal); si no, completamos
-  // directo sin método.
-  const [methodPromptOpen, setMethodPromptOpen] = useState(false);
-  const [methodPending, setMethodPending] = useState(false);
-  // SumUp Cloud API: si el barbero tiene Reader pareado, al "Marcar completada"
-  // abrimos el prompt de cobro instantáneo en vez del selector manual.
-  const [sumupPromptOpen, setSumupPromptOpen] = useState(false);
-
-  async function markCompletedWithMethod(method: CashPaymentMethod | null) {
+  // Cerrar cita gratis / cortesía — PATCH legacy a `completed` sin
+  // paymentMethod. Sólo se ofrece cuando el booking no tiene precio o
+  // el barbero pulsa "Cerrar sin cobrar" debajo del CTA principal.
+  async function closeBookingFree() {
     if (!booking) return;
     setError(null);
-    setMethodPending(true);
+    setClosingFree(true);
     try {
       const res = await fetch(`/api/bookings/${booking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          method ? { status: 'completed', paymentMethod: method } : { status: 'completed' },
-        ),
+        body: JSON.stringify({ status: 'completed' }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.error || 'No se ha podido cerrar la cita. Vuelve a intentarlo.');
+        setError(body.error || 'No se ha podido cerrar la cita.');
         return;
       }
-      setMethodPromptOpen(false);
+      onClose();
       startTransition(() => router.refresh());
     } catch {
       setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.');
     } finally {
-      setMethodPending(false);
-    }
-  }
-
-  function markCompleted() {
-    if (!cashRegisterEnabled) {
-      // Path simple: cerramos el panel optimista y programamos la PATCH para
-      // dentro de 5s vía toast. Si el barbero pulsa "Deshacer", la PATCH
-      // nunca dispara y al re-abrir la cita en agenda sigue confirmada.
-      // Si cierra el navegador antes de 5s, el cron safety-net (3d) la
-      // cierra automáticamente.
-      if (!booking) return;
-      const bookingId = booking.id;
-      onClose();
-      pushUndoToast({
-        message: 'Cita cerrada',
-        onCommit: async () => {
-          try {
-            await fetch(`/api/bookings/${bookingId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'completed' }),
-            });
-          } finally {
-            startTransition(() => router.refresh());
-          }
-        },
-      });
-      return;
-    }
-    // Con SumUp Reader pareado y price > 0 → flujo instantáneo Cloud API.
-    // Sin Reader o sin price → modal manual cash/card/online.
-    // Ambos paths involucran input deliberado del barbero (selección de
-    // método o cobro real con tarjeta), así que NO añadimos ventana de
-    // deshacer — un undo aquí descuadraria caja o reembolsaría el datáfono.
-    if (sumupReaderConnected && booking?.price && booking.price > 0) {
-      setSumupPromptOpen(true);
-    } else {
-      setMethodPromptOpen(true);
+      setClosingFree(false);
     }
   }
 
@@ -567,94 +431,6 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     setTimeout(() => setCopied(false), FEEDBACK_MS.copied);
   };
 
-  const copyLink = () => {
-    if (!paymentData?.payment.paymentUrl) return;
-    navigator.clipboard.writeText(paymentData.payment.paymentUrl);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), FEEDBACK_MS.copied);
-  };
-
-  const generateLink = useCallback(async () => {
-    if (!booking) return;
-    setPaymentError(null);
-    setPaymentLoading(true);
-    try {
-      const amountNumber = Number(amountEuros);
-      if (!Number.isFinite(amountNumber) || amountNumber < MIN_AMOUNT_EUROS || amountNumber > MAX_AMOUNT_EUROS) {
-        setPaymentError(`El importe debe estar entre ${MIN_AMOUNT_EUROS} € y ${MAX_AMOUNT_EUROS} €.`);
-        setPaymentLoading(false);
-        return;
-      }
-      const amountCents = Math.round(amountNumber * 100);
-
-      const res = await fetch('/api/payments/create-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bookingId: booking.id,
-          amountCents,
-          description: description.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setPaymentError(data.error || 'No se pudo generar el link');
-        setPaymentLoading(false);
-        return;
-      }
-      setPaymentData({
-        qrCodeDataUrl: data.qrCodeDataUrl ?? null,
-        payment: {
-          id: data.paymentId,
-          status: 'pending',
-          amountCents: data.amountCents ?? amountCents,
-          currency: 'eur',
-          paymentUrl: data.paymentUrl,
-          paidAt: null,
-          description: description.trim() || null,
-          createdAt: new Date().toISOString(),
-        },
-      });
-    } catch {
-      setPaymentError('Error de red');
-    } finally {
-      setPaymentLoading(false);
-    }
-  }, [booking, amountEuros, description]);
-
-  // Reembolso total del cobro online (Stripe Connect). Idempotente en el
-  // backend; aquí solo reflejamos el estado. Tras éxito el pago pasa a
-  // 'refunded' y la UI muestra el estado reembolsado.
-  const refundPayment = useCallback(async () => {
-    const paymentId = paymentData?.payment.id;
-    if (!paymentId) return;
-    setRefundError(null);
-    setRefundLoading(true);
-    try {
-      const res = await fetch(`/api/payments/${paymentId}/refund`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setRefundError(data.error || 'No se pudo reembolsar');
-        setRefundLoading(false);
-        return;
-      }
-      setPaymentData((prev) =>
-        prev
-          ? { ...prev, payment: { ...prev.payment, status: 'refunded' } }
-          : prev,
-      );
-      setRefundConfirm(false);
-    } catch {
-      setRefundError('Error de red');
-    } finally {
-      setRefundLoading(false);
-    }
-  }, [paymentData]);
-
   const formatDate = (dateStr: string) => {
     try {
       return format(parseISO(dateStr), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es });
@@ -700,10 +476,6 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         return { bg: 'bg-success', fg: 'text-white' };
     }
   };
-
-  const alreadyPaid = paymentData?.payment.status === 'succeeded';
-  const isRefunded = paymentData?.payment.status === 'refunded';
-  const hasPendingLink = paymentData?.payment.status === 'pending' && paymentData?.payment.paymentUrl;
 
   return (
     <>
@@ -1088,26 +860,32 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
-              {/* Marcar como completada — acción principal cuando la cita ha
-                  terminado. Dispara auto-facturación en el servidor: la
-                  factura incluye el servicio + productos vendidos durante
-                  la cita (las ventas con invoiced_at IS NULL). Si la
-                  facturación no está activa, simplemente marca el estado.
-                  Solo se ofrece para citas en estado `confirmed`. */}
-              {canMarkCompleted && (
+              {/* Cobrar — acción principal cuando la cita ha terminado. Abre
+                  ChargeFlow, motor unificado: grid de métodos + pago
+                  fraccionado + propina inline + auto-facturación en backend.
+                  Sólo se ofrece para citas confirmadas con precio > 0; las
+                  citas gratis usan el link "Cerrar sin cobrar" debajo. */}
+              {booking.status === 'confirmed' && (
                 <div className="pt-2 border-t border-line space-y-2">
+                  {canCharge ? (
+                    <button
+                      type="button"
+                      onClick={() => setChargeOpen(true)}
+                      disabled={pending || closingFree}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-3 text-base font-semibold text-brand-ink transition-colors disabled:opacity-60 min-h-[48px]"
+                    >
+                      <CreditCard className="h-4 w-4" aria-hidden="true" />
+                      Cobrar · {formatCents(Math.round((booking.price ?? 0) * 100))}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={markCompleted}
-                    disabled={pending}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+                    onClick={closeBookingFree}
+                    disabled={closingFree || pending}
+                    className="w-full text-xs text-ink-3 hover:text-ink-2 underline-offset-2 hover:underline transition-colors py-2 disabled:opacity-60"
                   >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Marcar como completada
+                    {closingFree ? 'Cerrando…' : 'Cerrar sin cobrar'}
                   </button>
-                  <p className="text-xs text-ink-2 leading-relaxed">
-                    Tienes 5 segundos para deshacer el cierre.
-                  </p>
                   {error && <p className="text-xs text-danger">{error}</p>}
                 </div>
               )}
@@ -1227,203 +1005,11 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
-              {/* Cobrar online — only for chargeable bookings (confirmed or
-                  no_show, with a price). Two states:
-                    A) Connect not active -> CTA to activate.
-                    B) Connect active     -> amount + description + QR flow. */}
-              {canCharge && (
-                <div className="pt-2 border-t border-line space-y-3">
-                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
-                    Cobrar online
-                  </p>
-
-                  {!connectActive ? (
-                    <div className="rounded-xl border border-line bg-overlay p-3 space-y-2">
-                      <p className="text-xs text-ink-2 leading-relaxed">
-                        Activa los cobros online para generar enlaces de pago y QR para tus clientes.
-                      </p>
-                      <Link
-                        href="/dashboard/caja"
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        Activar cobros online
-                      </Link>
-                    </div>
-                  ) : isRefunded ? (
-                    <div className="rounded-xl border border-line bg-overlay p-3 space-y-1">
-                      <p className="text-sm font-semibold text-ink-2 inline-flex items-center gap-1.5">
-                        <RotateCcw className="h-4 w-4" /> Reembolsado
-                      </p>
-                      <p className="text-xs text-ink-2">
-                        {(paymentData!.payment.amountCents / 100).toFixed(2)} € devueltos al cliente
-                      </p>
-                    </div>
-                  ) : alreadyPaid ? (
-                    <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-2">
-                      <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
-                        <Check className="h-4 w-4" /> Pagado online
-                      </p>
-                      <p className="text-xs text-ink-2">
-                        {(paymentData!.payment.amountCents / 100).toFixed(2)} € ·{' '}
-                        {paymentData!.payment.paidAt
-                          ? format(parseISO(paymentData!.payment.paidAt), "d MMM yyyy 'a las' HH:mm", { locale: es })
-                          : ''}
-                      </p>
-
-                      {/* Reembolsar — acción de dinero irreversible: paso de
-                          confirmación explícito antes de ejecutar. */}
-                      {!refundConfirm ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRefundError(null);
-                            setRefundConfirm(true);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Reembolsar
-                        </button>
-                      ) : (
-                        <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 space-y-2">
-                          <p className="text-xs text-ink inline-flex items-start gap-1.5 leading-relaxed">
-                            <AlertTriangle className="h-3.5 w-3.5 text-danger shrink-0 mt-0.5" />
-                            Se devolverán{' '}
-                            <strong>{(paymentData!.payment.amountCents / 100).toFixed(2)} €</strong>{' '}
-                            al cliente. No se puede deshacer.
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={refundPayment}
-                              disabled={refundLoading}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-danger hover:bg-danger/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-60"
-                            >
-                              {refundLoading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <RotateCcw className="h-3.5 w-3.5" />
-                              )}
-                              Confirmar reembolso
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setRefundConfirm(false)}
-                              disabled={refundLoading}
-                              className="inline-flex items-center justify-center rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors disabled:opacity-60"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                          {refundError && (
-                            <p className="text-xs text-danger">{refundError}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {!hasPendingLink && (
-                        <>
-                          <div className="flex flex-col gap-1.5">
-                            <label htmlFor="pay-amount" className="text-[11px] font-medium text-ink-2">
-                              Importe (€)
-                            </label>
-                            <NumberInput
-                              id="pay-amount"
-                              value={amountEuros === '' ? null : Number(amountEuros)}
-                              onValueChange={(n) =>
-                                setAmountEuros(n === null ? '' : String(n))
-                              }
-                              min={MIN_AMOUNT_EUROS}
-                              max={MAX_AMOUNT_EUROS}
-                              decimals={2}
-                              step="0.01"
-                              aria-label="Importe a cobrar en euros"
-                              className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <label htmlFor="pay-desc" className="text-[11px] font-medium text-ink-2">
-                              Concepto (opcional)
-                            </label>
-                            <input
-                              id="pay-desc"
-                              type="text"
-                              value={description}
-                              onChange={(e) => setDescription(e.target.value)}
-                              maxLength={200}
-                              className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={generateLink}
-                            disabled={paymentLoading}
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-2.5 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
-                          >
-                            {paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                            Generar link de pago
-                          </button>
-                        </>
-                      )}
-
-                      {hasPendingLink && (
-                        <div className="space-y-3">
-                          <p className="text-xs text-ink-2 leading-relaxed">
-                            Pide al cliente que escanee con la cámara de su móvil. Se actualizará solo cuando pague.
-                          </p>
-
-                          {paymentData?.qrCodeDataUrl ? (
-                            <div className="flex items-center justify-center rounded-xl border border-line bg-surface p-3">
-                              <Image
-                                src={paymentData.qrCodeDataUrl}
-                                alt="QR de pago"
-                                width={240}
-                                height={240}
-                                unoptimized
-                                className="h-60 w-60"
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center rounded-xl border border-line bg-overlay p-5 text-xs text-ink-2">
-                              QR no disponible en este dispositivo. Comparte el link manualmente.
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={paymentData!.payment.paymentUrl!}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-2 text-xs font-medium text-ink-2 transition-colors"
-                            >
-                              <LinkIcon className="h-3.5 w-3.5" />
-                              Abrir link
-                            </a>
-                            <button
-                              type="button"
-                              onClick={copyLink}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface hover:bg-overlay px-3 py-2 text-xs font-medium text-ink-2 transition-colors"
-                            >
-                              {linkCopied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-                              {linkCopied ? 'Copiado' : 'Copiar'}
-                            </button>
-                          </div>
-
-                          <div className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning border border-warning/20 px-2.5 py-1 text-[11px] font-medium">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Esperando pago
-                          </div>
-                        </div>
-                      )}
-
-                      {paymentError && <p className="text-xs text-danger">{paymentError}</p>}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* El flow de "Cobrar online" antiguo (link de pago + QR + reembolso
+                  aislado) se ha unificado dentro de ChargeFlow — método
+                  `card_online`. El reembolso queda fuera de scope V1 del
+                  ChargeFlow; si hace falta, el barbero entra en /dashboard/caja
+                  para ver el pago y reembolsarlo desde allí. */}
             </div>
 
             {/* Footer fijo con el TOTAL (Booksy 09.58.37: barra inferior
@@ -1469,31 +1055,27 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         />
       )}
 
-      {booking && (
-        <PaymentMethodPrompt
-          open={methodPromptOpen}
-          onClose={() => setMethodPromptOpen(false)}
-          onPick={(m) => void markCompletedWithMethod(m)}
-          subtitle={`${booking.service} · ${booking.customerName ?? booking.customerPhone}`}
-          pending={methodPending}
-        />
-      )}
-
-      {booking && booking.price != null && booking.price > 0 && (
-        <SumupCheckoutPrompt
-          open={sumupPromptOpen}
-          bookingId={booking.id}
-          amountCents={Math.round(booking.price * 100)}
-          subtitle={`${booking.service} · ${booking.customerName ?? booking.customerPhone}`}
-          onClose={() => setSumupPromptOpen(false)}
-          onSettled={() => {
-            // Callback de SumUp ya cerró el booking + cash_movement.
-            // Refrescamos parent para verlo.
-            startTransition(() => router.refresh());
+      {/* ChargeFlow — motor de cobro unificado (épica Reni). Maneja método
+          único, fraccionado, espera online y propina inline. Sólo se
+          renderiza con price > 0 (las citas gratis usan PATCH legacy). */}
+      {booking && booking.price !== null && booking.price > 0 && (
+        <ChargeFlow
+          booking={{
+            id: booking.id,
+            price: booking.price,
+            customerName: booking.customerName,
+            barberId: booking.barberId,
+            serviceLabel: booking.service,
           }}
-          onFallback={() => {
-            // Si SumUp falla, abrimos el modal manual cash/card/online.
-            setMethodPromptOpen(true);
+          barbers={barbers.map((b) => ({ id: b.id, displayName: b.name }))}
+          stripeConnectActive={connectActive}
+          cashSessionOpen={cashRegisterEnabled ? cashSessionOpen : true}
+          open={chargeOpen}
+          onClose={() => setChargeOpen(false)}
+          onCharged={() => {
+            setChargeOpen(false);
+            onClose();
+            startTransition(() => router.refresh());
           }}
         />
       )}
