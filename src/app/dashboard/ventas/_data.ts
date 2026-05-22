@@ -125,10 +125,10 @@ export async function loadVentasData(
         WHERE client_id = ${client.id} AND status = 'paid'
         ${tipsWhere})::bigint AS tips_cents,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
-        WHERE client_id = ${client.id}
+        WHERE client_id = ${client.id} AND consumption_kind IS NULL
         ${upsellsWhere})::bigint AS upsells_cents,
       (SELECT COUNT(*) FROM ${productSales}
-        WHERE client_id = ${client.id}
+        WHERE client_id = ${client.id} AND consumption_kind IS NULL
         ${upsellsWhere})::int AS upsells_count
   `)
       .then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? []

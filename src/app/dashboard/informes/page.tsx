@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { bookings, bookingServices, productSales, tips, clients, expenses, fixedCosts, ownerWithdrawals, manualIncomes } from '@/db/schema'
-import { eq, and, gte, lt, sql } from 'drizzle-orm'
+import { eq, and, gte, isNull, lt, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import { TrendingUp } from 'lucide-react'
@@ -155,10 +155,11 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, prevYearStart), lt(bookings.date, prevYearEnd))),
     // Productos vendidos (total_cents ya en cents) — su comisión ya se
     // descuenta vía nóminas; sin sumar su ingreso el beneficio se infravalora.
+    // Excluye consumos internos / mermas — no son ingreso.
     db
       .select({ total: sql<number>`COALESCE(SUM(${productSales.totalCents}), 0)` })
       .from(productSales)
-      .where(and(eq(productSales.clientId, client.id), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
+      .where(and(eq(productSales.clientId, client.id), isNull(productSales.consumptionKind), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
     // Propinas 'paid' (amount_cents ya en cents). Sin IVA (gratuidad).
     db
       .select({ total: sql<number>`COALESCE(SUM(${tips.amountCents}), 0)` })

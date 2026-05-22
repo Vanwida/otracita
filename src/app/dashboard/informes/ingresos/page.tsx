@@ -95,6 +95,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
     FROM ${productSales} ps
     JOIN ${products} p ON p.id = ps.product_id
     WHERE ps.client_id = ${client.id}
+      AND ps.consumption_kind IS NULL
       AND ps.sold_at >= ${dateLo}::date AND ps.sold_at < ${periodEndIso}::date
     GROUP BY p.name
     ORDER BY cents DESC, units DESC
@@ -124,7 +125,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
         WHERE client_id = ${client.id} AND status = 'completed'
         AND date >= ${dateLo} AND date < ${periodEndIso})::bigint AS servicios_eur,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
-        WHERE client_id = ${client.id}
+        WHERE client_id = ${client.id} AND consumption_kind IS NULL
         AND sold_at >= ${dateLo}::date AND sold_at < ${periodEndIso}::date)::bigint AS productos_cents,
       (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
         WHERE client_id = ${client.id} AND status = 'paid'

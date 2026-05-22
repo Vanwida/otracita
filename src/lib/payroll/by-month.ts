@@ -9,7 +9,7 @@ import {
   bonusEntries,
   barberServiceCommissions,
 } from '@/db/schema'
-import { and, eq, gte, lt, sql } from 'drizzle-orm'
+import { and, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import { computeBarberPayroll, isProfileConfigured } from './compute'
 import type { BarberSalaryProfile, BarberMonthRaw } from './types'
 import { computeBonusProgress, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
@@ -134,13 +134,14 @@ export async function computePayrollTotalsByMonth(
       .from(barberServiceCommissions)
       .where(eq(barberServiceCommissions.clientId, clientId)),
     db
+      // Excluye consumos internos / mermas — no son ingreso del barbero.
       .select({
         month: psMonth,
         barberId: productSales.barberId,
         totalCents: sql<string>`COALESCE(SUM(${productSales.totalCents}), 0)`,
       })
       .from(productSales)
-      .where(and(eq(productSales.clientId, clientId), gte(productSales.soldAt, new Date(spanStart)), lt(productSales.soldAt, new Date(spanEnd))))
+      .where(and(eq(productSales.clientId, clientId), isNull(productSales.consumptionKind), gte(productSales.soldAt, new Date(spanStart)), lt(productSales.soldAt, new Date(spanEnd))))
       .groupBy(psMonth, productSales.barberId),
     db
       .select({

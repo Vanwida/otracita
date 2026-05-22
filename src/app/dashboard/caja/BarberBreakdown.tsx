@@ -186,6 +186,7 @@ export default async function BarberBreakdown({
         COUNT(*)::int AS upsells_count
       FROM ${productSales} ps
       WHERE ps.client_id = ${clientId}
+        AND ps.consumption_kind IS NULL
         ${salesPeriodWhere}
       GROUP BY ps.barber_id
     )

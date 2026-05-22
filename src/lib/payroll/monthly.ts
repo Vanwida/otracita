@@ -9,7 +9,7 @@ import {
   bonusEntries,
   barberServiceCommissions,
 } from '@/db/schema'
-import { and, eq, gte, lt, sum, sql } from 'drizzle-orm'
+import { and, eq, gte, isNull, lt, sum, sql } from 'drizzle-orm'
 import { computeBarberPayroll, isProfileConfigured } from './compute'
 import type { BarberSalaryProfile, BarberMonthRaw, PayrollBreakdown, SalaryType } from './types'
 import { computeBonusProgress, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
@@ -185,7 +185,8 @@ export async function computeMonthlyPayroll(
     overridesByBarber.set(row.barberId, list)
   }
 
-  // 3) Productos vendidos por barbero.
+  // 3) Productos vendidos por barbero. Excluye consumos internos / mermas
+  //    — no son ingreso ni base de comisión.
   const productsByBarber = await db
     .select({
       barberId: productSales.barberId,
@@ -195,6 +196,7 @@ export async function computeMonthlyPayroll(
     .where(
       and(
         eq(productSales.clientId, clientId),
+        isNull(productSales.consumptionKind),
         gte(productSales.soldAt, new Date(bounds.start)),
         lt(productSales.soldAt, new Date(bounds.end)),
       ),

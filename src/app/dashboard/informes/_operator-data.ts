@@ -83,7 +83,7 @@ export async function loadOperatorMetrics(
         WHERE client_id = ${clientId} AND status = 'completed'
         AND date >= ${start} AND date < ${end})::bigint AS servicios_eur,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
-        WHERE client_id = ${clientId}
+        WHERE client_id = ${clientId} AND consumption_kind IS NULL
         AND sold_at >= ${start}::date AND sold_at < ${end}::date)::bigint AS productos_cents,
       (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
         WHERE client_id = ${clientId} AND status = 'paid'
@@ -166,7 +166,7 @@ export async function loadOperatorMetrics(
         WHERE client_id = ${clientId} AND status = 'completed'
         AND date >= ${prevStart} AND date < ${prevEnd})::bigint AS servicios_eur,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
-        WHERE client_id = ${clientId}
+        WHERE client_id = ${clientId} AND consumption_kind IS NULL
         AND sold_at >= ${prevStart}::date AND sold_at < ${prevEnd}::date)::bigint AS productos_cents,
       (SELECT COALESCE(SUM(amount_cents), 0) FROM ${tips}
         WHERE client_id = ${clientId} AND status = 'paid'

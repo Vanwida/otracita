@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { bookings, bookingServices, manualIncomes, productSales, tips } from '@/db/schema';
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import type { RevenueComponents } from './pnl-math';
 
 // -----------------------------------------------------------------------------
@@ -47,9 +47,10 @@ export async function periodRevenueComponents(
           .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, start), lt(manualIncomes.date, end)))
       : Promise.resolve([{ total: '0' }] as { total: string }[]),
     db
+      // Excluye consumos internos / mermas — no son ingreso.
       .select({ total: sql<string>`COALESCE(SUM(${productSales.totalCents}), 0)` })
       .from(productSales)
-      .where(and(eq(productSales.clientId, clientId), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
+      .where(and(eq(productSales.clientId, clientId), isNull(productSales.consumptionKind), gte(productSales.soldAt, new Date(start)), lt(productSales.soldAt, new Date(end)))),
     db
       .select({ total: sql<string>`COALESCE(SUM(${tips.amountCents}), 0)` })
       .from(tips)
@@ -103,12 +104,13 @@ export async function annualRevenueComponentsByMonth(
       .where(and(eq(manualIncomes.clientId, clientId), gte(manualIncomes.date, yearStart), lt(manualIncomes.date, yearEnd)))
       .groupBy(sql`EXTRACT(MONTH FROM ${manualIncomes.date}::date)`),
     db
+      // Excluye consumos internos / mermas — no son ingreso.
       .select({
         month: sql<number>`EXTRACT(MONTH FROM (${productSales.soldAt} AT TIME ZONE 'Europe/Madrid')::date)::int`,
         total: sql<string>`COALESCE(SUM(${productSales.totalCents}), 0)`,
       })
       .from(productSales)
-      .where(and(eq(productSales.clientId, clientId), gte(productSales.soldAt, new Date(yearStart)), lt(productSales.soldAt, new Date(yearEnd))))
+      .where(and(eq(productSales.clientId, clientId), isNull(productSales.consumptionKind), gte(productSales.soldAt, new Date(yearStart)), lt(productSales.soldAt, new Date(yearEnd))))
       .groupBy(sql`EXTRACT(MONTH FROM (${productSales.soldAt} AT TIME ZONE 'Europe/Madrid')::date)`),
     db
       .select({
