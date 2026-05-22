@@ -49,7 +49,7 @@ export default function AreaTabs({ area }: Props) {
       role="tablist"
       aria-label={`Secciones de ${def.label}`}
       aria-orientation="horizontal"
-      className="flex items-stretch gap-1 overflow-x-auto border-b border-line -mx-[var(--space-page)] px-[var(--space-page)]"
+      className="flex items-stretch gap-1 overflow-x-auto overflow-y-hidden border-b border-line -mx-[var(--space-page)] px-[var(--space-page)]"
     >
       {def.tabs.map((tab) => {
         const active = current?.href === tab.href
