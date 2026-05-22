@@ -11,12 +11,11 @@ import {
   Bell,
   ExternalLink,
   BarChart3,
-  Lock,
 } from 'lucide-react'
 import AppPageCopyButton from './AppPageCopyButton'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
-import GtmSettings from './GtmSettings'
+import EditPublicPageButton from './EditPublicPageButton'
 import Link from 'next/link'
 import { hasFeature } from '@/lib/billing/tier'
 import { BRAND_INK_HEX, QR_WHITE_HEX } from '@/lib/brand-hex'
@@ -130,25 +129,26 @@ export default async function AppPage() {
         </div>
       </section>
 
-      {/* La config de identidad de la página pública (slug, logo, color,
-          tema, descripción, redes) se gestiona ahora en Ajustes →
-          Reservas online — editor canónico único de esos campos (DRY).
-          Esta pestaña es solo la PWA: compartir, push y analítica. */}
-      <Link
-        href="/dashboard/ajustes/reservas"
-        className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 transition-colors hover:border-brand"
-      >
-        <div className="min-w-0">
-          <p className="text-[0.8125rem] font-semibold text-ink">
-            Personalizar la página de reservas
-          </p>
-          <p className="mt-0.5 text-[0.75rem] text-ink-2">
-            Logo, color, portada, descripción y redes — en Ajustes → Reservas
-            online.
-          </p>
-        </div>
-        <ExternalLink className="h-4 w-4 shrink-0 text-ink-2" aria-hidden="true" />
-      </Link>
+      {/* Edición de la identidad de la página pública (slug, logo, color,
+          tema, descripción, redes) en SlideOver derecho — NO rompe contexto.
+          Reusa el editor canónico PublicPageSettings (DRY) usado también en
+          Ajustes → Reservas online. Misma persistencia, mismo form. */}
+      <EditPublicPageButton
+        initial={{
+          slug: client.publicSlug,
+          publicEnabled: client.publicEnabled,
+          brandLogoUrl: client.brandLogoUrl,
+          brandLogoAltUrl: client.brandLogoAltUrl,
+          brandCoverUrl: client.brandCoverUrl,
+          brandColor: client.brandColor,
+          brandTheme: client.brandTheme,
+          publicDescription: client.publicDescription,
+          instagramHandle: client.instagramHandle,
+          tiktokHandle: client.tiktokHandle,
+          facebookUrl: client.facebookUrl,
+          websiteUrl: client.websiteUrl,
+        }}
+      />
 
       {/* Notifications */}
       <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
@@ -169,43 +169,33 @@ export default async function AppPage() {
         </p>
       </section>
 
-      {/* GTM — feature Pro. Si tiene el plan, mostramos el input; si no,
-          un upsell discreto que explica el valor. */}
-      <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
-        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+      {/* Tracking de conversiones — UI canónica vive en Marketing → Tracking
+          (multi-pixel: GTM + Meta + Google Ads + TikTok). Aquí dejamos solo
+          un puntero discreto para barberos que aterricen buscando GTM en la
+          configuración de la app. */}
+      <Link
+        href="/dashboard/marketing/tracking"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 transition-colors hover:border-brand"
+      >
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-brand" />
-            <h2 className="text-lg font-semibold text-ink">Google Tag Manager</h2>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-brand-strong bg-brand-softer px-1.5 py-0.5 rounded">Pro</span>
+            <p className="text-[0.8125rem] font-semibold text-ink">
+              Tracking de conversiones
+            </p>
+            <span className="text-[10px] uppercase tracking-widest font-bold text-brand-strong bg-brand-softer px-1.5 py-0.5 rounded">
+              Pro
+            </span>
           </div>
+          <p className="mt-0.5 text-[0.75rem] text-ink-2">
+            Pixels de Meta, Google Ads y TikTok — en Marketing → Tracking.
+            {hasFeature(client, 'gtmContainer')
+              ? ''
+              : ' Disponible con el plan Pro.'}
+          </p>
         </div>
-        <p className="text-sm text-ink-2 max-w-2xl mb-4">
-          Conecta tu GTM para medir conversiones con tus propios pixels (Meta, Google Ads, GA4, TikTok…)
-          cuando un cliente confirma reserva. Una sola pieza, todos los tags. Con consentimiento de cookies
-          gestionado automáticamente en tu app pública.
-        </p>
-
-        {hasFeature(client, 'gtmContainer') ? (
-          <GtmSettings initial={client.gtmContainerId ?? null} />
-        ) : (
-          <div className="rounded-xl border border-dashed border-line bg-overlay px-4 py-5 flex items-start gap-3">
-            <Lock className="h-4 w-4 text-ink-3 mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-ink mb-1">Disponible en el plan Pro</p>
-              <p className="text-xs text-ink-2 mb-3">
-                Activa Pro para conectar tu GTM y empezar a medir el ROI de tus campañas en redes sociales y
-                buscadores. También desbloqueas bot WhatsApp, SumUp, fidelidad avanzada y control financiero.
-              </p>
-              <Link
-                href="/dashboard/mi-plan"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:text-brand-strong transition-colors"
-              >
-                Ver Mi plan →
-              </Link>
-            </div>
-          </div>
-        )}
-      </section>
+        <ExternalLink className="h-4 w-4 shrink-0 text-ink-2" aria-hidden="true" />
+      </Link>
 
       {/* Promos contextuales se gestionan ahora en /dashboard/marketing —
           conceptualmente son marketing, no configuración de la app. */}
