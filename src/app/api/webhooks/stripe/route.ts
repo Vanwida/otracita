@@ -8,10 +8,19 @@ import {
   invoices,
   bookings,
   tips,
+  cashMovements,
+  cashSessions,
 } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { notifyAlex } from '@/lib/notify-alex';
 import { recordRefundMovement } from '@/lib/cash/record-refund';
+import { bookingTotalCents } from '@/lib/bookings/total';
+import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
+import {
+  CASH_MOVEMENT_METHOD_FROM_PAYMENT,
+  MIXED_METHOD_TOKEN,
+  isPaymentMethod,
+} from '@/lib/payments/methods';
 import type Stripe from 'stripe';
 import type { ConnectStatus } from '@/lib/payments';
 import { SITE_URLS } from '@/lib/site';
@@ -520,6 +529,31 @@ async function handleConnectPaymentCompleted(
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Cierre del booking — épica Reni #26+#27 (cobro unificado + split).
+  //
+  // Antes: el webhook solo flippeaba payment.status='succeeded'; el cierre
+  // del booking lo hacía recordSumupCheckoutResult o un PATCH manual.
+  //
+  // Ahora: para que el flow nuevo `/api/bookings/[id]/charge` con un tramo
+  // online cierre el booking SIN un PATCH separado, este handler compara la
+  // suma de payments succeeded contra el total y, si cuadra, cierra.
+  //
+  // Backwards compat: bookings con UNA sola fila payments (flow legacy
+  // create-link 100% online) cumplen la regla porque el único pago succeeded
+  // ya cubre el total → se cierran igual.
+  // -------------------------------------------------------------------------
+  if (payment.bookingId) {
+    try {
+      await closeBookingIfAllPaymentsSucceeded(payment.bookingId, payment.clientId);
+    } catch (err) {
+      console.error(
+        '[stripe-webhook] closeBookingIfAllPaymentsSucceeded failed:',
+        err,
+      );
+    }
+  }
+
   // Ops notification — fire-and-forget.
   void (async () => {
     try {
@@ -762,4 +796,96 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
       console.error('[stripe-webhook] notifyAlex (connect active) failed:', err);
     });
   }
+}
+
+// -----------------------------------------------------------------------------
+// closeBookingIfAllPaymentsSucceeded — cierre diferido tras un cobro online
+// (épica Reni #26+#27).
+//
+// Reglas:
+//   1. Si el booking ya está completed → no-op (idempotente).
+//   2. SUM(payments.amountCents) WHERE status='succeeded' debe igualar
+//      bookingTotalCents(bookingId). Si no cuadra (split parcial pendiente o
+//      pago manual aún no registrado) → no-op silencioso.
+//   3. Si cuadra:
+//      · paymentMethod = método de la fila si solo hay 1 (compat con flow
+//        legacy 100% online), 'mixed' si hay > 1.
+//      · INSERT cash_movement con method derivado del payment online (siempre
+//        'online' por mapeo) si hay sesión de caja abierta. Tramos offline
+//        ya tienen sus cash_movements (los crea /charge).
+//      · Dispara `tryRatingFollowupForCompletedBooking`.
+// -----------------------------------------------------------------------------
+async function closeBookingIfAllPaymentsSucceeded(
+  bookingId: string,
+  clientId: string,
+): Promise<void> {
+  const [booking] = await db
+    .select()
+    .from(bookings)
+    .where(eq(bookings.id, bookingId));
+  if (!booking) return;
+  if (booking.status !== 'confirmed') return;
+
+  const bookingTotal = await bookingTotalCents(bookingId);
+  if (bookingTotal <= 0) return;
+
+  const allPayments = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.bookingId, bookingId));
+
+  const succeeded = allPayments.filter((p) => p.status === 'succeeded');
+  const sum = succeeded.reduce((acc, p) => acc + p.amountCents, 0);
+  if (sum !== bookingTotal) return;
+
+  // Resolución del paymentMethod final.
+  //   · Si solo hay 1 fila succeeded → su método (back-compat: legacy = card_online).
+  //   · Si hay > 1 → mixed.
+  let finalMethod: string;
+  if (succeeded.length === 1) {
+    const m = succeeded[0].method;
+    finalMethod = isPaymentMethod(m) ? m : 'card_online';
+  } else {
+    finalMethod = MIXED_METHOD_TOKEN;
+  }
+
+  await db
+    .update(bookings)
+    .set({ status: 'completed', paymentMethod: finalMethod })
+    .where(eq(bookings.id, bookingId));
+
+  // Cash movement de cada fila online recién succeeded. Las offline ya
+  // tienen sus cash_movements (los inserta /charge). Solo insertamos las
+  // online que aún no estén reflejadas.
+  try {
+    const [openSession] = await db
+      .select({ id: cashSessions.id })
+      .from(cashSessions)
+      .where(and(eq(cashSessions.clientId, clientId), isNull(cashSessions.closedAt)));
+    if (openSession) {
+      const onlineSucceeded = succeeded.filter(
+        (p) => p.method === 'card_online' || p.method === null,
+      );
+      for (const p of onlineSucceeded) {
+        const movementMethod =
+          p.method && isPaymentMethod(p.method)
+            ? CASH_MOVEMENT_METHOD_FROM_PAYMENT[p.method]
+            : 'online';
+        await db.insert(cashMovements).values({
+          clientId,
+          sessionId: openSession.id,
+          kind: 'booking',
+          method: movementMethod,
+          amountCents: p.amountCents,
+          referenceType: 'booking',
+          referenceId: bookingId,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[stripe-webhook] cash_movement online insert failed:', err);
+  }
+
+  // Followup rating (fire-and-forget).
+  tryRatingFollowupForCompletedBooking(bookingId);
 }
