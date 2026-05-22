@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { AlertTriangle, Info, Check, Loader2 } from 'lucide-react'
 import NumberInput from './NumberInput'
 import FormGrid from './FormGrid'
@@ -51,6 +52,7 @@ const IVA_OPTIONS = [
 const PREVIEW_PAD = 4
 
 export default function InvoicingSettings({ initial }: Props) {
+  const router = useRouter()
   const [enabled, setEnabled] = useState(initial.invoicingEnabled)
   const [fiscalName, setFiscalName] = useState(initial.fiscalName)
   const [fiscalNif, setFiscalNif] = useState(initial.fiscalNif)
@@ -123,6 +125,10 @@ export default function InvoicingSettings({ initial }: Props) {
         // bajó a false porque faltaban campos).
         if (typeof d.invoicingEnabled === 'boolean') setEnabled(d.invoicingEnabled)
         setSaved(true)
+        // Re-fetch del Server Component padre (InvoicingCard summary) para
+        // que el resumen externo (estado activa/inactiva, próximo número)
+        // refleje los cambios sin recargar la página.
+        router.refresh()
         setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
         setError('Error de red')
@@ -130,8 +136,12 @@ export default function InvoicingSettings({ initial }: Props) {
     })
   }
 
+  // Layout canónico SlideOver: `flex h-full flex-col` con body scrollable y
+  // footer sticky bottom. Antes el botón Guardar quedaba al fondo del scroll
+  // del SlideOver y se perdía fuera del viewport en formularios largos.
   return (
-    <div className="space-y-6">
+    <div className="flex h-full flex-col">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-ink">Facturación</h2>
         <p className="text-sm text-ink-2 mt-1">
@@ -288,9 +298,12 @@ export default function InvoicingSettings({ initial }: Props) {
           </p>
         )}
       </div>
+      </div>
 
-      {/* Save button */}
-      <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
+      {/* Footer sticky — Guardar facturación siempre accesible aunque el form
+          sea más largo que el viewport. Mismo patrón canónico que
+          ServicesManager / HoursSlideOver / PublicPageSettings. */}
+      <div className="shrink-0 border-t border-line bg-surface px-5 py-3 flex items-center justify-end gap-3">
         {saved && (
           <span className="inline-flex items-center gap-1.5 text-sm text-success">
             <Check className="h-4 w-4" />

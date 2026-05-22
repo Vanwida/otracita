@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { upload } from '@vercel/blob/client'
 import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2, Sun, Moon } from 'lucide-react'
 import { BRAND_TERRACOTA_HEX, PUBLIC_PWA_THEME } from '@/lib/brand-hex'
@@ -36,6 +37,7 @@ interface Props {
 import { SITE_ORIGIN } from '@/lib/site'
 
 export default function PublicPageSettings({ initial }: Props) {
+  const router = useRouter()
   const [slug, setSlug] = useState(initial.slug || '')
   const [publicEnabled, setPublicEnabled] = useState(initial.publicEnabled)
   const [brandLogoUrl, setBrandLogoUrl] = useState(initial.brandLogoUrl || '')
@@ -99,6 +101,13 @@ export default function PublicPageSettings({ initial }: Props) {
         // Server may have tweaked the slug to avoid collisions — adopt.
         if (data.slug) setSlug(data.slug)
         setSaved(true)
+        // Re-fetch del Server Component padre (dashboard/app, dashboard/ajustes/...)
+        // para que la URL pública, QR, color y resto de campos derivados del
+        // `client` server-rendered reflejen los cambios sin recargar la
+        // página. Sin esto el usuario veía valores nuevos en el form pero la
+        // hero card / preview seguía con los viejos → impresión de "no se
+        // guardó".
+        router.refresh()
         setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
         setError('Error de red')
@@ -106,8 +115,13 @@ export default function PublicPageSettings({ initial }: Props) {
     })
   }
 
+  // Layout canónico SlideOver: `flex h-full flex-col` con body scrollable y
+  // footer sticky bottom (mismo patrón que ServicesManager / HoursSlideOver).
+  // Antes el botón Guardar quedaba en el fondo del scroll y se perdía fuera
+  // del viewport cuando el form era largo — el usuario no podía guardar.
   return (
-    <div className="space-y-6">
+    <div className="flex h-full flex-col">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
           <Globe className="h-4 w-4 text-brand" />
@@ -306,8 +320,13 @@ export default function PublicPageSettings({ initial }: Props) {
         <Field label="Facebook (URL)" value={facebookUrl} onChange={setFacebookUrl} placeholder="https://facebook.com/..." />
         <Field label="Web externa" value={websiteUrl} onChange={setWebsiteUrl} placeholder="https://mi-barberia.com" />
       </FormGrid>
+      </div>
 
-      <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
+      {/* Footer sticky — siempre visible aunque el form sea más largo que el
+          viewport. Antes el botón quedaba al fondo del scroll del SlideOver
+          y el usuario no podía guardar en pantallas pequeñas / formularios
+          completos. Mismo patrón que ServicesManager / HoursSlideOver. */}
+      <div className="shrink-0 border-t border-line bg-surface px-5 py-3 flex items-center justify-end gap-3">
         {saved && (
           <span className="inline-flex items-center gap-1.5 text-sm text-success">
             <Check className="h-4 w-4" />

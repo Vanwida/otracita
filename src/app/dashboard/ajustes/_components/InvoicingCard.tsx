@@ -123,11 +123,10 @@ export default function InvoicingCard({ initial }: Props) {
         ariaLabel="Editar datos fiscales y facturación"
         width="w-[520px] max-w-[92vw]"
       >
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-y-auto px-5 py-5">
-            <InvoicingSettings initial={initial} />
-          </div>
-        </div>
+        {/* InvoicingSettings ya implementa el layout canónico de SlideOver
+            (body scrollable + sticky save footer). No envolver aquí o el
+            sticky bottom pierde su contenedor de referencia. */}
+        <InvoicingSettings initial={initial} />
       </SlideOver>
     </>
   )

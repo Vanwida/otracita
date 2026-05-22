@@ -193,7 +193,9 @@ export default function ReservasOnlineCard({ initial }: Props) {
       </section>
 
       {/* SlideOver con el editor completo (ancho ampliado por la cantidad de
-          campos del PublicPageSettings: logo/portada/colores/redes/etc). */}
+          campos del PublicPageSettings: logo/portada/colores/redes/etc).
+          PublicPageSettings ya implementa el layout canónico (scroll body +
+          sticky save footer) — no añadir wrapper o se rompe el sticky. */}
       <SlideOver
         open={open}
         onClose={() => setOpen(false)}
@@ -201,11 +203,7 @@ export default function ReservasOnlineCard({ initial }: Props) {
         ariaLabel="Editar página pública de reservas"
         width="w-[560px] max-w-[92vw]"
       >
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-y-auto px-5 py-5">
-            <PublicPageSettings initial={initial} />
-          </div>
-        </div>
+        <PublicPageSettings initial={initial} />
       </SlideOver>
     </>
   )

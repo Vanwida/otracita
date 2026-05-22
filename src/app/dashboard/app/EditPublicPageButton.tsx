@@ -52,11 +52,11 @@ export default function EditPublicPageButton({ initial }: Props) {
         ariaLabel="Editar página pública de reservas"
         width="w-[560px] max-w-[92vw]"
       >
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-y-auto px-5 py-5">
-            <PublicPageSettings initial={initial} />
-          </div>
-        </div>
+        {/* PublicPageSettings ya implementa el layout canónico de SlideOver
+            (flex h-full flex-col + body scrollable + footer sticky con
+            Guardar). No envolver en otro contenedor o el sticky bottom
+            apunta al sitio equivocado y el botón vuelve a escaparse. */}
+        <PublicPageSettings initial={initial} />
       </SlideOver>
     </>
   )
