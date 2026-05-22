@@ -15,6 +15,12 @@ import { MARKETING_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
 import { getSourceMeta } from '@/lib/sources'
+import {
+  getClientSourceBreakdown,
+  sumSourceBreakdown,
+} from '@/lib/marketing/sources-breakdown'
+import { parseIsoDate } from '@/lib/dashboard/period'
+import Link from 'next/link'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/marketing — pestaña MARKETING del área Informes.
@@ -286,8 +292,34 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
     0,
   )
 
+  // ── #41 — Clientes NUEVOS por canal de captación (first-touch sobre
+  //    `customers.first_source`). Es la misma señal que alimenta los chips
+  //    de filtrado en /dashboard/clientes (agente #40). Aquí la mostramos
+  //    como ranking para que el barbero decida en qué canal invertir.
+  //
+  //    Distinción vs el panel "Origen de clientes" que ya existe:
+  //      · Aquí cuento CLIENTES (uno por persona) cuyo first-touch cayó en
+  //        el periodo. Mide adquisición pura.
+  //      · El panel "Origen de clientes" (F3 Reni) cuenta CITAS atribuidas
+  //        en el periodo (un cliente recurrente suma N citas). Mide
+  //        actividad por canal.
+  //    Las dos vistas son complementarias y se leen de un vistazo.
+  //
+  //    Periodo: si `period=lifetime` (periodStartIso null) → sin ventana.
+  //    Si hay periodo, restringe por `first_source_captured_at >= start`.
+  const newClientsSince = periodStartIso ? parseIsoDate(periodStartIso) : null
+  const newClientsBreakdown = await getClientSourceBreakdown(client.id, {
+    since: newClientsSince ?? undefined,
+  })
+  const newClientsTotal = sumSourceBreakdown(newClientsBreakdown)
+  const newClientsTop = newClientsBreakdown.slice(0, 8)
+  const newClientsMaxCount = Math.max(1, ...newClientsTop.map((r) => r.count))
+
   const hasData =
-    promosSent > 0 || reviewTotal > 0 || sourceAttributedTotal > 0
+    promosSent > 0 ||
+    reviewTotal > 0 ||
+    sourceAttributedTotal > 0 ||
+    newClientsTotal > 0
 
   const stats: Stat[] = [
     {
@@ -396,6 +428,73 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
               stats={stats}
               ariaLabel={`Resumen de marketing · ${periodLabel}`}
             />
+
+            {/* #41 — ¿De dónde vienen tus clientes? Ranking por canal del
+                first-touch del cliente (no del booking). Cada fila es Link a
+                /dashboard/clientes?source=<canal> → deep-link al filtro
+                multi-select de la lista (chips agente #40). */}
+            {newClientsTotal > 0 && (
+              <section className="panel">
+                <header
+                  className="border-b border-line px-[var(--space-card)] py-3"
+                  style={{ background: 'var(--table-head-bg)' }}
+                >
+                  <h2 className="text-[0.8125rem] font-semibold text-ink">
+                    ¿De dónde vienen tus clientes?
+                  </h2>
+                  <p className="mt-0.5 text-[0.75rem] text-ink-2">
+                    {newClientsTotal}{' '}
+                    {newClientsTotal === 1
+                      ? 'cliente nuevo'
+                      : 'clientes nuevos'}{' '}
+                    en este {periodLabel}. Toca un canal para ver la lista
+                    filtrada.
+                  </p>
+                </header>
+                <ul className="divide-y divide-line">
+                  {newClientsTop.map((row) => {
+                    const meta = getSourceMeta(row.source)
+                    const ChannelIcon = meta.Icon
+                    const widthPct = Math.max(
+                      2,
+                      Math.round((row.count / newClientsMaxCount) * 100),
+                    )
+                    return (
+                      <li key={row.source}>
+                        <Link
+                          href={`/dashboard/clientes?source=${encodeURIComponent(row.source)}`}
+                          className="flex items-center gap-3 px-[var(--space-card)] py-2.5 transition-colors hover:bg-overlay focus:bg-overlay focus:outline-none"
+                          aria-label={`Ver ${row.count} clientes de ${meta.label}`}
+                        >
+                          <span className="flex w-32 shrink-0 items-center gap-1.5 truncate text-[0.8125rem] text-ink">
+                            <ChannelIcon
+                              className="h-3.5 w-3.5 shrink-0 text-ink-2"
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">{meta.label}</span>
+                          </span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-overlay">
+                            <div
+                              className="h-full rounded-full bg-brand"
+                              style={{ width: `${widthPct}%` }}
+                            />
+                          </div>
+                          <span className="w-24 shrink-0 text-right text-[0.75rem] tabular-nums text-ink-2">
+                            {row.count}{' '}
+                            <span className="text-ink-3">({row.pct}%)</span>
+                          </span>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+                <p className="border-t border-line px-[var(--space-card)] py-2 text-[0.6875rem] text-ink-3">
+                  Cuenta clientes nuevos (uno por persona) por canal de
+                  first-touch. El panel inferior &laquo;Origen de
+                  clientes&raquo; cuenta citas atribuidas en el periodo.
+                </p>
+              </section>
+            )}
 
             {/* F3 Reni — Origen de clientes (override manual + atribución
                 pasiva). Pinta UNA tira ordenada por canal efectivo. */}
