@@ -97,6 +97,11 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAllServices, setShowAllServices] = useState(false)
+  // Consentimiento RGPD para tratamiento de datos. Obligatorio antes de
+  // confirmar. Persistimos la aceptación en localStorage para que el
+  // usuario que ya aceptó en una reserva previa no tenga que volver a
+  // marcarlo (la base legal del tratamiento sigue siendo la misma).
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   // No-show fee: modal de guardado de tarjeta. `card` se rellena tras pedir
   // el SetupIntent al backend; null = el negocio no exige tarjeta (fee=0) o
   // aún no se ha iniciado el paso.
@@ -120,6 +125,20 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     const out: string[] = []
     for (let i = 0; i < 14; i++) out.push(addDaysISO(todayMadrid(), i))
     return out
+  }, [])
+
+  // Restaurar consentimiento previo desde localStorage. SSR-safe (corre
+  // solo en cliente). Si una versión futura cambia los términos, bumpea
+  // la clave (-v2) para forzar re-aceptación.
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      if (window.localStorage.getItem('privacy-accepted-v1') === '1') {
+        setPrivacyAccepted(true)
+      }
+    } catch {
+      // localStorage puede fallar en modo privado — ignoramos sin romper.
+    }
   }, [])
 
   useEffect(() => {
@@ -324,7 +343,27 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
   }
 
   const canSubmit =
-    !!slot && !!name.trim() && !!phone.trim() && !submitting && !cardLoading
+    !!slot &&
+    !!name.trim() &&
+    !!phone.trim() &&
+    privacyAccepted &&
+    !submitting &&
+    !cardLoading
+
+  // Persistimos la aceptación cuando el usuario marca el checkbox: la
+  // base legal del tratamiento no cambia entre reservas, así que evitamos
+  // re-pedírselo en cada visita.
+  const togglePrivacy = (next: boolean) => {
+    setPrivacyAccepted(next)
+    try {
+      if (typeof window === 'undefined') return
+      if (next) window.localStorage.setItem('privacy-accepted-v1', '1')
+      else window.localStorage.removeItem('privacy-accepted-v1')
+    } catch {
+      // Sin storage no podemos persistir, pero la sesión actual sigue
+      // siendo válida en memoria.
+    }
+  }
 
   // ── Success state ────────────────────────────────────────────────────────
   if (confirmation) {
@@ -575,6 +614,41 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
               </div>
             </div>
 
+            {/* Consentimiento RGPD — obligatorio antes de confirmar.
+                Base legal del tratamiento: contrato (reserva) + este
+                consentimiento explícito. */}
+            <label
+              className="flex items-start gap-2.5 cursor-pointer select-none rounded-xl border px-3 py-2.5 transition-colors"
+              style={{
+                borderColor: privacyAccepted ? 'var(--brand)' : 'var(--theme-line)',
+                background: privacyAccepted ? 'var(--brand-soft)' : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={privacyAccepted}
+                onChange={(e) => togglePrivacy(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-current"
+                style={{ accentColor: 'var(--brand-strong)' }}
+                required
+                aria-required="true"
+              />
+              <span className="text-xs leading-snug" style={{ color: 'var(--theme-ink-2)' }}>
+                He leído y acepto la{' '}
+                <a
+                  href="/legal/privacidad"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-medium"
+                  style={{ color: 'var(--brand-strong)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  política de privacidad
+                </a>
+                .
+              </span>
+            </label>
+
             <button
               type="button"
               onClick={submit}
@@ -590,17 +664,15 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
             >
               {submitting || cardLoading
                 ? 'Reservando…'
-                : slot
-                  ? `Confirmar reserva a las ${slot}`
-                  : 'Elige una hora primero'}
+                : !slot
+                  ? 'Elige una hora primero'
+                  : !privacyAccepted
+                    ? 'Marca el consentimiento para continuar'
+                    : `Confirmar reserva a las ${slot}`}
             </button>
 
             <p className="text-[11px] text-center" style={{ color: 'var(--theme-ink-3)' }}>
-              Al confirmar aceptas la{' '}
-              <a href="/privacidad" className="underline" target="_blank" rel="noopener noreferrer">
-                política de privacidad
-              </a>
-              . Sin pago por adelantado.
+              Sin pago por adelantado.
             </p>
           </div>
         </section>

@@ -123,6 +123,11 @@ export default function ImportClientesFlow() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
+  // Consentimiento RGPD del barbero — afirmación nueva en CADA import
+  // (sin persistir): el barbero debe declarar que tiene base legal para
+  // tratar los contactos del CSV. Sin persistencia deliberada: forzamos
+  // recordatorio en cada subida.
+  const [consentChecked, setConsentChecked] = useState(false)
 
   const summary = useMemo(() => {
     let ok = 0
@@ -144,6 +149,7 @@ export default function ImportClientesFlow() {
     setRows([])
     setResult(null)
     setError(null)
+    setConsentChecked(false)
   }
 
   const downloadTemplate = () => {
@@ -415,6 +421,27 @@ export default function ImportClientesFlow() {
             </div>
           )}
 
+          {/* Consentimiento RGPD — el barbero declara base legal para
+              tratar los contactos. Sin persistencia: recordatorio en
+              cada import. */}
+          <div className="px-4 py-3 border-t border-line bg-canvas">
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={consentChecked}
+                onChange={(e) => setConsentChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-brand"
+                required
+                aria-required="true"
+              />
+              <span className="text-xs leading-snug text-ink-2">
+                Garantizo tener consentimiento previo de estos contactos
+                para tratamiento comercial (RGPD / LOPDGDD). otracita actúa
+                como encargado de tratamiento por cuenta de mi negocio.
+              </span>
+            </label>
+          </div>
+
           <div className="px-4 py-3 border-t border-line flex flex-wrap items-center justify-between gap-3 bg-canvas">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <SummaryStat label="Listos" count={summary.ok} tone="success" />
@@ -434,7 +461,12 @@ export default function ImportClientesFlow() {
               <button
                 type="button"
                 onClick={doImport}
-                disabled={loading || summary.ok === 0}
+                disabled={loading || summary.ok === 0 || !consentChecked}
+                title={
+                  !consentChecked
+                    ? 'Marca el consentimiento RGPD para continuar'
+                    : undefined
+                }
                 className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-semibold text-brand-ink disabled:opacity-60"
               >
                 {loading ? (
@@ -446,7 +478,9 @@ export default function ImportClientesFlow() {
                   ? 'Importando…'
                   : summary.ok === 0
                     ? 'Nada que importar'
-                    : `Importar ${summary.ok} ${summary.ok === 1 ? 'cliente' : 'clientes'}`}
+                    : !consentChecked
+                      ? 'Marca el consentimiento'
+                      : `Importar ${summary.ok} ${summary.ok === 1 ? 'cliente' : 'clientes'}`}
               </button>
             </div>
           </div>
