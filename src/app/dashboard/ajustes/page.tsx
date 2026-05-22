@@ -126,8 +126,14 @@ export default async function AjustesNegocioPage() {
   }
 
   return (
+    // Las tabs horizontales (Negocio · Pagos · Reservas · Recepcionista)
+    // las monta AreaShell — siempre visibles en cabecera. AreaContent en
+    // modo "region" deja el scroll interno (mobile stack) sin tocar las
+    // tabs. La pestaña Negocio usa grid 2-col + SlideOver para edición:
+    // en desktop cabe en viewport, en mobile el stack es compacto y la
+    // edición no añade scroll porque vive en panel lateral.
     <AreaShell area="ajustes">
-      <AreaContent scroll="region" maxWidth="5xl">
+      <AreaContent scroll="region" maxWidth="6xl">
         <NegocioSettings
           clientId={client.id}
           publicSlug={client.publicSlug}

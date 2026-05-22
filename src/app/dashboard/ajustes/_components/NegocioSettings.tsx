@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import React, { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import {
   Store,
@@ -10,44 +10,59 @@ import {
   ExternalLink,
   Phone,
   MapPin,
+  Pencil,
+  Timer,
   type LucideIcon,
 } from 'lucide-react'
 import ServicesManager from '@/app/dashboard/_components/ServicesManager'
-import HoursEditor, {
-  type HoursMap,
-} from '@/app/dashboard/_components/HoursEditor'
-import BlockedDatesManager from '@/app/dashboard/_components/BlockedDatesManager'
+import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
 import FormGrid from '@/app/dashboard/_components/FormGrid'
 import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { type ServiceColorToken } from '@/lib/service-colors'
 import AjustesLayout from './AjustesLayout'
-import AjustesSection from './AjustesSection'
 import AjustesSaveBar, { type SaveState } from './AjustesSaveBar'
+import HoursSlideOver from './HoursSlideOver'
+import BlockedDatesSlideOver from './BlockedDatesSlideOver'
 
 // -----------------------------------------------------------------------------
-// NegocioSettings — pestaña Negocio rediseñada (#35).
+// NegocioSettings — pestaña Negocio rediseñada (épica Reni #44).
 //
-// Reemplaza al antiguo NegocioForm (tabs internas Info / Servicios / Horario
-// / Días bloqueados). El nuevo patrón es Booksy/Stripe-coded: una sola pestaña
-// scrolleable con cards agrupadas, save bar única (sticky en mobile, inline
-// en desktop). Días bloqueados sigue siendo API-driven independiente, así que
-// va en su propia card sin save bar.
+// Reglas duras del proyecto aplicadas:
+//   1. CERO scroll vertical innecesario en ajustes. Las 4 cards caben en
+//      viewport en desktop (grid 2-col); en mobile el stack es compacto y
+//      la edición se hace en SlideOver lateral (no inline).
+//   2. Toda edición de item se hace en `SlideOver`. La card es preview/
+//      resumen + botón "Editar" que abre el panel.
+//   3. Reutiliza primitivos (SlideOver, FormGrid, AjustesSaveBar). Cero
+//      reinvención de chrome.
+//   4. Tokens semánticos del @theme (`bg-surface`, `text-ink`, etc.).
+//   5. Imports explícitos de React.
 //
-// La server action `save` recibe TODO (info, servicios, horario, slotStep)
-// como un FormData único — comportamiento idéntico al anterior, sólo cambia
-// el chrome. Los inputs ocultos llevan el JSON serializado de servicios y
-// horario, igual que antes.
+// Layout grid:
+//   ┌─────────────────────────┬─────────────────────────┐
+//   │ Información del negocio │ Horario semanal         │
+//   │ (form compacto inline)  │ (preview + Editar)      │
+//   │                         ├─────────────────────────┤
+//   │                         │ Días bloqueados         │
+//   │                         │ (preview + Editar)      │
+//   ├─────────────────────────┴─────────────────────────┤
+//   │ Servicios — lista compacta full-width             │
+//   │ (filas, click → SlideOver con form completo)      │
+//   └───────────────────────────────────────────────────┘
 //
-// Mobile-first: cards full-bleed con padding clamp, FormGrid stack 1-col en
-// mobile y 2-col en md+. Inputs h-11+ (target ≥44). Save bar sticky con
-// safe-area awareness.
-//
-// Imports explícitos de React (regla del proyecto).
+// El form padre engloba businessName, whatsappNumber, address, services
+// (input oculto JSON gestionado por ServicesManager), hours (input oculto
+// JSON), slotStepMinutes. Igual que antes: un único submit dispara
+// saveBusiness con todo el FormData — LÓGICA DE SERVIDOR INTACTA.
 // -----------------------------------------------------------------------------
 
 interface ServiceItem {
   name: string
   duration: number | string
   price: number | string
+  description?: string
+  featured?: boolean
+  colorToken?: ServiceColorToken
 }
 
 interface Props {
@@ -67,6 +82,50 @@ interface Props {
   save: (formData: FormData) => Promise<void>
 }
 
+const DAY_ORDER = [
+  'lunes',
+  'martes',
+  'miercoles',
+  'jueves',
+  'viernes',
+  'sabado',
+  'domingo',
+] as const
+const DAY_SHORT: Record<(typeof DAY_ORDER)[number], string> = {
+  lunes: 'L',
+  martes: 'M',
+  miercoles: 'X',
+  jueves: 'J',
+  viernes: 'V',
+  sabado: 'S',
+  domingo: 'D',
+}
+
+/** Cuenta días abiertos en el mapa de horas. */
+function countOpenDays(hours: HoursMap | null): number {
+  if (!hours) return 0
+  return DAY_ORDER.filter((d) => (hours[d] ?? 'Cerrado') !== 'Cerrado').length
+}
+
+/** Devuelve el primer rango horario no vacío como string compacto. */
+function previewHoursLabel(hours: HoursMap | null): string {
+  if (!hours) return 'Sin configurar'
+  for (const d of DAY_ORDER) {
+    const v = hours[d]
+    if (v && v !== 'Cerrado') return v
+  }
+  return 'Sin configurar'
+}
+
+/** Formatea una fecha YYYY-MM-DD a label corta. */
+function formatDateShort(dateStr: string): string {
+  const date = new Date(`${dateStr}T12:00:00`)
+  return date.toLocaleDateString('es-ES', {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
 export default function NegocioSettings({
   clientId,
   publicSlug,
@@ -78,7 +137,14 @@ export default function NegocioSettings({
   const [, startTransition] = useTransition()
   const formRef = useRef<HTMLFormElement>(null)
 
-  // Reset "saved" badge tras el feedback estándar de la UI (FEEDBACK_MS.saved).
+  // Estado local de los drafts editables vía SlideOver. Se serializan en
+  // inputs ocultos para que el server action reciba el shape esperado.
+  const [hoursOpen, setHoursOpen] = useState(false)
+  const [blockedOpen, setBlockedOpen] = useState(false)
+  const [hoursDraft, setHoursDraft] = useState<HoursMap | null>(initial.hours)
+  const [slotStep, setSlotStep] = useState<number>(initial.slotStepMinutes ?? 15)
+
+  // Reset "saved" badge tras el feedback estándar (FEEDBACK_MS.saved).
   useEffect(() => {
     if (saveState !== 'saved') return
     const t = window.setTimeout(
@@ -99,9 +165,19 @@ export default function NegocioSettings({
   const publicUrl =
     publicEnabled && publicSlug ? `/b/${publicSlug}` : null
 
+  const openDays = countOpenDays(hoursDraft)
+  const hoursPreview = previewHoursLabel(hoursDraft)
+  const blockedCount = initial.blockedDates.length
+  const blockedPreview = initial.blockedDates
+    .slice()
+    .sort()
+    .slice(0, 3)
+    .map(formatDateShort)
+    .join(', ')
+
   return (
     <AjustesLayout
-      intro="Datos, servicios, equipo y horario con los que opera tu asistente. Lo que pongas aquí es lo que ve el cliente al reservar y lo que usa el bot para responder."
+      intro="Datos, servicios y horario con los que opera tu asistente. Lo que pongas aquí es lo que ve el cliente al reservar y lo que usa el bot para responder."
       action={
         publicUrl ? (
           <Link
@@ -117,14 +193,26 @@ export default function NegocioSettings({
         ) : undefined
       }
     >
-      <form ref={formRef} action={onSubmit} className="space-y-5 md:space-y-6">
-        <AjustesSection
-          icon={Store}
-          title="Información del negocio"
-          description="Lo que el bot usa para presentarse y lo que aparece en tu página pública."
-        >
-          <div className="space-y-4">
-            <FormGrid cols={2}>
+      <form ref={formRef} action={onSubmit} className="space-y-4">
+        {/* Inputs ocultos serializados desde los drafts (horario, slotStep) */}
+        <input
+          type="hidden"
+          name="hours"
+          value={hoursDraft ? JSON.stringify(hoursDraft) : ''}
+          readOnly
+        />
+        <input
+          type="hidden"
+          name="slotStepMinutes"
+          value={String(slotStep)}
+          readOnly
+        />
+
+        {/* Grid 2-col en desktop, stack en mobile */}
+        <FormGrid cols={2} gap="card">
+          {/* ── Card 1: Información del negocio (form inline compacto) ───── */}
+          <Card icon={Store} title="Información del negocio">
+            <div className="space-y-3">
               <TextField
                 name="businessName"
                 label="Nombre del negocio"
@@ -135,8 +223,7 @@ export default function NegocioSettings({
               />
               <TextField
                 name="whatsappNumber"
-                label="WhatsApp del negocio"
-                hint="Con prefijo internacional. Es el número que llama el bot."
+                label="WhatsApp"
                 defaultValue={initial.whatsappNumber || initial.phone}
                 placeholder="+34 600 123 456"
                 type="tel"
@@ -146,111 +233,214 @@ export default function NegocioSettings({
                 icon={Phone}
                 autoComplete="tel"
               />
-            </FormGrid>
-
-            <TextField
-              name="address"
-              label="Dirección"
-              hint="Calle, número y ciudad. El bot la comparte cuando preguntan dónde estáis."
-              defaultValue={initial.address}
-              placeholder="Calle Gran Vía 123, Barcelona"
-              icon={MapPin}
-              autoComplete="street-address"
-            />
-          </div>
-        </AjustesSection>
-
-        <AjustesSection
-          icon={Scissors}
-          title="Servicios"
-          description="Lo que ofreces, en qué orden, a qué precio y de qué color en la agenda."
-          bleed
-        >
-          <div className="px-[var(--space-card)] md:px-6">
-            <ServicesManager
-              initial={initial.services.map((s) => ({
-                name: String(s.name),
-                duration: s.duration,
-                price: s.price,
-              }))}
-            />
-          </div>
-        </AjustesSection>
-
-        <AjustesSection
-          icon={Clock}
-          title="Horario"
-          description="Las horas en las que aceptas reservas. El bot solo ofrece huecos dentro de este rango."
-        >
-          <div className="space-y-6">
-            <HoursEditor initial={initial.hours} />
-
-            <div className="border-t border-line pt-5">
-              <h3
-                className="font-semibold text-ink"
-                style={{ fontSize: 'var(--text-meta)' }}
-              >
-                Granularidad de los huecos
-              </h3>
-              <p
-                className="mt-1 mb-3 text-ink-2"
-                style={{ fontSize: 'var(--text-meta)' }}
-              >
-                Cada cuántos minutos se ofrece un posible inicio de cita.
-                15 min (recomendado) rellena micro-huecos y maximiza la
-                conversión. Nunca se ofrece un slot que no quepa entero.
-              </p>
-              <div className="grid max-w-md grid-cols-3 gap-2">
-                {([15, 30, 45] as const).map((m) => (
-                  <label
-                    key={m}
-                    className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-ink transition-colors hover:border-line-strong has-[:checked]:border-brand has-[:checked]:bg-brand-softer"
-                    style={{ fontSize: 'var(--text-meta)' }}
-                  >
-                    <input
-                      type="radio"
-                      name="slotStepMinutes"
-                      value={m}
-                      defaultChecked={
-                        (initial.slotStepMinutes ?? 15) === m
-                      }
-                      className="h-3.5 w-3.5 accent-[var(--color-brand)]"
-                    />
-                    <span className="font-semibold">{m} min</span>
-                  </label>
-                ))}
-              </div>
+              <TextField
+                name="address"
+                label="Dirección"
+                defaultValue={initial.address}
+                placeholder="Calle Gran Vía 123, Barcelona"
+                icon={MapPin}
+                autoComplete="street-address"
+              />
             </div>
+          </Card>
+
+          {/* ── Columna derecha: stack de 2 cards compactas ─────────── */}
+          <div className="space-y-4">
+            {/* Card 2: Horario semanal — preview + Editar */}
+            <Card
+              icon={Clock}
+              title="Horario"
+              action={
+                <EditButton
+                  onClick={() => setHoursOpen(true)}
+                  label="Editar horario"
+                />
+              }
+            >
+              <div className="space-y-3">
+                {/* Strip L M X J V S D con activos en brand */}
+                <div className="flex items-center gap-1.5">
+                  {DAY_ORDER.map((d) => {
+                    const v = hoursDraft?.[d] ?? 'Cerrado'
+                    const open = v !== 'Cerrado'
+                    return (
+                      <span
+                        key={d}
+                        title={
+                          open
+                            ? `${d.charAt(0).toUpperCase() + d.slice(1)}: ${v}`
+                            : `${d.charAt(0).toUpperCase() + d.slice(1)}: Cerrado`
+                        }
+                        className={`h-7 w-7 inline-flex items-center justify-center rounded-md text-[11px] font-semibold ${
+                          open
+                            ? 'bg-brand-softer text-brand-strong ring-1 ring-brand/30'
+                            : 'bg-canvas text-ink-3 ring-1 ring-line'
+                        }`}
+                      >
+                        {DAY_SHORT[d]}
+                      </span>
+                    )
+                  })}
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs text-ink-3">
+                  <span>
+                    {openDays}{' '}
+                    {openDays === 1 ? 'día abierto' : 'días abiertos'}
+                    {hoursPreview !== 'Sin configurar' && ` · ${hoursPreview}`}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-ink-2">
+                    <Timer className="h-3 w-3" />
+                    {slotStep} min
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Card 3: Días bloqueados — preview + Editar */}
+            <Card
+              icon={CalendarX}
+              title="Días bloqueados"
+              action={
+                <EditButton
+                  onClick={() => setBlockedOpen(true)}
+                  label="Editar días bloqueados"
+                />
+              }
+            >
+              {blockedCount === 0 ? (
+                <p className="text-xs text-ink-3">
+                  Sin fechas bloqueadas. Añade vacaciones o festivos.
+                </p>
+              ) : (
+                <p className="text-xs text-ink-2">
+                  <span className="font-semibold text-ink">
+                    {blockedCount}
+                  </span>{' '}
+                  {blockedCount === 1
+                    ? 'día bloqueado'
+                    : 'días bloqueados'}
+                  {blockedPreview && (
+                    <>
+                      {' · '}
+                      <span className="text-ink-3">{blockedPreview}</span>
+                      {blockedCount > 3 && (
+                        <span className="text-ink-3">…</span>
+                      )}
+                    </>
+                  )}
+                </p>
+              )}
+            </Card>
           </div>
-        </AjustesSection>
+        </FormGrid>
+
+        {/* ── Card 4: Servicios — full-width abajo ────────────────── */}
+        <Card icon={Scissors} title="Servicios">
+          <ServicesManager
+            initial={initial.services.map((s) => ({
+              name: String(s.name),
+              duration: s.duration,
+              price: s.price,
+              description: s.description,
+              featured: s.featured,
+              colorToken: s.colorToken,
+            }))}
+          />
+        </Card>
 
         <AjustesSaveBar state={saveState} />
       </form>
 
-      <AjustesSection
-        icon={CalendarX}
-        title="Días bloqueados"
-        description="Vacaciones, festivos, días puntuales cerrados. El bot no ofrecerá citas en estas fechas."
-      >
-        <BlockedDatesManager
-          initialDates={initial.blockedDates}
-          clientId={clientId}
-        />
-      </AjustesSection>
+      {/* ── SlideOvers ─────────────────────────────────────────────── */}
+      <HoursSlideOver
+        open={hoursOpen}
+        onClose={() => setHoursOpen(false)}
+        initial={hoursDraft}
+        initialSlotStep={slotStep}
+        onSave={(nextHours, nextStep) => {
+          setHoursDraft(nextHours)
+          setSlotStep(nextStep)
+          setHoursOpen(false)
+        }}
+      />
+      <BlockedDatesSlideOver
+        open={blockedOpen}
+        onClose={() => setBlockedOpen(false)}
+        initialDates={initial.blockedDates}
+        clientId={clientId}
+      />
     </AjustesLayout>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TextField — input con label/hint/error en el estilo Patagonia warm light.
-// No es un primitivo global todavía (lo será cuando se repita >2 veces fuera
-// de Ajustes). De momento vive aquí.
+// Card — wrapper compacto reutilizado por las 4 cards de la pestaña Negocio.
+// No usa AjustesSection (más pesado, pensado para secciones full-width). Aquí
+// queremos cards tipo dashboard: header pequeño con icono, content denso.
 // ─────────────────────────────────────────────────────────────────────────────
+
+function Card({
+  icon: Icon,
+  title,
+  action,
+  children,
+}: {
+  icon: LucideIcon
+  title: string
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4 md:p-5 shadow-[0_1px_0_0_var(--color-line)]">
+      <header className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            aria-hidden="true"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-softer text-brand-strong"
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <h2
+            className="font-semibold text-ink"
+            style={{ fontSize: 'var(--text-section-title)' }}
+          >
+            {title}
+          </h2>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </header>
+      <div>{children}</div>
+    </section>
+  )
+}
+
+// ─── EditButton ──────────────────────────────────────────────────────────────
+
+function EditButton({
+  onClick,
+  label,
+}: {
+  onClick: () => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-canvas px-3 text-[12px] font-medium text-ink transition-colors hover:border-line-strong hover:bg-overlay"
+    >
+      <Pencil className="h-3 w-3" />
+      Editar
+    </button>
+  )
+}
+
+// ─── TextField ───────────────────────────────────────────────────────────────
 
 interface TextFieldProps {
   name: string
   label: string
-  hint?: string
   defaultValue?: string
   placeholder?: string
   required?: boolean
@@ -264,7 +454,6 @@ interface TextFieldProps {
 function TextField({
   name,
   label,
-  hint,
   defaultValue,
   placeholder,
   required,
@@ -275,11 +464,11 @@ function TextField({
   icon: Icon,
 }: TextFieldProps) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1">
       <label
         htmlFor={name}
         className="font-medium text-ink"
-        style={{ fontSize: 'var(--text-meta)' }}
+        style={{ fontSize: '0.75rem' }}
       >
         {label}
         {required && (
@@ -290,9 +479,7 @@ function TextField({
       </label>
       <div className="relative">
         {Icon && (
-          <Icon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-3"
-          />
+          <Icon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-3" />
         )}
         <input
           id={name}
@@ -314,11 +501,6 @@ function TextField({
           style={{ fontSize: 'var(--text-meta)' }}
         />
       </div>
-      {hint && (
-        <p className="text-ink-3" style={{ fontSize: '0.75rem' }}>
-          {hint}
-        </p>
-      )}
     </div>
   )
 }
