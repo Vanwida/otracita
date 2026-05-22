@@ -962,6 +962,14 @@ export const tips = pgTable('tips', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  // Liquidación al barbero (épica Reni #28 parte 3b 2026-05-22).
+  // Cuando el jefe le ha pagado al barbero (transferencia, cash, o ya
+  // incluido en su nómina), se rellenan estas columnas. Hasta entonces
+  // `paidOutAt IS NULL` → la propina sigue contando como pendiente en el
+  // motor de payroll (cláusula AND paid_out_at IS NULL en monthly.ts).
+  paidOutAt: timestamp('paid_out_at', { withTimezone: true }),
+  paidOutMethod: text('paid_out_method'),  // 'cash' | 'transfer' | 'card_payroll'
+  paidOutByEmail: text('paid_out_by_email'),
 });
 
 // Loyalty ledger — append-only record de cada sello/punto. El saldo del

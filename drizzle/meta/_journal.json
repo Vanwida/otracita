@@ -148,6 +148,13 @@
       "when": 1779439218205,
       "tag": "0031_split_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1779443599651,
+      "tag": "0040_tips_payout",
+      "breakpoints": true
     }
   ]
 }
