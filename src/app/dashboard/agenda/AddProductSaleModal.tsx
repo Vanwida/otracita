@@ -1,22 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, ShoppingBag, Plus, Minus, Check } from 'lucide-react'
+import { Loader2, ShoppingBag, Plus, Minus, Check, ShoppingCart, User, AlertTriangle } from 'lucide-react'
 import Modal from '../_components/Modal'
 import NumberInput from '../_components/NumberInput'
 
 // -----------------------------------------------------------------------------
-// AddProductSaleModal — modal para registrar la venta de un producto desde
-// el detalle de un booking. Auto-asocia la venta al barbero del booking y
-// al phone del cliente (atribución per-barbero para el desglose en Caja).
+// AddProductSaleModal — modal para registrar salidas de stock desde el detalle
+// de un booking. Tres modos:
 //
-// Flujo:
+//   · Venta (cliente paga) — flujo histórico: producto + cantidad + cliente +
+//     método de pago. Mueve dinero, entra en revenue + caja.
+//   · Consumo interno (barbero usa producto) — producto + cantidad. Decrementa
+//     stock, NO mueve dinero, NO entra en revenue.
+//   · Merma (rotura, vencido, robo) — producto + cantidad. Igual que consumo
+//     interno conceptualmente, distinto motivo de salida.
+//
+// Flujo común:
 //   1. Carga lista de productos (GET /api/products).
-//   2. Barbero selecciona producto + cantidad + método de pago (cash, card, online).
-//   3. POST /api/products/sales con bookingId + barberId + customerPhone
-//      auto-fill del booking.
-//   4. Muestra confirmación y avisa al caller (onCreated) por si quiere
-//      refrescar UI.
+//   2. Selecciona modo (toggle) + producto + cantidad.
+//   3. Para Venta: además método de pago.
+//   4. POST /api/products/sales con consumptionKind correspondiente.
+//   5. Muestra confirmación y avisa al caller (onCreated).
 // -----------------------------------------------------------------------------
 
 interface ProductLite {
@@ -39,11 +44,42 @@ interface Props {
 }
 
 type PaymentMethod = 'cash' | 'card' | 'online'
+type SaleMode = 'sale' | 'internal' | 'damage'
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
   card: 'Tarjeta (datáfono)',
   online: 'Online (Stripe)',
+}
+
+const MODE_TABS: { key: SaleMode; label: string; icon: typeof ShoppingCart }[] = [
+  { key: 'sale', label: 'Venta', icon: ShoppingCart },
+  { key: 'internal', label: 'Consumo interno', icon: User },
+  { key: 'damage', label: 'Merma', icon: AlertTriangle },
+]
+
+const MODE_TITLE: Record<SaleMode, string> = {
+  sale: 'Añadir venta de producto',
+  internal: 'Registrar consumo interno',
+  damage: 'Registrar merma',
+}
+
+const MODE_HELP: Record<SaleMode, string> = {
+  sale: 'El cliente paga el producto. Entra en caja e ingresos.',
+  internal: 'El barbero usa el producto en el trabajo. Solo descuenta stock.',
+  damage: 'Producto roto, vencido o perdido. Solo descuenta stock.',
+}
+
+const MODE_CTA: Record<SaleMode, string> = {
+  sale: 'Registrar venta',
+  internal: 'Registrar consumo',
+  damage: 'Registrar merma',
+}
+
+const MODE_DONE_TITLE: Record<SaleMode, string> = {
+  sale: 'Venta registrada',
+  internal: 'Consumo registrado',
+  damage: 'Merma registrada',
 }
 
 export default function AddProductSaleModal({
@@ -54,6 +90,7 @@ export default function AddProductSaleModal({
   onClose,
   onCreated,
 }: Props) {
+  const [mode, setMode] = useState<SaleMode>('sale')
   const [products, setProducts] = useState<ProductLite[]>([])
   const [loadingList, setLoadingList] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -61,7 +98,7 @@ export default function AddProductSaleModal({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ name: string; total: number } | null>(null)
+  const [done, setDone] = useState<{ name: string; total: number; mode: SaleMode } | null>(null)
 
   // Cargar productos al abrir.
   useEffect(() => {
@@ -71,6 +108,7 @@ export default function AddProductSaleModal({
     setSelectedId(null)
     setQuantity(1)
     setPaymentMethod('cash')
+    setMode('sale')
     setDone(null)
     fetch('/api/products')
       .then((r) => r.json())
@@ -87,28 +125,34 @@ export default function AddProductSaleModal({
   const selected = products.find((p) => p.id === selectedId) ?? null
   const totalCents = selected ? selected.priceCents * quantity : 0
   const stockExceeded = selected?.stockQuantity !== null && selected != null && quantity > selected.stockQuantity!
+  const isConsumption = mode !== 'sale'
 
   const submit = async () => {
     if (!selected) return
     setError(null)
     setSubmitting(true)
     try {
+      const payload: Record<string, unknown> = {
+        productId: selected.id,
+        quantity,
+        bookingId,
+      }
+      if (isConsumption) {
+        payload.consumptionKind = mode
+      } else {
+        payload.paymentMethod = paymentMethod
+      }
       const r = await fetch('/api/products/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: selected.id,
-          quantity,
-          paymentMethod,
-          bookingId,
-        }),
+        body: JSON.stringify(payload),
       })
       const d = (await r.json().catch(() => ({}))) as { sale?: unknown; error?: string }
       if (!r.ok) {
-        setError(d.error ?? 'No se pudo registrar la venta')
+        setError(d.error ?? 'No se pudo registrar')
         return
       }
-      setDone({ name: selected.name, total: totalCents })
+      setDone({ name: selected.name, total: totalCents, mode })
       onCreated?.()
     } catch {
       setError('Error de red')
@@ -121,11 +165,13 @@ export default function AddProductSaleModal({
     <Modal
       open
       onClose={onClose}
-      title={done ? 'Venta registrada' : 'Añadir venta de producto'}
+      title={done ? MODE_DONE_TITLE[done.mode] : MODE_TITLE[mode]}
       subtitle={
-        !done && customerName
+        !done && mode === 'sale' && customerName
           ? `Cliente: ${customerName}${barberName ? ` · Barbero: ${barberName}` : ''}`
-          : undefined
+          : !done && barberName
+            ? `Barbero: ${barberName}`
+            : undefined
       }
       size="md"
     >
@@ -135,7 +181,11 @@ export default function AddProductSaleModal({
               <Check className="h-8 w-8 text-success mx-auto mb-2" />
               <p className="text-base font-semibold text-ink">{done.name}</p>
               <p className="text-sm text-ink-2 mt-1">
-                {(done.total / 100).toFixed(2)} € · {PAYMENT_LABELS[paymentMethod]}
+                {done.mode === 'sale'
+                  ? `${(done.total / 100).toFixed(2)} € · ${PAYMENT_LABELS[paymentMethod]}`
+                  : done.mode === 'internal'
+                    ? 'Consumo interno — sin coste para el cliente'
+                    : 'Merma registrada — sin coste para el cliente'}
               </p>
             </div>
             <button
@@ -148,6 +198,36 @@ export default function AddProductSaleModal({
           </div>
         ) : (
           <div className="p-5 space-y-4">
+            {/* Tabs: Venta / Consumo interno / Merma */}
+            <div
+              role="tablist"
+              aria-label="Tipo de salida de stock"
+              className="grid grid-cols-3 gap-1 rounded-xl bg-overlay/60 p-1"
+            >
+              {MODE_TABS.map((t) => {
+                const Icon = t.icon
+                const active = mode === t.key
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setMode(t.key)}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[0.75rem] font-semibold transition-colors ${
+                      active
+                        ? 'bg-surface text-ink shadow-sm'
+                        : 'text-ink-2 hover:bg-surface/60 hover:text-ink'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[0.75rem] text-ink-3">{MODE_HELP[mode]}</p>
+
             {/* Lista de productos */}
             <div>
               <label className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-2 block">
@@ -246,9 +326,11 @@ export default function AddProductSaleModal({
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </button>
-                    <span className="ml-auto text-xs text-ink-3">
-                      Total: <span className="font-semibold text-ink tabular-nums">{(totalCents / 100).toFixed(2)} €</span>
-                    </span>
+                    {mode === 'sale' && (
+                      <span className="ml-auto text-xs text-ink-3">
+                        Total: <span className="font-semibold text-ink tabular-nums">{(totalCents / 100).toFixed(2)} €</span>
+                      </span>
+                    )}
                   </div>
                   {stockExceeded && (
                     <p className="text-xs text-danger mt-1.5">
@@ -257,27 +339,29 @@ export default function AddProductSaleModal({
                   )}
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-2 block">
-                    Método de pago
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['cash', 'card', 'online'] as PaymentMethod[]).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setPaymentMethod(m)}
-                        className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                          paymentMethod === m
-                            ? 'border-brand bg-brand-softer text-ink'
-                            : 'border-line bg-surface text-ink-2 hover:border-line-strong'
-                        }`}
-                      >
-                        {PAYMENT_LABELS[m]}
-                      </button>
-                    ))}
+                {mode === 'sale' && (
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-2 block">
+                      Método de pago
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['cash', 'card', 'online'] as PaymentMethod[]).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setPaymentMethod(m)}
+                          className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                            paymentMethod === m
+                              ? 'border-brand bg-brand-softer text-ink'
+                              : 'border-line bg-surface text-ink-2 hover:border-line-strong'
+                          }`}
+                        >
+                          {PAYMENT_LABELS[m]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
 
@@ -299,8 +383,10 @@ export default function AddProductSaleModal({
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Registrando…
                 </>
+              ) : mode === 'sale' ? (
+                `${MODE_CTA[mode]} · ${(totalCents / 100).toFixed(2)} €`
               ) : (
-                `Registrar venta · ${(totalCents / 100).toFixed(2)} €`
+                MODE_CTA[mode]
               )}
             </button>
           </div>

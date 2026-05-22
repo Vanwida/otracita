@@ -29,6 +29,7 @@ import InvoiceCell from './InvoiceCell'
 // -----------------------------------------------------------------------------
 
 type Method = 'cash' | 'card' | 'online' | null
+type ConsumptionKind = 'internal' | 'damage' | null
 
 interface LedgerRow {
   id: string
@@ -38,6 +39,9 @@ interface LedgerRow {
   method: Method
   amountCents: number
   kind: 'servicio' | 'producto'
+  /** Solo en productos: 'internal' (uso barbero) o 'damage' (merma). NULL
+   *  para ventas reales y para servicios. Si != null, no mueve dinero. */
+  consumptionKind: ConsumptionKind
   /** Reserva enlazada (servicios y productos vendidos en una cita). Null
    *  para ventas de producto sueltas → no hay cita que facturar aquí. */
   bookingId: string | null
@@ -111,6 +115,7 @@ export default async function VentasTransaccionesPage() {
       paymentMethod: productSales.paymentMethod,
       customerPhone: productSales.customerPhone,
       soldAt: productSales.soldAt,
+      consumptionKind: productSales.consumptionKind,
     })
     .from(productSales)
     .leftJoin(products, eq(productSales.productId, products.id))
@@ -159,6 +164,7 @@ export default async function VentasTransaccionesPage() {
         method: (b.paymentMethod as Method) ?? null,
         amountCents: Math.round((b.price ?? 0) * 100),
         kind: 'servicio',
+        consumptionKind: null,
         bookingId: b.id,
         invoiceNumber: invoiceByBooking.get(b.id) ?? null,
       })),
@@ -168,9 +174,11 @@ export default async function VentasTransaccionesPage() {
       concept:
         (p.name ?? 'Producto') + (p.quantity > 1 ? ` x${p.quantity}` : ''),
       who: null,
-      method: (p.paymentMethod as Method) ?? null,
+      // Consumos internos / mermas no movieron dinero — se muestran sin método.
+      method: p.consumptionKind ? null : ((p.paymentMethod as Method) ?? null),
       amountCents: p.totalCents,
       kind: 'producto',
+      consumptionKind: (p.consumptionKind as ConsumptionKind) ?? null,
       bookingId: p.bookingId,
       invoiceNumber: p.bookingId
         ? invoiceByBooking.get(p.bookingId) ?? null
@@ -180,7 +188,11 @@ export default async function VentasTransaccionesPage() {
     .sort((a, b) => b.soldAt.getTime() - a.soldAt.getTime())
     .slice(0, 200)
 
-  const totalCents = rows.reduce((acc, r) => acc + r.amountCents, 0)
+  // Total monetario excluye consumos internos y mermas (no entraron en caja).
+  const totalCents = rows.reduce(
+    (acc, r) => (r.consumptionKind ? acc : acc + r.amountCents),
+    0,
+  )
 
   const columns: Column<LedgerRow>[] = [
     {
@@ -195,10 +207,20 @@ export default async function VentasTransaccionesPage() {
       key: 'concept',
       header: 'Concepto',
       cell: (r) => (
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="font-semibold text-ink">{r.concept}</span>
+          {r.consumptionKind === 'internal' && (
+            <span className="inline-flex items-center rounded-full bg-overlay px-2 py-0.5 text-[0.6875rem] font-bold uppercase tracking-widest text-ink-2">
+              Uso interno
+            </span>
+          )}
+          {r.consumptionKind === 'damage' && (
+            <span className="inline-flex items-center rounded-full bg-danger/10 px-2 py-0.5 text-[0.6875rem] font-bold uppercase tracking-widest text-danger">
+              Merma
+            </span>
+          )}
           {r.who && (
-            <span className="ml-1.5 text-ink-3">· {r.who}</span>
+            <span className="text-ink-3">· {r.who}</span>
           )}
         </div>
       ),
@@ -224,22 +246,28 @@ export default async function VentasTransaccionesPage() {
     {
       key: 'fiscal',
       header: 'Factura',
-      cell: (r) => (
-        <InvoiceCell
-          bookingId={r.bookingId}
-          invoiceNumber={r.invoiceNumber}
-          invoicingEnabled={client.invoicingEnabled}
-        />
-      ),
+      cell: (r) =>
+        r.consumptionKind ? (
+          <span className="text-ink-3">—</span>
+        ) : (
+          <InvoiceCell
+            bookingId={r.bookingId}
+            invoiceNumber={r.invoiceNumber}
+            invoicingEnabled={client.invoicingEnabled}
+          />
+        ),
     },
     {
       key: 'amount',
       header: 'Importe',
       align: 'right',
       numeric: true,
-      cell: (r) => (
-        <span className="font-bold text-ink">{fmtEur(r.amountCents)}</span>
-      ),
+      cell: (r) =>
+        r.consumptionKind ? (
+          <span className="text-ink-3">—</span>
+        ) : (
+          <span className="font-bold text-ink">{fmtEur(r.amountCents)}</span>
+        ),
     },
   ]
 
