@@ -38,6 +38,17 @@ export interface MonthlyPayrollItem {
   profile: BarberSalaryProfile
   raw: BarberMonthRaw
   breakdown: PayrollBreakdown
+  /**
+   * Épica Reni #28 parte 3b — IDs de las propinas CARD pendientes de pagar
+   * a este barbero en el mes (paid_out_at IS NULL, payment_method='card' o
+   * NULL legacy). La UI las usa para el botón "Marcar X propinas como
+   * pagadas" → POST /api/tips/payout con estos ids.
+   *
+   * Solo CARD: las cash el barbero ya las tiene en mano, no se "liquidan"
+   * desde la nómina (se liquidan desde /ventas/propinas si el jefe quiere
+   * registrarlo).
+   */
+  pendingCardTipIds: string[]
 }
 
 export interface MonthlyPayroll {
@@ -240,6 +251,39 @@ export async function computeMonthlyPayroll(
     tipsCardMap.set(match.id, (tipsCardMap.get(match.id) ?? 0) + Number(row.cardCents ?? 0))
   }
 
+  // 4b) IDs de propinas CARD pendientes del mes por barbero (épica Reni #28
+  // parte 3b). La UI las necesita para el botón "Marcar X propinas como
+  // pagadas" → POST /api/tips/payout. Solo CARD: las cash ya las tiene en
+  // mano el barbero. Legacy paymentMethod NULL cuenta como card implícito.
+  // paid_out_at IS NULL → mismo filtro que la agregación de tipsCardCents.
+  const pendingCardTipRows = await db
+    .select({
+      id: tips.id,
+      barberName: tips.barberName,
+    })
+    .from(tips)
+    .where(
+      and(
+        eq(tips.clientId, clientId),
+        eq(tips.status, 'paid'),
+        sql`${tips.paidOutAt} IS NULL`,
+        sql`COALESCE(${tips.paymentMethod}, 'card') = 'card'`,
+        gte(tips.paidAt, new Date(bounds.start)),
+        lt(tips.paidAt, new Date(bounds.end)),
+      ),
+    )
+
+  const pendingCardTipIdsMap = new Map<string, string[]>()
+  for (const row of pendingCardTipRows) {
+    if (!row.barberName) continue
+    const norm = row.barberName.trim().toLowerCase()
+    const match = barbers.find((b) => b.name.trim().toLowerCase() === norm)
+    if (!match) continue
+    const list = pendingCardTipIdsMap.get(match.id) ?? []
+    list.push(row.id)
+    pendingCardTipIdsMap.set(match.id, list)
+  }
+
   // 5) Bonos cobrados por barbero.
   const activeBonuses = await db
     .select()
@@ -322,6 +366,7 @@ export async function computeMonthlyPayroll(
       profile,
       raw,
       breakdown: computeBarberPayroll(profile, raw, servicesCommissionCents),
+      pendingCardTipIds: pendingCardTipIdsMap.get(barber.id) ?? [],
     })
   }
 

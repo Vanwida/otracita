@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import { Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { Users, ChevronDown, ChevronUp, BadgeCheck, Loader2 } from 'lucide-react'
 import type { PayrollBreakdown, BarberSalaryProfile, BarberMonthRaw } from '@/lib/payroll/types'
 import { presetLabel } from '@/lib/payroll/presets'
+import Modal from '../_components/Modal'
+import { pushUndoToast } from '../_components/UndoToast'
 
 // -----------------------------------------------------------------------------
 // Payroll — card en /dashboard/finanzas mostrando la nómina computada del
@@ -22,6 +24,16 @@ interface PayrollItem {
   profile: BarberSalaryProfile
   raw: BarberMonthRaw
   breakdown: PayrollBreakdown
+  /** Épica Reni #28 parte 3b — ids de propinas CARD pendientes del mes. */
+  pendingCardTipIds: string[]
+}
+
+type PayoutMethod = 'cash' | 'transfer' | 'card_payroll'
+
+interface PayoutModalState {
+  item: PayrollItem
+  method: PayoutMethod
+  submitting: boolean
 }
 
 interface Props {
@@ -42,10 +54,51 @@ function formatEuros(cents: number): string {
 }
 
 export default function Payroll({ month }: Props) {
-  const { data, isLoading } = useSWR(`/api/finanzas/payroll?month=${month}`, fetcher, {
+  const { data, isLoading, mutate } = useSWR(`/api/finanzas/payroll?month=${month}`, fetcher, {
     refreshInterval: 60_000,
   })
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [payout, setPayout] = useState<PayoutModalState | null>(null)
+  const [payoutError, setPayoutError] = useState<string | null>(null)
+
+  async function confirmPayout() {
+    if (!payout || payout.submitting) return
+    setPayout({ ...payout, submitting: true })
+    setPayoutError(null)
+    try {
+      const res = await fetch('/api/tips/payout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipIds: payout.item.pendingCardTipIds,
+          method: payout.method,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        updated?: number
+        totalCents?: number
+      }
+      if (!res.ok) {
+        setPayout({ ...payout, submitting: false })
+        setPayoutError(json.error ?? 'No se pudo marcar el pago.')
+        return
+      }
+      const count = json.updated ?? 0
+      const cents = json.totalCents ?? 0
+      setPayout(null)
+      // Toast informativo — sin undo aquí; el undo vive en /ventas/propinas
+      // por fila (más claro a la hora de corregir un caso aislado).
+      pushUndoToast({
+        message: `${count} ${count === 1 ? 'propina marcada' : 'propinas marcadas'} (${formatEuros(cents)})`,
+        duration: 3500,
+      })
+      await mutate()
+    } catch {
+      setPayout({ ...payout, submitting: false })
+      setPayoutError('Error de red. Inténtalo de nuevo.')
+    }
+  }
 
   if (isLoading) return null
 
@@ -216,13 +269,170 @@ export default function Payroll({ month }: Props) {
                       </span>
                     </div>
                   </dl>
+
+                  {/* Épica Reni #28 parte 3b — botón lote "marcar pagadas".
+                      Solo aparece si el barbero tiene propinas CARD pendientes
+                      del mes (paid_out_at IS NULL). Tras marcar, salen del
+                      cálculo de tipsCardCents la siguiente vez que se carga
+                      la página (vía SWR mutate). Mobile-first: hit target ≥44px. */}
+                  {item.pendingCardTipIds.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-line">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPayout({
+                            item,
+                            method: 'card_payroll',
+                            submitting: false,
+                          })
+                        }
+                        className="inline-flex items-center justify-center gap-2 min-h-11 w-full sm:w-auto rounded-lg bg-brand-softer text-brand-strong hover:bg-brand-soft px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                      >
+                        <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+                        Marcar {item.pendingCardTipIds.length}{' '}
+                        {item.pendingCardTipIds.length === 1
+                          ? 'propina'
+                          : 'propinas'}{' '}
+                        como pagadas
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </li>
           )
         })}
       </ul>
+
+      {/* Modal de confirmación lote — selector de método + total a marcar. */}
+      {payout && (
+        <Modal
+          open
+          onClose={() => {
+            if (payout.submitting) return
+            setPayout(null)
+            setPayoutError(null)
+          }}
+          title="Marcar propinas como pagadas"
+          subtitle={`${payout.item.barberName} — ${payout.item.pendingCardTipIds.length} ${
+            payout.item.pendingCardTipIds.length === 1 ? 'propina' : 'propinas'
+          } pendiente${payout.item.pendingCardTipIds.length === 1 ? '' : 's'} (${formatEuros(payout.item.breakdown.tipsCardCents)})`}
+          size="md"
+          closeOnBackdrop={!payout.submitting}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPayout(null)
+                  setPayoutError(null)
+                }}
+                disabled={payout.submitting}
+                className="min-h-11 px-3 py-2 rounded-lg text-sm text-ink-2 hover:text-ink hover:bg-overlay transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmPayout}
+                disabled={payout.submitting}
+                className="inline-flex items-center justify-center gap-2 min-h-11 rounded-lg bg-brand text-canvas hover:bg-brand-strong px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {payout.submitting && (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                )}
+                Confirmar pago de {formatEuros(payout.item.breakdown.tipsCardCents)}
+              </button>
+            </div>
+          }
+        >
+          <div className="px-5 py-4">
+            <p className="text-sm text-ink-2 mb-3">
+              ¿Cómo le pagas las propinas a {payout.item.barberName}?
+            </p>
+            <fieldset className="space-y-2">
+              <legend className="sr-only">Método de pago</legend>
+              <PayoutMethodOption
+                value="card_payroll"
+                current={payout.method}
+                onChange={(v) => setPayout({ ...payout, method: v })}
+                label="Incluir en la nómina del mes"
+                hint="No hay que mover dinero — se le suma al neto que cobra."
+                disabled={payout.submitting}
+              />
+              <PayoutMethodOption
+                value="transfer"
+                current={payout.method}
+                onChange={(v) => setPayout({ ...payout, method: v })}
+                label="Transferencia"
+                hint="Le harás un Bizum o transferencia aparte."
+                disabled={payout.submitting}
+              />
+              <PayoutMethodOption
+                value="cash"
+                current={payout.method}
+                onChange={(v) => setPayout({ ...payout, method: v })}
+                label="Cash en mano"
+                hint="Le entregas el efectivo cuando lo veas."
+                disabled={payout.submitting}
+              />
+            </fieldset>
+
+            {payoutError && (
+              <p
+                role="alert"
+                className="mt-3 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2"
+              >
+                {payoutError}
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
+  )
+}
+
+// Opción radio del modal de payout — diseñada táctil (≥44px) y con hint
+// explicativo bajo el label para que el dueño entienda qué pasa después.
+function PayoutMethodOption({
+  value,
+  current,
+  onChange,
+  label,
+  hint,
+  disabled,
+}: {
+  value: PayoutMethod
+  current: PayoutMethod
+  onChange: (v: PayoutMethod) => void
+  label: string
+  hint: string
+  disabled?: boolean
+}) {
+  const selected = current === value
+  return (
+    <label
+      className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors min-h-11 ${
+        selected
+          ? 'border-brand bg-brand-softer/40 ring-1 ring-brand/30'
+          : 'border-line hover:bg-overlay/40'
+      } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+    >
+      <input
+        type="radio"
+        name="payout-method"
+        value={value}
+        checked={selected}
+        onChange={() => onChange(value)}
+        disabled={disabled}
+        className="mt-0.5 h-4 w-4 accent-brand"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        <span className="block text-xs text-ink-3 mt-0.5">{hint}</span>
+      </span>
+    </label>
   )
 }
 
