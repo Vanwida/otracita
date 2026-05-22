@@ -15,7 +15,7 @@
 //   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
 //   Crecimiento · App · Recepcionista IA · Bot WhatsApp · Promos · Fidelidad · Reseñas · Tracking
 //   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
-//   Ajustes     · Negocio · Pagos · Reservas online · Suscripción · Ayuda
+//   Ajustes     · Negocio · Pagos · Suscripción · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
 // viven fuera del nav del barbero.
@@ -197,7 +197,6 @@ export const AREAS: Area[] = [
     tabs: [
       { seg: null, label: 'Negocio', href: '/dashboard/ajustes' },
       { seg: 'pagos', label: 'Pagos', href: '/dashboard/ajustes/pagos' },
-      { seg: 'reservas', label: 'Reservas online', href: '/dashboard/ajustes/reservas' },
       { seg: 'suscripcion', label: 'Suscripción', href: '/dashboard/mi-plan' },
       { seg: 'ayuda', label: 'Ayuda', href: '/dashboard/ayuda' },
     ],
