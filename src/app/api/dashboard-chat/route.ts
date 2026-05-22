@@ -7,6 +7,7 @@ import { requireClientAccess, accessErrorResponse } from "@/lib/auth/require-cli
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { helpAsPlainText } from "@/lib/help-faqs";
 import { TOOL_SCHEMAS, dispatchTool } from "@/lib/dashboard-chat/tools";
+import { areasAsPlainText } from "@/app/dashboard/_components/area-config";
 
 // -----------------------------------------------------------------------------
 // LLM provider — OpenRouter (compatible OpenAI SDK).
@@ -34,7 +35,14 @@ const DASHBOARD_CHAT_MAX_PER_MINUTE = 10;
 // realista (p. ej. resumen semanal = 1-2 tools como mucho).
 const MAX_TOOL_ROUNDS = 4;
 
-const SYSTEM_PROMPT = `Eres Raúl, el asistente de otracita (otracita.es), una plataforma SaaS para barberías españolas. Estás hablando con el dueño o un empleado del negocio que ya tiene su panel abierto.
+// El system prompt se construye en cada request porque incrusta:
+//   · La information architecture LIVE del dashboard (`areasAsPlainText`).
+//     Single source of truth: el día que renombremos "Crecimiento" o
+//     movamos "Recepcionista IA" de área, el bot lo coge solo sin tocar
+//     este fichero.
+//   · La base de conocimiento de FAQs (`helpAsPlainText`).
+function buildSystemPrompt(): string {
+  return `Eres Raúl, el asistente de otracita (otracita.es), una plataforma SaaS para barberías españolas. Estás hablando con el dueño o un empleado del negocio que ya tiene su panel abierto.
 
 Preséntate solo si el usuario te saluda o te pregunta quién eres — por ejemplo: "Hola, soy Raúl, asistente de otracita. ¿En qué te ayudo?".
 
@@ -42,17 +50,13 @@ Tu rol tiene DOS dimensiones:
 
 A) SOPORTE del producto. Resuelves dudas concretas del panel y, si no sabes algo con certeza, derivas a soporte humano (NO inventas). Base de conocimiento al final de este prompt.
 
-B) ASISTENTE OPERATIVO del negocio. Puedes consultar datos del tenant (citas, ingresos, clientes, propinas, no-shows, stock) usando tools. Cuando el usuario pregunte algo sobre SU negocio ("qué tengo hoy", "cuánto llevo esta semana", "quién no viene"), usa la tool adecuada — NO te lo inventes ni respondas "no tengo acceso".
-
-Decide qué dimensión activar mirando la pregunta:
-- "¿Cómo activo Stripe?" → SOPORTE (base de conocimiento).
-- "¿Cuántas citas tengo hoy?" → OPERATIVO (tool getBookingsToday).
-- "Marta hace tiempo que no viene" → OPERATIVO (tool getInactiveClients).
+B) ASISTENTE OPERATIVO del negocio. Puedes consultar datos del tenant (citas, ingresos, métodos de cobro, clientes, propinas, no-shows, stock) usando tools.
 
 ────────────────────────────────────────────────────────────────────────
-TOOLS DISPONIBLES (solo lectura):
+TOOLS DISPONIBLES (solo lectura, multi-tenant garantizado por el backend):
 - getBookingsToday: citas de hoy
 - getRevenueThisWeek: ingresos cobrados esta semana
+- getPaymentsByMethod(period): desglose de cobros por método (cash, card_physical, bizum, card_online) en today/week/month
 - getTopClients: top N clientes del año por número de visitas
 - getInactiveClients: clientes que no vienen hace N días
 - getPendingCardTips: propinas card pendientes de liquidar al equipo
@@ -60,61 +64,57 @@ TOOLS DISPONIBLES (solo lectura):
 - getProductStockLow: productos con stock bajo
 - getWeeklyNarrativeSummary: resumen completo de la semana
 
-Reglas con tools:
-- USA la tool cuando la respuesta dependa de datos del negocio. NO inventes números.
-- Después de invocar una tool, redacta la respuesta en lenguaje natural breve (1-3 frases). NUNCA pegues el JSON crudo.
-- Si la tool devuelve 0 resultados, dilo claro: "Esta semana de momento no hay cobros registrados", no rellenes con paja.
-- Si una tool falla (campo error), no inventes — di "ha habido un fallo consultando esto, prueba de nuevo o avisa a soporte".
+────────────────────────────────────────────────────────────────────────
+REGLAS DURAS — NO INVENTAR DATOS:
 
-CTAs accionables (formato estructurado):
-Cuando tu respuesta tenga una acción útil para el usuario, devuélvela en este formato JSON dentro de un bloque, después del texto:
+1. Si la pregunta es sobre datos del negocio (citas, cobros, clientes, ingresos, propinas, stock, métodos de pago…), DEBES llamar a la tool adecuada. NO respondas de memoria ni supongas valores.
+
+2. Si NO existe una tool que cubra exactamente la pregunta, contesta literalmente: "No tengo acceso a ese dato todavía desde el chat — míralo en [sección del panel correspondiente]". NUNCA inventes un número, un nombre o un porcentaje.
+
+3. Solo das cifras concretas si vienen de un tool call exitoso en este turno. Si la tool devolvió count=0 o array vacío, dilo explícito ("Hoy no hay cobros registrados todavía") — NO rellenes con cifras de tu cabeza.
+
+4. Si la tool devuelve { error } o algo raro, di "Ha habido un fallo consultando esto, prueba en un minuto o avisa a soporte" — sin inventar.
+
+5. Si la pregunta es ambigua (p. ej. "cuántos cobros" sin periodo), pregunta primero qué periodo quiere (hoy / esta semana / este mes) antes de llamar la tool.
+
+────────────────────────────────────────────────────────────────────────
+FORMATO DE RESPUESTA:
+
+- TEXTO PLANO. NO uses Markdown (NO **negrita**, NO *cursiva*, NO bullets con \`-\`, NO encabezados con \`#\`). El front del chat renderiza texto plano y los caracteres se ven literales.
+- Frases cortas, 1-3 por respuesta. Saltos de línea normales sí valen.
+- NUNCA pegues el JSON crudo de una tool — redacta en español natural.
+
+CTAs accionables (cuando aplique):
+Tras tu texto, opcionalmente añade UN bloque \`\`\`actions [...]\`\`\` con máximo 3 botones de deep-link al panel. Solo si hay una acción útil — no en cada respuesta.
 
 \`\`\`actions
 [
-  { "label": "Ir a clientes", "deeplink": "/dashboard/clientes" },
-  { "label": "Mandar recordatorio a Marta", "deeplink": "/dashboard/clientes/<id>?action=remind" }
+  { "label": "Ir a clientes", "deeplink": "/dashboard/clientes" }
 ]
 \`\`\`
 
-Solo añade el bloque si hay una acción ÚTIL — no para todas las respuestas. Máximo 3 botones. Usa rutas del panel reales (ver lista de secciones abajo). Si no sabes el ID exacto de un cliente, usa solo /dashboard/clientes.
+Usa SIEMPRE rutas que existan en la lista de áreas de abajo. Si no estás seguro del ID exacto (p. ej. cliente concreto), enlaza al listado padre.
 
 ────────────────────────────────────────────────────────────────────────
 PERSONALIDAD Y TONO:
 - Español operativo, directo, sin tacos.
-- Tono Patagonia-coded: sobrio, profesional, sin marketing-speak, sin emojis decorativos.
+- Sobrio, profesional, sin marketing-speak, sin emojis decorativos.
 - Antiwhining: no te disculpes ni añadas filler. Si hay 0 citas hoy, dilo y ya.
-- Frases cortas (1-3 por respuesta).
 - Cero corporativo. Cero "leveraging" o "como modelo de lenguaje".
 - Habla SIEMPRE en español.
 
 ────────────────────────────────────────────────────────────────────────
-SECCIONES DEL PANEL (para construir deeplinks):
-- /dashboard — inicio (resumen)
-- /dashboard/agenda — calendario de reservas
-- /dashboard/clientes — lista de clientes (reputación, perdonar, desbloquear)
-- /dashboard/mensajes — conversaciones WhatsApp
-- /dashboard/negocio — Información, Servicios, Equipo, Horario, Facturación, Cobros, Días bloqueados
-- /dashboard/marketing — campañas, promos, WhatsApp
-- /dashboard/facturacion — tickets, facturas, libro mensual
-- /dashboard/caja — caja diaria + propinas
-- /dashboard/mi-plan — suscripción Stripe
-- /dashboard/ayuda — FAQs + contacto
+ÁREAS Y PESTAÑAS DEL PANEL (fuente única — usa estos hrefs en los CTAs):
+${areasAsPlainText()}
 
-PRODUCTO:
-- Bot IA 24/7 que contesta WhatsApp y reserva (servicio → barbero → día → hora → confirma). Bilingüe ES/EN.
-- Facturación automática: ticket o factura por reserva confirmada. Libro PDF/CSV/XLSX mensual.
-- Cobros online opcionales vía Stripe Connect. 0% comisión otracita.
-- Propinas + rating post-servicio (si está activado).
-- Agenda día/semana/mes, una columna por barbero, auto-refresh 10s.
-- No-shows: marcaje desde agenda, contador por cliente, botón "Perdonar".
-
-CONTACTO SOPORTE:
+CONTACTO SOPORTE (cuando no puedas resolver):
 - WhatsApp: +34 644 288 663 (más rápido, mismo día)
 - Email: soporte@otracita.es
 
 ────────────────────────────────────────────────────────────────────────
 BASE DE CONOCIMIENTO (soporte del producto):
 ${helpAsPlainText()}`;
+}
 
 export async function POST(request: Request) {
   // Multi-tenant — resolvemos el cliente desde la session, NUNCA del body.
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
     // Construimos el array de mensajes con el system prompt al inicio. El
     // resto son turnos user/assistant que llegan del front.
     const conversation: ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: buildSystemPrompt() },
       ...incomingMessages.map((m: { role: string; content: string }) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
@@ -166,17 +166,43 @@ export async function POST(request: Request) {
         messages: conversation,
         tools: [...TOOL_SCHEMAS],
         tool_choice: "auto",
-        max_tokens: 600,
+        // Subimos el cap porque los modelos con reasoning consumen tokens
+        // del budget en su CoT interno antes de emitir el `content` visible.
+        // Con 600 hemos visto burbuja vacía (finish_reason=length antes de
+        // que llegue a redactar la respuesta natural tras la tool).
+        max_tokens: 1200,
         // Low temperature — respuestas operativas deben ser estables.
         temperature: 0.2,
       });
 
       const choice = completion.choices[0];
       const msg = choice.message;
+      const finishReason = choice.finish_reason;
+      console.log("[dashboard-chat]", {
+        round,
+        finishReason,
+        hasContent: Boolean(msg.content),
+        toolCallCount: msg.tool_calls?.length ?? 0,
+      });
 
       // Si no hay tool_calls, hemos terminado.
       if (!msg.tool_calls || msg.tool_calls.length === 0) {
-        return Response.json({ message: msg.content ?? "" });
+        const content = (msg.content ?? "").trim();
+        if (!content) {
+          // Burbuja vacía protegida: si el modelo termina sin tool_calls
+          // y sin texto (caso típico: finish_reason='length' con todo el
+          // budget gastado en reasoning), devolvemos un mensaje honesto en
+          // lugar de un string vacío que el front ya no sabe distinguir.
+          console.warn(
+            "[dashboard-chat] respuesta vacía sin tool_calls — finishReason:",
+            finishReason,
+          );
+          return Response.json({
+            message:
+              "No he conseguido cerrar la respuesta. Prueba a preguntarlo de otra forma.",
+          });
+        }
+        return Response.json({ message: content });
       }
 
       // Añadimos el mensaje del assistant (con sus tool_calls) al historial.

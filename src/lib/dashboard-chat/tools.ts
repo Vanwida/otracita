@@ -136,6 +136,27 @@ export const TOOL_SCHEMAS = [
       parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'getPaymentsByMethod',
+      description:
+        'Desglose REAL de cobros por método (cash, card_physical, bizum, card_online) en un periodo. Úsalo SIEMPRE que el usuario pregunte "cuántos pagos en efectivo / con tarjeta / con bizum", "cuántos cobros card han sido hoy", etc. NO inventes — si esta tool devuelve 0, dilo claro.',
+      parameters: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            enum: ['today', 'week', 'month'],
+            description:
+              'Ventana temporal. today=hoy, week=lunes a hoy, month=día 1 a hoy. Por defecto today.',
+            default: 'today',
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
 ] as const;
 
 // -----------------------------------------------------------------------------
@@ -416,6 +437,82 @@ export async function getProductStockLow(clientId: string, threshold = 5) {
   };
 }
 
+/**
+ * Desglose REAL de cobros por método (`payments.method`) en el periodo
+ * indicado. Añadido para tapar la alucinación detectada el 2026-05-22:
+ * el modelo respondía "los X pagos han sido en efectivo" sin tener
+ * acceso a esta info — porque la tool simplemente no existía.
+ *
+ * Whitelist de `method` viva en payments: cash | card_physical | bizum |
+ * card_online. Las filas legacy con method NULL se cuentan como
+ * `card_online` (origen Stripe Checkout — única forma de cobro online
+ * antes del split-payment).
+ */
+export async function getPaymentsByMethod(
+  clientId: string,
+  period: 'today' | 'week' | 'month' = 'today',
+) {
+  let fromYMD: string;
+  if (period === 'today') fromYMD = getTodayDate();
+  else if (period === 'week') fromYMD = getMondayYMD();
+  else fromYMD = getFirstDayOfMonthYMD();
+
+  const rows = await db
+    .select({
+      method: payments.method,
+      amountCents: payments.amountCents,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.clientId, clientId),
+        eq(payments.status, 'succeeded'),
+        sql`(${payments.paidAt} AT TIME ZONE ${BUSINESS_TIMEZONE})::date >= ${fromYMD}::date`,
+      ),
+    );
+
+  // Buckets fijos para que el LLM SIEMPRE vea las 4 categorías (aunque
+  // alguna sea 0). Si en un futuro entra un método nuevo lo añadiremos
+  // explícito — el `_other` evita que se pierda silenciosamente.
+  const buckets: Record<string, { count: number; totalCents: number }> = {
+    cash: { count: 0, totalCents: 0 },
+    card_physical: { count: 0, totalCents: 0 },
+    bizum: { count: 0, totalCents: 0 },
+    card_online: { count: 0, totalCents: 0 },
+    _other: { count: 0, totalCents: 0 },
+  };
+
+  for (const r of rows) {
+    const key = r.method ?? 'card_online'; // legacy NULL → Stripe Checkout
+    const bucket = buckets[key] ?? buckets._other;
+    bucket.count += 1;
+    bucket.totalCents += r.amountCents;
+  }
+
+  const totalCount = rows.length;
+  const totalCents = rows.reduce((acc, r) => acc + r.amountCents, 0);
+
+  return {
+    period,
+    periodStart: fromYMD,
+    total: {
+      count: totalCount,
+      totalEuros: totalCents / 100,
+      totalFormatted: formatEuros(totalCents),
+    },
+    byMethod: Object.fromEntries(
+      Object.entries(buckets).map(([k, v]) => [
+        k,
+        {
+          count: v.count,
+          totalEuros: v.totalCents / 100,
+          totalFormatted: formatEuros(v.totalCents),
+        },
+      ]),
+    ),
+  };
+}
+
 export async function getWeeklyNarrativeSummary(clientId: string) {
   const monday = getMondayYMD();
   const today = getTodayDate();
@@ -506,7 +603,8 @@ export type ToolName =
   | 'getPendingCardTips'
   | 'getNoShowsThisMonth'
   | 'getProductStockLow'
-  | 'getWeeklyNarrativeSummary';
+  | 'getWeeklyNarrativeSummary'
+  | 'getPaymentsByMethod';
 
 export async function dispatchTool(
   name: string,
@@ -531,6 +629,12 @@ export async function dispatchTool(
         return await getProductStockLow(clientId, Number(args.threshold ?? 5));
       case 'getWeeklyNarrativeSummary':
         return await getWeeklyNarrativeSummary(clientId);
+      case 'getPaymentsByMethod': {
+        const raw = String(args.period ?? 'today');
+        const period: 'today' | 'week' | 'month' =
+          raw === 'week' || raw === 'month' ? raw : 'today';
+        return await getPaymentsByMethod(clientId, period);
+      }
       default:
         return { error: `Unknown tool: ${name}` };
     }

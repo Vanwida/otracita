@@ -244,3 +244,17 @@ export function isAreaActive(area: Area, pathname: string): boolean {
 export function isAreaTabActive(tab: AreaTab, segment: string | null): boolean {
   return tab.seg === segment
 }
+
+/**
+ * Render plano de la IA (áreas + pestañas) para inyectar en el system prompt
+ * del chat asistente. Single source of truth — si renombramos un área aquí,
+ * el bot pasa a usar el nombre nuevo sin tocar el prompt.
+ */
+export function areasAsPlainText(): string {
+  return AREAS.map((a) => {
+    const tabs = a.tabs
+      .map((t) => `${t.label} (${t.href})`)
+      .join(' · ')
+    return `- ${a.label} (${a.href}) — ${a.subtitle ?? ''}\n    tabs: ${tabs}`
+  }).join('\n')
+}
