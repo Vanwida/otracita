@@ -118,9 +118,14 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
             {customer.phone}
           </p>
           <div
-            className={`mt-2 flex ${variant === 'panel' ? 'justify-center' : ''}`}
+            className={`mt-2 flex flex-wrap items-center gap-2 ${variant === 'panel' ? 'justify-center' : ''}`}
           >
             <ReputationBadge reputation={customer.reputation} />
+            {/* Fuente de captación — chip pequeño junto al nombre/teléfono
+                para que el barbero vea de un vistazo "vino por Instagram".
+                Si no hay firstSource, SourceChip devuelve null (no pintamos
+                "Sin fuente" — mejor vacío que ruido). */}
+            <SourceChip source={customer.firstSource} size="xs" />
           </div>
         </div>
       </div>
