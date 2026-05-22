@@ -62,14 +62,6 @@ export async function POST(req: Request) {
   const phoneLimit = checkRateLimit(`public-setup-phone:${phone}`, 5)
   if (!phoneLimit.ok) return rateLimitResponse(phoneLimit)
 
-  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  if (!publishableKey) {
-    return Response.json(
-      { error: 'Pagos no configurados (falta publishable key).' },
-      { status: 500 },
-    )
-  }
-
   const [client] = await db
     .select()
     .from(clients)
@@ -80,9 +72,21 @@ export async function POST(req: Request) {
 
   const feeCents = client.noShowFeeCents ?? 0
   // Tarifa desactivada → el form no debe pedir tarjeta. Cero cambios para
-  // negocios que no han activado la feature.
+  // negocios que no han activado la feature. Devolvemos no-op ANTES de
+  // exigir la publishable key: tenants sin no-show no deben ver el 500 de
+  // config aunque Stripe no esté configurado.
   if (feeCents <= 0) {
     return Response.json({ required: false })
+  }
+
+  // A partir de aquí el tenant SÍ requiere tarjeta — si falta la
+  // publishable key es un error de config real.
+  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  if (!publishableKey) {
+    return Response.json(
+      { error: 'Pagos no configurados (falta publishable key).' },
+      { status: 500 },
+    )
   }
 
   // Reutiliza el Stripe Customer si este cliente ya guardó tarjeta aquí.
