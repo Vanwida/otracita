@@ -14,8 +14,7 @@ import ReportLayout from '../_components/ReportLayout'
 import { MARKETING_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
-import { SOURCE_LABEL } from '@/lib/attribution/types'
-import { MANUAL_SOURCE_LABEL } from '@/lib/attribution/source-manual'
+import { getSourceMeta } from '@/lib/sources'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/marketing — pestaña MARKETING del área Informes.
@@ -432,12 +431,8 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
                 </header>
                 <ul className="divide-y divide-line">
                   {sourceAttributed.map((row) => {
-                    const label =
-                      MANUAL_SOURCE_LABEL[
-                        row.source as keyof typeof MANUAL_SOURCE_LABEL
-                      ] ??
-                      SOURCE_LABEL[row.source as keyof typeof SOURCE_LABEL] ??
-                      row.source
+                    const meta = getSourceMeta(row.source)
+                    const SourceIcon = meta.Icon
                     const sharePct =
                       sourceAttributedTotal > 0
                         ? Math.round((row.count / sourceAttributedTotal) * 100)
@@ -451,8 +446,9 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
                         key={row.source}
                         className="flex items-center gap-3 px-[var(--space-card)] py-2.5"
                       >
-                        <span className="w-32 shrink-0 truncate text-[0.8125rem] text-ink">
-                          {label}
+                        <span className="flex w-32 shrink-0 items-center gap-1.5 truncate text-[0.8125rem] text-ink">
+                          <SourceIcon className="h-3.5 w-3.5 shrink-0 text-ink-2" aria-hidden="true" />
+                          <span className="truncate">{meta.label}</span>
                         </span>
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-overlay">
                           <div

@@ -1,4 +1,4 @@
-import { SOURCE_LABEL, type AttributionSource } from '@/lib/attribution/types'
+import { getSourceMeta, type SourceTone } from '@/lib/sources'
 
 // -----------------------------------------------------------------------------
 // SourceBreakdown — barras horizontales mostrando de dónde llegan los
@@ -16,6 +16,8 @@ import { SOURCE_LABEL, type AttributionSource } from '@/lib/attribution/types'
 // Datos: la suma SIEMPRE refleja los customers cuyo `first_source_captured_at`
 // cae en la ventana. Los pre-attribution (null) NO entran. Eso es correcto
 // porque el chart es "cómo llegan AHORA", no "histórico total".
+//
+// Iconos + labels vienen del catálogo unificado `src/lib/sources.ts`.
 // -----------------------------------------------------------------------------
 
 interface Item {
@@ -31,18 +33,12 @@ interface Props {
   total: number
 }
 
-const COLOR_BY_SOURCE: Record<string, string> = {
-  instagram: 'var(--color-brand)',
-  google_ads: 'var(--color-brand-strong)',
-  google_organic: 'var(--color-success)',
-  facebook: 'var(--color-brand)',
-  tiktok: 'var(--color-brand)',
-  youtube: 'var(--color-brand)',
-  whatsapp_bot: 'var(--color-success)',
-  walk_in: 'var(--color-ink-3)',
-  referral: 'var(--color-success)',
-  direct: 'var(--color-ink-3)',
-  other: 'var(--color-ink-3)',
+// Color de la barra por tono semántico. Tokens del design system — no hex.
+const BAR_COLOR_BY_TONE: Record<SourceTone, string> = {
+  brand: 'var(--color-brand)',
+  ok: 'var(--color-success)',
+  warn: 'var(--color-warning)',
+  neutral: 'var(--color-ink-3)',
 }
 
 export default function SourceBreakdown({ items, windowLabel = 'Últimos 30 días', total }: Props) {
@@ -69,15 +65,17 @@ export default function SourceBreakdown({ items, windowLabel = 'Últimos 30 día
 
       <ul className="space-y-1.5">
         {top.map((item) => {
-          const label = item.source in SOURCE_LABEL
-            ? SOURCE_LABEL[item.source as AttributionSource]
-            : 'Otro'
+          const meta = getSourceMeta(item.source)
+          const Icon = meta.Icon
           const widthPct = Math.max(2, Math.round((item.count / max) * 100))
           const sharePct = Math.round((item.count / total) * 100)
-          const color = COLOR_BY_SOURCE[item.source] ?? 'var(--color-ink-3)'
+          const color = BAR_COLOR_BY_TONE[meta.tone]
           return (
             <li key={item.source} className="flex items-center gap-3 text-xs">
-              <span className="w-24 shrink-0 text-ink-2 truncate">{label}</span>
+              <span className="w-28 shrink-0 flex items-center gap-1.5 text-ink-2 truncate">
+                <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">{meta.label}</span>
+              </span>
               <div className="flex-1 h-2 rounded-full bg-overlay overflow-hidden">
                 <div
                   className="h-full rounded-full"

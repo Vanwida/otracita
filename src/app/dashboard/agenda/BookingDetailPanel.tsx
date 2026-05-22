@@ -1,7 +1,8 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, Camera, ThumbsUp, MapPin, Music2, UserPlus, DoorOpen, Ban } from 'lucide-react';
-import { MANUAL_SOURCES, MANUAL_SOURCE_LABEL, type ManualSource } from '@/lib/attribution/source-manual';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, Ban } from 'lucide-react';
+import { MANUAL_SOURCES, type ManualSource } from '@/lib/attribution/source-manual';
+import { getSourceMeta } from '@/lib/sources';
 import AddProductSaleModal from './AddProductSaleModal';
 import SlideOver from '../_components/SlideOver';
 import Modal from '../_components/Modal';
@@ -57,24 +58,6 @@ interface Props {
    *  rango visible) el padre cierra el drawer automáticamente. */
   onMutated?: () => void;
 }
-
-// F3 Reni — icono por canal. lucide-react retiró los logos de marca
-// (Instagram/Facebook/TikTok) en v0.452 por trademark. Usamos icons
-// genéricos cuyo significado es legible + tooltip lleva el label exacto:
-//   · Instagram → Camera (red social de fotos)
-//   · TikTok    → Music2  (vídeos con música — equivalente comercial)
-//   · Facebook  → ThumbsUp (símbolo histórico del "like")
-//   · Google Maps → MapPin
-//   · Referral   → UserPlus
-//   · Walk-in    → DoorOpen
-const SOURCE_ICON: Record<ManualSource, typeof Camera> = {
-  instagram: Camera,
-  tiktok: Music2,
-  facebook: ThumbsUp,
-  google_maps: MapPin,
-  referral: UserPlus,
-  walk_in: DoorOpen,
-};
 
 export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMutated }: Props) {
   const router = useRouter();
@@ -808,8 +791,9 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                     aria-label="Marcar origen del cliente"
                   >
                     {MANUAL_SOURCES.map((src) => {
-                      const Icon = SOURCE_ICON[src];
-                      const label = MANUAL_SOURCE_LABEL[src];
+                      const meta = getSourceMeta(src);
+                      const Icon = meta.Icon;
+                      const label = meta.label;
                       const isActive = sourceManualLocal === src;
                       const isPending = sourcePending === src;
                       return (
@@ -860,7 +844,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   </div>
                   {sourceManualLocal && (
                     <p className="text-[11px] text-ink-3">
-                      Marcado: <span className="text-ink-2 font-medium">{MANUAL_SOURCE_LABEL[sourceManualLocal]}</span>
+                      Marcado: <span className="text-ink-2 font-medium">{getSourceMeta(sourceManualLocal).label}</span>
                     </p>
                   )}
                 </div>
