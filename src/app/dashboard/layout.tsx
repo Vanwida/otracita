@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import type { Metadata, Viewport } from "next"
 import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
@@ -9,11 +10,46 @@ import { ConfirmDialogHost } from "./_components/ConfirmDialog"
 import { UndoToastHost } from "./_components/UndoToast"
 import AppRail from "@/app/dashboard/_components/AppRail"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
+import DashboardPwaBootstrap from "@/app/dashboard/_components/DashboardPwaBootstrap"
 import { Wordmark } from "@/components/brand"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { isAdminUser } from "@/lib/auth/admin"
+
+// PWA del dashboard — instalable en iPad/iPhone/Android desde el propio
+// /dashboard. El manifest vive en /dashboard/manifest.webmanifest (scope
+// `/dashboard`, start_url `/dashboard`) y el service worker en
+// /dashboard/sw.js (registrado por DashboardPwaBootstrap solo en prod).
+//
+// `apple-mobile-web-app-*` y `apple-touch-icon` son necesarios para que
+// iOS Safari trate el dashboard como standalone app al añadirlo a la
+// pantalla de inicio — sin estos, abriría en Safari normal con barra de
+// direcciones.
+export const metadata: Metadata = {
+  title: 'otracita · Dashboard',
+  manifest: '/dashboard/manifest.webmanifest',
+  applicationName: 'otracita',
+  appleWebApp: {
+    capable: true,
+    title: 'otracita',
+    statusBarStyle: 'default',
+  },
+  icons: {
+    icon: [
+      { url: '/dashboard-icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/dashboard-icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/dashboard-icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+}
+
+// `theme_color` específico del dashboard (terracota de marca). Pinta la
+// barra de estado en Android Chrome y el chrome de la PWA standalone.
+// En el root layout sigue siendo el cream del lienzo público.
+export const viewport: Viewport = {
+  themeColor: '#C9653C',
+}
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -78,6 +114,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <DashboardChatWidget />
       <ConfirmDialogHost />
       <UndoToastHost />
+      <DashboardPwaBootstrap />
 
     </div>
   )
