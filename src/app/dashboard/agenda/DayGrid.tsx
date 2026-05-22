@@ -8,6 +8,7 @@ import { barberColorVar, paymentBadge } from './types';
 import {
   appointmentBlockClasses,
   resolveBookingColorToken,
+  shouldShowField,
   statusCornerBadge,
 } from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
@@ -907,8 +908,13 @@ export default function DayGrid({
                     const durationMin = evEndMin - evStartMin;
                     const top = (evStartMin - startMin) * PX_PER_MIN;
                     const height = Math.max(durationMin * PX_PER_MIN, 40);
-                    // Umbral de densidad: con ≥56px caben hora+cliente+servicio.
-                    const showService = height >= 56;
+                    // Nueva jerarquía (#29/#32/#33): nombre del cliente
+                    // primero. Servicio si el bloque pasa de ~30min;
+                    // barbero/duración si pasa de ~45min. Helper único
+                    // basado en altura px real para que resize en vivo
+                    // recalcule densidad sin tener que tocar nada aquí.
+                    const showService = shouldShowField(height, 'service');
+                    const showBarber = shouldShowField(height, 'barber');
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
                     // #33 — Color del bloque = color del SERVICIO (no del
@@ -919,12 +925,6 @@ export default function DayGrid({
                       event.status,
                     );
                     const badge = statusCornerBadge(event.status);
-
-                    const endTime = minutesToHHMM(evEndMin);
-                    // Durante un resize por el borde TOP, la hora de inicio
-                    // del bloque cambia en vivo — refleja el preview en el
-                    // pill horario de la cabecera, no la snapshot.
-                    const displayStartTime = liveResize ? minutesToHHMM(evStartMin) : event.time;
 
                     const isDraggable = !isBooksy && !isCancelled;
                     const isDragging = draggingId === event.id;
@@ -978,7 +978,11 @@ export default function DayGrid({
                           left: `calc(${lay.leftPct}% + ${insetX}px)`,
                           width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
                         }}
-                        title={event.title}
+                        // Tooltip nativo incluye hora — antes el rango
+                        // horario vivía en la primera línea del bloque y
+                        // ahora ya no, así que lo preservamos aquí para
+                        // hover/screen reader sin ensuciar el contenido.
+                        title={`${liveResize ? minutesToHHMM(evStartMin) : event.time}–${minutesToHHMM(evEndMin)} · ${event.title}`}
                       >
                         {/* Estado de la cita — badge en esquina sup-der
                             (#33). Ícono solo, sobre disco semitransparente
@@ -1002,48 +1006,73 @@ export default function DayGrid({
                           )}
                         </div>
 
-                        {/* Hora del bloque — línea pequeña arriba. En el
-                            commit siguiente esta línea desaparece para
-                            bloques < 30min (el nombre del cliente pasa a
-                            ser la única primera línea). */}
-                        <div className="leading-tight pr-6">
-                          <span
-                            className="tabular-nums font-medium opacity-90"
-                            style={{ fontSize: '0.6875rem', letterSpacing: '0.01em' }}
-                          >
-                            {displayStartTime}<span className="opacity-70"> – {endTime}</span>
-                          </span>
-                        </div>
-
-                        {/* Cliente — protagonista. headline-sm scale.
-                            ♥ inline al lado del nombre cuando el cliente
-                            solicitó EXPLÍCITAMENTE a este barbero (no
-                            "cualquiera"). Antes vivía `absolute bottom-1
-                            left-1.5` y se solapaba/quedaba fuera cuando el
-                            bloque era estrecho por solape (2 citas a 1/N
-                            de ancho). Inline siempre cabe, siempre se ve. */}
-                        <p
-                          className="font-semibold truncate leading-tight mt-0.5"
-                          style={{ fontSize: '0.8125rem' }}
-                        >
-                          {event.customerName || event.customerPhone}
-                          {event.barberRequested && !isBooksy && (
-                            <Heart
-                              className="ml-1 inline-block h-3 w-3 align-text-bottom text-danger fill-danger"
-                              aria-label="Cliente solicitó este barbero"
+                        {/* Cliente — LÍNEA 1, siempre. El horario del
+                            bloque NO va en el contenido: la posición
+                            vertical + la altura YA lo comunican (el
+                            gutter de horas a la izquierda). Esto libera
+                            la primera línea para lo importante: a quién
+                            atiendes. ♥ inline cuando el cliente pidió
+                            EXPLÍCITAMENTE a este barbero. Fallback
+                            "Cliente sin nombre" text-ink-2 si no hay
+                            ni nombre ni teléfono — antes el bloque
+                            corto mostraba el teléfono crudo en bold,
+                            que parecía un sello de inventario. */}
+                        {(() => {
+                          const displayName =
+                            event.customerName?.trim() ||
+                            event.customerPhone?.trim() ||
+                            null;
+                          return (
+                            <p
+                              className={`font-semibold truncate leading-tight pr-6 ${
+                                displayName ? '' : 'text-ink-2'
+                              }`}
+                              style={{ fontSize: '0.8125rem' }}
+                              // a11y: la hora aún se anuncia vía title
+                              // del wrapper + lectura de la cabecera de
+                              // columna. El nombre ya no va precedido de
+                              // "10:00 – ..." que ensuciaba el screen
+                              // reader.
                             >
-                              <title>Cliente solicitó este barbero</title>
-                            </Heart>
-                          )}
-                        </p>
+                              {displayName ?? 'Cliente sin nombre'}
+                              {event.barberRequested && !isBooksy && (
+                                <Heart
+                                  className="ml-1 inline-block h-3 w-3 align-text-bottom text-danger fill-danger"
+                                  aria-label="Cliente solicitó este barbero"
+                                >
+                                  <title>Cliente solicitó este barbero</title>
+                                </Heart>
+                              )}
+                            </p>
+                          );
+                        })()}
 
-                        {/* Servicio — secundario, opacity reducida. */}
+                        {/* Servicio — LÍNEA 2 (bloques ≥ 30min). Si la
+                            cita tiene múltiples servicios separados por
+                            coma/+, se trunca con la indicación "+N". */}
                         {showService && (
                           <p
-                            className="leading-tight truncate opacity-75 mt-0.5"
+                            className="leading-tight truncate opacity-80 mt-0.5"
                             style={{ fontSize: '0.6875rem' }}
                           >
                             {event.service}
+                          </p>
+                        )}
+
+                        {/* Barbero / duración — LÍNEA 3 (bloques ≥ 45min).
+                            Si la columna ya es la del barbero (caso
+                            normal), mostramos duración en su lugar — no
+                            tiene sentido repetir el nombre del barbero
+                            cuando la columna ya lo identifica. La
+                            duración se formatea en minutos y se lee
+                            tabular para alinear visualmente cuando hay
+                            varios bloques en cascada. */}
+                        {showBarber && (
+                          <p
+                            className="leading-tight truncate opacity-70 mt-0.5 tabular-nums"
+                            style={{ fontSize: '0.6875rem' }}
+                          >
+                            {col.barber ? `${durationMin} min` : (event.barber ?? 'Sin asignar')}
                           </p>
                         )}
 

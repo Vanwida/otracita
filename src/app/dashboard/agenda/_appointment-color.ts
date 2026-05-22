@@ -261,6 +261,27 @@ export function appointmentChipClasses(
   return appointmentBlockClasses(token, status);
 }
 
+/** Umbrales (px) de altura del bloque para decidir qué campos caben en
+ *  jerarquía nombre → servicio → barbero. Calibrados a PX_PER_MIN=2:
+ *   · < 60px  (= 15-25min)  → solo nombre del cliente
+ *   · 60-90px (= 30-44min)  → + servicio
+ *   · ≥ 90px  (= 45min+)    → + barbero / duración
+ *  Se basa en altura REAL del bloque (incluye padding interno), no en
+ *  duration — así un resize en vivo recalcula la densidad sin escalas. */
+const FIELD_HEIGHT_PX = {
+  service: 60,
+  barber: 90,
+} as const;
+
+/** Decide si un campo cabe en el bloque dado su altura en px. El nombre
+ *  del cliente SIEMPRE cabe (línea 1 no condicional). */
+export function shouldShowField(
+  blockHeightPx: number,
+  field: 'service' | 'barber',
+): boolean {
+  return blockHeightPx >= FIELD_HEIGHT_PX[field];
+}
+
 /** Badge de estado para la esquina sup-der del bloque. Iconos distintos a
  *  los de `statusBadge` (que vive en la leyenda lateral): aquí priorizamos
  *  glifos cortos y reconocibles a tamaño chico (16-20px). */
