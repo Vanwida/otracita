@@ -5,7 +5,11 @@ import { format } from 'date-fns';
 import { Lock, ChevronDown, Heart } from 'lucide-react';
 import type { CalendarEvent, CalendarBlock, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
-import { appointmentBlockStyle, statusBadge } from './_appointment-color';
+import {
+  appointmentBlockClasses,
+  resolveBookingColorToken,
+  statusCornerBadge,
+} from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-window';
 import { computeOverlapLayout } from './_event-layout';
@@ -907,11 +911,14 @@ export default function DayGrid({
                     const showService = height >= 56;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    const { style: blockStyle, treatment } = appointmentBlockStyle(
-                      col.barber?.displayOrder ?? null,
+                    // #33 — Color del bloque = color del SERVICIO (no del
+                    // estado). El estado vive en un badge separado (commit 3).
+                    const colorToken = resolveBookingColorToken(event, services);
+                    const { className: blockClass, treatment } = appointmentBlockClasses(
+                      colorToken,
                       event.status,
                     );
-                    const badge = statusBadge(event.status);
+                    const badge = statusCornerBadge(event.status);
 
                     const endTime = minutesToHHMM(evEndMin);
                     // Durante un resize por el borde TOP, la hora de inicio
@@ -960,7 +967,7 @@ export default function DayGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute z-20 flex flex-col rounded-md p-2 overflow-hidden shadow-sm transition-transform duration-150 hover:-translate-y-0.5 ${
+                        className={`absolute z-20 flex flex-col rounded-md p-2 overflow-hidden shadow-sm transition-transform duration-150 hover:-translate-y-0.5 ${blockClass} ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
                           draggingId && !isDragging ? 'pointer-events-none' : ''
@@ -970,7 +977,6 @@ export default function DayGrid({
                           height,
                           left: `calc(${lay.leftPct}% + ${insetX}px)`,
                           width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
-                          ...blockStyle,
                         }}
                         title={event.title}
                       >

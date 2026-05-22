@@ -5,7 +5,11 @@ import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
 import type { CalendarEvent } from './types';
-import { appointmentBlockStyle, statusBadge } from './_appointment-color';
+import {
+  appointmentBlockClasses,
+  resolveBookingColorToken,
+  statusCornerBadge,
+} from './_appointment-color';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN } from './_agenda-window';
 import { hoursForDate } from '@/lib/availability-hours';
 
@@ -242,15 +246,14 @@ export default function WeekGrid({
                     const showService = height >= 50;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    // Color = ESTADO de la cita (Booksy-exact, mismo que
-                    // Día/Mes) + ícono/etiqueta, nunca solo color (fix #6).
-                    // El bloque ya NO se tinta por barbero (la identidad del
-                    // barbero vive solo en la cabecera de columna de Día).
-                    const { style: blockStyle, treatment } = appointmentBlockStyle(
-                      null,
+                    // #33 — Color por SERVICIO (no por estado). Mismo helper
+                    // que Día/Mes; estado va a badge esquina (commit 3).
+                    const colorToken = resolveBookingColorToken(event, services);
+                    const { className: blockClass, treatment } = appointmentBlockClasses(
+                      colorToken,
                       event.status,
                     );
-                    const badge = statusBadge(event.status);
+                    const badge = statusCornerBadge(event.status);
 
                     return (
                       <div
@@ -260,8 +263,8 @@ export default function WeekGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 flex flex-col gap-0.5 rounded-r px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${treatment}`}
-                        style={{ top, height, ...blockStyle }}
+                        className={`absolute left-1 right-1 z-20 flex flex-col gap-0.5 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${blockClass} ${treatment}`}
+                        style={{ top, height }}
                         title={event.title}
                       >
                         {/* Booksy lock icon */}

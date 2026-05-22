@@ -11,7 +11,11 @@ import {
   isSameDay,
 } from 'date-fns';
 import type { CalendarEvent } from './types';
-import { appointmentChipStyle, statusBadge } from './_appointment-color';
+import {
+  appointmentChipClasses,
+  resolveBookingColorToken,
+  statusCornerBadge,
+} from './_appointment-color';
 
 const DAY_HEADERS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MAX_VISIBLE = 3;
@@ -100,14 +104,14 @@ export default function MonthGrid({
                 {/* Events */}
                 <div className="space-y-0.5">
                   {dayEvents.slice(0, MAX_VISIBLE).map(event => {
-                    // Color = ESTADO de la cita (Booksy-exact, igual que
-                    // Día/Semana) + ícono/etiqueta (fuente única, fix #6).
-                    // El chip ya NO se tinta por barbero.
-                    const { style: chipStyle, treatment } = appointmentChipStyle(
-                      null,
+                    // #33 — Color por SERVICIO (no por estado). Mismo helper
+                    // que Día/Semana; estado va a badge esquina (commit 3).
+                    const colorToken = resolveBookingColorToken(event, services);
+                    const { className: chipClass, treatment } = appointmentChipClasses(
+                      colorToken,
                       event.status,
                     );
-                    const badge = statusBadge(event.status);
+                    const badge = statusCornerBadge(event.status);
 
                     return (
                       <div
@@ -117,8 +121,7 @@ export default function MonthGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${treatment}`}
-                        style={chipStyle}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${chipClass} ${treatment}`}
                         title={event.title}
                       >
                         {badge && (

@@ -229,15 +229,23 @@ export function resolveBookingColorToken(
  *  un string listo para concatenar en `className`. `treatment` añade
  *  line-through cuando la cita está cancelada (consistente con el style
  *  anterior, pero ahora el color del servicio NO desaparece — solo se
- *  atenúa con opacity). */
+ *  atenúa con opacity).
+ *
+ *  Incluye `bg + text-ink + ring-ink-15%` (hairline del color del servicio
+ *  para dar profundidad sin un borde sólido fuerte). El ring se aplica con
+ *  utility `ring-1 ring-inset` + opacidad via Tailwind v4 modifier. */
 export function appointmentBlockClasses(
   token: ServiceColorToken,
   status: string,
 ): { className: string; treatment: string } {
   const c = SERVICE_COLOR_CLASSES[token];
   const isCancelled = normalizeStatus(status) === 'cancelled';
+  // ring-inset + ring del ink saturado del servicio al 30% → hairline cálido
+  // que NO compite con el contenido pero da profundidad y unifica con el bg.
+  // Tailwind v4 acepta `ring-svc-X-ink/30` como utility válida.
+  const ring = `ring-1 ring-inset ${c.ring}/30`;
   return {
-    className: `${c.bg} ${c.ink} ${isCancelled ? 'opacity-60' : ''}`.trim(),
+    className: `${c.bg} ${c.ink} ${ring} ${isCancelled ? 'opacity-60' : ''}`.trim(),
     treatment: isCancelled ? 'line-through' : '',
   };
 }
