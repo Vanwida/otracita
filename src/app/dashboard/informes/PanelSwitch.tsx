@@ -74,7 +74,7 @@ export default function PanelSwitch({ resumen, detalle }: Props) {
           <div className="mx-auto w-full max-w-7xl">{resumen}</div>
         </div>
       ) : (
-        <div className="min-h-0 flex-1">{detalle}</div>
+        <div className="flex min-h-0 flex-1 flex-col">{detalle}</div>
       )}
     </div>
   )
