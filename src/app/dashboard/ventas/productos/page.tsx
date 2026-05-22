@@ -8,6 +8,7 @@ import { and, asc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import AreaContent from '../../_components/AreaContent'
 import ProductsManager from '../../marketing/tienda/ProductsManager'
+import RegistrarConsumoButton from './RegistrarConsumoButton'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ventas/productos — pestaña PRODUCTOS del área Ventas.
@@ -40,14 +41,22 @@ export default async function VentasProductosPage() {
 
   return (
     <AreaContent scroll="region" maxWidth="5xl">
-      <p
-        className="mb-4 text-ink-2"
-        style={{ fontSize: 'var(--text-meta)' }}
-      >
-        Da de alta los productos que vendes. Al cobrar un corte, añades la
-        venta desde la agenda con un click. Cada venta se atribuye al barbero
-        que la registra y aparece en el Resumen de Ventas.
-      </p>
+      {/* Toolbar superior: copy explicativo + acción "Registrar consumo".
+          La acción "Añadir producto" vive dentro de ProductsManager (junto
+          al recuento "X productos"); ésta vive ARRIBA porque no es CRUD del
+          catálogo sino una operación de stock que el barbero hace varias
+          veces al día. Mobile-first: el botón salta debajo del copy. */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <p
+          className="text-ink-2 max-w-2xl"
+          style={{ fontSize: 'var(--text-meta)' }}
+        >
+          Da de alta los productos que vendes. Al cobrar un corte, añades la
+          venta desde la agenda con un click. Cada venta se atribuye al
+          barbero que la registra y aparece en el Resumen de Ventas.
+        </p>
+        <RegistrarConsumoButton />
+      </div>
 
       <ProductsManager
         initial={initialProducts.map((p) => ({
