@@ -68,7 +68,7 @@ export function normalizeServiceColor(v: unknown): ServiceColorToken {
  *
  * Los CSS vars detrás están declarados en `src/app/globals.css` (@theme).
  * Tailwind v4 los transforma en utilities automáticamente — no hay
- * arbitrary values `bg-[var(...)]` en el código UI.
+ * arbitrary values con vars inline en el código UI.
  */
 export const SERVICE_COLOR_CLASSES: Record<
   ServiceColorToken,
