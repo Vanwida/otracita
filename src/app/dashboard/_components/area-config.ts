@@ -170,6 +170,7 @@ export const AREAS: Area[] = [
       { seg: 'promos', label: 'Promos', href: '/dashboard/marketing/promos' },
       { seg: 'whatsapp', label: 'WhatsApp', href: '/dashboard/marketing/whatsapp' },
       { seg: 'resenas', label: 'Reseñas', href: '/dashboard/marketing/resenas' },
+      { seg: 'tracking', label: 'Tracking', href: '/dashboard/marketing/tracking' },
     ],
     prefixes: [
       '/dashboard/marketing',
