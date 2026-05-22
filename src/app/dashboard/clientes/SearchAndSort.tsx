@@ -33,6 +33,11 @@ export default function SearchAndSort() {
 
   const currentSort = searchParams.get('sort') ?? 'recent'
   const currentRep = searchParams.get('rep') ?? null
+  // Preservamos también `status` (filter pill activo) y `source` (chips
+  // multi-select por canal) — sin esto, escribir en el buscador o cambiar
+  // el orden tira los chips a la basura.
+  const currentStatus = searchParams.get('status') ?? null
+  const currentSource = searchParams.get('source') ?? null
 
   // Debounce de la búsqueda — evita un router.replace por tecla. 400ms
   // es el sweet spot que recomienda HIG; <300ms se sienten "saltones",
@@ -41,6 +46,8 @@ export default function SearchAndSort() {
     const timer = setTimeout(() => {
       const params = new URLSearchParams()
       if (currentRep) params.set('rep', currentRep)
+      if (currentStatus) params.set('status', currentStatus)
+      if (currentSource) params.set('source', currentSource)
       if (currentSort !== 'recent') params.set('sort', currentSort)
       const trimmed = query.trim()
       if (trimmed.length > 0) params.set('q', trimmed)
@@ -59,6 +66,8 @@ export default function SearchAndSort() {
   const setSort = (next: string) => {
     const params = new URLSearchParams()
     if (currentRep) params.set('rep', currentRep)
+    if (currentStatus) params.set('status', currentStatus)
+    if (currentSource) params.set('source', currentSource)
     if (next !== 'recent') params.set('sort', next)
     const trimmed = query.trim()
     if (trimmed.length > 0) params.set('q', trimmed)

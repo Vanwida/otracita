@@ -24,6 +24,8 @@ import ForgiveNoShowsButton from '@/app/dashboard/_components/ForgiveNoShowsButt
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
+import SourceFilterChips from './SourceFilterChips'
+import { SOURCE_BY_VALUE } from '@/lib/sources'
 import SearchAndSort from './SearchAndSort'
 import CustomerContactActions from './CustomerContactActions'
 
@@ -51,7 +53,7 @@ type StatusFilter = 'all' | 'inactivo' | 'noshow' | 'blocked'
 type SortKey = 'recent' | 'spent' | 'visits' | 'rating' | 'name'
 
 interface Props {
-  searchParams: Promise<{ status?: string; q?: string; sort?: string }>
+  searchParams: Promise<{ status?: string; q?: string; sort?: string; source?: string }>
 }
 
 // Mapa de ORDER BY válido — defendemos contra inyección por URL.
@@ -63,12 +65,34 @@ const SORT_SQL: Record<SortKey, string> = {
   name: `LOWER(COALESCE(c.name, '')) ASC`,
 }
 
-/** Construye href para los pills de status preservando search y sort actuales. */
-function buildPillHref(status: StatusFilter | null, q: string, sort: SortKey): string {
+/** Construye href para los pills de status preservando search, sort y source actuales. */
+function buildPillHref(
+  status: StatusFilter | null,
+  q: string,
+  sort: SortKey,
+  sources: string[],
+): string {
   const params = new URLSearchParams()
   if (status && status !== 'all') params.set('status', status)
   if (q.length > 0) params.set('q', q)
   if (sort !== 'recent') params.set('sort', sort)
+  if (sources.length > 0) params.set('source', sources.join(','))
+  const qs = params.toString()
+  return qs ? `/dashboard/clientes?${qs}` : '/dashboard/clientes'
+}
+
+/** Construye href para los chips de canal preservando status, search y sort. */
+function buildSourceHref(
+  sources: string[],
+  status: StatusFilter,
+  q: string,
+  sort: SortKey,
+): string {
+  const params = new URLSearchParams()
+  if (status !== 'all') params.set('status', status)
+  if (q.length > 0) params.set('q', q)
+  if (sort !== 'recent') params.set('sort', sort)
+  if (sources.length > 0) params.set('source', sources.join(','))
   const qs = params.toString()
   return qs ? `/dashboard/clientes?${qs}` : '/dashboard/clientes'
 }
@@ -95,7 +119,7 @@ const HABITUAL_DAYS = 30
 const INACTIVO_DAYS = 90
 
 export default async function ClientesPage({ searchParams }: Props) {
-  const { status: rawStatus, q: rawQ, sort: rawSort } = await searchParams
+  const { status: rawStatus, q: rawQ, sort: rawSort, source: rawSource } = await searchParams
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
@@ -109,6 +133,15 @@ export default async function ClientesPage({ searchParams }: Props) {
 
   const search = (rawQ ?? '').trim().slice(0, 100)
   const searchLike = `%${search.toLowerCase()}%`
+
+  // ?source=instagram,tiktok → array validado contra el catálogo unificado.
+  // Validar es CRÍTICO: el valor entra a un ANY($1::text[]) — sin whitelist
+  // un atacante podría meter strings arbitrarios (no inyecta SQL porque
+  // drizzle parametriza, pero ensucia métricas y abre superficie).
+  const sourcesSelected: string[] = (rawSource ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s in SOURCE_BY_VALUE)
 
   // Sort whitelist — sino caemos en 'recent'. CRITICAL: SORT_SQL es un
   // string literal mapeado, NO interpolación de input del usuario.
@@ -136,6 +169,13 @@ export default async function ClientesPage({ searchParams }: Props) {
                OR c.phone LIKE ${searchLike}
                OR LOWER(COALESCE(c.email, '')) LIKE ${searchLike})`
     : sql``
+
+  // Filtro por canal de captación — OR entre los seleccionados (cliente
+  // cuenta si su first_source ∈ seleccionados).
+  const sourceWhere =
+    sourcesSelected.length > 0
+      ? sql`AND c.first_source = ANY(${sourcesSelected}::text[])`
+      : sql``
 
   const result = await db.execute(sql`
     SELECT
@@ -171,6 +211,7 @@ export default async function ClientesPage({ searchParams }: Props) {
     WHERE c.client_id = ${client.id}
     ${statusWhere}
     ${searchWhere}
+    ${sourceWhere}
     ORDER BY ${sql.raw(orderClause)}
   `)
 
@@ -204,6 +245,24 @@ export default async function ClientesPage({ searchParams }: Props) {
     rows: Array<{ total: number; inactivos: number; noshows: number; bloqueados: number }>
   }).rows[0] ?? { total: 0, inactivos: 0, noshows: 0, bloqueados: 0 }
 
+  // Conteo por canal de captación — respeta `status` y `q` pero NO `source`,
+  // para que cada chip muestre "cuántos habría si activo ESE canal sobre el
+  // resto del filtro actual" (patrón Linear/GitHub). Si lo filtrásemos también
+  // por `source`, todos los chips no seleccionados marcarían 0 → UI muerta.
+  const sourceCountsResult = await db.execute(sql`
+    SELECT c.first_source AS source, COUNT(*)::int AS count
+    FROM ${customers} c
+    WHERE c.client_id = ${client.id}
+      AND c.first_source IS NOT NULL
+    ${statusWhere}
+    ${searchWhere}
+    GROUP BY c.first_source
+    ORDER BY COUNT(*) DESC
+  `)
+  const sourceCounts = (sourceCountsResult as unknown as {
+    rows: Array<{ source: string; count: number }>
+  }).rows.map((r) => ({ source: r.source, count: Number(r.count) }))
+
   // El breakdown de origen (atribución) se movió a su propia pestaña
   // /dashboard/clientes/atribucion (contrato de IA) — esta vista es solo
   // la Lista accionable.
@@ -226,33 +285,43 @@ export default async function ClientesPage({ searchParams }: Props) {
           porque cada uno tiene un curso de acción claro. */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto">
         <FilterPill
-          href={buildPillHref(null, search, sortKey)}
+          href={buildPillHref(null, search, sortKey, sourcesSelected)}
           active={statusFilter === 'all'}
           label="Todos"
           count={counts.total}
         />
         <FilterPill
-          href={buildPillHref('inactivo', search, sortKey)}
+          href={buildPillHref('inactivo', search, sortKey, sourcesSelected)}
           active={statusFilter === 'inactivo'}
           label="Inactivos"
           count={counts.inactivos}
           icon={Snowflake}
         />
         <FilterPill
-          href={buildPillHref('noshow', search, sortKey)}
+          href={buildPillHref('noshow', search, sortKey, sourcesSelected)}
           active={statusFilter === 'noshow'}
           label="No-shows"
           count={counts.noshows}
           icon={AlertTriangle}
         />
         <FilterPill
-          href={buildPillHref('blocked', search, sortKey)}
+          href={buildPillHref('blocked', search, sortKey, sourcesSelected)}
           active={statusFilter === 'blocked'}
           label="Bloqueados"
           count={counts.bloqueados}
           icon={Shield}
         />
       </div>
+
+      {/* Filtro multi-select por canal de captación — Solo se renderiza si
+          hay clientes con first_source ≥1 en alguno (evita 7 chips vacíos).
+          Server-side: cada chip es un Link que muta ?source=… y la página
+          re-renderiza con los nuevos resultados. */}
+      <SourceFilterChips
+        counts={sourceCounts}
+        selected={sourcesSelected}
+        buildHref={(next) => buildSourceHref(next, statusFilter, search, sortKey)}
+      />
 
       {/* Banner accionable cuando filtras por Inactivos. La acción real está
           en el botón 💬 de cada fila — abre WhatsApp con su nombre prerellenado.
