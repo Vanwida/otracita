@@ -48,6 +48,7 @@ export default function AreaTabs({ area }: Props) {
     <div
       role="tablist"
       aria-label={`Secciones de ${def.label}`}
+      aria-orientation="horizontal"
       className="flex items-stretch gap-1 overflow-x-auto border-b border-line -mx-[var(--space-page)] px-[var(--space-page)]"
     >
       {def.tabs.map((tab) => {
