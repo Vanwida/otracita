@@ -51,13 +51,18 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-[var(--color-scrim-light)] md:hidden"
+          className="fixed inset-0 z-[60] bg-[var(--color-scrim-light)] md:hidden"
           onClick={() => setOpen(false)}
         />
       )}
 
+      {/* Drawer z-[60] (sobre backdrop y por encima de elementos sticky de
+          agenda que viven en z-50, p.ej. cabeceras de columna de barberos en
+          DayGrid). Antes z-50 empataba con esa team bar y, por orden DOM
+          posterior + stacking context del scroll container, el header de
+          barberos tapaba items del menú en mobile. */}
       <div
-        className={`fixed left-0 top-0 bottom-0 z-50 w-64 bg-sidebar flex flex-col p-5 shadow-2xl transition-transform duration-300 ease-in-out md:hidden ${
+        className={`fixed left-0 top-0 bottom-0 z-[60] w-64 bg-sidebar flex flex-col p-5 shadow-2xl transition-transform duration-300 ease-in-out md:hidden ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
