@@ -32,7 +32,7 @@ export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (pathname === '/' || pathname === '') {
-    return NextResponse.redirect('https://otracita.com/', { status: 302 });
+    return NextResponse.redirect('https://otracita.es/', { status: 302 });
   }
 
   const trimmed = pathname.replace(/^\/+/, '');
@@ -41,17 +41,17 @@ export function proxy(request: NextRequest) {
 
   if (RESERVED_SLUGS.has(slug)) {
     return NextResponse.redirect(
-      `https://otracita.com/${trimmed}${search}`,
+      `https://otracita.es/${trimmed}${search}`,
       { status: 302 },
     );
   }
 
   if (!SLUG_REGEX.test(slug)) {
-    return NextResponse.redirect('https://otracita.com/', { status: 302 });
+    return NextResponse.redirect('https://otracita.es/', { status: 302 });
   }
 
   return NextResponse.redirect(
-    `https://otracita.com/${slug}${tail}${search}`,
+    `https://otracita.es/${slug}${tail}${search}`,
     { status: 302 },
   );
 }
