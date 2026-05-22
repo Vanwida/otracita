@@ -112,6 +112,10 @@ export default function SearchAndSort() {
         </select>
       </div>
 
+      {/* /api/customers/export es una API route (no una page), pero el
+          subdirectorio existe y Next no distingue → silenciamos la regla
+          aquí: forzar Link a una route de API no aporta nada. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a
         href="/api/customers/export"
         className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink text-xs font-medium px-3 py-2 transition-colors"

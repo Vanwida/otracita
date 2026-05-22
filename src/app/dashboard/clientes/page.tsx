@@ -26,6 +26,7 @@ import AreaContent from '@/app/dashboard/_components/AreaContent'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import SourceFilterChips from './SourceFilterChips'
 import { SOURCE_BY_VALUE } from '@/lib/sources'
+import { getClientSourceBreakdown } from '@/lib/marketing/sources-breakdown'
 import SearchAndSort from './SearchAndSort'
 import CustomerContactActions from './CustomerContactActions'
 
@@ -249,19 +250,10 @@ export default async function ClientesPage({ searchParams }: Props) {
   // para que cada chip muestre "cuántos habría si activo ESE canal sobre el
   // resto del filtro actual" (patrón Linear/GitHub). Si lo filtrásemos también
   // por `source`, todos los chips no seleccionados marcarían 0 → UI muerta.
-  const sourceCountsResult = await db.execute(sql`
-    SELECT c.first_source AS source, COUNT(*)::int AS count
-    FROM ${customers} c
-    WHERE c.client_id = ${client.id}
-      AND c.first_source IS NOT NULL
-    ${statusWhere}
-    ${searchWhere}
-    GROUP BY c.first_source
-    ORDER BY COUNT(*) DESC
-  `)
-  const sourceCounts = (sourceCountsResult as unknown as {
-    rows: Array<{ source: string; count: number }>
-  }).rows.map((r) => ({ source: r.source, count: Number(r.count) }))
+  // Helper compartido: misma fuente que el panel de Marketing y atribución.
+  const sourceCounts = await getClientSourceBreakdown(client.id, {
+    extraWhere: [statusWhere, searchWhere],
+  })
 
   // El breakdown de origen (atribución) se movió a su propia pestaña
   // /dashboard/clientes/atribucion (contrato de IA) — esta vista es solo

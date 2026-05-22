@@ -15,6 +15,10 @@ import ReportLayout from '../_components/ReportLayout'
 import { CLIENTES_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
+import {
+  getClientSourceBreakdown,
+  sumSourceBreakdown,
+} from '@/lib/marketing/sources-breakdown'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/clientes — pestaña CLIENTES del área Informes.
@@ -204,24 +208,12 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
   const retenidos = Number(mixRow?.retenidos ?? 0)
   const retencionPct = con2 > 0 ? Math.round((retenidos / con2) * 100) : 0
 
-  // ── Origen de clientes nuevos (últimos 30 días) — misma query EXACTA que
-  //    la pestaña Atribución (SourceBreakdown reutilizado, no duplicado).
-  const sourceResult = await db.execute(sql`
-    SELECT first_source AS source, COUNT(*)::int AS count
-    FROM ${customers}
-    WHERE client_id = ${client.id}
-      AND first_source IS NOT NULL
-      AND first_source_captured_at IS NOT NULL
-      AND first_source_captured_at >= NOW() - INTERVAL '30 days'
-    GROUP BY first_source
-    ORDER BY COUNT(*) DESC
-  `)
-  const sourceRows = (
-    sourceResult as unknown as {
-      rows: Array<{ source: string; count: number }>
-    }
-  ).rows.map((r) => ({ source: r.source, count: Number(r.count) }))
-  const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
+  // ── Origen de clientes nuevos (últimos 30 días) — helper compartido,
+  //    misma fuente que /clientes/atribucion y el panel de Marketing.
+  const since30d = new Date()
+  since30d.setDate(since30d.getDate() - 30)
+  const sourceRows = await getClientSourceBreakdown(client.id, { since: since30d })
+  const sourceTotal = sumSourceBreakdown(sourceRows)
 
   const hasData = topClients.length > 0 || mixTotal > 0
 

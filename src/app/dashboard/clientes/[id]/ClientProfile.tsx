@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import CustomerNotesEditor from './CustomerNotesEditor'
 import CustomerEmailEditor from './CustomerEmailEditor'
+import CustomerRgpdActions from './CustomerRgpdActions'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import type {
   ClientProfileData,
@@ -416,6 +417,15 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
               </ul>
             </section>
           )}
+
+          {/* RGPD — exportar / anonimizar al final de la ficha. Acciones
+              poco frecuentes, no compiten visualmente con la operativa
+              del día a día. */}
+          <CustomerRgpdActions
+            customerId={customer.id}
+            customerName={customer.name}
+            customerPhone={customer.phone}
+          />
         </>
       )}
     </div>

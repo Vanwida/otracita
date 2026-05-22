@@ -3,12 +3,16 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { clients, customers } from '@/db/schema'
-import { eq, sql } from 'drizzle-orm'
+import { clients } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
 import SourceBreakdown from '../SourceBreakdown'
+import {
+  getClientSourceBreakdown,
+  sumSourceBreakdown,
+} from '@/lib/marketing/sources-breakdown'
 
 // -----------------------------------------------------------------------------
 // /dashboard/clientes/atribucion — pestaña ATRIBUCIÓN del área Clientes.
@@ -32,22 +36,12 @@ export default async function ClientesAtribucionPage() {
     .where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  const sourceResult = await db.execute(sql`
-    SELECT first_source AS source, COUNT(*)::int AS count
-    FROM ${customers}
-    WHERE client_id = ${client.id}
-      AND first_source IS NOT NULL
-      AND first_source_captured_at IS NOT NULL
-      AND first_source_captured_at >= NOW() - INTERVAL '30 days'
-    GROUP BY first_source
-    ORDER BY COUNT(*) DESC
-  `)
-  const sourceRows = (
-    sourceResult as unknown as {
-      rows: Array<{ source: string; count: number }>
-    }
-  ).rows.map((r) => ({ source: r.source, count: Number(r.count) }))
-  const sourceTotal = sourceRows.reduce((acc, r) => acc + r.count, 0)
+  // Últimos 30 días (first-touch). Helper compartido — misma fuente que el
+  // panel de Marketing y los chips de filtrado de /dashboard/clientes.
+  const since30d = new Date()
+  since30d.setDate(since30d.getDate() - 30)
+  const sourceRows = await getClientSourceBreakdown(client.id, { since: since30d })
+  const sourceTotal = sumSourceBreakdown(sourceRows)
 
   // Mismo chasis de área que la pestaña Lista (clientes/page.tsx): header
   // + tira de pestañas Lista·Atribución + región acotada. Antes esta página
