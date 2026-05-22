@@ -9,13 +9,13 @@
 // gestión. nav-config deriva de aquí; AreaTabs y el resaltado del rail
 // consumen esta misma lista — cero duplicación.
 //
-//   Agenda     · Día · Semana · Importar
-//   Ventas     · Resumen · Cobros · Cierre de caja · Propinas · Facturas · Productos
-//   Clientes   · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
-//   Equipo     · Empleados · Turnos · Comisiones · Bonos · Competición
-//   Informes   · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
-//   Marketing  · Fidelidad · Promos · WhatsApp · Reseñas
-//   Ajustes    · Negocio · Pagos · Reservas online · Recepcionista IA · Suscripción · App · Ayuda
+//   Agenda      · Día · Semana · Importar
+//   Ventas      · Resumen · Cobros · Cierre de caja · Propinas · Facturas · Productos
+//   Clientes    · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
+//   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
+//   Crecimiento · Fidelidad · Promos · WhatsApp · Reseñas · Tracking
+//   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
+//   Ajustes     · Negocio · Pagos · Reservas online · Recepcionista IA · Suscripción · App · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
 // viven fuera del nav del barbero.
@@ -160,11 +160,14 @@ export const AREAS: Area[] = [
     ],
   },
   {
+    // key='marketing' preservada — URLs `/dashboard/marketing/*` siguen vivas
+    // para no romper deep-links (PWA installs, emails históricos, bookmarks).
+    // Solo el label visible cambia a "Crecimiento" (operación, no marca).
     key: 'marketing',
-    label: 'Marketing',
+    label: 'Crecimiento',
     icon: Megaphone,
     href: '/dashboard/marketing',
-    subtitle: 'Lo que hace que vuelvan: fidelidad, promos, bot y reseñas.',
+    subtitle: 'Lo que hace que vuelvan más clientes: promos, bot, fidelidad, reseñas.',
     tabs: [
       { seg: null, label: 'Fidelidad', href: '/dashboard/marketing' },
       { seg: 'promos', label: 'Promos', href: '/dashboard/marketing/promos' },

@@ -9,10 +9,11 @@ import type { LucideIcon } from 'lucide-react'
 // (href/icon/label + cálculo de "active"), sin duplicar la lista. Renombrar
 // o reordenar un área se hace SOLO en `area-config`; el rail lo recoge solo.
 //
-// Modelo: 7 áreas estándar — Agenda · Ventas · Clientes · Equipo · Informes
-// · Marketing · Ajustes. Nomenclatura convencional de software de gestión
-// (sin nombres de marca "monos"). El resaltado por prefijos (incl. rutas
-// legacy en migración) vive en `area-config.isAreaActive`.
+// Modelo: 7 áreas estándar — Agenda · Ventas · Clientes · Equipo · Crecimiento
+// · Informes · Ajustes. Nomenclatura convencional de software de gestión
+// ("Crecimiento" = ex-Marketing, label cambiado por copy operativa, key
+// `marketing` preservada para no romper URLs/deep-links). El resaltado por
+// prefijos (incl. rutas legacy en migración) vive en `area-config.isAreaActive`.
 // -----------------------------------------------------------------------------
 
 export interface NavItem {
