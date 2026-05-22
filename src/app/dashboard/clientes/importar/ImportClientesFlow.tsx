@@ -1,0 +1,591 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import Papa from 'papaparse'
+import {
+  Upload,
+  Loader2,
+  Download,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Trash2,
+  ChevronRight,
+} from 'lucide-react'
+
+// -----------------------------------------------------------------------------
+// ImportClientesFlow — flujo en 3 pasos:
+//
+//   1. UPLOAD: input file → papaparse local (CSV) → parsed rows.
+//      También botón para descargar la plantilla.
+//
+//   2. PREVIEW: tabla con N primeras filas + badge de estado por fila
+//      (OK / Duplicado / Inválido / Sin tlf). Footer con resumen
+//      agregado. Botón "Importar X clientes" deshabilitado si X === 0.
+//
+//   3. DONE: muestra resultado (created/updated/skipped/partial) y CTA
+//      para volver al listado.
+//
+// XLSX V1: NO se soporta. Decisión:
+//   · Añadir SheetJS al cliente son ~600KB JS — fricciona la entrega.
+//   · El 100% de plataformas competidoras (Booksy, Treatwell, Fresha)
+//     exportan en CSV o permiten "Save as CSV" desde Excel/Numbers en 3
+//     segundos. Es un coste único por barbero, no recurrente.
+//   · Si más adelante un cliente real lo pide, exceljs ya está instalado
+//     y se podría parsear server-side (subiendo el .xlsx como FormData).
+//
+// La validación pesada (canonicalización phone, dedupe, update-if-empty)
+// vive en `src/lib/customers/import.ts` y se ejecuta en el servidor — el
+// cliente sólo hace pre-clasificación rápida con la heurística básica
+// para el preview. La fuente de verdad del import final es el endpoint.
+// -----------------------------------------------------------------------------
+
+type Step = 'upload' | 'preview' | 'done'
+
+interface ParsedRow {
+  name: string
+  phone: string
+  email: string
+  notas: string
+}
+
+interface PreviewRow extends ParsedRow {
+  status: 'ok' | 'duplicate' | 'invalid' | 'no_phone'
+  reason?: string
+}
+
+interface ImportResult {
+  created: number
+  updated: number
+  skipped: number
+  total: number
+  partial?: boolean
+}
+
+const PREVIEW_LIMIT = 50
+const MAX_FILE_BYTES = 5 * 1024 * 1024 // 5MB CSV — suficiente para 50k filas
+const MAX_ROWS = 5000
+
+// Cabeceras canónicas (las que mete la plantilla) + alias razonables que
+// suele usar Booksy/Treatwell/Excel. Match case-insensitive + sin tildes.
+const HEADER_ALIASES: Record<keyof ParsedRow, string[]> = {
+  name: ['nombre', 'name', 'cliente', 'customer', 'full name'],
+  phone: ['telefono', 'teléfono', 'tlf', 'phone', 'mobile', 'celular', 'movil', 'móvil'],
+  email: ['email', 'correo', 'e-mail', 'mail'],
+  notas: ['notas', 'notes', 'observaciones', 'comentarios'],
+}
+
+function normHeader(h: string): string {
+  return h.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+}
+
+/**
+ * Pre-clasificación CLIENTE — sólo para el preview. La verdad la dice el
+ * endpoint cuando hace lookup contra DB. Aquí sólo marcamos las dos
+ * obvias antes de subir: sin teléfono y phone basura.
+ *
+ * Sin libphonenumber-js en cliente (bundle bloat): usamos heurística
+ * simple — al menos 7 dígitos. El endpoint canonicaliza E.164 y rechaza
+ * los que no parseen.
+ */
+function preClassify(row: ParsedRow): PreviewRow {
+  const phone = row.phone.trim()
+  if (!phone) return { ...row, status: 'no_phone', reason: 'Sin teléfono' }
+
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length < 7) {
+    return { ...row, status: 'invalid', reason: 'Teléfono demasiado corto' }
+  }
+  return { ...row, status: 'ok' }
+}
+
+/**
+ * Mapea las columnas del CSV parseado a nuestro shape canónico usando
+ * los alias declarados. Cualquier cabecera no reconocida se ignora.
+ */
+function buildColumnMap(headers: string[]): Partial<Record<keyof ParsedRow, number>> {
+  const map: Partial<Record<keyof ParsedRow, number>> = {}
+  const normed = headers.map(normHeader)
+  for (const field of Object.keys(HEADER_ALIASES) as Array<keyof ParsedRow>) {
+    const aliases = HEADER_ALIASES[field]
+    const idx = normed.findIndex((h) => aliases.includes(h))
+    if (idx >= 0) map[field] = idx
+  }
+  return map
+}
+
+export default function ImportClientesFlow() {
+  const router = useRouter()
+  const [step, setStep] = useState<Step>('upload')
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [rows, setRows] = useState<PreviewRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<ImportResult | null>(null)
+
+  const summary = useMemo(() => {
+    let ok = 0
+    let duplicates = 0
+    let invalid = 0
+    let noPhone = 0
+    for (const r of rows) {
+      if (r.status === 'ok') ok++
+      else if (r.status === 'duplicate') duplicates++
+      else if (r.status === 'invalid') invalid++
+      else noPhone++
+    }
+    return { ok, duplicates, invalid, noPhone, total: rows.length }
+  }, [rows])
+
+  const reset = () => {
+    setStep('upload')
+    setFileName(null)
+    setRows([])
+    setResult(null)
+    setError(null)
+  }
+
+  const downloadTemplate = () => {
+    // Misma ruta GET — descarga directa.
+    window.location.assign('/api/customers/import/template')
+  }
+
+  const handleFile = (file: File) => {
+    setError(null)
+    if (file.size > MAX_FILE_BYTES) {
+      setError('Archivo demasiado grande (máx. 5 MB). Divide el CSV.')
+      return
+    }
+    setLoading(true)
+    setFileName(file.name)
+    Papa.parse<string[]>(file, {
+      header: false,
+      skipEmptyLines: 'greedy',
+      complete: (res) => {
+        try {
+          const data = res.data
+          if (data.length === 0) {
+            setError('El CSV está vacío.')
+            setLoading(false)
+            return
+          }
+          // Heurística: si la primera fila contiene alguna cabecera
+          // reconocida, la tratamos como header. Si no, asumimos que
+          // el CSV no tiene cabecera y mapeamos por orden (nombre,
+          // telefono, email, notas).
+          const headers = data[0]
+          const colMap = buildColumnMap(headers)
+          const hasHeader = Object.keys(colMap).length > 0
+
+          let dataRows: string[][]
+          let map: Partial<Record<keyof ParsedRow, number>>
+
+          if (hasHeader) {
+            dataRows = data.slice(1)
+            map = colMap
+          } else {
+            dataRows = data
+            map = { name: 0, phone: 1, email: 2, notas: 3 }
+          }
+
+          if (map.phone === undefined) {
+            setError(
+              'No encontramos la columna de teléfono. Renombra la cabecera a "telefono" o descarga la plantilla.',
+            )
+            setLoading(false)
+            return
+          }
+
+          if (dataRows.length > MAX_ROWS) {
+            setError(`Máximo ${MAX_ROWS} filas por import. Divide el CSV en lotes.`)
+            setLoading(false)
+            return
+          }
+
+          const parsed: ParsedRow[] = dataRows.map((row) => ({
+            name: map.name !== undefined ? (row[map.name] ?? '').trim() : '',
+            phone: map.phone !== undefined ? (row[map.phone] ?? '').trim() : '',
+            email: map.email !== undefined ? (row[map.email] ?? '').trim() : '',
+            notas: map.notas !== undefined ? (row[map.notas] ?? '').trim() : '',
+          }))
+
+          const classified = parsed.map(preClassify)
+          setRows(classified)
+          setStep('preview')
+          setLoading(false)
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Error al procesar el CSV.')
+          setLoading(false)
+        }
+      },
+      error: (err) => {
+        setError(`Error al leer el CSV: ${err.message}`)
+        setLoading(false)
+      },
+    })
+  }
+
+  const removeRow = (i: number) => {
+    setRows((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  const doImport = async () => {
+    // Sólo mandamos las filas OK al servidor — el endpoint también
+    // descarta inválidas y dedupe contra DB, pero ahorramos payload.
+    const payload = rows
+      .filter((r) => r.status === 'ok')
+      .map((r) => ({
+        name: r.name || null,
+        phone: r.phone,
+        email: r.email || null,
+        notas: r.notas || null,
+      }))
+
+    if (payload.length === 0) return
+
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/customers/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: payload, source: 'csv' }),
+      })
+      const data = (await res.json()) as ImportResult & { error?: string }
+      if (!res.ok) {
+        setError(data?.error || 'No se pudo importar.')
+        setLoading(false)
+        return
+      }
+      setResult(data)
+      setStep('done')
+      // Refresca la lista en background — cuando el barbero vuelva ya
+      // está actualizada (router.refresh invalida el server component).
+      router.refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error de red.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── STEP: UPLOAD ────────────────────────────────────────────────────────
+  if (step === 'upload') {
+    return (
+      <div className="space-y-4">
+        <div className="bg-surface border border-line rounded-xl p-6">
+          <label className="flex flex-col items-center gap-3 border-2 border-dashed border-line rounded-xl p-8 cursor-pointer hover:border-brand transition-colors">
+            <Upload className="h-8 w-8 text-ink-3" />
+            <div className="text-center">
+              <p className="font-medium text-ink">Suelta tu CSV aquí o haz click</p>
+              <p className="text-xs text-ink-3 mt-1">
+                CSV con cabeceras nombre, telefono, email, notas. Máx. {MAX_ROWS} filas.
+              </p>
+            </div>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleFile(f)
+                e.target.value = ''
+              }}
+              className="hidden"
+            />
+          </label>
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={downloadTemplate}
+              className="inline-flex items-center gap-2 text-sm font-medium text-brand hover:text-brand-strong"
+            >
+              <Download className="h-4 w-4" />
+              Descargar plantilla CSV
+            </button>
+            <p className="text-xs text-ink-3">
+              ¿Tienes un .xlsx? Ábrelo en Excel y guarda como CSV.
+            </p>
+          </div>
+
+          {loading && (
+            <p className="mt-4 text-sm text-ink-2 flex items-center gap-1.5">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Leyendo {fileName}…
+            </p>
+          )}
+
+          {error && (
+            <p className="mt-4 text-sm text-danger flex items-center gap-1.5">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="bg-surface border border-line rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-ink mb-2">Qué pasa después</h3>
+          <ol className="text-sm text-ink-2 space-y-1.5 list-decimal pl-4">
+            <li>Revisas el preview con tus clientes detectados.</li>
+            <li>Confirmas — los duplicados (mismo teléfono) se ignoran automáticamente.</li>
+            <li>Quedan en tu cartera. Pueden reservar contigo igual que antes.</li>
+          </ol>
+        </div>
+      </div>
+    )
+  }
+
+  // ── STEP: PREVIEW ───────────────────────────────────────────────────────
+  if (step === 'preview') {
+    const visibleRows = rows.slice(0, PREVIEW_LIMIT)
+    const hidden = rows.length - visibleRows.length
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-surface border border-line rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink truncate">
+                {fileName || 'archivo.csv'}
+              </p>
+              <p className="text-xs text-ink-3">
+                {summary.total} filas detectadas · mostrando las primeras{' '}
+                {Math.min(PREVIEW_LIMIT, summary.total)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={reset}
+              className="text-xs text-ink-2 hover:text-ink underline underline-offset-2"
+            >
+              Cambiar archivo
+            </button>
+          </div>
+
+          <div className="max-h-[420px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-canvas border-b border-line">
+                <tr className="text-left text-ink-2">
+                  <th className="px-3 py-2 font-medium">Estado</th>
+                  <th className="px-3 py-2 font-medium">Nombre</th>
+                  <th className="px-3 py-2 font-medium">Teléfono</th>
+                  <th className="px-3 py-2 font-medium">Email</th>
+                  <th className="px-3 py-2 font-medium">Notas</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((r, i) => (
+                  <tr key={i} className="border-b border-line/60 last:border-b-0">
+                    <td className="px-3 py-2">
+                      <StatusBadge status={r.status} reason={r.reason} />
+                    </td>
+                    <td className="px-3 py-2 text-ink truncate max-w-[180px]">
+                      {r.name || <span className="text-ink-3">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-ink font-mono text-xs">
+                      {r.phone || <span className="text-ink-3">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-ink-2 text-xs truncate max-w-[180px]">
+                      {r.email || <span className="text-ink-3">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-ink-2 text-xs truncate max-w-[200px]">
+                      {r.notas || <span className="text-ink-3">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => removeRow(i)}
+                        className="text-ink-3 hover:text-danger transition-colors"
+                        aria-label="Quitar fila"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {hidden > 0 && (
+            <div className="px-4 py-2 border-t border-line text-xs text-ink-3 bg-canvas">
+              + {hidden} filas más, sin mostrar. Se importarán igual.
+            </div>
+          )}
+
+          <div className="px-4 py-3 border-t border-line flex flex-wrap items-center justify-between gap-3 bg-canvas">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <SummaryStat label="Listos" count={summary.ok} tone="success" />
+              <SummaryStat label="Sin teléfono" count={summary.noPhone} tone="muted" />
+              <SummaryStat label="Inválidos" count={summary.invalid} tone="danger" />
+              <span className="text-ink-3">Total: {summary.total}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={loading}
+                className="text-sm text-ink-2 hover:text-ink underline underline-offset-2"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={doImport}
+                disabled={loading || summary.ok === 0}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-semibold text-brand-ink disabled:opacity-60"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                {loading
+                  ? 'Importando…'
+                  : summary.ok === 0
+                    ? 'Nada que importar'
+                    : `Importar ${summary.ok} ${summary.ok === 1 ? 'cliente' : 'clientes'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-sm text-danger flex items-center gap-1.5">
+            <AlertCircle className="h-4 w-4" />
+            {error}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // ── STEP: DONE ──────────────────────────────────────────────────────────
+  if (step === 'done' && result) {
+    return (
+      <div className="bg-surface border border-line rounded-xl p-6">
+        <div className="flex items-start gap-3">
+          <div className="h-10 w-10 rounded-full bg-success/10 text-success flex items-center justify-center shrink-0">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold text-ink">
+              {result.partial ? 'Importación parcial' : 'Importación completada'}
+            </h2>
+            <p className="text-sm text-ink-2 mt-1">
+              {result.created} {result.created === 1 ? 'cliente añadido' : 'clientes añadidos'}
+              {result.updated > 0 && (
+                <>
+                  {' · '}
+                  {result.updated} actualizado{result.updated === 1 ? '' : 's'}
+                </>
+              )}
+              {result.skipped > 0 && (
+                <>
+                  {' · '}
+                  {result.skipped} duplicado{result.skipped === 1 ? '' : 's'} ignorado
+                  {result.skipped === 1 ? '' : 's'}
+                </>
+              )}
+              .
+            </p>
+            {result.partial && (
+              <p className="text-xs text-ink-3 mt-2">
+                Algo falló a mitad del proceso. Vuelve a subir el CSV — los que ya
+                están no se duplicarán.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/clientes')}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-5 py-2.5 text-sm font-semibold text-brand-ink"
+          >
+            Ver mis clientes
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            className="text-sm text-ink-2 hover:text-ink underline underline-offset-2"
+          >
+            Importar otro CSV
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ── Subcomponentes ────────────────────────────────────────────────────────
+
+function StatusBadge({
+  status,
+  reason,
+}: {
+  status: PreviewRow['status']
+  reason?: string
+}) {
+  if (status === 'ok') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-2 py-0.5 text-xs font-medium">
+        <CheckCircle2 className="h-3 w-3" />
+        OK
+      </span>
+    )
+  }
+  if (status === 'duplicate') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-softer text-brand-strong px-2 py-0.5 text-xs font-medium">
+        Duplicado
+      </span>
+    )
+  }
+  if (status === 'no_phone') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-ink-2/10 text-ink-2 px-2 py-0.5 text-xs font-medium"
+        title={reason}
+      >
+        Sin tlf
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-danger/10 text-danger px-2 py-0.5 text-xs font-medium"
+      title={reason}
+    >
+      <XCircle className="h-3 w-3" />
+      Inválido
+    </span>
+  )
+}
+
+function SummaryStat({
+  label,
+  count,
+  tone,
+}: {
+  label: string
+  count: number
+  tone: 'success' | 'danger' | 'muted'
+}) {
+  const cls =
+    tone === 'success'
+      ? 'text-success'
+      : tone === 'danger'
+        ? 'text-danger'
+        : 'text-ink-3'
+  return (
+    <span className={`font-medium ${cls}`}>
+      {count} {label.toLowerCase()}
+    </span>
+  )
+}

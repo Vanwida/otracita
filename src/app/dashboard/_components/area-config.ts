@@ -121,6 +121,7 @@ export const AREAS: Area[] = [
     tabs: [
       { seg: null, label: 'Lista', href: '/dashboard/clientes' },
       { seg: 'atribucion', label: 'Atribución', href: '/dashboard/clientes/atribucion' },
+      { seg: 'importar', label: 'Importar', href: '/dashboard/clientes/importar' },
     ],
     prefixes: ['/dashboard/clientes'],
   },
