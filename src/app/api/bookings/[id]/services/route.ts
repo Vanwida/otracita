@@ -133,36 +133,45 @@ export async function PUT(
   // predicado puro compartido (mismo match barberId-o-nombre + buffer que
   // create.ts), excluyendo ESTA cita y las canceladas. Si solapa → 409 y NO
   // se escribe nada (el barbero acorta el servicio o mueve la otra cita).
-  const sameDay = await db
-    .select()
-    .from(bookings)
-    .where(
-      and(
-        eq(bookings.clientId, access.client.id),
-        eq(bookings.date, booking.date),
-        ne(bookings.status, 'cancelled'),
-        ne(bookings.id, id),
-      ),
-    )
-  const clash = hasBookingOverlap(
-    {
-      selfId: id,
-      startMinutes: hhmmToMinutes(booking.time),
-      durationMin,
-      barberId: booking.barberId,
-      barber: booking.barber,
-    },
-    sameDay,
-    access.client.serviceBufferMinutes,
-  )
-  if (clash) {
-    return Response.json(
+  //
+  // FIX: cuando el barbero edita SOLO el precio/servicio y la duración final
+  // no cambia (mismo snapshot que en BD), no tiene sentido re-validar solape
+  // — la cita ocupa exactamente el mismo hueco que ya ocupaba. Saltar el
+  // check evita falsos 409 (la UI inicializa `duration` desde el snapshot
+  // que ya incluye extras, así que recomputar primario+extras inflaba el
+  // valor y disparaba un overlap fantasma con la siguiente cita).
+  if (durationMin !== booking.duration) {
+    const sameDay = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.clientId, access.client.id),
+          eq(bookings.date, booking.date),
+          ne(bookings.status, 'cancelled'),
+          ne(bookings.id, id),
+        ),
+      )
+    const clash = hasBookingOverlap(
       {
-        error:
-          'La nueva duración pisa otra cita del mismo barbero. Acorta el servicio o mueve la otra cita antes de guardar.',
+        selfId: id,
+        startMinutes: hhmmToMinutes(booking.time),
+        durationMin,
+        barberId: booking.barberId,
+        barber: booking.barber,
       },
-      { status: 409 },
+      sameDay,
+      access.client.serviceBufferMinutes,
     )
+    if (clash) {
+      return Response.json(
+        {
+          error:
+            'La nueva duración pisa otra cita del mismo barbero. Acorta el servicio o mueve la otra cita antes de guardar.',
+        },
+        { status: 409 },
+      )
+    }
   }
 
   // Reescribe el snapshot del booking + reemplaza la lista de extras
