@@ -13,9 +13,9 @@
 //   Ventas      · Resumen · Cobros · Cierre de caja · Propinas · Facturas · Productos
 //   Clientes    · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
 //   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
-//   Crecimiento · Fidelidad · Promos · WhatsApp · Reseñas · Tracking
+//   Crecimiento · App · Fidelidad · Promos · WhatsApp · Reseñas · Tracking
 //   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
-//   Ajustes     · Negocio · Pagos · Reservas online · Recepcionista IA · Suscripción · App · Ayuda
+//   Ajustes     · Negocio · Pagos · Reservas online · Recepcionista IA · Suscripción · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
 // viven fuera del nav del barbero.
@@ -169,6 +169,7 @@ export const AREAS: Area[] = [
     href: '/dashboard/marketing',
     subtitle: 'Lo que hace que vuelvan más clientes: promos, bot, fidelidad, reseñas.',
     tabs: [
+      { seg: 'app', label: 'App', href: '/dashboard/app' },
       { seg: null, label: 'Fidelidad', href: '/dashboard/marketing' },
       { seg: 'promos', label: 'Promos', href: '/dashboard/marketing/promos' },
       { seg: 'whatsapp', label: 'WhatsApp', href: '/dashboard/marketing/whatsapp' },
@@ -181,6 +182,7 @@ export const AREAS: Area[] = [
       '/dashboard/bot',
       '/dashboard/fidelidad',
       '/dashboard/resenas',
+      '/dashboard/app',
     ],
   },
   {
@@ -195,13 +197,11 @@ export const AREAS: Area[] = [
       { seg: 'reservas', label: 'Reservas online', href: '/dashboard/ajustes/reservas' },
       { seg: 'recepcionista', label: 'Recepcionista IA', href: '/dashboard/ajustes/recepcionista' },
       { seg: 'suscripcion', label: 'Suscripción', href: '/dashboard/mi-plan' },
-      { seg: 'app', label: 'App', href: '/dashboard/app' },
       { seg: 'ayuda', label: 'Ayuda', href: '/dashboard/ayuda' },
     ],
     prefixes: [
       '/dashboard/ajustes',
       '/dashboard/negocio',
-      '/dashboard/app',
       '/dashboard/mi-plan',
       '/dashboard/ayuda',
       '/dashboard/voice-test',

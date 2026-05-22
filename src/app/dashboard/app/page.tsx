@@ -60,7 +60,7 @@ export default async function AppPage() {
   const readyForApp = Boolean(url && client.publicEnabled)
 
   return (
-    <AreaShell area="ajustes">
+    <AreaShell area="marketing">
       <AreaContent scroll="region" maxWidth="5xl">
       <div className="space-y-6">
       <p className="text-ink-2 max-w-2xl" style={{ fontSize: 'var(--text-meta)' }}>
