@@ -15,6 +15,7 @@ import SumupConnect from '../../_components/SumupConnect'
 import MobileAppConnect from '../../_components/MobileAppConnect'
 import ConnectSettings from '../../_components/ConnectSettings'
 import InvoicingSettings from '../../_components/InvoicingSettings'
+import AjustesLayout from '../_components/AjustesLayout'
 import { pluralizeEs } from '@/lib/i18n/plural-es'
 
 // -----------------------------------------------------------------------------
@@ -64,65 +65,61 @@ export default async function AjustesPagosPage() {
   return (
     <AreaShell area="ajustes">
       <AreaContent scroll="region" maxWidth="5xl">
-        <div className="space-y-8">
-          <div>
-            <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
-          </div>
+        <AjustesLayout intro="Cómo cobras: caja, datáfono, app móvil, Stripe Connect y datos fiscales para emitir factura. Se configura una vez aquí y se queda así.">
+          <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
 
           {client.cashRegisterEnabled && (
-            <div className="border-t border-line pt-8">
-              <SumupConnect
-                initialConnected={
-                  !!client.sumupAccessToken && !!client.sumupMerchantCode
-                }
-                initialMerchantCode={client.sumupMerchantCode}
-                initialReaderId={client.sumupReaderId}
-                initialReaderName={client.sumupReaderName}
-              />
-            </div>
+            <SumupConnect
+              initialConnected={
+                !!client.sumupAccessToken && !!client.sumupMerchantCode
+              }
+              initialMerchantCode={client.sumupMerchantCode}
+              initialReaderId={client.sumupReaderId}
+              initialReaderName={client.sumupReaderName}
+            />
           )}
 
           {client.cashRegisterEnabled && client.sumupAccessToken && (
-            <div className="border-t border-line pt-8">
-              <MobileAppConnect />
-            </div>
+            <MobileAppConnect />
           )}
 
-          <div className="border-t border-line pt-8">
-            <ConnectSettings
-              initial={{
-                status: client.stripeConnectStatus,
-                accountId: client.stripeConnectAccountId,
-                activatedAt: client.stripeConnectActivatedAt
-                  ? client.stripeConnectActivatedAt.toISOString()
-                  : null,
-              }}
-            />
-          </div>
+          <ConnectSettings
+            initial={{
+              status: client.stripeConnectStatus,
+              accountId: client.stripeConnectAccountId,
+              activatedAt: client.stripeConnectActivatedAt
+                ? client.stripeConnectActivatedAt.toISOString()
+                : null,
+            }}
+          />
 
-          <div className="border-t border-line pt-8">
-            <InvoicingSettings
-              initial={{
-                invoicingEnabled: client.invoicingEnabled,
-                fiscalName: client.fiscalName || '',
-                fiscalNif: client.fiscalNif || '',
-                fiscalAddress: client.fiscalAddress || '',
-                fiscalCity: client.fiscalCity || '',
-                fiscalPostalCode: client.fiscalPostalCode || '',
-                ivaRate: client.ivaRate,
-                invoiceNumberPrefix: client.invoiceNumberPrefix,
-                invoiceNumberNext: client.invoiceNumberNext,
-                hasEmittedInvoices,
-              }}
-            />
-          </div>
+          <InvoicingSettings
+            initial={{
+              invoicingEnabled: client.invoicingEnabled,
+              fiscalName: client.fiscalName || '',
+              fiscalNif: client.fiscalNif || '',
+              fiscalAddress: client.fiscalAddress || '',
+              fiscalCity: client.fiscalCity || '',
+              fiscalPostalCode: client.fiscalPostalCode || '',
+              ivaRate: client.ivaRate,
+              invoiceNumberPrefix: client.invoiceNumberPrefix,
+              invoiceNumberNext: client.invoiceNumberNext,
+              hasEmittedInvoices,
+            }}
+          />
 
-          <div className="flex flex-wrap items-start gap-4 border-t border-line pt-8">
+          <div className="flex flex-wrap items-start gap-4 rounded-2xl border border-line bg-surface px-[var(--space-card)] py-4 md:px-6">
             <div className="min-w-0 flex-1">
-              <h3 className="mb-1 font-semibold text-ink">
+              <h3
+                className="font-semibold text-ink"
+                style={{ fontSize: 'var(--text-section-title)' }}
+              >
                 Facturas emitidas
               </h3>
-              <p className="text-[0.8125rem] text-ink-2">
+              <p
+                className="mt-1 text-ink-2"
+                style={{ fontSize: 'var(--text-meta)' }}
+              >
                 {client.invoicingEnabled ? (
                   <>
                     {pluralizeEs(
@@ -144,13 +141,14 @@ export default async function AjustesPagosPage() {
             </div>
             <Link
               href="/dashboard/ventas/facturas"
-              className="inline-flex min-h-[40px] shrink-0 items-center gap-1 text-[0.8125rem] font-semibold text-brand transition-colors hover:text-brand-strong"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1 font-semibold text-brand transition-colors hover:text-brand-strong"
+              style={{ fontSize: 'var(--text-meta)' }}
             >
               Ver facturas
               <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
-        </div>
+        </AjustesLayout>
       </AreaContent>
     </AreaShell>
   )

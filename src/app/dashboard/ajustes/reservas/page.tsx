@@ -9,6 +9,7 @@ import { auth } from '@/lib/auth/server'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
 import PublicPageSettings from '../../_components/PublicPageSettings'
+import AjustesLayout from '../_components/AjustesLayout'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ajustes/reservas — pestaña RESERVAS ONLINE del área Ajustes.
@@ -36,32 +37,26 @@ export default async function AjustesReservasPage() {
   return (
     <AreaShell area="ajustes">
       <AreaContent scroll="region" maxWidth="5xl">
-        <p
-          className="mb-4 text-ink-2"
-          style={{ fontSize: 'var(--text-meta)' }}
-        >
-          Lo que ven tus clientes al reservar online: nombre, logo, portada,
-          color, descripción y redes. Tu enlace y QR para compartir están en
-          la pestaña App.
-        </p>
-        <section className="rounded-2xl border border-line bg-surface p-5 md:p-6">
-          <PublicPageSettings
-            initial={{
-              slug: client.publicSlug,
-              publicEnabled: client.publicEnabled,
-              brandLogoUrl: client.brandLogoUrl,
-              brandLogoAltUrl: client.brandLogoAltUrl,
-              brandCoverUrl: client.brandCoverUrl,
-              brandColor: client.brandColor,
-              brandTheme: client.brandTheme,
-              publicDescription: client.publicDescription,
-              instagramHandle: client.instagramHandle,
-              tiktokHandle: client.tiktokHandle,
-              facebookUrl: client.facebookUrl,
-              websiteUrl: client.websiteUrl,
-            }}
-          />
-        </section>
+        <AjustesLayout intro="Lo que ven tus clientes al reservar online: nombre, logo, portada, color, descripción y redes. Tu enlace y QR para compartir están en la pestaña App.">
+          <section className="rounded-2xl border border-line bg-surface px-[var(--space-card)] py-5 md:px-6 md:py-6">
+            <PublicPageSettings
+              initial={{
+                slug: client.publicSlug,
+                publicEnabled: client.publicEnabled,
+                brandLogoUrl: client.brandLogoUrl,
+                brandLogoAltUrl: client.brandLogoAltUrl,
+                brandCoverUrl: client.brandCoverUrl,
+                brandColor: client.brandColor,
+                brandTheme: client.brandTheme,
+                publicDescription: client.publicDescription,
+                instagramHandle: client.instagramHandle,
+                tiktokHandle: client.tiktokHandle,
+                facebookUrl: client.facebookUrl,
+                websiteUrl: client.websiteUrl,
+              }}
+            />
+          </section>
+        </AjustesLayout>
       </AreaContent>
     </AreaShell>
   )
