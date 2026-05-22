@@ -37,7 +37,7 @@
     "googleapis": "^171.4.0",
     "libphonenumber-js": "^1.13.2",
     "lucide-react": "^1.7.0",
-    "next": "16.2.1",
+    "next": "16.2.6",
     "openai": "^6.32.0",
     "papaparse": "^5.5.3",
     "pg": "^8.20.0",
