@@ -190,6 +190,26 @@ export const clients = pgTable('clients', {
   tiktokHandle: text('tiktok_handle'),                       // without @
   facebookUrl: text('facebook_url'),
   websiteUrl: text('website_url'),
+  // Acceso del equipo — un solo PIN compartido para que el equipo entre al
+  // dashboard (modo equipo) sin login individual. Confianza interna: el
+  // jefe oculta SOLO áreas sensibles (finanzas, nóminas, comisiones,
+  // ajustes técnicos) marcándolas fuera de `teamAllowedAreas`. NO hay
+  // trazabilidad por barbero; si se va alguien → regenerar PIN. El hash se
+  // guarda con scrypt (Node nativo, sin dependencia externa). Cuando
+  // `teamAccessEnabled = false`, /equipo/[slug]/login devuelve 404.
+  teamAccessEnabled: boolean('team_access_enabled').default(false).notNull(),
+  teamPinHash: text('team_pin_hash'),
+  teamPinUpdatedAt: timestamp('team_pin_updated_at', { withTimezone: true }),
+  /**
+   * Lista de áreas permitidas para el modo equipo. Claves estables:
+   *   'agenda' | 'clientes' | 'equipo' | 'ventas' | 'marketing' |
+   *   'informes' | 'ajustes'
+   * Vacío / null → solo "agenda" por default (regla de mínima sorpresa).
+   * Las sub-áreas sensibles (facturas, nóminas, comisiones, finanzas) se
+   * filtran adicionalmente en el layout aunque su área top-level esté
+   * activa.
+   */
+  teamAllowedAreas: jsonb('team_allowed_areas').$type<string[]>().default([]),
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
