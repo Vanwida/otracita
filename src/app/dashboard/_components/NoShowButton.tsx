@@ -2,6 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { dispatchTracking } from '@/lib/tracking/dispatch'
+
+interface NoShowApiResponse {
+  success?: boolean
+  noShowFee?: {
+    status?: 'charged' | 'failed' | 'skipped'
+    amountCents?: number
+  }
+}
 
 type State = 'idle' | 'confirm' | 'loading' | 'done' | 'undoing'
 
@@ -12,11 +21,24 @@ export default function NoShowButton({ bookingId, initiallyMarked = false }: { b
   const markNoShow = async () => {
     setState('loading')
     try {
-      await fetch('/api/bookings/no-show', {
+      const res = await fetch('/api/bookings/no-show', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bookingId }),
       })
+      const data = (await res.json().catch(() => ({}))) as NoShowApiResponse
+      // Solo disparamos no_show_charged si Stripe efectivamente cobró la
+      // tarifa (status === 'charged'). 'skipped' / 'failed' = sin cobro,
+      // sin conversion. Silencioso si el barbero no carga pixels en el
+      // dashboard — dispatchTracking ya hace noop.
+      if (data?.noShowFee?.status === 'charged') {
+        dispatchTracking({
+          event: 'no_show_charged',
+          valueCents: data.noShowFee.amountCents ?? 0,
+          currency: 'EUR',
+          transactionId: `noshow-${bookingId}`,
+        })
+      }
       setState('done')
       router.refresh()
     } catch {

@@ -10,6 +10,7 @@ import ServiceLinePicker from '../_components/ServiceLinePicker';
 import ChargeFlow from '../_components/ChargeFlow';
 import RectificativaModal from '../facturas/_components/RectificativaModal';
 import { pushUndoToast } from '../_components/UndoToast';
+import { dispatchTracking } from '@/lib/tracking/dispatch';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import ClientProfile from '../clientes/[id]/ClientProfile';
 import type { ClientProfileData } from '@/lib/clients/profile';
@@ -259,6 +260,23 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       // (confirmed → no_show). En la dirección inversa (Deshacer no-show) el
       // botón ya es la acción de undo y no tiene sentido apilar otra ventana.
       if (!wasNoShow) {
+        // Si Stripe efectivamente cobró la tarifa, fire conversion event.
+        // Silencioso si no hay pixel cargado en dashboard.
+        try {
+          const data = (await res.json()) as {
+            noShowFee?: { status?: string; amountCents?: number };
+          };
+          if (data?.noShowFee?.status === 'charged') {
+            dispatchTracking({
+              event: 'no_show_charged',
+              valueCents: data.noShowFee.amountCents ?? 0,
+              currency: 'EUR',
+              transactionId: `noshow-${booking.id}`,
+            });
+          }
+        } catch {
+          /* noop */
+        }
         const bookingId = booking.id;
         pushUndoToast({
           message: 'Marcado como no vino',

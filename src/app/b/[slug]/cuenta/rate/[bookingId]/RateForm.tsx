@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Star, Check, ChevronLeft, Loader2, Heart } from 'lucide-react'
 import { SiGoogle } from 'react-icons/si'
+import { dispatchTracking } from '@/lib/tracking/dispatch'
 
 // -----------------------------------------------------------------------------
 // RateForm — UX táctil para valorar una visita desde la PWA del cliente.
@@ -100,6 +101,19 @@ export default function RateForm({
         setTipError(d?.error ?? 'No se pudo iniciar el pago')
         return
       }
+      // Antes de redirigir a Stripe Checkout, dejamos una marca en
+      // sessionStorage. Cuando el cliente vuelva a esta página (manual o
+      // por deep-link) detectamos la marca + existingTip y disparamos el
+      // evento tip_paid a todos los trackers. Sin este marker no podemos
+      // distinguir "abre rate por curiosidad" de "vuelve de Stripe".
+      try {
+        window.sessionStorage.setItem(
+          `otc_tip_pending_${bookingId}`,
+          JSON.stringify({ amountCents, t: Date.now() }),
+        )
+      } catch {
+        /* sessionStorage puede fallar en modo privado */
+      }
       window.location.href = d.url
     } catch {
       setTipError('Error de red')
@@ -107,6 +121,35 @@ export default function RateForm({
       setTipBusy(false)
     }
   }
+
+  // Detectar regreso de Stripe Checkout: si existingTip ya está pagado Y
+  // la marca de "intent to pay" sigue en sessionStorage → el barbero acaba
+  // de cobrar, disparamos tip_paid una sola vez y limpiamos el marker.
+  useEffect(() => {
+    if (!existingTip || existingTip.amountCents <= 0) return
+    if (typeof window === 'undefined') return
+    const key = `otc_tip_pending_${bookingId}`
+    let marker: { amountCents?: number } | null = null
+    try {
+      const raw = window.sessionStorage.getItem(key)
+      if (!raw) return
+      marker = JSON.parse(raw) as { amountCents?: number }
+    } catch {
+      return
+    }
+    if (!marker) return
+    dispatchTracking({
+      event: 'tip_paid',
+      valueCents: existingTip.amountCents,
+      currency: 'EUR',
+      transactionId: `tip-${bookingId}`,
+    })
+    try {
+      window.sessionStorage.removeItem(key)
+    } catch {
+      /* noop */
+    }
+  }, [existingTip, bookingId])
 
   const submit = async () => {
     if (rating === null) return

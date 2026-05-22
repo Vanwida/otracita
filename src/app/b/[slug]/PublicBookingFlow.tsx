@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, Scissors, Euro, Clock, ChevronRight, X, Star } from 'lucide-react'
 import { captureLastTouch, readStoredAttribution } from '@/lib/attribution/capture'
 import NoShowCardModal from './NoShowCardModal'
+import { dispatchTracking } from '@/lib/tracking/dispatch'
 
 // -----------------------------------------------------------------------------
 // PublicBookingFlow — flujo de reserva completo, estilo app.
@@ -139,6 +140,26 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     } catch {
       // localStorage puede fallar en modo privado — ignoramos sin romper.
     }
+  }, [])
+
+  // Modo test del dashboard: ?tracking_test=1 dispara un evento de prueba
+  // a todos los trackers cargados — el barbero puede verificar desde
+  // Marketing → Tracking que sus pixels reciben eventos sin tener que
+  // hacer una reserva real. Espera 1s a que los Scripts se carguen.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('tracking_test') !== '1') return
+    const t = window.setTimeout(() => {
+      dispatchTracking({
+        event: 'booking_confirmed',
+        valueCents: 2500,
+        currency: 'EUR',
+        transactionId: `test-${Date.now()}`,
+        metadata: { test: true },
+      })
+    }, 1500)
+    return () => window.clearTimeout(t)
   }, [])
 
   useEffect(() => {
@@ -288,29 +309,26 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
         return
       }
 
-      // Disparar evento de conversión en dataLayer (GTM lo escucha si el
-      // barbero tiene container configurado + consent granted). Standard
-      // GA4 enhanced ecommerce event.
-      if (typeof window !== 'undefined') {
-        const w = window as Window & { dataLayer?: unknown[] }
-        w.dataLayer = w.dataLayer || []
-        w.dataLayer.push({
-          event: 'booking_confirmed',
-          ecommerce: {
-            currency: 'EUR',
-            value: service.price ?? 0,
-            transaction_id: data.bookingId,
-            items: [
-              {
-                item_name: service.name,
-                item_category: 'service',
-                price: service.price ?? 0,
-                quantity: 1,
-              },
-            ],
-          },
-        })
-      }
+      // Disparar evento de conversión a todos los trackers cargados (GTM,
+      // Meta Pixel, Google Ads, TikTok). dispatchTracking es silencioso si
+      // el tracker no está cargado. `service.price` está en EUROS — para el
+      // helper lo pasamos en céntimos (convención del backend).
+      dispatchTracking({
+        event: 'booking_confirmed',
+        valueCents: Math.round((service.price ?? 0) * 100),
+        currency: 'EUR',
+        transactionId: data.bookingId,
+        metadata: {
+          items: [
+            {
+              item_name: service.name,
+              item_category: 'service',
+              price: service.price ?? 0,
+              quantity: 1,
+            },
+          ],
+        },
+      })
 
       setConfirmation({
         date,

@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from 'react'
 import { Check, Heart, Loader2 } from 'lucide-react'
 import NumberInput from './NumberInput'
 import { formatCents } from '@/lib/format'
+import { dispatchTracking } from '@/lib/tracking/dispatch'
 
 // -----------------------------------------------------------------------------
 // InlineTipPrompt — paso "¿propina?" tras cobrar.
@@ -111,6 +112,13 @@ export default function InlineTipPrompt({
         setSubmitting(false)
         return
       }
+      // Dispatch tip_paid a trackers cargados (silencioso si no hay).
+      dispatchTracking({
+        event: 'tip_paid',
+        valueCents: effectiveTipCents,
+        currency: 'EUR',
+        transactionId: `tip-${bookingId}`,
+      })
       onTipResolved(effectiveTipCents)
     } catch {
       setError('Sin conexión. La propina no se registró.')

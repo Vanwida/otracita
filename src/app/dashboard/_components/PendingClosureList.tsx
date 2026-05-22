@@ -6,6 +6,7 @@ import { CheckCircle2, CreditCard, UserX, AlertCircle, Loader2 } from 'lucide-re
 import ChargeFlow from './ChargeFlow'
 import { pushUndoToast } from './UndoToast'
 import { formatCents } from '@/lib/format'
+import { dispatchTracking } from '@/lib/tracking/dispatch'
 
 // -----------------------------------------------------------------------------
 // PendingClosureList — citas confirmadas de días pasados sin cerrar.
@@ -144,6 +145,24 @@ export default function PendingClosureList({
         const body = await res.json().catch(() => ({}))
         setErrorId({ id: b.id, message: body.error || 'No se ha podido marcar. Vuelve a intentarlo.' })
         return
+      }
+      // Si la tarifa se cobró efectivamente, fire conversion event.
+      // (res.json() solo se consume aquí en el camino feliz — la rama de
+      // error ya retornó arriba.)
+      try {
+        const data = (await res.json()) as {
+          noShowFee?: { status?: string; amountCents?: number }
+        }
+        if (data?.noShowFee?.status === 'charged') {
+          dispatchTracking({
+            event: 'no_show_charged',
+            valueCents: data.noShowFee.amountCents ?? 0,
+            currency: 'EUR',
+            transactionId: `noshow-${b.id}`,
+          })
+        }
+      } catch {
+        /* JSON inválido — el cargo está hecho igual, no nos rompemos */
       }
       pushUndoToast({
         message: 'Marcado como no vino',
