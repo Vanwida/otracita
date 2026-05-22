@@ -84,8 +84,12 @@ export async function POST(req: Request) {
   }
 
   // Solo se puede valorar una vez la reserva ya ha terminado (date+time+duration).
+  // Excepción: si el barbero ya marcó la cita como `completed` (cobró antes de
+  // tiempo), operativamente terminó — permitimos valorar aunque la hora teórica
+  // de fin aún no haya llegado.
   const endsAt = bookingEndsAt(row.booking.date, row.booking.time, row.booking.duration)
-  if (endsAt > new Date()) {
+  const operationallyDone = row.booking.status === 'completed'
+  if (!operationallyDone && endsAt > new Date()) {
     return Response.json({ error: 'Espera a que termine tu cita para valorar' }, { status: 400 })
   }
 
