@@ -1238,6 +1238,20 @@ export const cashSessions = pgTable('cash_sessions', {
   cardDescuadreCents: integer('card_descuadre_cents'),                     // counted - expected
 
   notes: text('notes'),
+
+  /**
+   * Snapshot inmutable del desglose que el barbero vio justo al cerrar la
+   * sesión: totales por método, por kind y (si hay equipo) por barbero. Se
+   * persiste al cerrar para histórico — aunque luego se editen/borren
+   * movimientos (no debería), el cierre conserva la foto exacta de ese
+   * momento. Forma del payload: ver `CashClosingSnapshot` en
+   * `src/lib/cash/breakdown.ts` (single source of truth).
+   *
+   * Null en sesiones cerradas antes de la migración (legacy) y en sesiones
+   * abiertas. La UI cae al cálculo en vivo cuando es null.
+   */
+  closingSnapshot: jsonb('closing_snapshot'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
