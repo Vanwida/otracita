@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { bookings, clients, conversations } from '@/db/schema';
+import { bookings, clients, conversations, tips } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { sendWhatsAppButtons, sendWhatsAppList, sendWhatsAppMessage } from '@/lib/whatsapp/sender';
 import { createTipSession, recordRating } from '@/lib/tips';
@@ -56,6 +56,21 @@ interface FollowupState {
 
 function digitsOnly(p: string | null | undefined): string {
   return (p ?? '').replace(/\D/g, '');
+}
+
+/**
+ * ¿Este booking ya tiene una propina pagada (cualquier método)?
+ *
+ * Usado por el followup para NO ofrecer propina por WhatsApp cuando el cobro
+ * inline en el dashboard (épica Reni #26+#27) ya registró una — la propina
+ * doble sería ruidosa y desconcertante para el cliente.
+ */
+async function hasPaidTipForBooking(bookingId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: tips.id })
+    .from(tips)
+    .where(and(eq(tips.bookingId, bookingId), eq(tips.status, 'paid')));
+  return Boolean(row);
 }
 
 function isOwnBusinessPhone(customerPhone: string, client: Client): boolean {
@@ -423,7 +438,17 @@ export async function handleFollowupReply(
       .filter((n) => Number.isInteger(n) && n >= 100)
       .slice(0, 2); // 2 amounts + "No gracias" = 3 buttons total (Meta max)
 
-    if (!client.tipsEnabled || !client.stripeConnectAccountId || suggested.length === 0) {
+    // GUARD épica Reni #26+#27: si el barbero ya registró una propina inline
+    // al cobrar (cash o card), no volvemos a pedirla por WhatsApp — bypass
+    // directo al "gracias" + posible CTA review en Google.
+    const alreadyTipped = await hasPaidTipForBooking(state.bookingId);
+
+    if (
+      alreadyTipped ||
+      !client.tipsEnabled ||
+      !client.stripeConnectAccountId ||
+      suggested.length === 0
+    ) {
       // Tips disabled or Connect not ready — thank + (si configurado) invitar
       // a dejar reseña en Google. Solo en 5★ (rating >=4 ya filtra esto arriba)
       // porque un 4★ puede esconder feedback crítico — no queremos amplificar
