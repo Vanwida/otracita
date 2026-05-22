@@ -24,6 +24,7 @@ const RESERVED = new Set([
   'terminos',
   'aviso-legal',
   'gracias',
+  'manifest',
   'pay',
   'pricing',
   'b',
