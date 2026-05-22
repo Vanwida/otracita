@@ -6,6 +6,7 @@ import {
   computeExpectedClosing,
   type MovementForCompute,
 } from '@/lib/cash/compute'
+import { loadBreakdownForSession } from '@/lib/cash/load-breakdown'
 
 // -----------------------------------------------------------------------------
 // GET /api/cash/current — sesión activa + movimientos + saldos esperados.
@@ -37,6 +38,7 @@ export async function GET(req: Request) {
       session: null,
       movements: [],
       expected: null,
+      breakdown: null,
     })
   }
 
@@ -51,5 +53,11 @@ export async function GET(req: Request) {
     movements as unknown as MovementForCompute[],
   )
 
-  return Response.json({ session, movements, expected })
+  // Desglose enriquecido por método/kind/barbero — lo que ve el barbero en
+  // el panel "Resumen" y en el modal de cierre. Se calcula en paralelo
+  // (otra query) porque resuelve barberId via subquery a bookings/sales.
+  // Coste OK en V1 (decenas de filas por sesión).
+  const breakdown = await loadBreakdownForSession(client.id, session.id)
+
+  return Response.json({ session, movements, expected, breakdown })
 }
