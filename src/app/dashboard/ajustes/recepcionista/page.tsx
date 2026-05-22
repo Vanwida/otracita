@@ -56,7 +56,7 @@ export default async function AjustesRecepcionistaPage() {
         feature="recepcionistaIA"
         title="Recepcionista IA"
         icon={Mic}
-        back={{ label: 'Ajustes', href: '/dashboard/ajustes' }}
+        back={{ label: 'Crecimiento', href: '/dashboard/marketing' }}
       />
     )
   }
@@ -77,7 +77,7 @@ export default async function AjustesRecepcionistaPage() {
   ]
 
   return (
-    <AreaShell area="ajustes">
+    <AreaShell area="marketing">
       <div className="min-h-0 flex-1">
         <VoiceTest
           client={{

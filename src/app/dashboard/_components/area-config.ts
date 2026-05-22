@@ -13,9 +13,9 @@
 //   Ventas      · Resumen · Cobros · Cierre de caja · Propinas · Facturas · Productos
 //   Clientes    · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
 //   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
-//   Crecimiento · App · Fidelidad · Promos · WhatsApp · Reseñas · Tracking
+//   Crecimiento · App · Recepcionista IA · Bot WhatsApp · Promos · Fidelidad · Reseñas · Tracking
 //   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
-//   Ajustes     · Negocio · Pagos · Reservas online · Recepcionista IA · Suscripción · Ayuda
+//   Ajustes     · Negocio · Pagos · Reservas online · Suscripción · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
 // viven fuera del nav del barbero.
@@ -170,9 +170,10 @@ export const AREAS: Area[] = [
     subtitle: 'Lo que hace que vuelvan más clientes: promos, bot, fidelidad, reseñas.',
     tabs: [
       { seg: 'app', label: 'App', href: '/dashboard/app' },
-      { seg: null, label: 'Fidelidad', href: '/dashboard/marketing' },
+      { seg: 'recepcionista', label: 'Recepcionista IA', href: '/dashboard/ajustes/recepcionista' },
+      { seg: 'whatsapp', label: 'Bot WhatsApp', href: '/dashboard/marketing/whatsapp' },
       { seg: 'promos', label: 'Promos', href: '/dashboard/marketing/promos' },
-      { seg: 'whatsapp', label: 'WhatsApp', href: '/dashboard/marketing/whatsapp' },
+      { seg: null, label: 'Fidelidad', href: '/dashboard/marketing' },
       { seg: 'resenas', label: 'Reseñas', href: '/dashboard/marketing/resenas' },
       { seg: 'tracking', label: 'Tracking', href: '/dashboard/marketing/tracking' },
     ],
@@ -183,6 +184,8 @@ export const AREAS: Area[] = [
       '/dashboard/fidelidad',
       '/dashboard/resenas',
       '/dashboard/app',
+      '/dashboard/ajustes/recepcionista',
+      '/dashboard/voice-test',
     ],
   },
   {
@@ -195,7 +198,6 @@ export const AREAS: Area[] = [
       { seg: null, label: 'Negocio', href: '/dashboard/ajustes' },
       { seg: 'pagos', label: 'Pagos', href: '/dashboard/ajustes/pagos' },
       { seg: 'reservas', label: 'Reservas online', href: '/dashboard/ajustes/reservas' },
-      { seg: 'recepcionista', label: 'Recepcionista IA', href: '/dashboard/ajustes/recepcionista' },
       { seg: 'suscripcion', label: 'Suscripción', href: '/dashboard/mi-plan' },
       { seg: 'ayuda', label: 'Ayuda', href: '/dashboard/ayuda' },
     ],
@@ -204,7 +206,6 @@ export const AREAS: Area[] = [
       '/dashboard/negocio',
       '/dashboard/mi-plan',
       '/dashboard/ayuda',
-      '/dashboard/voice-test',
     ],
   },
 ]
@@ -214,11 +215,30 @@ export const AREA_BY_KEY: Record<string, Area> = Object.fromEntries(
   AREAS.map((a) => [a.key, a]),
 )
 
+/**
+ * Devuelve el área a resaltar en el rail nivel-1 para un pathname dado.
+ *
+ * Match por prefijo MÁS LARGO (más específico gana). Necesario porque
+ * algunas sub-rutas legacy viven dentro del slug de otra área (p.ej.
+ * `/dashboard/ajustes/recepcionista` pertenece al área "Crecimiento"
+ * aunque la URL esté bajo `/dashboard/ajustes/`). Sin esta resolución,
+ * el rail resaltaría DOS áreas a la vez — confuso.
+ */
+export function activeArea(pathname: string): Area | null {
+  let best: { area: Area; len: number } | null = null
+  for (const area of AREAS) {
+    for (const p of area.prefixes) {
+      if (pathname === p || pathname.startsWith(`${p}/`)) {
+        if (!best || p.length > best.len) best = { area, len: p.length }
+      }
+    }
+  }
+  return best?.area ?? null
+}
+
 /** True si `pathname` cae dentro del área (para resaltar el rail nivel-1). */
 export function isAreaActive(area: Area, pathname: string): boolean {
-  return area.prefixes.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  )
+  return activeArea(pathname)?.key === area.key
 }
 
 /** True si `seg` (de useSelectedLayoutSegment) corresponde a esta pestaña. */
