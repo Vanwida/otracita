@@ -61,13 +61,17 @@ export default async function RatePage({ params }: Props) {
     .from(tips)
     .where(eq(tips.bookingId, bookingId))
 
-  // Tip CTA disponible si la barbería está configurada para cobrar online.
-  // Connect debe estar "active" (no solo creado), tipsEnabled true, y al
-  // menos una sugerencia de importe válida (≥ MIN_TIP_CENTS = 100¢).
+  // Tip CTA disponible si la barbería está configurada para cobrar online
+  // Y la cita no tiene aún un tip pagado. Sin este guard, el cliente que ya
+  // pagó la propina (inline en /caja vía /api/bookings/[id]/tip, o por el
+  // propio Stripe Checkout de la PWA) vería otra vez el CTA y podría
+  // duplicar el pago — el barbero ya lo cobró.
+  const alreadyTipped = existingTip?.status === 'paid' && (existingTip?.amountCents ?? 0) > 0
   const canTip =
     client.tipsEnabled &&
     client.stripeConnectStatus === 'active' &&
-    Boolean(client.stripeConnectAccountId)
+    Boolean(client.stripeConnectAccountId) &&
+    !alreadyTipped
   const suggestedTipsCents = (client.tipsSuggestedCents ?? [])
     .filter((n) => Number.isInteger(n) && n >= 100)
     .slice(0, 3)
