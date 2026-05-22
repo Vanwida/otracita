@@ -5,10 +5,10 @@ import { type LucideIcon } from 'lucide-react'
 // AjustesSection — tarjeta de bloque dentro de una pestaña de Ajustes.
 //
 // Sustituye al patrón inconsistente que había en /ajustes/pagos
-// (`border-t border-line pt-8`) y en NegocioForm (cards sueltas con header
-// ad-hoc). Unifica: borde fino redondeado, surface blanca, header con icono
-// terracota suave, título h2 ink-bold, descripción meta ink-2, slot acciones
-// a la derecha del header. Footer slot opcional para CTAs/save bar inline.
+// (`border-t border-line pt-8`) y en el antiguo NegocioForm (cards sueltas
+// con header ad-hoc). Unifica: borde fino redondeado, surface blanca, header
+// con icono terracota suave, título h2 ink-bold, descripción meta ink-2,
+// slot acciones a la derecha del header. Footer slot opcional para CTAs.
 //
 // Mobile-first: padding clamp del tema, full-bleed lateral cómodo. El target
 // táctil se garantiza desde los hijos (inputs, botones); aquí es chrome.

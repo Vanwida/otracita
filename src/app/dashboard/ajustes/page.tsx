@@ -6,7 +6,7 @@ import { db } from '@/db'
 import { clients } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import NegocioForm from '@/app/dashboard/_components/NegocioForm'
+import NegocioSettings from './_components/NegocioSettings'
 import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
@@ -128,23 +128,22 @@ export default async function AjustesNegocioPage() {
   return (
     <AreaShell area="ajustes">
       <AreaContent scroll="region" maxWidth="5xl">
-      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
-        Datos, servicios, equipo y horario con los que opera tu asistente.
-      </p>
-      <NegocioForm
-        clientId={client.id}
-        initial={{
-          businessName: client.businessName || '',
-          whatsappNumber: client.whatsappNumber || '',
-          phone: client.phone || '',
-          address: client.address || '',
-          services,
-          hours,
-          slotStepMinutes: client.slotStepMinutes,
-          blockedDates,
-        }}
-        save={saveBusiness}
-      />
+        <NegocioSettings
+          clientId={client.id}
+          publicSlug={client.publicSlug}
+          publicEnabled={client.publicEnabled}
+          initial={{
+            businessName: client.businessName || '',
+            whatsappNumber: client.whatsappNumber || '',
+            phone: client.phone || '',
+            address: client.address || '',
+            services,
+            hours,
+            slotStepMinutes: client.slotStepMinutes,
+            blockedDates,
+          }}
+          save={saveBusiness}
+        />
       </AreaContent>
     </AreaShell>
   )
