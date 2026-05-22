@@ -21,10 +21,15 @@ import AreaContent from '@/app/dashboard/_components/AreaContent'
 // /dashboard/negocio → redirect aquí. LÓGICA DE SERVIDOR INTACTA.
 // -----------------------------------------------------------------------------
 
+import { isServiceColorToken, type ServiceColorToken } from '@/lib/service-colors'
+
 interface ServiceItem {
   name: string
   duration: string | number
   price: string | number
+  description?: string
+  featured?: boolean
+  colorToken?: ServiceColorToken
 }
 
 export default async function AjustesNegocioPage() {
@@ -66,6 +71,26 @@ export default async function AjustesNegocioPage() {
     let chatbotHours: unknown = null
     try { if (servicesRaw) chatbotServices = JSON.parse(servicesRaw) } catch { /* ignore */ }
     try { if (hoursRaw) chatbotHours = JSON.parse(hoursRaw) } catch { /* ignore */ }
+
+    // Sanea colorToken contra la whitelist. Nunca confiamos en el JSON
+    // entrante: `chatbotServices` es jsonb sin schema en Postgres, así que
+    // si alguien manda `colorToken: "rm -rf"` lo silenciamos antes de
+    // guardar. Los consumidores ven el campo limpio o ausente.
+    if (Array.isArray(chatbotServices)) {
+      chatbotServices = chatbotServices.map((raw) => {
+        if (typeof raw !== 'object' || raw === null) return raw
+        const svc = raw as Record<string, unknown>
+        if ('colorToken' in svc && !isServiceColorToken(svc.colorToken)) {
+          // Elimina el campo en vez de forzar default — así el consumidor
+          // aplica su propio fallback (DEFAULT_SERVICE_COLOR vive en
+          // src/lib/service-colors.ts).
+          const sanitized = { ...svc }
+          delete sanitized.colorToken
+          return sanitized
+        }
+        return svc
+      })
+    }
 
     const { db } = await import('@/db')
     const { clients } = await import('@/db/schema')
