@@ -14,8 +14,8 @@ import CashRegisterToggle from '../../_components/CashRegisterToggle'
 import SumupConnect from '../../_components/SumupConnect'
 import MobileAppConnect from '../../_components/MobileAppConnect'
 import ConnectSettings from '../../_components/ConnectSettings'
-import InvoicingSettings from '../../_components/InvoicingSettings'
 import AjustesLayout from '../_components/AjustesLayout'
+import InvoicingCard from '../_components/InvoicingCard'
 import { pluralizeEs } from '@/lib/i18n/plural-es'
 
 // -----------------------------------------------------------------------------
@@ -64,7 +64,7 @@ export default async function AjustesPagosPage() {
 
   return (
     <AreaShell area="ajustes">
-      <AreaContent scroll="region" maxWidth="5xl">
+      <AreaContent scroll="region" maxWidth="6xl">
         <AjustesLayout intro="Cómo cobras: caja, datáfono, app móvil, Stripe Connect y datos fiscales para emitir factura. Se configura una vez aquí y se queda así.">
           <CashRegisterToggle initialEnabled={client.cashRegisterEnabled} />
 
@@ -93,7 +93,7 @@ export default async function AjustesPagosPage() {
             }}
           />
 
-          <InvoicingSettings
+          <InvoicingCard
             initial={{
               invoicingEnabled: client.invoicingEnabled,
               fiscalName: client.fiscalName || '',
