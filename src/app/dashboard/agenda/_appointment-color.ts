@@ -1,4 +1,10 @@
-import { CheckCircle2, UserX, CalendarX2, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { Check, CheckCheck, Clock, X as XIcon, AlertTriangle, CheckCircle2, UserX, CalendarX2, type LucideIcon } from 'lucide-react';
+import {
+  type ServiceColorToken,
+  DEFAULT_SERVICE_COLOR,
+  isServiceColorToken,
+  SERVICE_COLOR_CLASSES,
+} from '@/lib/service-colors';
 
 // -----------------------------------------------------------------------------
 // FUENTE ÚNICA del color de una cita en la agenda (DESIGN.md §"Booking card"
@@ -177,6 +183,93 @@ export function statusBadge(
       // Confirmada — estado por defecto. Antes devolvía null; ahora también
       // tiene badge para que el estado sea siempre explícito (Booksy).
       return { icon: CheckCircle2, label: 'Confirmada', tone: 'text-success' };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// #33 — Color del bloque por SERVICIO, no por estado.
+//
+// El barbero asigna un `colorToken` a cada servicio (terracota/olive/…). El
+// bloque de cita en la agenda se tinta con ese par {bg, ink}. El ESTADO se
+// comunica con un badge en la esquina sup-der (icono + tono), no con el
+// fondo del bloque. La cancelación se trata aparte: opacity + line-through
+// sobre el color del servicio (no devolvemos color "gris cancelada", la
+// cancelación atenúa lo que ya estaba).
+//
+// `appointmentBlockStyle` / `appointmentChipStyle` siguen aquí porque
+// AgendaSideRail los usa para pintar la leyenda de ESTADO (panel lateral).
+// Para el render del bloque en Día/Semana/Mes los grids consumen
+// `appointmentBlockClasses` / `appointmentChipClasses` (clases Tailwind
+// derivadas de `colorToken`, sin inline style).
+// -----------------------------------------------------------------------------
+
+/** Servicio configurado mínimo necesario para resolver color. Usa solo
+ *  `name` (clave de match con la cita) y `colorToken` (puede no existir
+ *  o venir inválido — el jsonb no tiene schema). */
+export interface ServiceWithColor {
+  name: string;
+  colorToken?: string | null;
+}
+
+/** Resuelve el token de color para una cita a partir del catálogo de
+ *  servicios del cliente. Si el servicio no se encuentra o no tiene
+ *  `colorToken` válido, devuelve el por defecto (terracota = brand). */
+export function resolveBookingColorToken(
+  booking: { service: string },
+  services: ReadonlyArray<ServiceWithColor>,
+): ServiceColorToken {
+  const match = services.find((s) => s.name === booking.service);
+  if (match?.colorToken && isServiceColorToken(match.colorToken)) {
+    return match.colorToken;
+  }
+  return DEFAULT_SERVICE_COLOR;
+}
+
+/** Clases del bloque (Día/Semana) basadas en el color del SERVICIO. Devuelve
+ *  un string listo para concatenar en `className`. `treatment` añade
+ *  line-through cuando la cita está cancelada (consistente con el style
+ *  anterior, pero ahora el color del servicio NO desaparece — solo se
+ *  atenúa con opacity). */
+export function appointmentBlockClasses(
+  token: ServiceColorToken,
+  status: string,
+): { className: string; treatment: string } {
+  const c = SERVICE_COLOR_CLASSES[token];
+  const isCancelled = normalizeStatus(status) === 'cancelled';
+  return {
+    className: `${c.bg} ${c.ink} ${isCancelled ? 'opacity-60' : ''}`.trim(),
+    treatment: isCancelled ? 'line-through' : '',
+  };
+}
+
+/** Variante "chip" del mes — mismas clases (bg + ink) que el bloque. La
+ *  cancelación atenúa con opacity sobre el color del servicio. */
+export function appointmentChipClasses(
+  token: ServiceColorToken,
+  status: string,
+): { className: string; treatment: string } {
+  // Misma lógica que el bloque — un chip de mes es solo una versión densa
+  // del mismo color. No hay variación visual entre vistas.
+  return appointmentBlockClasses(token, status);
+}
+
+/** Badge de estado para la esquina sup-der del bloque. Iconos distintos a
+ *  los de `statusBadge` (que vive en la leyenda lateral): aquí priorizamos
+ *  glifos cortos y reconocibles a tamaño chico (16-20px). */
+export function statusCornerBadge(
+  status: string,
+): { icon: LucideIcon; label: string; tone: string } {
+  switch (normalizeStatus(status)) {
+    case 'pending':
+      return { icon: Clock, label: 'Sin confirmar', tone: 'text-ink-3' };
+    case 'completed':
+      return { icon: CheckCheck, label: 'Hecha', tone: 'text-success' };
+    case 'no_show':
+      return { icon: AlertTriangle, label: 'No vino', tone: 'text-danger' };
+    case 'cancelled':
+      return { icon: XIcon, label: 'Cancelada', tone: 'text-danger' };
+    default:
+      return { icon: Check, label: 'Confirmada', tone: 'text-success' };
   }
 }
 

@@ -43,7 +43,16 @@ interface CalendarPayload {
 const EMPTY_PAYLOAD: CalendarPayload = { events: [], blocks: [] };
 
 interface Props {
-  services: Array<{ name: string; duration: number; price: number }>;
+  /** Servicios configurados del cliente (`clients.chatbotServices`). El
+   *  campo opcional `colorToken` alimenta el color del bloque en agenda
+   *  (#33 — color por servicio, no por estado). Se propaga a
+   *  DayGrid/WeekGrid/MonthGrid. */
+  services: Array<{
+    name: string;
+    duration: number;
+    price: number;
+    colorToken?: string | null;
+  }>;
   barbers: Barber[];
   blockedDates: string[];
   hours: Record<string, string> | null;
@@ -786,6 +795,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               events={events}
               blocks={blocks}
               barbers={barbers}
+              services={services}
               blockedDates={blockedDates}
               hours={hours}
               onEventClick={handleEventClick}
@@ -836,6 +846,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             <WeekGrid
               weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
               events={events}
+              services={services}
               blockedDates={blockedDates}
               hours={hours}
               onEventClick={handleEventClick}
@@ -845,6 +856,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             <MonthGrid
               monthStart={startOfMonth(currentDay)}
               events={events}
+              services={services}
               blockedDates={blockedDates}
               onEventClick={handleEventClick}
               onSlotClick={handleSlotClick}

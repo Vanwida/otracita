@@ -22,6 +22,8 @@ function getCurrentTimeMinutes(): number {
 interface Props {
   weekStart: Date;
   events: CalendarEvent[];
+  /** Catálogo de servicios — color del bloque por servicio (#33). */
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
   blockedDates: string[];
   /** Horario semanal de la tienda — alimenta la ventana dinámica y el
    *  sombreado fuera-de-horario, consistente con la vista Día. */
@@ -33,6 +35,7 @@ interface Props {
 export default function WeekGrid({
   weekStart,
   events,
+  services,
   blockedDates,
   hours,
   onEventClick,

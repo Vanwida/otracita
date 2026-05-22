@@ -19,8 +19,17 @@ export default async function CalendarPage() {
 
   if (!client) redirect('/dashboard/setup');
 
+  // `chatbotServices` es jsonb sin schema — leemos los campos que la agenda
+  // necesita (incluye `colorToken` opcional para pintar el bloque #33). Los
+  // consumidores validan el token con `isServiceColorToken` al pintar; si
+  // falta o es inválido, cae al DEFAULT_SERVICE_COLOR (terracota).
   const services =
-    (client.chatbotServices as Array<{ name: string; duration: number; price: number }>) || [];
+    (client.chatbotServices as Array<{
+      name: string;
+      duration: number;
+      price: number;
+      colorToken?: string | null;
+    }>) || [];
   // Equipo activo: canonical `barbers` table. NUNCA leer de
   // client.booksyServices (jsonb legacy, se quedó congelado cuando se
   // introdujo la tabla). Usarlo provocaba que un barbero dado de baja (soft

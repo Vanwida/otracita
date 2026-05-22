@@ -32,6 +32,10 @@ interface Props {
    *  rango horario indicado (clase `.blocked-overlay` ya tokenizada). */
   blocks: CalendarBlock[];
   barbers: Barber[];
+  /** Catálogo de servicios del cliente — alimenta el color del bloque
+   *  (#33). Cada entrada puede traer `colorToken` opcional; si falta o es
+   *  inválido, `resolveBookingColorToken` cae al DEFAULT (terracota). */
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
   blockedDates: string[];
   hours: Record<string, string> | null;
   onEventClick: (event: CalendarEvent) => void;
@@ -141,6 +145,7 @@ export default function DayGrid({
   events,
   blocks,
   barbers,
+  services,
   blockedDates,
   hours,
   onEventClick,

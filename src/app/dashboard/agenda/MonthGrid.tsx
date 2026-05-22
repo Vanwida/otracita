@@ -19,6 +19,8 @@ const MAX_VISIBLE = 3;
 interface Props {
   monthStart: Date;
   events: CalendarEvent[];
+  /** Catálogo de servicios — color del chip por servicio (#33). */
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
   blockedDates: string[];
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
@@ -27,6 +29,7 @@ interface Props {
 export default function MonthGrid({
   monthStart,
   events,
+  services,
   blockedDates,
   onEventClick,
   onSlotClick,
