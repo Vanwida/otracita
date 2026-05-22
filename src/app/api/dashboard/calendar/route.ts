@@ -3,13 +3,16 @@ import { db } from '@/db';
 import { bookings, barberBlocks } from '@/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access';
+  requireTenantAccess,
+  tenantAccessErrorResponse,
+} from '@/lib/team-auth/tenant';
 
+// Acepta modo admin (Better Auth) Y modo equipo (cookie firmada). El
+// modo equipo solo necesita LEER aquí; las restricciones destructivas
+// viven en endpoints específicos (DELETE barber blocks, etc.).
 export async function GET(req: NextRequest) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  const access = await requireTenantAccess(req);
+  if (!access.ok) return tenantAccessErrorResponse(access);
   const { client } = access;
 
   const { searchParams } = req.nextUrl;

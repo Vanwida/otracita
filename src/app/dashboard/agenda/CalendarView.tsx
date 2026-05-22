@@ -69,9 +69,17 @@ interface Props {
   /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal
    *  manual cash/card/online. */
   sumupReaderConnected?: boolean;
+  /**
+   * Cuando true, la agenda se renderiza en MODO EQUIPO (/equipo/[slug]):
+   * sin botones destructivos (cancelar reserva, eliminar bloqueo), sin
+   * acceso a promos contextuales, sin botón importar. La cantidad de
+   * superficie cambia poco; sirve para que las APIs reciban la cookie
+   * del equipo y para esconder los flujos que pertenecen al dueño.
+   */
+  teamMode?: boolean;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false, teamMode = false }: Props) {
   const confirm = useConfirm();
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
@@ -682,8 +690,11 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             solo es secundario y vive en el rail izquierdo ("Empleados y
             recursos"), igual que en Booksy (screenshot 09.39.31). */}
 
-        {/* Promos + import + new booking */}
-        {promosEnabled && (
+        {/* Promos + import + new booking. teamMode oculta promos (envía
+            comunicaciones de marketing — decisión del dueño) e importar
+            (operación masiva del dueño). El "ml-auto" se aplica al primer
+            botón visible para empujar el grupo al final del header. */}
+        {!teamMode && promosEnabled && (
           <button
             type="button"
             onClick={() => setIsPromosOpen(true)}
@@ -694,20 +705,22 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             Llenar huecos
           </button>
         )}
-        <a
-          href="/dashboard/agenda/importar"
-          className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
-          title="Importar reservas desde Booksy / agenda externa"
-        >
-          Importar
-        </a>
+        {!teamMode && (
+          <a
+            href="/dashboard/agenda/importar"
+            className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
+            title="Importar reservas desde Booksy / agenda externa"
+          >
+            Importar
+          </a>
+        )}
         <button
           onClick={() => {
             setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: null });
             setSelectedBookingId(null);
             setIsNewBookingOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
+          className={`${teamMode ? 'ml-auto ' : ''}flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors`}
         >
           <Plus className="h-3.5 w-3.5" />
           Nueva cita
@@ -806,6 +819,10 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
                 setBarberMenu(b);
               }}
               onBlockClick={async (block) => {
+                // Modo equipo: NO permitimos eliminar descansos/ausencias.
+                // Son scheduling personal del barbero — los gestiona el
+                // dueño en Equipo > Turnos. Click sin efecto.
+                if (teamMode) return;
                 // Por ahora: confirm sencillo "¿Eliminar este descanso?".
                 // Edit-in-place requiere refactor del BlockModal a modo
                 // dual (new|edit); siguiente iteración. Mientras tanto el
@@ -879,6 +896,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         barbers={barbers}
         services={services}
         onMutated={() => refetch()}
+        teamMode={teamMode}
       />
 
       {/* Promos modal — solo se renderiza si está activado en /dashboard/app */}
