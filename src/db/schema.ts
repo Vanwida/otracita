@@ -133,6 +133,16 @@ export const clients = pgTable('clients', {
   // código por cada herramienta. Cookie consent obligatorio antes de
   // cargar (Consent Mode v2).
   gtmContainerId: text('gtm_container_id'),
+  // Tracking pixels directos — alternativa / complemento a GTM. El barbero
+  // pega los IDs de sus pixels (Meta, Google Ads, TikTok) y los inyectamos
+  // directamente en /b/[slug]/* con Consent Mode v2 (denied por defecto;
+  // grant tras aceptar cookies). Permite medir conversiones sin instalar
+  // GTM, que muchos barberos no van a tocar. Todos los formatos validados
+  // server-side antes de persistir.
+  metaPixelId: text('meta_pixel_id'),
+  googleAdsConversionId: text('google_ads_conversion_id'),
+  googleAdsConversionLabel: text('google_ads_conversion_label'),
+  tiktokPixelId: text('tiktok_pixel_id'),
   // Caja efectivo — opt-in. Cuando true, el barbero puede abrir/cerrar
   // sesión de caja en /dashboard/caja, y al marcar una cita como completada
   // se le pide método de pago (cash/card/online) para alimentar el cuadre
