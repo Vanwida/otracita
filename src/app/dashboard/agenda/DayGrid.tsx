@@ -980,27 +980,39 @@ export default function DayGrid({
                         }}
                         title={event.title}
                       >
-                        {/* Top row: hora tabular (mono) + icono estado/lock.
-                            Layout flex justify-between para que el icono no
-                            robe línea al texto del cliente. */}
-                        <div className="flex justify-between items-start leading-tight">
+                        {/* Estado de la cita — badge en esquina sup-der
+                            (#33). Ícono solo, sobre disco semitransparente
+                            para legibilidad sobre el color del servicio.
+                            Booksy lock tiene prioridad visual: si la cita
+                            viene de Booksy y no está cancelada, mostramos
+                            el candado en lugar del estado (la cita es
+                            inmutable, el estado real no aplica). */}
+                        <div
+                          className="absolute top-1 right-1 z-10 inline-flex items-center justify-center h-5 w-5 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm ring-1 ring-current/15"
+                          aria-label={isBooksy && !isCancelled ? 'Cita de Booksy (bloqueada)' : badge.label}
+                          title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                        >
+                          {isBooksy && !isCancelled ? (
+                            <Lock className="h-3 w-3 text-ink-2" aria-hidden="true" />
+                          ) : (
+                            <badge.icon
+                              className={`h-3 w-3 ${badge.tone}`}
+                              aria-hidden="true"
+                            />
+                          )}
+                        </div>
+
+                        {/* Hora del bloque — línea pequeña arriba. En el
+                            commit siguiente esta línea desaparece para
+                            bloques < 30min (el nombre del cliente pasa a
+                            ser la única primera línea). */}
+                        <div className="leading-tight pr-6">
                           <span
                             className="tabular-nums font-medium opacity-90"
                             style={{ fontSize: '0.6875rem', letterSpacing: '0.01em' }}
                           >
                             {displayStartTime}<span className="opacity-70"> – {endTime}</span>
                           </span>
-                          {isBooksy && !isCancelled ? (
-                            <Lock
-                              className="h-3 w-3 opacity-70 shrink-0 mt-0.5"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <badge.icon
-                              className="h-3 w-3 opacity-75 shrink-0 mt-0.5"
-                              aria-label={badge.label}
-                            />
-                          )}
                         </div>
 
                         {/* Cliente — protagonista. headline-sm scale.

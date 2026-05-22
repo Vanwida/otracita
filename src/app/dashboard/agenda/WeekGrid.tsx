@@ -267,25 +267,30 @@ export default function WeekGrid({
                         style={{ top, height }}
                         title={event.title}
                       >
-                        {/* Booksy lock icon */}
-                        {isBooksy && !isCancelled && (
-                          <Lock className="absolute top-1 right-1 h-3 w-3 opacity-70" aria-hidden="true" />
-                        )}
-                        {/* Línea 1 — hora + cliente (legible, no 10px). */}
+                        {/* Estado/Booksy — esquina sup-der (#33). Mismo
+                            patrón que DayGrid: disco translúcido + ícono. */}
+                        <div
+                          className="absolute top-0.5 right-0.5 z-10 inline-flex items-center justify-center h-4 w-4 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm"
+                          aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                          title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                        >
+                          {isBooksy && !isCancelled ? (
+                            <Lock className="h-2.5 w-2.5 text-ink-2" aria-hidden="true" />
+                          ) : (
+                            <badge.icon
+                              className={`h-2.5 w-2.5 ${badge.tone}`}
+                              aria-hidden="true"
+                            />
+                          )}
+                        </div>
+                        {/* Línea 1 — hora + cliente. Reservamos paddings
+                            para no chocar con el badge esquina. */}
                         <p
-                          className="font-semibold leading-tight truncate"
+                          className="font-semibold leading-tight truncate pr-5"
                           style={{ fontSize: 'var(--agenda-ev-client)' }}
                         >
                           <span className="tabular-nums">{event.time}</span>{' '}
                           {event.customerName || event.customerPhone}
-                          {badge && (
-                            <span
-                              className={`ml-1 inline-flex items-center gap-0.5 font-bold ${badge.tone}`}
-                            >
-                              <badge.icon className="h-3 w-3" aria-hidden="true" />
-                              {showService && <span>{badge.label}</span>}
-                            </span>
-                          )}
                         </p>
                         {showService && (
                           <p
