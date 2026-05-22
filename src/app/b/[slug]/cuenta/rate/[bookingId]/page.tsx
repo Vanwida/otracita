@@ -96,6 +96,7 @@ export default async function RatePage({ params }: Props) {
           ? { amountCents: existingTip.amountCents }
           : null
       }
+      googleReviewUrl={client.googleReviewUrl ?? null}
     />
   )
 }

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Star, Check, ChevronLeft, Loader2, Heart } from 'lucide-react'
+import { SiGoogle } from 'react-icons/si'
 
 // -----------------------------------------------------------------------------
 // RateForm — UX táctil para valorar una visita desde la PWA del cliente.
@@ -46,6 +47,9 @@ interface Props {
   tipConfig: TipConfig | null
   /** Si ya pagó propina para este booking, mostramos confirmación en vez de CTA. */
   existingTip: ExistingTip | null
+  /** URL pública de reseña en Google Maps. Si la barbería la configuró y el
+   *  cliente valora 5★, mostramos CTA para publicar en Google. */
+  googleReviewUrl: string | null
 }
 
 export default function RateForm({
@@ -59,6 +63,7 @@ export default function RateForm({
   existing,
   tipConfig,
   existingTip,
+  googleReviewUrl,
 }: Props) {
   const router = useRouter()
   const [rating, setRating] = useState<number | null>(existing?.rating ?? null)
@@ -77,6 +82,9 @@ export default function RateForm({
   const finalRating = rating ?? existing?.rating ?? 0
   const showTipBlock =
     submitted && finalRating >= 4 && tipConfig !== null && existingTip === null
+  // CTA Google Reseñas: solo en 5★ y si la barbería configuró el link. Secundario
+  // visualmente al tip (que es el conversion event que paga al barbero).
+  const showGoogleCta = submitted && finalRating === 5 && Boolean(googleReviewUrl)
 
   const payTip = async (amountCents: number) => {
     setTipBusy(true)
@@ -275,9 +283,53 @@ export default function RateForm({
               </div>
             )}
 
-            {/* Si no hay tip CTA (nota baja, o barbería sin Connect), simplemente
-                botón para volver a cuenta. */}
-            {!showTipBlock && (
+            {/* CTA Google Reseñas — solo si nota === 5 y la barbería tiene link.
+                Secundario al tip: variant brand-soft, debajo. Abre en pestaña
+                nueva con window.open para preservar el estado de la PWA (un
+                <a target="_blank"> dispararía full reload del Service Worker
+                shell en algunos browsers). */}
+            {showGoogleCta && googleReviewUrl && (
+              <div className={showTipBlock ? 'mt-3' : 'mt-4'}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(googleReviewUrl, '_blank', 'noopener,noreferrer')
+                  }
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
+                  style={{
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent-strong)',
+                    border: '1px solid var(--theme-line)',
+                    minHeight: '48px',
+                  }}
+                >
+                  <SiGoogle className="h-4 w-4" />
+                  Publicar reseña en Google
+                </button>
+                <p
+                  className="mt-2 text-[11px] text-center"
+                  style={{ color: 'var(--theme-ink-3)' }}
+                >
+                  Tu opinión nos ayuda mucho. Se abrirá Google Maps en otra pestaña.
+                </p>
+                {/* Sin tip CTA arriba, el usuario no tendría link de vuelta —
+                    añadimos uno discreto. Si hay tip CTA, ya incluye "No, gracias". */}
+                {!showTipBlock && (
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/b/${slug}/cuenta`)}
+                    className="mt-3 w-full text-sm py-2 transition-colors"
+                    style={{ color: 'var(--theme-ink-3)' }}
+                  >
+                    Volver a mi cuenta
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Si no hay tip CTA NI Google CTA (nota baja, sin Connect, sin link),
+                simplemente botón para volver a cuenta. */}
+            {!showTipBlock && !showGoogleCta && (
               <Link
                 href={`/b/${slug}/cuenta`}
                 className="mt-4 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
