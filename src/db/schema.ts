@@ -888,6 +888,18 @@ export const payments = pgTable('payments', {
   status: text('status').notNull(),   // 'pending' | 'succeeded' | 'failed' | 'refunded' | 'cancelled'
   description: text('description'),   // shown on Stripe Checkout and receipt
   paymentLinkUrl: text('payment_link_url'),  // hosted Stripe Checkout URL
+  // Split-payment support (épica Reni 2026-05-22, #26/#27):
+  //   · `method` = qué método usó este tramo concreto del cobro. Un booking
+  //     puede tener N rows con distintos métodos (cash + card_physical = pago
+  //     fraccionado). NULL en filas legacy (asumir card_online por origen
+  //     Stripe Checkout). Whitelist: cash | card_physical | bizum | card_online.
+  //   · `sumupTransactionId` = idempotencia para tramos cobrados con SumUp.
+  //   · `recordedByEmail` = quién registró el cobro manual (offline). Audit.
+  //   · `notes` = texto libre opcional ("Bizum +34 6XX...").
+  method: text('method'),
+  sumupTransactionId: text('sumup_transaction_id').unique(),
+  recordedByEmail: text('recorded_by_email'),
+  notes: text('notes'),
   // Audit
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),

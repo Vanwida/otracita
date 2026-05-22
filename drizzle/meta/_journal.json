@@ -141,6 +141,13 @@
       "when": 1779356434986,
       "tag": "0030_tips_method_and_barber",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1779439218205,
+      "tag": "0031_split_payments",
+      "breakpoints": true
     }
   ]
 }
