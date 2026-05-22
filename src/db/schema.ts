@@ -31,6 +31,18 @@ export const clients = pgTable('clients', {
   metaTokenExpiresAt: timestamp('meta_token_expires_at'),                      // token expiry for alerting
   onboardingTestMessageSentAt: timestamp('onboarding_test_message_sent_at'),   // first manual test OK
   onboardingNotes: text('onboarding_notes'),                                   // free-form admin notes
+  // Self-service bot activation (#53). El barbero rellena un form en
+  // /dashboard/marketing/whatsapp con el número que quiere usar, el nombre
+  // legal del negocio y opcionalmente su Facebook Business ID. Lo guardamos
+  // como jsonb crudo + timestamp; cuando el admin completa el alta en Meta
+  // y rellena `whatsappPhoneNumberId`, la solicitud queda "ejecutada".
+  whatsappBotRequest: jsonb('whatsapp_bot_request').$type<{
+    phoneRequested: string;
+    businessLegalName: string;
+    fbBusinessId?: string | null;
+    submittedAt: string;
+  } | null>(),
+  whatsappBotRequestedAt: timestamp('whatsapp_bot_requested_at', { withTimezone: true }),
   // Booksy integration
   booksyProfileUrl: text('booksy_profile_url'),
   booksyServices: jsonb('booksy_services'), // scraped services from Booksy
