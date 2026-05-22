@@ -57,7 +57,7 @@ const REFERRER_HOST_MAP: Array<{ pattern: RegExp; source: AttributionSource; med
 ];
 
 export interface DeriveSourceInput {
-  /** URL completa con search params. Ej: `https://otracita.es/b/foo?utm_source=instagram&utm_medium=social&utm_campaign=verano`. */
+  /** URL completa con search params. Ej: `https://otracita.es/foo?utm_source=instagram&utm_medium=social&utm_campaign=verano`. */
   url: string;
   /** `document.referrer`. Vacío si entrada directa. */
   referrer?: string;

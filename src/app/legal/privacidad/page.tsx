@@ -18,7 +18,7 @@ import { Wordmark } from '@/components/brand'
 //   · Protocolo de brechas de seguridad
 //
 // La página se mantiene legible (anchos máximos), usa tokens del theme y
-// se enlaza desde el form público de reserva (PWA /b/[slug]).
+// se enlaza desde el form público de reserva (PWA /[slug]).
 // -----------------------------------------------------------------------------
 
 export const metadata: Metadata = {

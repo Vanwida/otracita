@@ -10,7 +10,7 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit'
 //
 // Returns a Booksy-style availability grid for a single date: for each
 // active barber we list their free slots, plus the UNION ("cualquiera
-// disponible"). The /b/[slug] UI uses this to:
+// disponible"). The /[slug] UI uses this to:
 //   · Grey out barber circles that have zero slots that day.
 //   · Show the hour chips depending on who's selected.
 //

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   Globe,
   Pencil,
@@ -42,7 +42,7 @@ export default function ReservasOnlineCard({ initial }: Props) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const publicUrl = initial.slug ? `${SITE_ORIGIN}/b/${initial.slug}` : ''
+  const publicUrl = initial.slug ? `${SITE_ORIGIN}/${initial.slug}` : ''
   const brandColor = initial.brandColor || BRAND_TERRACOTA_HEX
   const theme = initial.brandTheme === 'dark' ? 'dark' : 'light'
 

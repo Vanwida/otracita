@@ -11,7 +11,7 @@ import BotStatusCopyButton from './BotStatusCopyButton'
 // puede usar TODO el producto excepto el bot conversacional:
 //   · Dashboard, agenda, clientes ✓
 //   · Facturación, cobros ✓
-//   · App pública /b/[slug] ✓
+//   · App pública /[slug] ✓
 //   · Bot WhatsApp ✗ — requiere activación Meta
 //
 // Este banner reduce la sensación de "producto roto" al explicar que:
@@ -50,7 +50,7 @@ export default function BotActivationStatus({
   const botReady = !!whatsappPhoneNumberId
   if (botReady) return null
 
-  const publicUrl = publicSlug && publicEnabled ? `${SITE_ORIGIN}/b/${publicSlug}` : null
+  const publicUrl = publicSlug && publicEnabled ? `${SITE_ORIGIN}/${publicSlug}` : null
 
   return (
     <div className="mb-6 rounded-2xl border border-warning/30 bg-warning/5 overflow-hidden">

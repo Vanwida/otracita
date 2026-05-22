@@ -7,7 +7,7 @@ import { publicPagePath } from '@/lib/site'
 // GET /manifest/[slug]/manifest.webmanifest
 //
 // Per-barbería PWA manifest. When the client's customer "Adds to Home Screen"
-// from /b/[slug], their OS reads this file and uses the barbería's name +
+// from /[slug], their OS reads this file and uses the barbería's name +
 // logo + brand color for the app icon, splash screen and chrome — NOT
 // otracita's branding. Each barbería effectively gets their own installable
 // app on the user's phone.

@@ -12,7 +12,7 @@ import { ensureUniqueSlug, isValidSlug, slugifyName } from '@/lib/slug'
 //
 // Tenant-authenticated endpoint backing the "Página pública" tab on
 // /dashboard/negocio. Updates the slug + branding fields for the public
-// /b/[slug] page. Slug conflicts are resolved automatically by appending
+// /[slug] page. Slug conflicts are resolved automatically by appending
 // `-N` rather than rejecting — less friction for the barber.
 // -----------------------------------------------------------------------------
 

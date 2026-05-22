@@ -8,7 +8,7 @@ import { ensureCustomerSetupIntent } from '@/lib/stripe/setup-intent'
 // -----------------------------------------------------------------------------
 // POST /api/public/bookings/setup-intent
 //
-// Público (sin auth) — lo llama el form de reserva /b/[slug] SOLO cuando el
+// Público (sin auth) — lo llama el form de reserva /[slug] SOLO cuando el
 // negocio tiene tarifa de no-show (`clients.no_show_fee_cents > 0`). Devuelve
 // el client_secret de un SetupIntent para que el cliente guarde su tarjeta
 // (Payment Element) antes de confirmar la reserva.

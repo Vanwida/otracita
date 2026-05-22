@@ -8,7 +8,7 @@ import { buildPalette } from '../brand-utils'
 import CustomerAccount from './CustomerAccount'
 
 // -----------------------------------------------------------------------------
-// /b/[slug]/cuenta — pantalla "Perfil" del cliente (accessible desde el
+// /[slug]/cuenta — pantalla "Perfil" del cliente (accessible desde el
 // BottomTabBar). Hereda el theming de la barbería para que el cliente
 // sienta que sigue dentro de la misma app.
 //

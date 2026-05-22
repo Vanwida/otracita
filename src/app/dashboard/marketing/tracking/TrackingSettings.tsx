@@ -33,7 +33,7 @@ import {
 // — la respuesta 400 con `conflict` se muestra como banner global.
 //
 // "Vista previa" lista qué scripts cargarán al publicar; "Enviar evento de
-// prueba" abre /b/[slug] en pestaña nueva con ?test=1 — la PWA reconoce el
+// prueba" abre /[slug] en pestaña nueva con ?test=1 — la PWA reconoce el
 // flag y dispara dispatchTracking('booking_confirmed', test) para que el
 // barbero vea el evento llegando a Meta/Google/TikTok en tiempo real.
 // -----------------------------------------------------------------------------
@@ -49,7 +49,7 @@ interface Initial {
 interface Props {
   initial: Initial
   /** Slug público del barbero — necesario para el botón "Enviar evento de
-   *  prueba" (abre /b/[slug]?tracking_test=1). */
+   *  prueba" (abre /[slug]?tracking_test=1). */
   publicSlug: string | null
 }
 
@@ -219,7 +219,7 @@ export default function TrackingSettings({ initial, publicSlug }: Props) {
 
   function sendTestEvent() {
     if (!publicSlug) return
-    const url = `/b/${publicSlug}?tracking_test=1`
+    const url = `/${publicSlug}?tracking_test=1`
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 

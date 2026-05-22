@@ -8,7 +8,7 @@ import { getAppSession } from '@/lib/app-auth/session'
 import RateForm from './RateForm'
 
 // -----------------------------------------------------------------------------
-// /b/[slug]/cuenta/rate/[bookingId] — pantalla de valoración táctil para
+// /[slug]/cuenta/rate/[bookingId] — pantalla de valoración táctil para
 // clientes desde la PWA.
 //
 // Trigger: push notification con deep-link a esta URL disparado al
@@ -16,7 +16,7 @@ import RateForm from './RateForm'
 // sweep diario del cron de reminders). El cliente la abre, ve el
 // contexto del servicio (barbero + fecha) y elige las estrellas.
 //
-// Auth: si no está logueado, redirigimos a /b/[slug]/cuenta para que haga
+// Auth: si no está logueado, redirigimos a /[slug]/cuenta para que haga
 // login OTP y vuelva. Si está logueado pero no es su reserva, 404.
 //
 // Si ya valoró antes, mostramos la valoración existente (read-only) en vez
@@ -37,7 +37,7 @@ export default async function RatePage({ params }: Props) {
   const session = await getAppSession()
   if (!session) {
     // Redirige al login PWA con el destino guardado para volver tras OTP.
-    redirect(`/b/${slug}/cuenta?next=${encodeURIComponent(`/b/${slug}/cuenta/rate/${bookingId}`)}`)
+    redirect(`/${slug}/cuenta?next=${encodeURIComponent(`/${slug}/cuenta/rate/${bookingId}`)}`)
   }
 
   const [user] = await db.select().from(appUsers).where(eq(appUsers.id, session.userId))

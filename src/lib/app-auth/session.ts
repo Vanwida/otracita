@@ -12,7 +12,7 @@ import { MS_IN_DAY } from '@/lib/time'
 //    cookie; we store only its SHA-256 hash in the DB so a DB dump doesn't
 //    give an attacker a bag of valid tokens.
 //  · Cookie name: "otracita_app_session" — scoped to the whole domain so the
-//    same session works across any /b/<slug> the customer visits.
+//    same session works across any /<slug> the customer visits.
 //  · Lifetime: 90 days sliding (lastUsedAt refreshed on each auth check).
 // -----------------------------------------------------------------------------
 

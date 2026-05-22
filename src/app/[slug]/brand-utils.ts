@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// brand-utils — paleta por barbería para la página pública /b/[slug].
+// brand-utils — paleta por barbería para la página pública /[slug].
 //
 // Modelo de configuración (estilo Apple):
 //   1) Tema: 'light' | 'dark' — decide el fondo/texto base

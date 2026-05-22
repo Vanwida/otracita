@@ -27,7 +27,7 @@ import { setGoogleAdsConversion } from '@/lib/tracking/dispatch'
 //      que pide la AEPD: cargar pixels base OK; disparar tags marketing
 //      sin consentimiento NO.
 //
-// El barbero NO ve esto desde su dashboard — vive en /b/[slug] para sus
+// El barbero NO ve esto desde su dashboard — vive en /[slug] para sus
 // clientes finales.
 // -----------------------------------------------------------------------------
 

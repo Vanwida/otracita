@@ -7,7 +7,7 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit'
 // -----------------------------------------------------------------------------
 // POST /api/public/bookings/create
 //
-// Public endpoint (no auth) used by the /b/[slug] page. Resolves the
+// Public endpoint (no auth) used by the /[slug] page. Resolves the
 // barbería by slug and funnels through the same `createBooking` helper used
 // by the dashboard + bot, so scheduling standards / auto-invoicing / barber
 // resolution all apply identically.

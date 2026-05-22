@@ -5,11 +5,11 @@ import { eq } from 'drizzle-orm'
 import AnalyticsBootstrap from './AnalyticsBootstrap'
 
 // -----------------------------------------------------------------------------
-// Layout de /b/[slug]/* — carga el AnalyticsBootstrap (tracking pixels +
+// Layout de /[slug]/* — carga el AnalyticsBootstrap (tracking pixels +
 // cookie banner + atribución) UNA sola vez en todas las sub-rutas:
-//   · /b/[slug]              → landing + flow de reserva
-//   · /b/[slug]/cuenta       → cuenta del cliente PWA (historial, tips)
-//   · /b/[slug]/cuenta/rate/* → pantalla de valoración + propina
+//   · /[slug]              → landing + flow de reserva
+//   · /[slug]/cuenta       → cuenta del cliente PWA (historial, tips)
+//   · /[slug]/cuenta/rate/* → pantalla de valoración + propina
 //
 // Antes el bootstrap vivía solo en page.tsx → los pixels no cargaban en
 // /cuenta ni en /rate, lo que rompía el evento `tip_paid` cuando el

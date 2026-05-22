@@ -7,7 +7,7 @@ import type { LoyaltyProgress, LoyaltyReward } from '@/lib/loyalty/types'
 // (importable as values would break client bundle tree-shaking with Drizzle).
 
 // -----------------------------------------------------------------------------
-// LoyaltyCard — tarjeta que se muestra en /b/[slug]/cuenta (home view del
+// LoyaltyCard — tarjeta que se muestra en /[slug]/cuenta (home view del
 // cliente loggeado). Fetch a /api/app/loyalty?slug=... y dibuja:
 //   · Barra de progreso hacia la siguiente recompensa
 //   · Balance (sellos o puntos)

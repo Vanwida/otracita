@@ -163,7 +163,7 @@ export default function NegocioSettings({
   }
 
   const publicUrl =
-    publicEnabled && publicSlug ? `/b/${publicSlug}` : null
+    publicEnabled && publicSlug ? `/${publicSlug}` : null
 
   const openDays = countOpenDays(hoursDraft)
   const hoursPreview = previewHoursLabel(hoursDraft)

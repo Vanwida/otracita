@@ -55,7 +55,7 @@ export default function PublicPageSettings({ initial }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const publicUrl = slug ? `${SITE_ORIGIN}/b/${slug}` : ''
+  const publicUrl = slug ? `${SITE_ORIGIN}/${slug}` : ''
 
   const onCopy = async () => {
     if (!publicUrl) return

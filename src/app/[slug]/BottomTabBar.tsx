@@ -62,7 +62,7 @@ export default function BottomTabBar({ slug, activeTab }: Props) {
     // Si estamos fuera de la home de la barbería, primero navegamos allí
     // con el anchor; si estamos dentro, solo scroll.
     if (activeTab) {
-      window.location.href = `/b/${slug}#${id}`
+      window.location.href = `/${slug}#${id}`
       return
     }
     const el = document.getElementById(id)
@@ -101,7 +101,7 @@ export default function BottomTabBar({ slug, activeTab }: Props) {
         <TabLink
           label="Perfil"
           icon={User}
-          href={`/b/${slug}/cuenta`}
+          href={`/${slug}/cuenta`}
           active={activeTab === 'perfil'}
         />
       </div>

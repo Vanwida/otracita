@@ -127,7 +127,7 @@ export const clients = pgTable('clients', {
   promosEnabled: boolean('promos_enabled').default(false).notNull(),
   // Google Tag Manager — opcional, feature Pro. Si el barbero pega aquí
   // su container ID (formato GTM-XXXXXX), inyectamos el snippet de GTM
-  // en /b/[slug]/* y disparamos `booking_confirmed` en dataLayer al
+  // en /[slug]/* y disparamos `booking_confirmed` en dataLayer al
   // confirmar reserva. Permite al barbero medir conversiones con sus
   // propios pixels (Meta, Google Ads, GA4) sin que tengamos que tocar
   // código por cada herramienta. Cookie consent obligatorio antes de
@@ -135,7 +135,7 @@ export const clients = pgTable('clients', {
   gtmContainerId: text('gtm_container_id'),
   // Tracking pixels directos — alternativa / complemento a GTM. El barbero
   // pega los IDs de sus pixels (Meta, Google Ads, TikTok) y los inyectamos
-  // directamente en /b/[slug]/* con Consent Mode v2 (denied por defecto;
+  // directamente en /[slug]/* con Consent Mode v2 (denied por defecto;
   // grant tras aceptar cookies). Permite medir conversiones sin instalar
   // GTM, que muchos barberos no van a tocar. Todos los formatos validados
   // server-side antes de persistir.
@@ -173,7 +173,7 @@ export const clients = pgTable('clients', {
   // 30 o 45 = más conservador, menos huecos pero más "limpios".
   slotStepMinutes: integer('slot_step_minutes').default(15).notNull(),
   serviceBufferMinutes: integer('service_buffer_minutes').default(5).notNull(),
-  // Public booking page (/b/[slug]) — the shareable link a barber can drop
+  // Public booking page (/[slug]) — the shareable link a barber can drop
   // on Instagram, Google Business Profile, flyers, email signatures, etc.
   // Slug is globally unique and URL-safe. The branding fields below drive
   // the visual identity of that page and of any OG share preview.
@@ -184,7 +184,7 @@ export const clients = pgTable('clients', {
   brandCoverUrl: text('brand_cover_url'),
   brandTheme: text('brand_theme').notNull().default('light'),  // 'light' | 'dark' — drives bg/ink tokens
   brandColor: text('brand_color'),                             // hex accent color (selected states, CTAs)
-  brandColorSecondary: text('brand_color_secondary'),          // deprecated — legacy; no longer read by /b/[slug]
+  brandColorSecondary: text('brand_color_secondary'),          // deprecated — legacy; no longer read by /[slug]
   publicDescription: text('public_description'),             // short "about" paragraph
   instagramHandle: text('instagram_handle'),                 // without @
   tiktokHandle: text('tiktok_handle'),                       // without @
@@ -1061,7 +1061,7 @@ export const promoPushes = pgTable('promo_pushes', {
 // Productos que la barbería vende (champú, ceras, peines, etc.). Modelo
 // inicial = venta MANUAL al cobrar — el barbero registra cada venta desde
 // el dashboard cuando vende un producto al cliente. La tienda online en
-// /b/[slug] vendrá en una fase posterior si los datos lo justifican.
+// /[slug] vendrá en una fase posterior si los datos lo justifican.
 //
 // `stockQuantity` nullable significa stock ilimitado (no se trackea). Si
 // se pone valor concreto, el endpoint de venta valida con UPDATE atómico.

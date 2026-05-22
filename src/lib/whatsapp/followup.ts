@@ -143,7 +143,7 @@ export function isFollowupReplyId(id: string): boolean {
 // Outbound — manda la solicitud de reseña usando el dispatcher unificado:
 //
 //   1. Si el cliente tiene la PWA instalada con push activo → push con
-//      deep-link a /b/<slug>/cuenta/rate/<bookingId>. UX nativa con
+//      deep-link a /<slug>/cuenta/rate/<bookingId>. UX nativa con
 //      estrellas táctiles + comentario opcional + propina inline si aplica.
 //   2. Si no → fallback a WhatsApp interactive list (las 5 estrellas como
 //      filas tappables) — la conversación arranca el state machine viejo

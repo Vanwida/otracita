@@ -43,7 +43,7 @@ export const SITE_URLS = {
 // -----------------------------------------------------------------------------
 // PWA pública (por slug de barbería). Estas rutas las construyen ~9 sitios
 // distintos (manifest, cron de recordatorios, followup post-cita, promos,
-// admin, setup, bookings/create…). Si algún día `/b/` se renombra a
+// admin, setup, bookings/create…). Si algún día `/<slug>` se renombra a
 // `/booking/` o `/agendalo/`, los helpers de aquí concentran el cambio.
 //
 // Convención: paths RELATIVOS (empiezan con `/`). El caller decide si los
@@ -51,17 +51,17 @@ export const SITE_URLS = {
 // internos / push payloads.
 // -----------------------------------------------------------------------------
 
-/** Home de la PWA pública para una barbería (`/b/<slug>`). */
+/** Home de la PWA pública para una barbería (`/<slug>`). */
 export function publicPagePath(slug: string): string {
-  return `/b/${slug}`
+  return `/${slug}`
 }
 
-/** "Mi cuenta" del cliente en la PWA (`/b/<slug>/cuenta`). */
+/** "Mi cuenta" del cliente en la PWA (`/<slug>/cuenta`). */
 export function publicAccountPath(slug: string): string {
-  return `/b/${slug}/cuenta`
+  return `/${slug}/cuenta`
 }
 
-/** Página de valoración de una reserva concreta (`/b/<slug>/cuenta/rate/<bookingId>`). */
+/** Página de valoración de una reserva concreta (`/<slug>/cuenta/rate/<bookingId>`). */
 export function publicRatePath(slug: string, bookingId: string): string {
-  return `/b/${slug}/cuenta/rate/${bookingId}`
+  return `/${slug}/cuenta/rate/${bookingId}`
 }

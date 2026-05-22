@@ -31,7 +31,7 @@ export const QR_WHITE_HEX = '#FFFFFF'
 // ─── Presets de tema de la PWA pública del barbero ──────────────────────────
 //
 // Son DATA del cliente (se guardan en `clients.brandTheme` = 'light' | 'dark')
-// y se pintan inline en la PWA white-label (`/b/[slug]`). NO son tokens del
+// y se pintan inline en la PWA white-label (`/[slug]`). NO son tokens del
 // producto otracita — la PWA pública es del barbero, no nuestra. Hex porque
 // se pasan a `style={{ background, color, border }}` y a previews del editor.
 //

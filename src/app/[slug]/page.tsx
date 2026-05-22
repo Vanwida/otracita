@@ -13,7 +13,7 @@ import BottomTabBar from './BottomTabBar'
 import { buildPalette, hexToRgba } from './brand-utils'
 
 // -----------------------------------------------------------------------------
-// /b/[slug] — página pública de una barbería.
+// /[slug] — página pública de una barbería.
 //
 // Layout tipo app: TopBar + main + BottomTabBar. Tema (claro/oscuro) se
 // deriva automáticamente de la luminancia del color principal del barbero.

@@ -496,7 +496,7 @@ export default function SetupPage() {
               <label className="text-sm font-medium text-ink-2">Tu URL pública</label>
               <div className="mt-1.5 flex items-center gap-0 bg-surface border border-line rounded-lg overflow-hidden focus-within:border-brand">
                 <span className="px-3 py-2.5 text-sm text-ink-3 bg-overlay border-r border-line select-none">
-                  otracita.es/b/
+                  otracita.es/
                 </span>
                 <input
                   type="text"
@@ -690,7 +690,7 @@ export default function SetupPage() {
             </ReviewSection>
 
             <ReviewSection title="Tu app pública" icon={Globe}>
-              <ReviewItem label="URL" value={publicSlug ? `otracita.es/b/${publicSlug}` : "—"} />
+              <ReviewItem label="URL" value={publicSlug ? `otracita.es/${publicSlug}` : "—"} />
               <ReviewItem label="Tema" value={brandTheme === "dark" ? "Oscuro" : "Claro"} />
               <ReviewItem
                 label="Color"

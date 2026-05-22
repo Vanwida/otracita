@@ -181,7 +181,7 @@ export default function RateForm({
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--theme-canvas)' }}>
       <header className="px-4 pt-6 pb-4">
         <Link
-          href={`/b/${slug}/cuenta`}
+          href={`/${slug}/cuenta`}
           className="inline-flex items-center gap-1 text-sm transition-colors"
           style={{ color: 'var(--theme-ink-2)' }}
         >
@@ -317,7 +317,7 @@ export default function RateForm({
 
                 <button
                   type="button"
-                  onClick={() => router.push(`/b/${slug}/cuenta`)}
+                  onClick={() => router.push(`/${slug}/cuenta`)}
                   className="mt-3 w-full text-sm py-2 transition-colors"
                   style={{ color: 'var(--theme-ink-3)' }}
                 >
@@ -360,7 +360,7 @@ export default function RateForm({
                 {!showTipBlock && (
                   <button
                     type="button"
-                    onClick={() => router.push(`/b/${slug}/cuenta`)}
+                    onClick={() => router.push(`/${slug}/cuenta`)}
                     className="mt-3 w-full text-sm py-2 transition-colors"
                     style={{ color: 'var(--theme-ink-3)' }}
                   >
@@ -374,7 +374,7 @@ export default function RateForm({
                 simplemente botón para volver a cuenta. */}
             {!showTipBlock && !showGoogleCta && (
               <Link
-                href={`/b/${slug}/cuenta`}
+                href={`/${slug}/cuenta`}
                 className="mt-4 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-bold transition-transform active:scale-[0.98]"
                 style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}
               >
@@ -498,7 +498,7 @@ export default function RateForm({
             </button>
             <button
               type="button"
-              onClick={() => router.push(`/b/${slug}/cuenta`)}
+              onClick={() => router.push(`/${slug}/cuenta`)}
               className="mt-2 w-full text-sm py-2 transition-colors"
               style={{ color: 'var(--theme-ink-3)' }}
             >

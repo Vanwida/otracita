@@ -9,7 +9,7 @@ import { MS_IN_DAY } from '@/lib/time';
 // localStorage con TTL de 90 días (attribution window estándar).
 //
 // Estrategia:
-//   · Al entrar en /b/[slug]/* → si NO hay attribution previa O ha expirado,
+//   · Al entrar en /[slug]/* → si NO hay attribution previa O ha expirado,
 //     derivamos de la URL/referrer actual y guardamos.
 //   · Si ya existe una válida (dentro del TTL) → no se sobrescribe. Esto
 //     conserva el first-touch durante toda la attribution window aunque el
@@ -80,7 +80,7 @@ export function writeStoredAttribution(attribution: Attribution): void {
  *   · No hay ninguna previa válida, O
  *   · La URL actual tiene UTMs explícitos (override por nueva campaña).
  *
- * Llamar en useEffect al cargar /b/[slug]/*. Idempotente.
+ * Llamar en useEffect al cargar /[slug]/*. Idempotente.
  */
 export function captureFromCurrentLocation(): Attribution | null {
   if (typeof window === 'undefined') return null;

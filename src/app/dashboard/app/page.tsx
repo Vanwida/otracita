@@ -28,7 +28,7 @@ export default async function AppPage() {
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  const url = client.publicSlug ? `${SITE_ORIGIN}/b/${client.publicSlug}` : null
+  const url = client.publicSlug ? `${SITE_ORIGIN}/${client.publicSlug}` : null
   // Color del QR: si el cliente eligió brandColor (PWA white-label), lo
   // usamos. Si no, fallback al ink espresso del design system (NO `#000`
   // puro — PRODUCT.md lo prohíbe). Hex literal porque la librería QR no

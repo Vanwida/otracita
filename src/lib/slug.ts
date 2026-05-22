@@ -3,7 +3,7 @@ import { clients } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
-// Slug helpers for /b/[slug] public booking pages.
+// Slug helpers for /[slug] public booking pages.
 //
 // Conventions:
 //   · URL-safe: [a-z0-9-], no leading/trailing hyphens, no double hyphens.

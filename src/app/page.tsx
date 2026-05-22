@@ -681,7 +681,7 @@ function LoNuestro() {
  * silenciado en prefers-reduced-motion (ver globals.css). */
 function Sustituye() {
   /* Cinco herramientas reales que otracita sustituye. Coincide 1:1 con el
-   * h2 ("Cinco herramientas se quedan en una"). La PWA pública (/b/[slug])
+   * h2 ("Cinco herramientas se quedan en una"). La PWA pública (/[slug])
    * es la que reemplaza al perfil de Booksy/Treatwell: el cliente reserva
    * en la web del barbero, no en un marketplace. */
   const tools = [
@@ -1211,7 +1211,7 @@ function Precios() {
             features={[
               "Agenda multi-día",
               "Caja del día con cuadre",
-              "PWA pública en /b/tu-barbería",
+              "PWA pública en /tu-barbería",
               "VeriFactu AEAT incluido",
               "Cobro online por QR (Stripe)",
             ]}
