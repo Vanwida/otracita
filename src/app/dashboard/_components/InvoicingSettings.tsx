@@ -136,11 +136,14 @@ export default function InvoicingSettings({ initial }: Props) {
     })
   }
 
-  // Layout canónico SlideOver: `flex h-full flex-col` con body scrollable y
-  // footer sticky bottom. Antes el botón Guardar quedaba al fondo del scroll
-  // del SlideOver y se perdía fuera del viewport en formularios largos.
+  // Layout canónico SlideOver: wrapper raíz con `flex-1 min-h-0` (ocupa el
+  // espacio que queda dentro del panel tras el header y permite scroll
+  // interno). NO usar `h-full` aquí: en un padre flex-col reclama 100% del
+  // panel y desborda el viewport, dejando el footer "Guardar" fuera de
+  // alcance. Mismo fix aplicado a SlideOver.tsx (overflow-hidden defensivo)
+  // y resto de consumidores del patrón.
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-ink">Facturación</h2>

@@ -115,12 +115,19 @@ export default function PublicPageSettings({ initial }: Props) {
     })
   }
 
-  // Layout canónico SlideOver: `flex h-full flex-col` con body scrollable y
-  // footer sticky bottom (mismo patrón que ServicesManager / HoursSlideOver).
-  // Antes el botón Guardar quedaba en el fondo del scroll y se perdía fuera
-  // del viewport cuando el form era largo — el usuario no podía guardar.
+  // Layout canónico SlideOver: el wrapper raíz ocupa el espacio que queda
+  // dentro del panel (`flex-1`) y permite scroll interno (`min-h-0`).
+  //
+  // Por qué `flex-1 min-h-0` y NO `h-full`:
+  //   - El panel SlideOver es `flex flex-col` con header `shrink-0` (~57px).
+  //   - Si este wrapper declara `h-full` (=100% del panel), reclama
+  //     viewport-completo y suma de hijos > altura del panel → desborda.
+  //   - Con `flex-1` ocupa SOLO el espacio que queda tras el header.
+  //   - Con `min-h-0` permite que el hijo `overflow-y-auto` realmente
+  //     scrollee (los flex items tienen min-height:auto por defecto, lo
+  //     que expande el item a su contenido e impide el overflow).
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-ink flex items-center gap-2">

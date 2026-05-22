@@ -187,7 +187,16 @@ export default function SlideOver({
             // ÚNICA definición de ancho del slide-over (vía `width`,
             // default SLIDEOVER_WIDTH). x:'100%' hace el slide
             // independiente del ancho concreto.
-            className={`fixed right-0 top-0 ${zClass} h-full ${width} ${bgClass} border-l border-line flex flex-col shadow-xl outline-none`}
+            //
+            // `overflow-hidden` es CRÍTICO: el chasis es flex-col con
+            // header `shrink-0` + children. Sin overflow-hidden aquí, si
+            // los children declaran `h-full` (patrón heredado en
+            // ServicesManager/HoursSlideOver/etc), reclaman 100% del panel
+            // y desbordan el viewport hacia abajo, ocultando el footer
+            // sticky y dejando al usuario sin poder llegar a "Guardar".
+            // Con overflow-hidden el panel clipea al viewport y el
+            // overflow-y-auto interno del consumidor funciona como debe.
+            className={`fixed right-0 top-0 ${zClass} h-full ${width} ${bgClass} border-l border-line flex flex-col overflow-hidden shadow-xl outline-none`}
           >
             {title && (
               <div className="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">

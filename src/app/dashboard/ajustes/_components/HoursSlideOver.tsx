@@ -63,7 +63,7 @@ export default function HoursSlideOver({
       title="Horario semanal"
       ariaLabel="Editar horario semanal"
     >
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 overflow-y-auto px-5 py-5">
           <p className="text-xs text-ink-3 mb-4">
             Las horas en las que aceptas reservas. El bot solo ofrece huecos

@@ -53,8 +53,8 @@ export default function EditPublicPageButton({ initial }: Props) {
         width="w-[560px] max-w-[92vw]"
       >
         {/* PublicPageSettings ya implementa el layout canónico de SlideOver
-            (flex h-full flex-col + body scrollable + footer sticky con
-            Guardar). No envolver en otro contenedor o el sticky bottom
+            (flex min-h-0 flex-1 flex-col + body scrollable + footer sticky
+            con Guardar). No envolver en otro contenedor o el sticky bottom
             apunta al sitio equivocado y el botón vuelve a escaparse. */}
         <PublicPageSettings initial={initial} />
       </SlideOver>
