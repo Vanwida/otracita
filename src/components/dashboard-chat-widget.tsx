@@ -84,6 +84,91 @@ function parseActions(raw: string): { text: string; actions?: ChatAction[] } {
   }
 }
 
+// Minimal Markdown renderer — solo cubrimos lo que los LLMs de tools nos
+// devuelven en la práctica: **negrita**, *cursiva*, `inline code`, bullets
+// con `- ` o `* `, y saltos de línea. Sin parser real ni dep externa: la
+// superficie es chiquita y los inputs vienen de nuestro propio modelo
+// (no se ejecuta HTML del usuario). React escapa el resto.
+function renderInlineMd(text: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  // Tokenizamos por **bold**, *italic*, `code`. Ordenado para que **
+  // gane a * (greedy en este orden de regex).
+  const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      out.push(text.slice(lastIndex, m.index));
+    }
+    if (m[2] !== undefined) {
+      out.push(
+        <strong key={`b-${key++}`} className="font-semibold">
+          {m[2]}
+        </strong>,
+      );
+    } else if (m[3] !== undefined) {
+      out.push(
+        <em key={`i-${key++}`} className="italic">
+          {m[3]}
+        </em>,
+      );
+    } else if (m[4] !== undefined) {
+      out.push(
+        <code
+          key={`c-${key++}`}
+          className="rounded bg-canvas border border-line px-1 py-0.5 text-[0.85em] font-mono"
+        >
+          {m[4]}
+        </code>,
+      );
+    }
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < text.length) out.push(text.slice(lastIndex));
+  return out;
+}
+
+function renderAssistantContent(raw: string): React.ReactNode {
+  // Split en líneas y agrupa bullets contiguos en un <ul>. Es lo mínimo
+  // que necesitamos para que respuestas como "- Marta: 10:00\n- Juan: 12:00"
+  // no se vean con guiones literales.
+  const lines = raw.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let bullets: string[] = [];
+  let blockKey = 0;
+
+  const flushBullets = () => {
+    if (bullets.length === 0) return;
+    const items = bullets.map((b, i) => (
+      <li key={i}>{renderInlineMd(b)}</li>
+    ));
+    blocks.push(
+      <ul key={`ul-${blockKey++}`} className="list-disc pl-5 space-y-0.5">
+        {items}
+      </ul>,
+    );
+    bullets = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
+    if (bulletMatch) {
+      bullets.push(bulletMatch[1]);
+      continue;
+    }
+    flushBullets();
+    if (line.trim() === "") {
+      blocks.push(<div key={`sp-${blockKey++}`} className="h-1" />);
+    } else {
+      blocks.push(<p key={`p-${blockKey++}`}>{renderInlineMd(line)}</p>);
+    }
+  }
+  flushBullets();
+  return <>{blocks}</>;
+}
+
 function loadHistory(): Message[] {
   if (typeof window === "undefined") return [INITIAL_MESSAGE];
   try {
@@ -117,6 +202,14 @@ export default function DashboardChatWidget() {
   const [hydrated, setHydrated] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Anti-race: si por cualquier motivo se dispara un segundo envío antes
+  // de que vuelva el primero (timeout de proxy, click rápido en un quick
+  // reply, etc.), cancelamos el request en vuelo y solo aceptamos la
+  // respuesta del último `turnId`. Sin esto vimos respuestas asociadas
+  // al turno equivocado: la respuesta de "cuántas citas hoy" llegaba
+  // DESPUÉS de mandar "hola" y se pegaba como respuesta a "hola".
+  const turnIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Hydrate desde localStorage en cliente — evita mismatch SSR.
   useEffect(() => {
@@ -158,16 +251,32 @@ export default function DashboardChatWidget() {
       const trimmed = text.trim();
       if (!trimmed || isTyping) return;
 
+      // Cancelamos cualquier request en vuelo y avanzamos el turno. Solo la
+      // respuesta del turno actual será aceptada.
+      abortRef.current?.abort();
+      const myTurn = ++turnIdRef.current;
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       const userMessage: Message = { role: "user", content: trimmed };
       const updatedMessages = [...messages, userMessage];
       setMessages(updatedMessages);
       setInput("");
       setIsTyping(true);
 
+      const FALLBACK_ERROR =
+        "Algo ha fallado, vuelve a intentarlo. Si sigue sin responder, avisa a soporte.";
+
+      const pushIfCurrent = (msg: Message) => {
+        if (turnIdRef.current !== myTurn) return; // turno superado
+        setMessages((prev) => [...prev, msg]);
+      };
+
       try {
         const res = await fetch("/api/dashboard-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             // El backend solo necesita role + content. Las actions parseadas
             // viven solo en el front (no influyen en el siguiente turno).
@@ -177,23 +286,28 @@ export default function DashboardChatWidget() {
             })),
           }),
         });
-        const data = await res.json();
-        const raw =
-          typeof data.message === "string"
-            ? data.message
-            : "No he podido responder. Inténtalo de nuevo.";
-        const { text: cleanText, actions } = parseActions(raw);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: cleanText, actions },
-        ]);
-      } catch {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Error de conexión. Inténtalo de nuevo." },
-        ]);
+        if (turnIdRef.current !== myTurn) return; // request ganador es otro
+        const data = await res.json().catch(() => null);
+        if (turnIdRef.current !== myTurn) return;
+        // Guard: HTTP no-ok, payload inválido, o message vacío/no-string →
+        // mostramos error legible en lugar de burbuja fantasma.
+        const rawMessage =
+          data && typeof data.message === "string" ? data.message.trim() : "";
+        if (!res.ok || !rawMessage) {
+          pushIfCurrent({ role: "assistant", content: FALLBACK_ERROR });
+          return;
+        }
+        const { text: cleanText, actions } = parseActions(rawMessage);
+        // Si el parser deja el texto vacío (caso degenerado: solo había un
+        // bloque ```actions``` sin texto), forzamos fallback también.
+        const finalText = cleanText.trim() ? cleanText : FALLBACK_ERROR;
+        pushIfCurrent({ role: "assistant", content: finalText, actions });
+      } catch (err) {
+        // AbortError es esperado cuando otro envío reemplaza este → no pintamos.
+        if (err instanceof Error && err.name === "AbortError") return;
+        pushIfCurrent({ role: "assistant", content: FALLBACK_ERROR });
       } finally {
-        setIsTyping(false);
+        if (turnIdRef.current === myTurn) setIsTyping(false);
       }
     },
     [messages, isTyping],
@@ -283,18 +397,22 @@ export default function DashboardChatWidget() {
             >
               <div className="max-w-[85%] space-y-2">
                 <div
-                  className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed space-y-1 ${
                     msg.role === "user"
                       ? "rounded-br-sm bg-brand text-brand-ink"
                       : "rounded-bl-sm bg-surface border border-line text-ink"
                   }`}
                 >
-                  {msg.content.split("\n").map((line, j, arr) => (
-                    <span key={j}>
-                      {line}
-                      {j < arr.length - 1 && <br />}
-                    </span>
-                  ))}
+                  {msg.role === "assistant" ? (
+                    renderAssistantContent(msg.content)
+                  ) : (
+                    msg.content.split("\n").map((line, j, arr) => (
+                      <span key={j}>
+                        {line}
+                        {j < arr.length - 1 && <br />}
+                      </span>
+                    ))
+                  )}
                 </div>
                 {msg.actions && msg.actions.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -332,7 +450,8 @@ export default function DashboardChatWidget() {
                   key={text}
                   type="button"
                   onClick={() => sendMessage(text)}
-                  className="rounded-full border border-brand/30 bg-brand-softer px-3 py-1.5 text-xs font-medium text-brand transition-colors hover:bg-brand/15"
+                  disabled={isTyping}
+                  className="rounded-full border border-brand/30 bg-brand-softer px-3 py-1.5 text-xs font-medium text-brand transition-colors hover:bg-brand/15 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {text}
                 </button>
