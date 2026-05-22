@@ -1,0 +1,141 @@
+// -----------------------------------------------------------------------------
+// service-colors — catálogo cerrado de colores semánticos para servicios.
+//
+// El barbero elige uno de 8 tokens al crear/editar un servicio. El bloque de
+// cita en la agenda (#33) usará el par {bg, ink} correspondiente para pintarse.
+//
+// Por qué tokens y no hex:
+//  · Theme único — si mañana ajustamos la paleta (más cálida, más fría) un
+//    cambio en globals.css mueve todos los bloques.
+//  · Whitelist anti-input-injection — `chatbotServices` es jsonb sin schema
+//    estricto, así que validamos en runtime que el token guardado pertenece
+//    al set conocido.
+//
+// Por qué nombres abstractos (terracota/olive/sky) en vez de funcionales
+// (corte/coloración/barba): los servicios varían por negocio. Imponer una
+// taxonomía encajonaría al barbero. El nombre del color es decorativo.
+//
+// Los tokens viven en globals.css dentro de `@theme` como pares
+// --color-svc-<name>-bg / --color-svc-<name>-ink. Tailwind v4 los expone como
+// utilities (`bg-svc-terracota-bg`, `text-svc-terracota-ink`, etc.).
+// -----------------------------------------------------------------------------
+
+export const SERVICE_COLOR_TOKENS = [
+  'terracota',
+  'olive',
+  'sky',
+  'gold',
+  'mauve',
+  'stone',
+  'slate',
+  'sand',
+] as const
+
+export type ServiceColorToken = (typeof SERVICE_COLOR_TOKENS)[number]
+
+/**
+ * Color por defecto cuando un servicio no tiene `colorToken` (o es inválido).
+ * Alineado con la brand (terracota = `--color-brand`).
+ */
+export const DEFAULT_SERVICE_COLOR: ServiceColorToken = 'terracota'
+
+/**
+ * Type guard. Útil para validar el campo entrante en el server action antes
+ * de persistirlo en `chatbotServices` (jsonb sin schema, no podemos
+ * confiar en el cliente).
+ */
+export function isServiceColorToken(v: unknown): v is ServiceColorToken {
+  return typeof v === 'string' && (SERVICE_COLOR_TOKENS as readonly string[]).includes(v)
+}
+
+/**
+ * Devuelve un token siempre válido. Si la entrada es inválida, devuelve el
+ * por defecto. Conveniente en consumidores que necesitan algo que pintar
+ * sí o sí (ej. agenda block coloring en #33).
+ */
+export function normalizeServiceColor(v: unknown): ServiceColorToken {
+  return isServiceColorToken(v) ? v : DEFAULT_SERVICE_COLOR
+}
+
+/**
+ * Mapa token → clases Tailwind. Cada entrada expone un par {bg, ink, border,
+ * ring} listo para componer.
+ *
+ *  - bg     → relleno (tinte deslavado, lee sobre canvas blanco/bone)
+ *  - ink    → texto y borde de acento (saturado, AA sobre `bg`)
+ *  - border → borde sólido del acento (mismo hue que ink)
+ *  - ring   → focus ring cuando el chip está seleccionado en el picker
+ *
+ * Los CSS vars detrás están declarados en `src/app/globals.css` (@theme).
+ * Tailwind v4 los transforma en utilities automáticamente — no hay
+ * arbitrary values `bg-[var(...)]` en el código UI.
+ */
+export const SERVICE_COLOR_CLASSES: Record<
+  ServiceColorToken,
+  { bg: string; ink: string; border: string; ring: string }
+> = {
+  terracota: {
+    bg: 'bg-svc-terracota-bg',
+    ink: 'text-svc-terracota-ink',
+    border: 'border-svc-terracota-ink',
+    ring: 'ring-svc-terracota-ink',
+  },
+  olive: {
+    bg: 'bg-svc-olive-bg',
+    ink: 'text-svc-olive-ink',
+    border: 'border-svc-olive-ink',
+    ring: 'ring-svc-olive-ink',
+  },
+  sky: {
+    bg: 'bg-svc-sky-bg',
+    ink: 'text-svc-sky-ink',
+    border: 'border-svc-sky-ink',
+    ring: 'ring-svc-sky-ink',
+  },
+  gold: {
+    bg: 'bg-svc-gold-bg',
+    ink: 'text-svc-gold-ink',
+    border: 'border-svc-gold-ink',
+    ring: 'ring-svc-gold-ink',
+  },
+  mauve: {
+    bg: 'bg-svc-mauve-bg',
+    ink: 'text-svc-mauve-ink',
+    border: 'border-svc-mauve-ink',
+    ring: 'ring-svc-mauve-ink',
+  },
+  stone: {
+    bg: 'bg-svc-stone-bg',
+    ink: 'text-svc-stone-ink',
+    border: 'border-svc-stone-ink',
+    ring: 'ring-svc-stone-ink',
+  },
+  slate: {
+    bg: 'bg-svc-slate-bg',
+    ink: 'text-svc-slate-ink',
+    border: 'border-svc-slate-ink',
+    ring: 'ring-svc-slate-ink',
+  },
+  sand: {
+    bg: 'bg-svc-sand-bg',
+    ink: 'text-svc-sand-ink',
+    border: 'border-svc-sand-ink',
+    ring: 'ring-svc-sand-ink',
+  },
+}
+
+/**
+ * Etiqueta humana del color. Usada como `aria-label` del chip y title
+ * tooltip. No mostrada de forma persistente en pantalla — el barbero ve el
+ * color, no su nombre.
+ */
+export const SERVICE_COLOR_LABELS: Record<ServiceColorToken, string> = {
+  terracota: 'Terracota',
+  olive: 'Oliva',
+  sky: 'Cielo',
+  gold: 'Oro',
+  mauve: 'Malva',
+  stone: 'Piedra',
+  slate: 'Pizarra',
+  sand: 'Arena',
+}
