@@ -7,6 +7,8 @@ import {
   computeDescuadre,
   type MovementForCompute,
 } from '@/lib/cash/compute'
+import { loadBreakdownForSession } from '@/lib/cash/load-breakdown'
+import type { CashClosingSnapshot } from '@/lib/cash/breakdown'
 
 // -----------------------------------------------------------------------------
 // POST /api/cash/close — cierra la sesión activa con cuadre.
@@ -102,10 +104,52 @@ export async function POST(req: Request) {
   const cashDescuadre = computeDescuadre(expected.cashExpectedCents, countedCash)
   const cardDescuadre = computeDescuadre(expected.cardExpectedCents, countedCard)
 
+  // Foto del desglose JUSTO antes de cerrar — la persistimos en
+  // closing_snapshot para histórico y para reconstruir el reporte tal cual
+  // lo vio el barbero. Reusa el mismo loader que la UI live.
+  const breakdown = await loadBreakdownForSession(client.id, session.id)
+
+  // Blindaje server-side contra movimientos con method legacy/NULL. Sin
+  // esto el cuadre que persistimos sería inconsistente (cash_movements
+  // huérfanos sin entrar en byMethod). La UI ya lo bloquea, esto es
+  // defensa en profundidad.
+  if (breakdown.unknownMethodCount > 0) {
+    return Response.json(
+      {
+        error: `Hay ${breakdown.unknownMethodCount} movimientos sin método de pago. Corrígelos antes de cerrar.`,
+      },
+      { status: 409 },
+    )
+  }
+  const closedAtIso = new Date().toISOString()
+  const snapshot: CashClosingSnapshot = {
+    version: 1,
+    openingCents: session.openingCents,
+    cashExpectedCents: expected.cashExpectedCents,
+    cardExpectedCents: expected.cardExpectedCents,
+    onlineExpectedCents: expected.onlineExpectedCents,
+    totalExpectedCents:
+      expected.cashExpectedCents +
+      expected.cardExpectedCents +
+      expected.onlineExpectedCents,
+    byMethod: breakdown.byMethod,
+    byKind: breakdown.byKind,
+    byBarber: breakdown.byBarber,
+    byPaymentDetail: breakdown.byPaymentDetail,
+    movements: breakdown.movements,
+    totals: breakdown.totals,
+    cashCountedCents: countedCash,
+    cardCountedCents: countedCard,
+    cashDescuadreCents: cashDescuadre,
+    cardDescuadreCents: cardDescuadre,
+    closedByEmail: user.email,
+    closedAt: closedAtIso,
+  }
+
   const [closed] = await db
     .update(cashSessions)
     .set({
-      closedAt: new Date(),
+      closedAt: new Date(closedAtIso),
       closedByEmail: user.email,
       closingCentsExpected: expected.cashExpectedCents,
       closingCentsCounted: countedCash,
@@ -114,6 +158,7 @@ export async function POST(req: Request) {
       cardTerminalCountedCents: countedCard,
       cardDescuadreCents: cardDescuadre,
       notes,
+      closingSnapshot: snapshot,
     })
     .where(eq(cashSessions.id, session.id))
     .returning()

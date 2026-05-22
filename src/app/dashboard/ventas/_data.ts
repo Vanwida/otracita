@@ -208,6 +208,7 @@ export async function loadVentasData(
         cashDescuadreCents: cashSessions.cashDescuadreCents,
         cardTerminalExpectedCents: cashSessions.cardTerminalExpectedCents,
         cardDescuadreCents: cashSessions.cardDescuadreCents,
+        closingSnapshot: cashSessions.closingSnapshot,
       })
       .from(cashSessions)
       .where(
@@ -228,6 +229,12 @@ export async function loadVentasData(
       cashDescuadreCents: r.cashDescuadreCents,
       cardTerminalExpectedCents: r.cardTerminalExpectedCents,
       cardDescuadreCents: r.cardDescuadreCents,
+      // Cast: drizzle devuelve `unknown` para jsonb. Si la migración aún no
+      // se aplicó en este entorno (lazy migration policy), `closingSnapshot`
+      // será undefined en el row → mapearlo a null aquí. Si el shape no
+      // matchea la versión esperada, la UI cae al desglose básico (no peta).
+      closingSnapshot:
+        (r.closingSnapshot as ClosedRegister['closingSnapshot']) ?? null,
     }))
   }
 
