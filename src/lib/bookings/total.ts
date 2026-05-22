@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { bookings, bookingServices } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { computeBookingTotalCentsFromRows } from './total-compute';
 
 // -----------------------------------------------------------------------------
 // bookingTotalCents — importe REAL de una cita en céntimos.
@@ -43,10 +44,5 @@ export async function bookingTotalCents(bookingId: string): Promise<number> {
     .from(bookingServices)
     .where(eq(bookingServices.bookingId, bookingId));
 
-  let totalEuros = booking.price != null && booking.price > 0 ? booking.price : 0;
-  for (const ex of extraRows) {
-    if (ex.priceEuros != null && ex.priceEuros > 0) totalEuros += ex.priceEuros;
-  }
-
-  return Math.round(totalEuros * 100);
+  return computeBookingTotalCentsFromRows(booking.price, extraRows);
 }
