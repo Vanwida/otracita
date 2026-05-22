@@ -28,9 +28,11 @@ import {
   type MovementKind,
   type PaymentMethod,
 } from '@/lib/cash/compute'
+import type { CashClosingSnapshot, MovementBreakdown } from '@/lib/cash/breakdown'
 import DataPanel from '../_components/DataPanel'
 import DataTable, { type Column } from '../_components/DataTable'
 import StatusBadge from '../_components/StatusBadge'
+import ClosingReport from './ClosingReport'
 
 // -----------------------------------------------------------------------------
 // CajaRegisters — "Cajas registradoras" con estructura Booksy (UI0).
@@ -79,6 +81,7 @@ interface ApiResponse {
   session: SessionState | null
   movements: MovementRow[]
   expected: ExpectedState | null
+  breakdown: MovementBreakdown | null
 }
 
 /** Fila de histórico de caja cerrada — la pasa el server (read-only). */
@@ -92,6 +95,9 @@ export interface ClosedRegister {
   cashDescuadreCents: number | null
   cardTerminalExpectedCents: number | null
   cardDescuadreCents: number | null
+  /** Snapshot completo del desglose tal cual lo vio el barbero al cerrar.
+   *  Null en sesiones cerradas antes de la migración 0046 (legacy). */
+  closingSnapshot: CashClosingSnapshot | null
 }
 
 interface Props {
@@ -139,6 +145,7 @@ export default function CajaRegisters({ history }: Props) {
   const session = data?.session ?? null
   const expected = data?.expected ?? null
   const movements = data?.movements ?? []
+  const breakdown = data?.breakdown ?? null
 
   // Total esperado de la jornada = efectivo (que ya incluye la apertura) +
   // tarjeta + online. computeExpectedClosing en el server ya suma la
@@ -210,6 +217,7 @@ export default function CajaRegisters({ history }: Props) {
               session={session}
               expected={expected}
               movements={movements}
+              breakdown={breakdown}
               openTotalCents={openTotalCents}
               onOpenRegister={() => setOpenModalOpen(true)}
               onNewMovement={() => setMovementModalOpen(true)}
@@ -241,6 +249,7 @@ export default function CajaRegisters({ history }: Props) {
           open={closeModalOpen}
           session={session}
           expected={expected}
+          breakdown={breakdown}
           onClose={() => setCloseModalOpen(false)}
           onClosed={refresh}
         />
@@ -365,6 +374,7 @@ function OpenRegisterPanel({
   session,
   expected,
   movements,
+  breakdown,
   openTotalCents,
   onOpenRegister,
   onNewMovement,
@@ -374,6 +384,7 @@ function OpenRegisterPanel({
   session: SessionState | null
   expected: ExpectedState | null
   movements: MovementRow[]
+  breakdown: MovementBreakdown | null
   openTotalCents: number
   onOpenRegister: () => void
   onNewMovement: () => void
@@ -469,7 +480,25 @@ function OpenRegisterPanel({
         </div>
       ) : (
         <div className="px-[var(--space-card)] py-4">
-          <ExpectedSummary session={session} expected={expected} />
+          {breakdown ? (
+            <ClosingReport
+              openingCents={session.openingCents}
+              openedAt={session.openedAt}
+              openedByEmail={session.openedByEmail}
+              cashExpectedCents={expected.cashExpectedCents}
+              cardExpectedCents={expected.cardExpectedCents}
+              onlineExpectedCents={expected.onlineExpectedCents}
+              totals={breakdown.totals}
+              byMethod={breakdown.byMethod}
+              byKind={breakdown.byKind}
+              byBarber={breakdown.byBarber}
+              byPaymentDetail={breakdown.byPaymentDetail}
+              movements={breakdown.movements}
+              unknownMethodCount={breakdown.unknownMethodCount}
+            />
+          ) : (
+            <ExpectedSummary session={session} expected={expected} />
+          )}
         </div>
       )}
     </DataPanel>
@@ -627,6 +656,7 @@ function ExpectedSummary({
 function ClosedRegisterPanel({ register: r }: { register: ClosedRegister }) {
   const cashDescuadre = r.cashDescuadreCents
   const cardDescuadre = r.cardDescuadreCents
+  const snap = r.closingSnapshot
   return (
     <DataPanel
       title={
@@ -634,7 +664,7 @@ function ClosedRegisterPanel({ register: r }: { register: ClosedRegister }) {
           className="font-bold tabular-nums"
           style={{ fontSize: 'var(--text-figure)' }}
         >
-          {euros(r.closingCentsExpected ?? 0)}
+          {euros(snap?.totalExpectedCents ?? r.closingCentsExpected ?? 0)}
         </span>
       }
       meta={
@@ -669,6 +699,26 @@ function ClosedRegisterPanel({ register: r }: { register: ClosedRegister }) {
           countedCents={null}
           descuadreCents={cardDescuadre}
         />
+
+        {/* Snapshot completo del cierre — sólo sesiones cerradas POST 0046.
+            Las legacy (snapshot === null) siguen viendo el resumen mínimo. */}
+        {snap && (
+          <ClosingReport
+            openingCents={snap.openingCents}
+            openedAt={r.openedAt}
+            openedByEmail={snap.closedByEmail ?? '—'}
+            cashExpectedCents={snap.cashExpectedCents}
+            cardExpectedCents={snap.cardExpectedCents}
+            onlineExpectedCents={snap.onlineExpectedCents}
+            totals={snap.totals}
+            byMethod={snap.byMethod}
+            byKind={snap.byKind}
+            byBarber={snap.byBarber}
+            byPaymentDetail={snap.byPaymentDetail}
+            movements={snap.movements}
+            unknownMethodCount={0}
+          />
+        )}
       </div>
     </DataPanel>
   )
@@ -746,11 +796,14 @@ function ModalShell({
   open,
   onClose,
   title,
+  size = 'md',
   children,
 }: {
   open: boolean
   onClose: () => void
   title: string
+  /** Ancho — usar 'xl' para flujos con tabla/reporte interno (cierre caja). */
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   children: React.ReactNode
 }) {
   // Adaptador fino sobre el primitivo canónico Modal (#55). Conserva la
@@ -762,7 +815,7 @@ function ModalShell({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      size="md"
+      size={size}
       zClass="z-[60]"
     >
       <div className="px-5 py-4 border-b border-line">
@@ -864,13 +917,16 @@ function OpenCashModal({
 
 function CloseCashModal({
   open,
+  session,
   expected,
+  breakdown,
   onClose,
   onClosed,
 }: {
   open: boolean
   session: SessionState
   expected: ExpectedState
+  breakdown: MovementBreakdown | null
   onClose: () => void
   onClosed: () => void
 }) {
@@ -968,7 +1024,7 @@ function CloseCashModal({
 
   if (closed) {
     return (
-      <ModalShell open={open} onClose={finish} title="Caja cerrada">
+      <ModalShell open={open} onClose={finish} title="Caja cerrada" size="xl">
         <div className="space-y-4">
           <div className="rounded-xl border border-success/30 bg-success/10 p-3">
             <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
@@ -1015,28 +1071,56 @@ function CloseCashModal({
     )
   }
 
+  // Bloqueamos el cierre si hay movimientos con método legacy/NULL — el
+  // cuadre saldría torcido (ya lo blindamos también server-side en
+  // /api/cash/close, pero la UI da el feedback inmediato).
+  const blocked = (breakdown?.unknownMethodCount ?? 0) > 0
+
   return (
-    <ModalShell open={open} onClose={onClose} title="Cerrar caja del día">
+    <ModalShell open={open} onClose={onClose} title="Cerrar caja del día" size="xl">
       <div className="space-y-4">
-        <div className="rounded-xl border border-line bg-overlay/40 p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-2 mb-1">
-            Esperado
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-ink-2">Efectivo</span>
-              <span className="tabular-nums font-medium text-ink">
-                {euros(expected.cashExpectedCents)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-ink-2">Tarjeta</span>
-              <span className="tabular-nums font-medium text-ink">
-                {euros(expected.cardExpectedCents)}
-              </span>
+        {/* Reporte completo del día — Reni quiere ver TODO antes de pulsar
+            "Cerrar caja". Mismo componente que la pestaña Resumen del panel
+            principal (single source of truth). Si por algún motivo la API
+            no devolvió breakdown (race condition con polling), caemos a un
+            placeholder mínimo en lugar de petar. */}
+        {breakdown ? (
+          <ClosingReport
+            openingCents={session.openingCents}
+            openedAt={session.openedAt}
+            openedByEmail={session.openedByEmail}
+            cashExpectedCents={expected.cashExpectedCents}
+            cardExpectedCents={expected.cardExpectedCents}
+            onlineExpectedCents={expected.onlineExpectedCents}
+            totals={breakdown.totals}
+            byMethod={breakdown.byMethod}
+            byKind={breakdown.byKind}
+            byBarber={breakdown.byBarber}
+            byPaymentDetail={breakdown.byPaymentDetail}
+            movements={breakdown.movements}
+            unknownMethodCount={breakdown.unknownMethodCount}
+          />
+        ) : (
+          <div className="rounded-xl border border-line bg-overlay/40 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-2 mb-1">
+              Esperado
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-ink-2">Efectivo</span>
+                <span className="tabular-nums font-medium text-ink">
+                  {euros(expected.cashExpectedCents)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-ink-2">Tarjeta</span>
+                <span className="tabular-nums font-medium text-ink">
+                  {euros(expected.cardExpectedCents)}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div>
           <label
@@ -1123,7 +1207,7 @@ function CloseCashModal({
         <button
           type="button"
           onClick={submit}
-          disabled={submitting}
+          disabled={submitting || blocked}
           className="w-full inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-ink text-surface hover:bg-ink/90 px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60"
         >
           {submitting ? (
@@ -1131,7 +1215,7 @@ function CloseCashModal({
           ) : (
             <Lock className="h-4 w-4" />
           )}
-          Cerrar caja
+          {blocked ? 'Corrige movimientos antes de cerrar' : 'Cerrar caja'}
         </button>
       </div>
     </ModalShell>
