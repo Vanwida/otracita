@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, doublePrecision } from 'drizzle-orm/pg-core';
 
 
 // Clients (barbershops that buy our service)
@@ -16,6 +16,13 @@ export const clients = pgTable('clients', {
   whatsappNumber: text('whatsapp_number'), // their business WhatsApp number
   city: text('city').default('Barcelona'),
   address: text('address'),
+  // Geocoded coordinates of the local. Used by the Apple Wallet pass to
+  // trigger lockscreen relevance when the customer walks past, and reserved
+  // for future map/distance features. Nullable — the wallet pass omits the
+  // geofence section when either is null. Barbers paste a Google Maps URL
+  // in Ajustes → Negocio and we parse coords from it client-side.
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
   // WhatsApp Cloud API
   whatsappPhoneNumberId: text('whatsapp_phone_number_id'), // Meta phone number ID
   whatsappAccessToken: text('whatsapp_access_token'), // per-client or shared token
@@ -1126,6 +1133,12 @@ export const productSales = pgTable('product_sales', {
   totalCents: integer('total_cents').notNull(),                            // = unitPriceCents * quantity (sanity check)
   customerPhone: text('customer_phone'),
   paymentMethod: text('payment_method').notNull(),                         // 'cash' | 'card' | 'online'
+  // Tipo de "salida" de stock. NULL = venta normal a cliente (con flujo de
+  // dinero → entra en revenue + caja). 'internal' = consumo del barbero
+  // (gomina/cera de uso interno) y 'damage' = merma/rotura — ambos
+  // decrementan stock pero NO mueven dinero (sin cash_movement) y NO
+  // computan en P&L de ingresos por productos.
+  consumptionKind: text('consumption_kind'),
   // Idempotencia frente a auto-facturación: cuando una venta ya está incluida
   // en una factura emitida (booking → completed → factura con items), se
   // estampa este timestamp. Las ventas con `invoicedAt != null` NO vuelven a

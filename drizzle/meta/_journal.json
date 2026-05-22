@@ -155,6 +155,13 @@
       "when": 1779443599651,
       "tag": "0040_tips_payout",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1779472014994,
+      "tag": "0044_product_sales_consumption_kind",
+      "breakpoints": true
     }
   ]
 }
