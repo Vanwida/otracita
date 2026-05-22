@@ -25,6 +25,46 @@ import RatingsToggle from '../../resenas/RatingsToggle'
 // campo en dos sitios). LÓGICA DE SERVIDOR INTACTA.
 // -----------------------------------------------------------------------------
 
+async function saveGoogleReviewUrl(formData: FormData) {
+  'use server'
+
+  const { auth: serverAuth } = await import('@/lib/auth/server')
+  const { headers: getHeaders } = await import('next/headers')
+  const session = await serverAuth.api.getSession({ headers: await getHeaders() })
+  if (!session?.user?.email) return
+
+  const email = session.user.email
+  const raw = (formData.get('googleReviewUrl') as string | null) ?? ''
+
+  // Sanear URL Google Review: aceptar solo http/https; vacío → null
+  let cleanReviewUrl: string | null = null
+  if (raw.trim()) {
+    try {
+      const u = new URL(raw.trim())
+      if (u.protocol === 'https:' || u.protocol === 'http:') {
+        cleanReviewUrl = u.toString()
+      }
+    } catch {
+      /* deja null */
+    }
+  }
+
+  const { db } = await import('@/db')
+  const { clients } = await import('@/db/schema')
+  const { eq } = await import('drizzle-orm')
+
+  const records = await db.select().from(clients).where(eq(clients.email, email))
+  if (records.length === 0) return
+
+  await db
+    .update(clients)
+    .set({ googleReviewUrl: cleanReviewUrl, updatedAt: new Date() })
+    .where(eq(clients.id, records[0].id))
+
+  const { revalidatePath } = await import('next/cache')
+  revalidatePath('/dashboard/marketing/resenas')
+}
+
 export default async function MarketingResenasPage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
@@ -82,6 +122,46 @@ export default async function MarketingResenasPage() {
             initialDelayMinutes={client.followupMinutesAfter}
           />
         </div>
+
+        <form action={saveGoogleReviewUrl} className="mb-6">
+          <section className="rounded-2xl border border-line bg-surface p-5 md:p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Star className="h-4 w-4 text-brand" />
+              <h2 className="text-base font-semibold text-ink">Enlace a Google</h2>
+            </div>
+            <p className="mb-3 text-sm text-ink-2">
+              Solo se muestra al cliente cuando valora <strong>5 estrellas</strong>.
+              Pega el enlace de tu ficha en Google Business Profile.
+              <span className="mt-1 block text-ink-3">
+                Un 4★ puede esconder feedback tibio que no queremos amplificar.
+              </span>
+            </p>
+            <input
+              type="url"
+              name="googleReviewUrl"
+              defaultValue={client.googleReviewUrl || ''}
+              placeholder="https://g.page/r/..."
+              className="w-full rounded-lg border border-line bg-surface p-3 font-mono text-sm text-ink outline-none focus:border-brand"
+            />
+            <p className="mt-2 text-xs text-ink-3">
+              Consíguelo en{' '}
+              <a
+                href="https://www.google.com/business"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-ink-2"
+              >
+                Google Business Profile
+              </a>{' '}
+              → &ldquo;Reseñas&rdquo; → &ldquo;Obtener más reseñas&rdquo; → copia el enlace corto.
+            </p>
+            <div className="mt-4 flex items-center justify-end">
+              <button type="submit" className="btn-primary active:scale-95">
+                Guardar enlace
+              </button>
+            </div>
+          </section>
+        </form>
 
         {total === 0 ? (
           <div className="rounded-2xl border border-line bg-surface p-8 text-center md:p-12">

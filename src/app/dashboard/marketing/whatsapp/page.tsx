@@ -15,7 +15,6 @@ import {
   Bot,
   MessageCircle,
   User,
-  Star,
 } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
@@ -27,8 +26,7 @@ import {
 // configuración del comportamiento del bot.
 //
 // Estado de cada campo:
-//   ✅ Wired (afecta ya al bot):  botName, botTone, chatbotGreeting,
-//                                 googleReviewUrl
+//   ✅ Wired (afecta ya al bot):  botName, botTone, chatbotGreeting
 //   🟡 Config persistida, wiring pendiente:
 //                                 botOutOfHoursMessage, botAllowCancelWhatsapp,
 //                                 noShowBlockThreshold, reminderTemplate
@@ -69,20 +67,6 @@ export default async function BotPage() {
     const botToneRaw = (formData.get('botTone') as string | null) ?? 'cercano'
     const botTone = ['cercano', 'neutro', 'formal'].includes(botToneRaw) ? botToneRaw : 'cercano'
     const chatbotGreeting = (formData.get('chatbotGreeting') as string | null) ?? ''
-    const googleReviewUrl = (formData.get('googleReviewUrl') as string | null) ?? ''
-
-    // Sanear URL Google Review: aceptar solo https://
-    let cleanReviewUrl: string | null = null
-    if (googleReviewUrl.trim()) {
-      try {
-        const u = new URL(googleReviewUrl.trim())
-        if (u.protocol === 'https:' || u.protocol === 'http:') {
-          cleanReviewUrl = u.toString()
-        }
-      } catch {
-        /* deja null */
-      }
-    }
 
     const { db } = await import('@/db')
     const { clients } = await import('@/db/schema')
@@ -97,7 +81,6 @@ export default async function BotPage() {
         botName: botName || null,
         botTone,
         chatbotGreeting: chatbotGreeting || null,
-        googleReviewUrl: cleanReviewUrl,
         updatedAt: new Date(),
       })
       .where(eq(clients.id, records[0].id))
@@ -153,30 +136,6 @@ export default async function BotPage() {
           <p className="text-xs text-ink-3 mt-2">
             Tip: menciona el negocio y ofrece 2-3 opciones claras (reservar, precios, horario).
           </p>
-        </Card>
-
-        {/* ─── Reviews ─────────────────────────────────────────── */}
-        <Card icon={Star} title="Reseñas en Google">
-          <p className="text-sm text-ink-2 mb-3">
-            Cuando un cliente te da <strong>5 estrellas</strong> en el follow-up del WhatsApp,
-            el bot le invita a dejarte reseña en Google con este enlace.
-            <span className="block mt-1 text-ink-3">
-              Solo en valoraciones de 5★. Un 4★ puede esconder feedback tibio que no queremos amplificar.
-            </span>
-          </p>
-          <input
-            type="url"
-            name="googleReviewUrl"
-            defaultValue={client.googleReviewUrl || ''}
-            placeholder="https://g.page/r/..."
-            className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none font-mono"
-          />
-          <div className="mt-2 text-xs text-ink-3 space-y-1">
-            <p>
-              Consíguelo en <a href="https://www.google.com/business" target="_blank" rel="noopener noreferrer" className="underline hover:text-ink-2">Google Business Profile</a> →
-              &ldquo;Reseñas&rdquo; → &ldquo;Obtener más reseñas&rdquo; → copia el enlace corto.
-            </p>
-          </div>
         </Card>
 
         <div className="flex items-center justify-end">
