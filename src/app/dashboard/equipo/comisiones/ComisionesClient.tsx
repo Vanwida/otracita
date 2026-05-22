@@ -746,7 +746,7 @@ function UpsellCard() {
           href="/dashboard/mi-plan"
           className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:text-brand-strong"
         >
-          Ver Mi plan →
+          Ver Suscripción →
         </Link>
       </div>
     </div>

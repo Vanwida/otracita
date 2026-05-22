@@ -379,7 +379,7 @@ function UpsellCard() {
           llegado al objetivo cada mes. Manual y simple — sin reglas complejas.
         </p>
         <Link href="/dashboard/mi-plan" className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:text-brand-strong">
-          Ver Mi plan →
+          Ver Suscripción →
         </Link>
       </div>
     </div>

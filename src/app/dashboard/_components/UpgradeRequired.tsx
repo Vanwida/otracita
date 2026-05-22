@@ -13,7 +13,7 @@ interface Props {
 // UpgradeRequired — pantalla in-page para features no incluidas en el tier.
 //
 // Mismo patrón que /dashboard/finanzas: header de la sección + card centrada
-// con icono, mensaje y CTA a Mi plan. La consistencia entre features evita
+// con icono, mensaje y CTA a Suscripción (Ajustes). La consistencia entre features evita
 // que el barbero piense que es un fallo (una de cada dos páginas con un
 // estilo distinto = bug aparente).
 // -----------------------------------------------------------------------------
@@ -55,7 +55,7 @@ export default function UpgradeRequired({ feature, title, icon: Icon, back }: Pr
           <p className="text-sm text-ink-2 leading-relaxed">{msg.body}</p>
         </div>
         <Link href="/dashboard/mi-plan" className="btn-primary inline-flex items-center gap-2">
-          Ver Mi plan
+          Ver Suscripción
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       </section>
