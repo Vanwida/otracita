@@ -279,9 +279,11 @@ export default async function ClientDetailPage({ params }: PageProps) {
       const tokenExpiresRaw = strOrNull(formData.get('metaTokenExpiresAt'));
       const metaTokenExpiresAt = tokenExpiresRaw ? new Date(tokenExpiresRaw) : null;
 
+      const nextPhoneNumberId = strOrNull(formData.get('whatsappPhoneNumberId'));
+
       const patch: Partial<typeof clients.$inferInsert> = {
         status: safeStatus,
-        whatsappPhoneNumberId: strOrNull(formData.get('whatsappPhoneNumberId')),
+        whatsappPhoneNumberId: nextPhoneNumberId,
         whatsappAccessToken: strOrNull(formData.get('whatsappAccessToken')),
         metaTokenExpiresAt,
         booksyInboundEmail: strOrNull(formData.get('booksyInboundEmail')),
@@ -305,6 +307,43 @@ export default async function ClientDetailPage({ params }: PageProps) {
           : `Guardó "${existing.businessName}"`,
         metadata: statusChanged ? { from: existing.status, to: safeStatus } : undefined,
       });
+
+      // ─── Bot WhatsApp activado (#53) ────────────────────────────────────
+      // Detectar transición null → set en whatsappPhoneNumberId cuando el
+      // barbero había enviado solicitud self-service. Si ambas condiciones
+      // se cumplen, le notificamos por email que su bot ya está activo.
+      // Fire-and-forget: no bloqueamos el redirect.
+      const justActivated =
+        !existing.whatsappPhoneNumberId &&
+        !!nextPhoneNumberId &&
+        !!existing.whatsappBotRequest;
+      if (justActivated) {
+        const { sendOpsEmailWithWhatsappFallback } = await import('@/lib/email/notify');
+        const subject = 'Tu bot de WhatsApp ya está activo';
+        const textBody = [
+          `Hola ${existing.ownerName || existing.businessName},`,
+          '',
+          'Buenas noticias — tu bot de WhatsApp ya está activo y atendiendo clientes.',
+          '',
+          'Ya puedes:',
+          '  · Compartir tu número de WhatsApp Business con clientes',
+          '  · Personalizar el nombre, tono y mensaje de bienvenida del bot',
+          '    en /dashboard/marketing/whatsapp',
+          '  · Revisar las conversaciones en tu dashboard',
+          '',
+          'Si tienes cualquier duda, contesta a este email y te ayudamos.',
+          '',
+          '— Equipo otracita',
+        ].join('\n');
+        void sendOpsEmailWithWhatsappFallback({
+          to: existing.email,
+          subject,
+          textBody,
+          tag: 'bot-activated',
+        }).catch((err: unknown) => {
+          console.error('[admin/clients] notificación bot activado falló:', err);
+        });
+      }
     }
 
     revalidatePath(`/admin/clients/${clientId}`);
