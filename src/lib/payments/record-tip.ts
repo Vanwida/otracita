@@ -23,11 +23,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { tips, cashMovements, cashSessions } from '@/db/schema';
 
-// La transacción de Drizzle expone una API casi idéntica a `db` (mismos
-// `.insert/.select/.update`). Tomamos el tipo del primer argumento de
-// `db.transaction` para que el helper acepte tanto `db` como `tx` sin tener
-// que duplicar tipos.
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+// Driver neon-http NO soporta `db.transaction` real (lanza "No transactions
+// support in neon-http driver" en runtime). Ejecutamos secuencial sobre `db`
+// — mismo patrón que /api/tips/cash en producción. El riesgo de
+// inconsistencia parcial si una query intermedia falla es aceptado como
+// baseline del adapter.
+type DbClient = typeof db;
 
 export interface RecordTipInput {
   /** Tenant. */
@@ -56,12 +57,13 @@ export interface RecordTipResult {
 }
 
 /**
- * Inserta tip + (si corresponde) cash_movement, todo dentro de la
- * transacción que recibe. Lanza si algo falla — el caller decide si revertir
- * la transacción completa.
+ * Inserta tip + (si corresponde) cash_movement de forma secuencial. Lanza
+ * si algo falla. Sin transacción real (limitación del driver neon-http);
+ * el caller asume el mismo riesgo de inconsistencia parcial que el resto
+ * del codebase.
  */
-export async function recordTipInTx(
-  tx: Tx,
+export async function recordTipSequential(
+  tx: DbClient,
   input: RecordTipInput,
 ): Promise<RecordTipResult> {
   const now = new Date();

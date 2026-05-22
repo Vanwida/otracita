@@ -28,7 +28,7 @@ import {
   createStripeCheckoutForBooking,
   StripeCheckoutError,
 } from '@/lib/payments/stripe-checkout';
-import { recordTipInTx } from '@/lib/payments/record-tip';
+import { recordTipSequential } from '@/lib/payments/record-tip';
 import { isNull } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
@@ -186,74 +186,67 @@ export async function POST(
     }
   }
 
-  // ── Transacción: payments offline + tip + (si todos offline) booking ─
+  // ── Secuencial: payments offline + tip + (si todos offline) booking ──
+  // neon-http NO soporta `db.transaction` real → ejecutamos secuencial,
+  // mismo patrón que /api/tips/cash. Riesgo de inconsistencia parcial si
+  // una query intermedia falla = baseline aceptado del driver.
   const offlineLines = body.payments.filter((p) => p.method !== 'card_online');
   const allOffline = !onlineLine;
 
-  const result = await db.transaction(async (tx) => {
-    const now = new Date();
+  const now = new Date();
 
-    // 1. Insertar N payments offline.
-    for (const line of offlineLines) {
-      // El validateChargeBody ya bloqueó methods no whitelisted, pero
-      // re-chequeo defensivo (TS-friendly).
-      if (!isPaymentMethod(line.method)) {
-        throw new Error(`Método inesperado: ${String(line.method)}`);
-      }
-      await tx.insert(payments).values({
-        clientId: client.id,
-        bookingId,
-        amountCents: line.amountCents,
-        applicationFeeCents: 0,
-        currency: 'eur',
-        type: 'full',
-        status: 'succeeded',
-        method: line.method,
-        paidAt: now,
-        recordedByEmail: user.email,
-        sumupTransactionId: line.sumupTransactionId ?? null,
-        notes: line.notes ?? null,
-        description: booking.service ?? null,
-      });
+  // 1. Insertar N payments offline.
+  for (const line of offlineLines) {
+    if (!isPaymentMethod(line.method)) {
+      throw new Error(`Método inesperado: ${String(line.method)}`);
     }
+    await db.insert(payments).values({
+      clientId: client.id,
+      bookingId,
+      amountCents: line.amountCents,
+      applicationFeeCents: 0,
+      currency: 'eur',
+      type: 'full',
+      status: 'succeeded',
+      method: line.method,
+      paidAt: now,
+      recordedByEmail: user.email,
+      sumupTransactionId: line.sumupTransactionId ?? null,
+      notes: line.notes ?? null,
+      description: booking.service ?? null,
+    });
+  }
 
-    // 2. Si todo offline → cerrar booking.
-    let bookingCompleted = false;
-    if (allOffline) {
-      const finalMethod =
-        body.payments.length === 1
-          ? body.payments[0].method
-          : MIXED_METHOD_TOKEN;
+  // 2. Si todo offline → cerrar booking.
+  let bookingCompleted = false;
+  if (allOffline) {
+    const finalMethod =
+      body.payments.length === 1 ? body.payments[0].method : MIXED_METHOD_TOKEN;
+    await db
+      .update(bookings)
+      .set({ status: 'completed', paymentMethod: finalMethod })
+      .where(eq(bookings.id, bookingId));
+    bookingCompleted = true;
+  }
 
-      await tx
-        .update(bookings)
-        .set({
-          status: 'completed',
-          paymentMethod: finalMethod,
-        })
-        .where(eq(bookings.id, bookingId));
-      bookingCompleted = true;
-    }
+  // 3. Insertar tip (si viene).
+  let tipRecorded = false;
+  if (body.tip && resolvedBarber) {
+    await recordTipSequential(db, {
+      clientId: client.id,
+      bookingId,
+      customerPhone: booking.customerPhone ?? '—',
+      amountCents: body.tip.amountCents,
+      method: body.tip.method,
+      barberId: resolvedBarber.id,
+      barberName: resolvedBarber.name,
+      cashRegisterEnabled: Boolean(client.cashRegisterEnabled),
+      createdByEmail: user.email,
+    });
+    tipRecorded = true;
+  }
 
-    // 3. Insertar tip (si viene). Mismo flow que /api/tips/cash, encapsulado.
-    let tipRecorded = false;
-    if (body.tip && resolvedBarber) {
-      await recordTipInTx(tx, {
-        clientId: client.id,
-        bookingId,
-        customerPhone: booking.customerPhone ?? '—',
-        amountCents: body.tip.amountCents,
-        method: body.tip.method,
-        barberId: resolvedBarber.id,
-        barberName: resolvedBarber.name,
-        cashRegisterEnabled: Boolean(client.cashRegisterEnabled),
-        createdByEmail: user.email,
-      });
-      tipRecorded = true;
-    }
-
-    return { bookingCompleted, tipRecorded };
-  });
+  const result = { bookingCompleted, tipRecorded };
 
   // ── Cash movements para los tramos offline (fire-and-forget) ─────────
   // Uno por tramo offline (1 booking → N rows en cash_movements si split).

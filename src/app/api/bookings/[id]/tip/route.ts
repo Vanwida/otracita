@@ -5,7 +5,7 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
-import { recordTipInTx } from '@/lib/payments/record-tip';
+import { recordTipSequential } from '@/lib/payments/record-tip';
 
 // -----------------------------------------------------------------------------
 // POST /api/bookings/[id]/tip
@@ -126,19 +126,18 @@ export async function POST(
     );
   }
 
-  // Insertar (transacción por consistencia con cash_movement si aplica).
-  const result = await db.transaction(async (tx) => {
-    return recordTipInTx(tx, {
-      clientId: client.id,
-      bookingId,
-      customerPhone: booking.customerPhone ?? '—',
-      amountCents: body.amountCents as number,
-      method: body.method as 'cash' | 'card',
-      barberId: barber.id,
-      barberName: barber.name,
-      cashRegisterEnabled: Boolean(client.cashRegisterEnabled),
-      createdByEmail: user.email,
-    });
+  // Insertar secuencial (neon-http no soporta transacciones reales — mismo
+  // patrón que /api/tips/cash).
+  const result = await recordTipSequential(db, {
+    clientId: client.id,
+    bookingId,
+    customerPhone: booking.customerPhone ?? '—',
+    amountCents: body.amountCents as number,
+    method: body.method as 'cash' | 'card',
+    barberId: barber.id,
+    barberName: barber.name,
+    cashRegisterEnabled: Boolean(client.cashRegisterEnabled),
+    createdByEmail: user.email,
   });
 
   return Response.json(
