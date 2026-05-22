@@ -246,6 +246,65 @@ export function isAreaTabActive(tab: AreaTab, segment: string | null): boolean {
 }
 
 /**
+ * Breadcrumb derivado para un pathname dado. Single source of truth para
+ * cualquier afordance "← Volver" / breadcrumb / parent-link del dashboard.
+ *
+ * Devuelve:
+ *  - `parent`: el ÁREA a la que pertenece la URL (label visible del rail
+ *    nivel-1, no la key interna). `href` apunta a la ruta índice del área.
+ *  - `current`: el label de la pestaña actual (si la URL coincide con un
+ *    tab del área) — para mostrar la jerarquía completa "Área > Pestaña".
+ *
+ * Match por prefijo más largo (vía `activeArea`) + coincidencia exacta de
+ * `tab.href`. Nada se hardcodea: si renombramos "Crecimiento" o movemos
+ * una pestaña de área en area-config, todos los breadcrumbs se actualizan
+ * automáticamente.
+ *
+ * Ejemplos:
+ *   /dashboard/marketing/whatsapp        → Crecimiento > Bot WhatsApp
+ *   /dashboard/app                       → Crecimiento > App
+ *   /dashboard/ajustes/recepcionista     → Crecimiento > Recepcionista IA
+ *   /dashboard/mi-plan                   → Ajustes > Suscripción
+ *   /dashboard/ventas/productos          → Ventas > Productos
+ *   /dashboard/informes/nominas          → Informes > Nóminas
+ *   /dashboard/informes                  → Informes (raíz del área)
+ */
+export interface Breadcrumb {
+  parent: { label: string; href: string } | null
+  current: string | null
+}
+
+export function breadcrumbFor(pathname: string): Breadcrumb {
+  const area = activeArea(pathname)
+  if (!area) return { parent: null, current: null }
+
+  // Si el pathname coincide con el href ÍNDICE del área, NO hay un parent
+  // útil ("volver a sí mismo" es no-op). `current` = label del área.
+  if (pathname === area.href) {
+    return { parent: null, current: area.label }
+  }
+
+  // Match exacto de href de pestaña (más fiable que comparar segmentos:
+  // hay rutas legacy donde el href del tab vive fuera del slug del área,
+  // p.ej. tab "Recepcionista IA" → /dashboard/ajustes/recepcionista).
+  let currentLabel: string | null = null
+  let bestLen = -1
+  for (const tab of area.tabs) {
+    if (pathname === tab.href || pathname.startsWith(`${tab.href}/`)) {
+      if (tab.href.length > bestLen) {
+        bestLen = tab.href.length
+        currentLabel = tab.label
+      }
+    }
+  }
+
+  return {
+    parent: { label: area.label, href: area.href },
+    current: currentLabel,
+  }
+}
+
+/**
  * Render plano de la IA (áreas + pestañas) para inyectar en el system prompt
  * del chat asistente. Single source of truth — si renombramos un área aquí,
  * el bot pasa a usar el nombre nuevo sin tocar el prompt.

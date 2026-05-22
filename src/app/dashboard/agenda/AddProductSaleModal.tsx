@@ -164,8 +164,8 @@ export default function AddProductSaleModal({
               ) : products.length === 0 ? (
                 <p className="text-sm text-ink-3 text-center py-4">
                   No tienes productos dados de alta. Añádelos en{' '}
-                  <a href="/dashboard/marketing/tienda" className="text-brand hover:underline">
-                    Marketing → Tienda
+                  <a href="/dashboard/ventas/productos" className="text-brand hover:underline">
+                    Ventas → Productos
                   </a>
                   .
                 </p>

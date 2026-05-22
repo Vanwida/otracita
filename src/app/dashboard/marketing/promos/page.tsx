@@ -39,7 +39,7 @@ export default async function MarketingPromosPage() {
         feature="promosContextuales"
         title="Promos"
         icon={Megaphone}
-        back={{ label: 'Crecimiento', href: '/dashboard/marketing' }}
+        pathname="/dashboard/marketing/promos"
       />
     )
   }

@@ -58,7 +58,7 @@ export default async function BotPage() {
         feature="whatsappBot"
         title="Bot WhatsApp"
         icon={Bot}
-        back={{ label: 'Crecimiento', href: '/dashboard/marketing' }}
+        pathname="/dashboard/marketing/whatsapp"
       />
     )
   }

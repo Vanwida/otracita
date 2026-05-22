@@ -71,7 +71,7 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
         feature="controlFinanciero"
         title="Finanzas"
         icon={TrendingUp}
-        back={{ label: 'Ventas', href: '/dashboard/ventas' }}
+        pathname="/dashboard/informes"
       />
     )
   }

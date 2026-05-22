@@ -49,7 +49,7 @@ export default async function MarketingFidelidadPage() {
         feature="loyaltyAdvanced"
         title="Fidelidad"
         icon={Gift}
-        back={{ label: 'Inicio', href: '/dashboard' }}
+        pathname="/dashboard/marketing"
       />
     )
   }

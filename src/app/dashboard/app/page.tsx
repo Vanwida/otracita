@@ -169,7 +169,7 @@ export default async function AppPage() {
         </p>
       </section>
 
-      {/* Tracking de conversiones — UI canónica vive en Marketing → Tracking
+      {/* Tracking de conversiones — UI canónica vive en Crecimiento → Tracking
           (multi-pixel: GTM + Meta + Google Ads + TikTok). Aquí dejamos solo
           un puntero discreto para barberos que aterricen buscando GTM en la
           configuración de la app. */}
@@ -188,7 +188,7 @@ export default async function AppPage() {
             </span>
           </div>
           <p className="mt-0.5 text-[0.75rem] text-ink-2">
-            Pixels de Meta, Google Ads y TikTok — en Marketing → Tracking.
+            Pixels de Meta, Google Ads y TikTok — en Crecimiento → Tracking.
             {hasFeature(client, 'gtmContainer')
               ? ''
               : ' Disponible con el plan Pro.'}

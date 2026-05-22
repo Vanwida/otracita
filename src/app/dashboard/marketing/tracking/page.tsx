@@ -42,7 +42,7 @@ export default async function MarketingTrackingPage() {
         feature="gtmContainer"
         title="Tracking"
         icon={BarChart3}
-        back={{ label: 'Crecimiento', href: '/dashboard/marketing' }}
+        pathname="/dashboard/marketing/tracking"
       />
     )
   }

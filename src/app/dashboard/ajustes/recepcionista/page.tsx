@@ -56,7 +56,7 @@ export default async function AjustesRecepcionistaPage() {
         feature="recepcionistaIA"
         title="Recepcionista IA"
         icon={Mic}
-        back={{ label: 'Crecimiento', href: '/dashboard/marketing' }}
+        pathname="/dashboard/ajustes/recepcionista"
       />
     )
   }
