@@ -11,6 +11,8 @@ import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import FormGrid from '@/app/dashboard/_components/FormGrid'
+import BotActivationStatus from '@/app/dashboard/_components/BotActivationStatus'
+import BotRequestForm from './_components/BotRequestForm'
 import {
   Bot,
   MessageCircle,
@@ -18,21 +20,29 @@ import {
 } from 'lucide-react'
 
 // -----------------------------------------------------------------------------
-// /dashboard/bot — configuración del asistente WhatsApp.
+// /dashboard/marketing/whatsapp — configuración del asistente WhatsApp.
+//
+// Capas de estado (controladas por BotActivationStatus arriba):
+//   1. IDLE        — sin phoneNumberId, sin botRequest → form de solicitud
+//                    self-service. La config de personalidad NO se muestra
+//                    todavía (no tiene sentido configurarla antes del alta).
+//   2. REQUESTED   — botRequest guardado, esperando que Alex complete alta
+//                    en Meta. Banner amarillo "En cola" + botón editar
+//                    solicitud. La config de personalidad SÍ se muestra para
+//                    que el barbero la deje lista mientras tanto.
+//   3. ACTIVE      — phoneNumberId poblado → banner verde "Atendiendo" + la
+//                    config de personalidad editable.
 //
 // Auditoría previa: la sección "Integraciones" (Booksy URL + Google Calendar
 // ID) era legacy — Booksy URL se movió a Mi negocio > Servicios como ayuda
 // de onboarding; Google Calendar ya no se usa. Esta página ahora cubre SOLO
-// configuración del comportamiento del bot.
+// activación + comportamiento del bot.
 //
-// Estado de cada campo:
-//   ✅ Wired (afecta ya al bot):  botName, botTone, chatbotGreeting
-//   🟡 Config persistida, wiring pendiente:
-//                                 botOutOfHoursMessage, botAllowCancelWhatsapp,
-//                                 noShowBlockThreshold, reminderTemplate
-//
-// Los campos 🟡 se guardan en DB pero no los lee el engine todavía. Se
-// marcan en la UI con una pill "Pronto activo" para transparencia.
+// Estado de cada campo de personalidad:
+//   Wired (afecta ya al bot):  botName, botTone, chatbotGreeting
+//   Config persistida, wiring pendiente:
+//                              botOutOfHoursMessage, botAllowCancelWhatsapp,
+//                              noShowBlockThreshold, reminderTemplate
 // -----------------------------------------------------------------------------
 
 export default async function BotPage() {
@@ -89,64 +99,103 @@ export default async function BotPage() {
     revalidatePath('/dashboard/marketing/whatsapp')
   }
 
+  // Estado de activación (los 3 modos).
+  const botActive = !!client.whatsappPhoneNumberId
+  const botRequest = client.whatsappBotRequest ?? null
+  const botRequested = !botActive && !!botRequest?.phoneRequested
+  const botIdle = !botActive && !botRequest?.phoneRequested
+
   return (
     <AreaShell area="marketing">
       <AreaContent scroll="region" maxWidth="5xl">
-      <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
-        Cómo se presenta y responde por WhatsApp. Todo aplica a partir del
-        siguiente mensaje que reciba.
-      </p>
-      <form action={saveBotSettings} className="space-y-6">
-        {/* ─── Identidad ───────────────────────────────────────── */}
-        <Card icon={User} title="Identidad">
-          <Field
-            label="Nombre del bot"
-            hint="Se presenta así: «Hola, soy [nombre], el asistente de [tu negocio]». Déjalo vacío para genérico. Máx. 40 caracteres."
-          >
-            <input
-              type="text"
-              name="botName"
-              maxLength={40}
-              defaultValue={client.botName || ''}
-              placeholder="Ej. Mateo, Raúl, Clara…"
-              className="w-full max-w-sm bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none"
-            />
-          </Field>
+        <BotActivationStatus
+          whatsappPhoneNumberId={client.whatsappPhoneNumberId}
+          whatsappBotRequest={botRequest}
+          publicSlug={client.publicSlug}
+          publicEnabled={client.publicEnabled}
+        />
 
-          <Field
-            label="Tono"
-            hint="Define cómo escribe el bot. El LLM adapta cada respuesta al estilo elegido."
-          >
-            <ToneRadioGroup current={client.botTone || 'cercano'} />
-          </Field>
-        </Card>
+        {botIdle && (
+          <BotRequestForm />
+        )}
 
-        {/* ─── Bienvenida ──────────────────────────────────────── */}
-        <Card icon={MessageCircle} title="Mensaje de bienvenida">
-          <p className="text-sm text-ink-2 mb-3">
-            Lo primero que responde cuando un cliente nuevo escribe al WhatsApp del negocio.
-          </p>
-          <textarea
-            name="chatbotGreeting"
-            rows={4}
-            defaultValue={client.chatbotGreeting || ''}
-            placeholder="¡Hola! Bienvenido a [tu negocio]. Soy tu asistente virtual. ¿Cómo puedo ayudarte hoy?"
-            className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none resize-none"
-          />
-          <p className="text-xs text-ink-3 mt-2">
-            Tip: menciona el negocio y ofrece 2-3 opciones claras (reservar, precios, horario).
-          </p>
-        </Card>
+        {botRequested && (
+          <details className="mb-6 rounded-2xl border border-line bg-surface">
+            <summary className="cursor-pointer list-none px-5 py-3 text-sm font-medium text-ink-2 hover:text-ink select-none flex items-center justify-between">
+              <span>Editar datos de la solicitud</span>
+              <span className="text-xs text-ink-3">Toca para abrir</span>
+            </summary>
+            <div className="px-5 pb-5">
+              <BotRequestForm
+                initial={{
+                  phoneRequested: botRequest?.phoneRequested ?? null,
+                  businessLegalName: botRequest?.businessLegalName ?? null,
+                  fbBusinessId: botRequest?.fbBusinessId ?? null,
+                }}
+              />
+            </div>
+          </details>
+        )}
 
-        <div className="flex items-center justify-end">
-          <button
-            type="submit"
-            className="btn-primary active:scale-95"
-          >
-            Guardar cambios
-          </button>
-        </div>
-      </form>
+        {(botActive || botRequested) && (
+          <>
+            <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
+              Cómo se presenta y responde por WhatsApp. Todo aplica a partir del
+              siguiente mensaje que reciba.
+            </p>
+            <form action={saveBotSettings} className="space-y-6">
+              {/* ─── Identidad ───────────────────────────────────────── */}
+              <Card icon={User} title="Identidad">
+                <Field
+                  label="Nombre del bot"
+                  hint="Se presenta así: «Hola, soy [nombre], el asistente de [tu negocio]». Déjalo vacío para genérico. Máx. 40 caracteres."
+                >
+                  <input
+                    type="text"
+                    name="botName"
+                    maxLength={40}
+                    defaultValue={client.botName || ''}
+                    placeholder="Ej. Mateo, Raúl, Clara…"
+                    className="w-full max-w-sm bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none"
+                  />
+                </Field>
+
+                <Field
+                  label="Tono"
+                  hint="Define cómo escribe el bot. El LLM adapta cada respuesta al estilo elegido."
+                >
+                  <ToneRadioGroup current={client.botTone || 'cercano'} />
+                </Field>
+              </Card>
+
+              {/* ─── Bienvenida ──────────────────────────────────────── */}
+              <Card icon={MessageCircle} title="Mensaje de bienvenida">
+                <p className="text-sm text-ink-2 mb-3">
+                  Lo primero que responde cuando un cliente nuevo escribe al WhatsApp del negocio.
+                </p>
+                <textarea
+                  name="chatbotGreeting"
+                  rows={4}
+                  defaultValue={client.chatbotGreeting || ''}
+                  placeholder="¡Hola! Bienvenido a [tu negocio]. Soy tu asistente virtual. ¿Cómo puedo ayudarte hoy?"
+                  className="w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:border-brand outline-none resize-none"
+                />
+                <p className="text-xs text-ink-3 mt-2">
+                  Tip: menciona el negocio y ofrece 2-3 opciones claras (reservar, precios, horario).
+                </p>
+              </Card>
+
+              <div className="flex items-center justify-end">
+                <button
+                  type="submit"
+                  className="btn-primary active:scale-95"
+                >
+                  Guardar cambios
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </AreaContent>
     </AreaShell>
   )
