@@ -201,6 +201,11 @@ export async function computeMonthlyPayroll(
   // R-T3 — split CASH / CARD para que la nómina solo "deba" las CARD (las
   // CASH ya las cobró el barbero en mano). Legacy NULL → CARD implícito.
   // FILTER (WHERE ...) en SQL agrega ambos sub-totales en la misma query.
+  //
+  // Épica Reni #28 parte 3b — `paid_out_at IS NULL`. Si el jefe ya marcó la
+  // propina como liquidada al barbero (cash entregada, transferencia, o ya
+  // incluida en su nómina) sale del cálculo. Aplica a CASH (la marca informa
+  // sólo) y a CARD (la marca evita doble-pago en la siguiente nómina).
   const tipsByName = await db
     .select({
       barberName: tips.barberName,
@@ -215,6 +220,7 @@ export async function computeMonthlyPayroll(
       and(
         eq(tips.clientId, clientId),
         eq(tips.status, 'paid'),
+        sql`${tips.paidOutAt} IS NULL`,
         gte(tips.paidAt, new Date(bounds.start)),
         lt(tips.paidAt, new Date(bounds.end)),
       ),

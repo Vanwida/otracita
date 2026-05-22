@@ -45,8 +45,17 @@ const ZERO_RAW: BarberMonthRaw = {
 
 // Helper: simula lo que monthly.ts produce tras agregar N propinas con sus
 // métodos. Devuelve el BarberMonthRaw que compute.ts recibe.
+//
+// Épica Reni #28 parte 3b — el WHERE de la query real filtra
+// `paid_out_at IS NULL`: si el jefe ya marcó la propina como liquidada al
+// barbero, NO entra al agregado. Replicamos ese filtro aquí.
 function aggregateTips(
-  tipsInDb: Array<{ amountCents: number; paymentMethod: 'cash' | 'card' | null }>,
+  tipsInDb: Array<{
+    amountCents: number
+    paymentMethod: 'cash' | 'card' | null
+    /** Si está pagada al barbero (paid_out_at NOT NULL) ⇒ no agrega. */
+    paidOut?: boolean
+  }>,
 ): {
   tipsCents: number
   tipsCashCents: number
@@ -56,6 +65,7 @@ function aggregateTips(
   let tipsCashCents = 0
   let tipsCardCents = 0
   for (const t of tipsInDb) {
+    if (t.paidOut) continue
     tipsCents += t.amountCents
     // Mismo predicado que el SQL FILTER en monthly.ts: 'cash' explícito → cash;
     // 'card' o NULL → card (legacy implícito).
@@ -159,6 +169,47 @@ describe('payroll-tips — Mix realista (cash + card + null)', () => {
       { ...ZERO_RAW, ...agg },
     )
     assert.equal(r.totalCents, 125000)
+  })
+})
+
+describe('payroll-tips — propinas ya liquidadas (épica Reni #28 parte 3b)', () => {
+  it('tip card con paidOutAt NOT NULL → NO suma al total ni a tipsCardCents', () => {
+    // El jefe le marcó al barbero "ya te he pagado esta propina" (vía
+    // transferencia, cash en mano fuera-de-caja, o incluida en la nómina del
+    // mes anterior). El motor la excluye via `paid_out_at IS NULL` en el WHERE.
+    const agg = aggregateTips([
+      { amountCents: 1000, paymentMethod: 'card', paidOut: true },
+    ])
+    assert.equal(agg.tipsCardCents, 0)
+    assert.equal(agg.tipsCashCents, 0)
+
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, ...agg },
+    )
+    // El barbero solo cobra la base — la propina ya fue liquidada aparte.
+    assert.equal(r.totalCents, 125000)
+  })
+
+  it('mix: tip card pagada + tip card pendiente + tip cash pendiente → solo la pendiente card suma', () => {
+    // Escenario mes: el jefe ya pagó la propina del 10€ via transferencia el
+    // mes pasado; quedan 5€ card pendientes (van a la nómina) y 8€ cash que
+    // ya tiene el barbero en mano.
+    const agg = aggregateTips([
+      { amountCents: 1000, paymentMethod: 'card', paidOut: true },
+      { amountCents: 500, paymentMethod: 'card' },
+      { amountCents: 800, paymentMethod: 'cash' },
+    ])
+    assert.equal(agg.tipsCardCents, 500)
+    assert.equal(agg.tipsCashCents, 800)
+    assert.equal(agg.tipsCents, 1300)
+
+    const r = computeBarberPayroll(
+      profile({ salaryBaseCents: 125000 }),
+      { ...ZERO_RAW, ...agg },
+    )
+    // Base + solo la card pendiente (5€). Cash no suma (en mano), pagada no agrega.
+    assert.equal(r.totalCents, 125000 + 500)
   })
 })
 
