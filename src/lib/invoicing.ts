@@ -189,6 +189,8 @@ export async function generateInvoiceFromBooking(
     );
   }
 
+  // Solo ventas reales (consumption_kind IS NULL): los consumos internos
+  // y mermas no generan ingreso ni se facturan.
   const pendingSales = await db
     .select()
     .from(productSales)
@@ -197,6 +199,7 @@ export async function generateInvoiceFromBooking(
         eq(productSales.bookingId, bookingId),
         eq(productSales.clientId, client.id),
         isNull(productSales.invoicedAt),
+        isNull(productSales.consumptionKind),
       ),
     );
 

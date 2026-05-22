@@ -168,6 +168,7 @@ async function backfillTodayMovements(
     FROM ${productSales} ps
     WHERE ps.client_id = ${clientId}
       AND (ps.sold_at AT TIME ZONE 'Europe/Madrid')::date = ${todayMadrid}::date
+      AND ps.consumption_kind IS NULL
       AND NOT EXISTS (
         SELECT 1 FROM cash_movements m
         WHERE m.reference_type = 'product_sale' AND m.reference_id = ps.id

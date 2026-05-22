@@ -5,16 +5,18 @@ import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-cli
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 
 // -----------------------------------------------------------------------------
-// POST /api/products/sales — registra una venta de producto.
+// POST /api/products/sales — registra una venta de producto o un consumo
+// interno / merma.
 //
 // Body:
 //   {
 //     productId: string,
 //     quantity: number (>= 1),
-//     paymentMethod: 'cash' | 'card' | 'online',
-//     bookingId?: string,         // si la venta está asociada a una cita
-//     barberId?: string,          // quién vendió (atribución per-barbero)
-//     customerPhone?: string,     // opcional; auto-fill si bookingId
+//     paymentMethod: 'cash' | 'card' | 'online',  // requerido si venta
+//     bookingId?: string,                          // si está asociada a cita
+//     barberId?: string,                           // atribución per-barbero
+//     customerPhone?: string,                      // auto-fill si bookingId
+//     consumptionKind?: 'internal' | 'damage' | null,  // tipo de salida
 //   }
 //
 // Lógica:
@@ -24,8 +26,11 @@ import { recordMovementInBackground } from '@/lib/cash/record-movement'
 //   3. Si product.stock_quantity != null, decrementar atómicamente con
 //      UPDATE ... WHERE stock_quantity >= quantity. Si afectó 0 filas →
 //      stock insuficiente.
-//   4. INSERT en product_sales con snapshot del unit_price_cents y total.
-//   5. Devolver la sale para que el caller actualice UI.
+//   4. INSERT en product_sales con snapshot del unit_price_cents y total
+//      (y consumption_kind si aplica).
+//   5. Si NO es consumo interno/merma → crear cash_movement como antes.
+//      Si SÍ es consumo → SKIP movement (no hay flujo de dinero).
+//   6. Devolver la sale para que el caller actualice UI.
 //
 // Sin transacción explícita porque las dos operaciones (UPDATE stock +
 // INSERT sale) son independientes — si falla el INSERT después del UPDATE
@@ -39,9 +44,12 @@ interface Body {
   bookingId?: unknown
   barberId?: unknown
   customerPhone?: unknown
+  consumptionKind?: unknown
 }
 
 const VALID_METHODS = ['cash', 'card', 'online']
+const VALID_CONSUMPTION_KINDS = ['internal', 'damage'] as const
+type ConsumptionKind = (typeof VALID_CONSUMPTION_KINDS)[number]
 
 export async function POST(req: Request) {
   const access = await requireClientAccess(req)
@@ -63,9 +71,32 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Cantidad inválida (1-99)' }, { status: 400 })
   }
 
-  const paymentMethod = typeof body.paymentMethod === 'string' ? body.paymentMethod : ''
-  if (!VALID_METHODS.includes(paymentMethod)) {
-    return Response.json({ error: 'Método de pago inválido' }, { status: 400 })
+  // consumptionKind: whitelist. Si viene, la venta no mueve dinero (sin
+  // cash_movement, sin paymentMethod efectivo) — sólo decrementa stock.
+  let consumptionKind: ConsumptionKind | null = null
+  if (body.consumptionKind !== undefined && body.consumptionKind !== null) {
+    if (
+      typeof body.consumptionKind !== 'string' ||
+      !VALID_CONSUMPTION_KINDS.includes(body.consumptionKind as ConsumptionKind)
+    ) {
+      return Response.json({ error: 'Tipo de consumo inválido' }, { status: 400 })
+    }
+    consumptionKind = body.consumptionKind as ConsumptionKind
+  }
+
+  // paymentMethod: requerido para ventas normales. Para consumo interno /
+  // merma no hay flujo de dinero, pero la columna es NOT NULL en DB →
+  // guardamos 'cash' como placeholder (nunca llega a caja porque skip
+  // cash_movement, y los queries de revenue filtrarán consumption_kind).
+  const paymentMethodRaw = typeof body.paymentMethod === 'string' ? body.paymentMethod : ''
+  let paymentMethod: string
+  if (consumptionKind) {
+    paymentMethod = VALID_METHODS.includes(paymentMethodRaw) ? paymentMethodRaw : 'cash'
+  } else {
+    if (!VALID_METHODS.includes(paymentMethodRaw)) {
+      return Response.json({ error: 'Método de pago inválido' }, { status: 400 })
+    }
+    paymentMethod = paymentMethodRaw
   }
 
   const bookingId = typeof body.bookingId === 'string' && body.bookingId.length > 0 ? body.bookingId : null
@@ -124,13 +155,17 @@ export async function POST(req: Request) {
       totalCents,
       customerPhone,
       paymentMethod,
+      consumptionKind,
     })
     .returning()
 
   // Cash movement enlazado a la venta. No-op si el tenant no tiene
   // cashRegisterEnabled o si no hay sesión activa — la venta queda
   // registrada igual en product_sales.payment_method para histórico.
-  if (client.cashRegisterEnabled) {
+  //
+  // Si es consumo interno o merma → SKIP: no hay flujo de dinero que
+  // registrar en caja.
+  if (client.cashRegisterEnabled && !consumptionKind) {
     recordMovementInBackground({
       clientId: client.id,
       referenceType: 'product_sale',
