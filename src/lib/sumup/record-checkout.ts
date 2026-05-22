@@ -5,6 +5,7 @@ import {
   sumupPendingTransactions,
   bookings,
   clients,
+  payments,
 } from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
 // Facturar VeriFactu ya NO es automático tras un cobro SumUp — es
@@ -123,8 +124,28 @@ export async function recordSumupCheckoutResult(
     })
     .returning({ id: cashMovements.id })
 
-  // Si SUCCESSFUL + bookingId → cerrar booking en cadena.
+  // Si SUCCESSFUL + bookingId → cerrar booking en cadena (flow standalone
+  // SumUp: cobro físico SIN pasar por /api/bookings/[id]/charge).
+  //
+  // GUARD multi-payment (épica Reni #26+#27): si /charge ya gestionó este
+  // cobro (existe una fila `payments` con el mismo sumup_transaction_id),
+  // NO re-cerramos el booking — /charge ya decide el final paymentMethod
+  // (puede ser MIXED si era un split). Lo mismo si el booking ya está
+  // completed: respetamos el estado final.
   if (input.status === 'SUCCESSFUL' && input.bookingId) {
+    const [chargeOwnedRow] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(eq(payments.sumupTransactionId, input.sumupTransactionId))
+    if (chargeOwnedRow) {
+      // /charge ya creó el registro y (si era 100% offline) ya cerró el
+      // booking. Salimos como duplicate — nada más que hacer.
+      return {
+        outcome: 'duplicate',
+        cashMovementId: movement?.id,
+      }
+    }
+
     const [booking] = await db.select().from(bookings).where(eq(bookings.id, input.bookingId))
     if (booking && booking.status === 'confirmed') {
       await db
