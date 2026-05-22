@@ -3,9 +3,9 @@ import { bookings, barbers, clients } from '@/db/schema'
 import { and, eq, ne } from 'drizzle-orm'
 import { hasBookingOverlap, hhmmToMinutes } from '@/lib/bookings/duration'
 import {
-  requireTenantAccess,
-  tenantAccessErrorResponse,
-} from '@/lib/team-auth/tenant'
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 // La facturación VeriFactu ya NO se dispara al cerrar la cita — es una
 // acción explícita por venta (POST /api/invoices/from-booking). Por eso
@@ -60,8 +60,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireTenantAccess(req)
-  if (!access.ok) return tenantAccessErrorResponse(access)
+  const access = await requireClientAccess(req)
+  if (!access.ok) return accessErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db
@@ -106,16 +106,6 @@ export async function PATCH(
       return Response.json(
         { error: "status debe ser 'cancelled' o 'completed'." },
         { status: 400 },
-      )
-    }
-    // Modo equipo: NO puede cancelar reservas (puede implicar refund / fee
-    // de no-show). Marcar como completada SÍ — es la operación core al
-    // cerrar el turno. Bloqueamos cancelled aquí en el server (la UI
-    // del equipo ya oculta el botón, esto es defensa adicional).
-    if (access.mode === 'team' && body.status === 'cancelled') {
-      return Response.json(
-        { error: 'El equipo no puede cancelar reservas. Pídeselo al dueño.' },
-        { status: 403 },
       )
     }
     if (body.status === 'completed') {
@@ -365,9 +355,7 @@ export async function PATCH(
         referenceId: updated.id,
         method: paymentMethodToRecord,
         amountCents: serviceTotalCents,
-        // Modo equipo no tiene email individual (PIN compartido) — se
-        // graba null para que el ledger lo muestre como acción de equipo.
-        createdByEmail: access.mode === 'admin' ? access.user.email : null,
+        createdByEmail: access.user.email,
       })
     }
   }

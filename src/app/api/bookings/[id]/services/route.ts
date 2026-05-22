@@ -2,9 +2,9 @@ import { db } from '@/db'
 import { bookings, bookingServices } from '@/db/schema'
 import { and, eq, ne } from 'drizzle-orm'
 import {
-  requireTenantAccess,
-  tenantAccessErrorResponse,
-} from '@/lib/team-auth/tenant'
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access'
 import {
   computeBookingSnapshot,
   sanitizeExtraServices,
@@ -41,8 +41,8 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireTenantAccess(req)
-  if (!access.ok) return tenantAccessErrorResponse(access)
+  const access = await requireClientAccess(req)
+  if (!access.ok) return accessErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db
@@ -215,8 +215,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireTenantAccess(req)
-  if (!access.ok) return tenantAccessErrorResponse(access)
+  const access = await requireClientAccess(req)
+  if (!access.ok) return accessErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db

@@ -3,17 +3,15 @@ import { db } from '@/db';
 import { barbers as barbersTable } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import {
-  requireTenantAccess,
-  tenantAccessErrorResponse,
-} from '@/lib/team-auth/tenant';
+  requireClientAccess,
+  accessErrorResponse,
+} from '@/lib/auth/require-client-access';
 import { createBooking } from '@/lib/bookings/create';
 import { sanitizeExtraServices } from '@/lib/bookings/duration';
 
-// Acepta admin o equipo. Crear cita es la operación core del equipo —
-// si no pueden crear citas, la agenda no sirve. No es destructivo.
 export async function POST(req: NextRequest) {
-  const access = await requireTenantAccess(req);
-  if (!access.ok) return tenantAccessErrorResponse(access);
+  const access = await requireClientAccess(req);
+  if (!access.ok) return accessErrorResponse(access);
   const { client } = access;
 
   let body: {
