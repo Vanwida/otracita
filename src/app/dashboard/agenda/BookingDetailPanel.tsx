@@ -58,9 +58,13 @@ interface Props {
    *  desaparece de la lista (cancelado y filtrado, movido fuera del
    *  rango visible) el padre cierra el drawer automáticamente. */
   onMutated?: () => void;
+  /** Modo equipo (PWA /equipo/[slug]): oculta acciones destructivas
+   *  (cancelar reserva). Marcar completada y mover sí están permitidos
+   *  — son la operación core al cerrar el turno. */
+  teamMode?: boolean;
 }
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMutated }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMutated, teamMode = false }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -987,8 +991,10 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
               )}
 
               {/* Cancelar reserva — disponible mientras no esté ya cancelada.
-                  Abre modal con mensaje editable y toggle WhatsApp. */}
-              {canCancel && (
+                  Abre modal con mensaje editable y toggle WhatsApp.
+                  Modo equipo: OCULTO (cancelar puede implicar refund/fee
+                  de no-show; lo hace el dueño). */}
+              {canCancel && !teamMode && (
                 <div className="pt-2 border-t border-line">
                   <button
                     type="button"
