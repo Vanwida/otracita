@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Lock } from 'lucide-react';
@@ -12,16 +12,12 @@ import {
 } from './_appointment-color';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN } from './_agenda-window';
 import { hoursForDate } from '@/lib/availability-hours';
+import { useCurrentTime } from './_hooks/use-current-time';
 
 // La ventana temporal ya NO es fija — se deriva de los datos de la SEMANA
 // visible en `_agenda-window` (misma fuente que DayGrid). Antes
 // GRID_START/END estaban hardcodeados a 08:00–22:00 y una tienda que abría
 // a las 07:00 perdía esa hora también en Semana.
-
-function getCurrentTimeMinutes(): number {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
-}
 
 interface Props {
   weekStart: Date;
@@ -46,8 +42,13 @@ export default function WeekGrid({
   onSlotClick,
 }: Props) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const today = new Date();
-  const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
+  // Reloj vivo — refresca cada 60s para que la línea "ahora" avance sin
+  // recargar (bug Reni 2026-05-22). `today` se deriva del mismo Date para
+  // que el resaltado de la columna de hoy también pase de un día a otro
+  // sin reload si el dashboard queda abierto cruzando medianoche.
+  const nowDate = useCurrentTime();
+  const today = nowDate;
+  const currentTimeMin = nowDate.getHours() * 60 + nowDate.getMinutes();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const dayStrs = useMemo(
@@ -70,13 +71,6 @@ export default function WeekGrid({
       }),
     [dayStrs, hours, events],
   );
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTimeMin(getCurrentTimeMinutes());
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Auto-scroll inicial: a "ahora" si cae en la ventana (la semana suele
   // contener hoy), si no al inicio de la ventana. Re-corre al cambiar de

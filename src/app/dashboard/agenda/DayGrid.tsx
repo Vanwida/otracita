@@ -14,6 +14,7 @@ import {
 import { hoursForDate } from '@/lib/availability-hours';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-window';
 import { computeOverlapLayout } from './_event-layout';
+import { useCurrentTime } from './_hooks/use-current-time';
 
 // La VENTANA temporal (inicio/fin/alto/etiquetas) ya NO es fija — se deriva
 // de los datos del día visible en `_agenda-window` (fuente única, también
@@ -23,11 +24,6 @@ import { computeOverlapLayout } from './_event-layout';
 // Must equal --agenda-col-header-h (60px). The gutter wrapper reserves
 // header + body so its scroll height matches the column bodies exactly.
 const COL_HEADER_H = 60;
-
-function getCurrentTimeMinutes(): number {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
-}
 
 interface Props {
   date: Date;
@@ -162,7 +158,10 @@ export default function DayGrid({
   onBlockResize,
   onBlockMove,
 }: Props) {
-  const [currentTimeMin, setCurrentTimeMin] = useState(getCurrentTimeMinutes);
+  // Reloj vivo — refresca cada 60s para que la línea "ahora" avance sin
+  // recargar (bug Reni 2026-05-22). Hook canónico compartido con WeekGrid.
+  const nowDate = useCurrentTime();
+  const currentTimeMin = nowDate.getHours() * 60 + nowDate.getMinutes();
   const scrollRef = useRef<HTMLDivElement>(null);
   // Drag&drop nativo (HTML5, sin dependencia nueva). Guardamos el kind +
   // id arrastrado y el offset (px) entre el cursor y el borde superior
@@ -436,13 +435,6 @@ export default function DayGrid({
       onEventMove(eventId, { date: dateStr, time, barberId });
     }
   };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTimeMin(getCurrentTimeMinutes());
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Auto-scroll inicial (patrón Google Calendar / Cal.com / FullCalendar
   // `scrollTime`): si es HOY y "ahora" cae dentro de la ventana → llevar a
