@@ -94,7 +94,14 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       return next;
     });
   }
-  const [selectedBooking, setSelectedBooking] = useState<CalendarEvent | null>(null);
+  // El panel de detalle se IDENTIFICA por id, no por snapshot. Antes
+  // guardábamos el CalendarEvent entero aquí y se lo pasábamos como prop
+  // fija al BookingDetailPanel → cualquier mutación dentro del drawer
+  // (no-show, editar servicio, marcar origen, cobrar, añadir producto…)
+  // dejaba el panel con datos viejos hasta cerrar y reabrir. Ahora
+  // derivamos `selectedBooking` de la lista SWR `events`: cada `refetch()`
+  // refresca tanto la rejilla como el panel.
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
   const [newBookingSlot, setNewBookingSlot] = useState<{
     date: string;
@@ -210,7 +217,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
   // Clic en hueco vacío → menú contextual (A7). barberId opcional:
   // DayGrid lo pasa (columna clicada); Week/Month llaman con 2 args.
   const handleSlotClick = (date: string, time: string, barberId?: string | null) => {
-    setSelectedBooking(null);
+    setSelectedBookingId(null);
     setIsNewBookingOpen(false);
     setSlotMenu({ date, time, barberId: barberId ?? null });
   };
@@ -569,8 +576,26 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
 
   const handleEventClick = (event: CalendarEvent) => {
     setIsNewBookingOpen(false);
-    setSelectedBooking(event);
+    setSelectedBookingId(event.id);
   };
+
+  // Derive el booking actual de la query SWR. Cada `refetch()` actualiza
+  // este objeto sin tocar `selectedBookingId` — el panel re-renderiza con
+  // datos frescos. Si el id deja de existir (cancelled+filtrado, movido
+  // fuera del rango, eliminado) cerramos el drawer automáticamente.
+  const selectedBooking: CalendarEvent | null = useMemo(() => {
+    if (!selectedBookingId) return null;
+    return events.find((e) => e.id === selectedBookingId) ?? null;
+  }, [events, selectedBookingId]);
+
+  useEffect(() => {
+    // Auto-close cuando el booking abierto desaparece tras un refetch
+    // (booking borrado o movido fuera del rango visible). Sin esto el
+    // drawer se quedaría abierto pintando un esqueleto vacío.
+    if (selectedBookingId && !loading && !selectedBooking) {
+      setSelectedBookingId(null);
+    }
+  }, [selectedBookingId, selectedBooking, loading]);
 
   const VIEW_LABELS: Record<'day' | 'week' | 'month', string> = {
     day: 'Día',
@@ -670,7 +695,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         <button
           onClick={() => {
             setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: null });
-            setSelectedBooking(null);
+            setSelectedBookingId(null);
             setIsNewBookingOpen(true);
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
@@ -766,7 +791,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               onEventClick={handleEventClick}
               onSlotClick={handleSlotClick}
               onBarberClick={(b) => {
-                setSelectedBooking(null);
+                setSelectedBookingId(null);
                 setSlotMenu(null);
                 setBarberMenu(b);
               }}
@@ -828,16 +853,20 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         </div>
       </div>
 
-      {/* Detail panel */}
+      {/* Detail panel — `booking` se DERIVA de la query SWR (no es un
+          snapshot). `onMutated` revalida la lista tras cualquier acción
+          dentro del drawer (no-show, editar servicio, marcar origen,
+          añadir producto…) y el panel se re-renderiza con datos frescos
+          sin necesidad de cerrar/reabrir. */}
       <BookingDetailPanel
         booking={selectedBooking}
-        onClose={() => setSelectedBooking(null)}
+        onClose={() => setSelectedBookingId(null)}
         stripeConnectStatus={stripeConnectStatus}
         cashRegisterEnabled={cashRegisterEnabled}
         sumupReaderConnected={sumupReaderConnected}
         barbers={barbers}
         services={services}
-        onMoved={() => refetch()}
+        onMutated={() => refetch()}
       />
 
       {/* Promos modal — solo se renderiza si está activado en /dashboard/app */}

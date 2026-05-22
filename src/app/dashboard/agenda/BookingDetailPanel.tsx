@@ -48,9 +48,14 @@ interface Props {
    *  precio" lo usa para el picker (FIX C: principal+extras = dropdown,
    *  no texto libre). Mismo shape que recibe NewBookingPanel. */
   services?: Array<{ name: string; duration: number; price: number }>;
-  /** Se invoca tras un movimiento exitoso (date/time/barber). El padre
-   *  revalida la agenda. */
-  onMoved?: () => void;
+  /** Se invoca tras CUALQUIER mutación exitosa dentro del panel (mover,
+   *  editar servicio, no-show, cobrar, cerrar gratis, añadir producto,
+   *  marcar origen, cancelar). El padre revalida la query SWR del
+   *  calendario; como `booking` ahora se DERIVA de esa query, el panel
+   *  se re-renderiza con datos frescos sin cerrar/reabrir. Si el booking
+   *  desaparece de la lista (cancelado y filtrado, movido fuera del
+   *  rango visible) el padre cierra el drawer automáticamente. */
+  onMutated?: () => void;
 }
 
 // F3 Reni — icono por canal. lucide-react retiró los logos de marca
@@ -71,7 +76,7 @@ const SOURCE_ICON: Record<ManualSource, typeof Camera> = {
   walk_in: DoorOpen,
 };
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMoved }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMutated }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -147,6 +152,10 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         // Revert silently — no toast, este selector es low-stakes.
         setSourceManualLocal(prev);
       } else {
+        // Revalida la lista del calendario: la fuente única del booking
+        // es la query SWR del padre, no `router.refresh()` (que solo
+        // refresca server components y aquí no recarga nada útil).
+        onMutated?.();
         startTransition(() => router.refresh());
       }
     } catch {
@@ -156,8 +165,12 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     }
   }
 
-  // Sembrar el editor con los valores actuales cada vez que cambia la
-  // reserva o se abre el editor.
+  // Sembrar el editor cuando se CAMBIA a otra cita (id distinto). NO
+  // depender del objeto entero: el padre ahora deriva `booking` de la
+  // query SWR y refetch cada 10s genera nuevas referencias para el mismo
+  // booking — si dependiéramos del objeto el formulario "Mover cita" se
+  // reseteaba mid-edit cada vez que llegaba un refresh en background.
+  // Re-leemos las fields manualmente al cambiar de id.
   useEffect(() => {
     if (booking) {
       setMoveDate(booking.date);
@@ -166,7 +179,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       setMoveOpen(false);
       setMoveError(null);
     }
-  }, [booking?.id, booking]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.id]);
 
   async function submitMove() {
     if (!booking) return;
@@ -194,8 +208,11 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         return;
       }
       setMoveOpen(false);
-      onMoved?.();
-      onClose();
+      // No cerramos el panel: tras el refetch, si la cita sigue en el
+      // rango visible el panel se re-renderiza con la nueva fecha/hora.
+      // Si quedó fuera de rango, el padre cierra el drawer solo (auto-
+      // close en CalendarView cuando el id deja de existir en `events`).
+      onMutated?.();
     } catch {
       setMoveError('Sin conexión. La cita no se movió.');
     } finally {
@@ -270,11 +287,13 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 body: JSON.stringify({ bookingId }),
               });
             } finally {
+              onMutated?.();
               startTransition(() => router.refresh());
             }
           },
         });
       }
+      onMutated?.();
       startTransition(() => router.refresh());
     } catch {
       setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.');
@@ -299,7 +318,11 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         setError(body.error || 'No se ha podido cerrar la cita.');
         return;
       }
-      onClose();
+      // No cerramos: la cita pasa a `completed` y el panel pinta la
+      // banda verde + el bloque "Cita completada" con la opción
+      // rectificativa. Antes hacíamos `onClose()` y el barbero no sabía
+      // si la acción había hecho efecto.
+      onMutated?.();
       startTransition(() => router.refresh());
     } catch {
       setError('Sin conexión. Revisa tu wifi e inténtalo otra vez.');
@@ -1038,8 +1061,13 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           onClose={() => setCancelOpen(false)}
           onCancelled={() => {
             setCancelOpen(false)
+            // Una cita cancelada normalmente se filtra del calendario;
+            // el padre cerrará el drawer solo cuando el id deje de
+            // existir en `events`. Si por algún motivo siguiera visible
+            // (ej. filtro "incluye canceladas") al menos el panel mostrará
+            // el estado "Cancelada" actualizado.
+            onMutated?.()
             router.refresh()
-            onClose()
           }}
         />
       )}
@@ -1074,7 +1102,10 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           onClose={() => setChargeOpen(false)}
           onCharged={() => {
             setChargeOpen(false);
-            onClose();
+            // No cerramos el panel: la cita pasa a `completed` y el
+            // panel ahora pinta la banda verde + el bloque rectificativa.
+            // El barbero ve la confirmación inmediata del cobro.
+            onMutated?.();
             startTransition(() => router.refresh());
           }}
         />
@@ -1088,6 +1119,9 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           onClose={() => setEditOpen(false)}
           onSaved={() => {
             setEditOpen(false);
+            // Revalida la lista del calendario para que el panel
+            // pinte el servicio/precio/duración nuevo sin reabrir.
+            onMutated?.();
             startTransition(() => router.refresh());
           }}
         />
