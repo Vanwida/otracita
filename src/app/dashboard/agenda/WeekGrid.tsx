@@ -13,6 +13,10 @@ import {
 } from './_appointment-color';
 import { barberPhotoUrl } from '@/lib/barber-photo-url';
 import { buildWeekCell } from './_lib/week-cell';
+import {
+  groupEventsByCell,
+  UNASSIGNED_BARBER_ID,
+} from './_lib/week-grouping';
 
 // -----------------------------------------------------------------------------
 // WeekGrid — modelo MATRIZ barberos × días (paridad Booksy/Fresha).
@@ -42,11 +46,11 @@ import { buildWeekCell } from './_lib/week-cell';
 // que un barbero deba poder configurar (premature config, ver CLAUDE.md).
 const MAX_VISIBLE_PER_CELL = 6;
 
-// ID interno reservado para la swimlane "Sin asignar". Se usa como key del
-// índice (barberId|date) cuando una cita tiene barberId=null o apunta a un
-// barbero inactivo (no figura en `barbers`). NUNCA puede colisionar con un
-// UUID real de la tabla `barbers` (los IDs reales son uuid v4).
-const UNASSIGNED_BARBER_ID = '__unassigned__';
+// `UNASSIGNED_BARBER_ID` se importa de `_lib/week-grouping` — la resolución
+// events→cell (incl. fallback por NAME y bucket "Sin asignar") vive en ese
+// módulo puro testeable; aquí sólo lo CONSUMIMOS para rendering. Centralizarlo
+// fue la respuesta al bug "Reni/Johan vacíos + filas Sin asignar fantasmas":
+// poder bloquear la lógica con tests unitarios sin pasar por React.
 
 interface Props {
   weekStart: Date;
@@ -119,49 +123,17 @@ export default function WeekGrid({
   );
   const today = new Date();
 
-  // Indexamos las citas por (barberId, date) una sola vez. Para barberos sin
-  // id canónico (legacy) caemos a match por NAME normalizado. Si la cita no
-  // matchea con ningún barbero del equipo activo (barberId=null o apunta a
-  // un barbero inactivo / borrado / con nombre que ya no existe), cae en la
-  // swimlane especial `UNASSIGNED_BARBER_ID` que se pinta como una fila
-  // "Sin asignar" al final de la matriz. Booksy/Fresha hacen lo mismo.
-  // Citas canceladas se incluyen — el barbero quiere VER el hueco que se
-  // canceló (mismo criterio que DayGrid: accountability + reproducir el hueco).
-  const { eventsByCell, hasUnassigned } = useMemo(() => {
-    const map = new Map<string, CalendarEvent[]>();
-    const activeBarberIds = new Set<string>();
-    const nameToId = new Map<string, string>();
-    for (const b of barbers) {
-      activeBarberIds.add(b.id);
-      nameToId.set(b.name.trim().toLowerCase(), b.id);
-    }
-    let unassignedCount = 0;
-    for (const ev of events) {
-      // Resolver el barberId canónico de cada cita contra el equipo activo.
-      // Si la cita trae un barberId que ya no existe en `barbers` (inactivo
-      // o borrado), lo descartamos como si fuera null — la fila "Sin
-      // asignar" lo absorbe en vez de crear una fila huérfana fantasma.
-      let barberId: string | null = null;
-      if (ev.barberId && activeBarberIds.has(ev.barberId)) {
-        barberId = ev.barberId;
-      } else if (ev.barber) {
-        barberId = nameToId.get(ev.barber.trim().toLowerCase()) ?? null;
-      }
-      const key = barberId
-        ? `${barberId}|${ev.date}`
-        : `${UNASSIGNED_BARBER_ID}|${ev.date}`;
-      if (!barberId) unassignedCount += 1;
-      const list = map.get(key);
-      if (list) list.push(ev);
-      else map.set(key, [ev]);
-    }
-    // Ordenar cada celda por hora ascendente (la API ya las suele devolver
-    // así pero no lo garantiza; este sort es barato — N citas/celda ≪ 50).
-    for (const list of map.values()) {
-      list.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-    }
-    return { eventsByCell: map, hasUnassigned: unassignedCount > 0 };
-  }, [events, barbers]);
+  // Indexamos las citas por (barberId, date) — lógica pura en
+  // `_lib/week-grouping` (testeada en aislado). Aquí sólo memoizamos el
+  // resultado. Citas canceladas se incluyen — el barbero quiere VER el hueco
+  // que se canceló (mismo criterio que DayGrid: accountability + reproducir
+  // el hueco). El fallback events→barbero por NAME que vive en el helper
+  // rescata las citas legacy sin barberId Y las que apuntan a un barbero ya
+  // borrado pero cuyo snapshot de nombre todavía matchea uno activo.
+  const { eventsByCell, hasUnassigned } = useMemo(
+    () => groupEventsByCell(events, barbers),
+    [events, barbers],
+  );
 
   // Empty state: tenant sin equipo activo. La matriz no tiene filas que
   // pintar y el CTA correcto es ir a /dashboard/equipo a añadir barberos.
