@@ -82,30 +82,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Upsert: hay UNIQUE (client_id, date) — si ya existe, actualizamos.
-  const existing = await db
-    .select()
-    .from(clientDayHourOverrides)
-    .where(
-      and(
-        eq(clientDayHourOverrides.clientId, access.client.id),
-        eq(clientDayHourOverrides.date, date),
-      ),
-    );
-
-  if (existing.length > 0) {
-    await db
-      .update(clientDayHourOverrides)
-      .set({ hours, note, updatedAt: new Date() })
-      .where(eq(clientDayHourOverrides.id, existing[0].id));
-  } else {
-    await db.insert(clientDayHourOverrides).values({
+  // Upsert atómico contra el UNIQUE (client_id, date). Antes esto era
+  // read-then-write: dos owners editando el mismo día al mismo tiempo
+  // podían pasar ambos por el `select` "no existe" y caer en el INSERT,
+  // disparando un 500 por violación UNIQUE en uno de ellos. Con
+  // onConflictDoUpdate el race queda resuelto a nivel DB — quien gane
+  // mete su valor, quien pierda hace UPDATE del valor del ganador con
+  // sus datos. Last-write-wins, sin errores espurios.
+  await db
+    .insert(clientDayHourOverrides)
+    .values({
       clientId: access.client.id,
       date,
       hours,
       note,
+    })
+    .onConflictDoUpdate({
+      target: [clientDayHourOverrides.clientId, clientDayHourOverrides.date],
+      set: { hours, note, updatedAt: new Date() },
     });
-  }
 
   await revalidateSlug(access.client.publicSlug);
 
