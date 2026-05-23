@@ -6,6 +6,7 @@ import {
   barberRoleErrorResponse,
 } from '@/lib/auth/require-barber-role';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
+import { activeManagerPermissions } from '@/lib/manager-permissions';
 
 // -----------------------------------------------------------------------------
 // GET /api/yo/today — feed de la app móvil del barbero (#71v2).
@@ -49,7 +50,7 @@ function startOfMonthISO(yyyymmdd: string): string {
 export async function GET(req: Request) {
   const access = await requireBarberRole(req);
   if (!access.ok) return barberRoleErrorResponse(access);
-  const { barber, client } = access;
+  const { barber, client, user } = access;
 
   const today = todayInBusinessTz();
   const tomorrow = addDays(today, 1);
@@ -197,6 +198,10 @@ export async function GET(req: Request) {
       todayCount: tipRows.length,
       cashEntregadaCents,
       cardPendienteCents,
+    },
+    permissions: {
+      isManager: user.isManager === true,
+      keys: activeManagerPermissions(user),
     },
   });
 }

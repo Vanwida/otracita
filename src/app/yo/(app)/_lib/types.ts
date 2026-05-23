@@ -1,5 +1,7 @@
 // Tipos compartidos del feed /api/yo/today (modo barbero v2 #71).
 
+import type { ManagerPermission } from '@/lib/manager-permissions';
+
 export interface BarberBooking {
   id: string;
   date: string;
@@ -48,5 +50,15 @@ export interface TodayFeed {
     todayCount: number;
     cashEntregadaCents: number;
     cardPendienteCents: number;
+  };
+  /**
+   * Permisos granulares del barbero (#72). Si `isManager=false` el array
+   * `permissions` viene vacío — operator puro. Si Manager, contiene las
+   * claves activas del catálogo. La bottom nav y los botones de acción
+   * se gatean leyendo esta info.
+   */
+  permissions: {
+    isManager: boolean;
+    keys: ManagerPermission[];
   };
 }

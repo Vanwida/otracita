@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { requireBarberRole } from '@/lib/auth/require-barber-role';
+import { activeManagerPermissions } from '@/lib/manager-permissions';
 import BottomNav from './BottomNav';
 
 // -----------------------------------------------------------------------------
@@ -34,7 +35,8 @@ export default async function YoAppLayout({
     redirect('/login?next=/yo/agenda&error=invite');
   }
 
-  const { barber, client } = access;
+  const { barber, client, user } = access;
+  const permissions = activeManagerPermissions(user);
 
   return (
     <div
@@ -51,7 +53,7 @@ export default async function YoAppLayout({
         />
         <main className="px-4 pb-8 pt-4">{children}</main>
       </div>
-      <BottomNav />
+      <BottomNav permissions={permissions} />
     </div>
   );
 }
