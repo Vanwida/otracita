@@ -11,6 +11,7 @@ import {
   statusCornerBadge,
 } from './_appointment-color';
 import { computeAgendaWindow, toMinutes, WEEK_PX_PER_MIN } from './_agenda-window';
+import { computeOverlapLayout } from './_event-layout';
 import { hoursForDate } from '@/lib/availability-hours';
 import { useCurrentTime } from './_hooks/use-current-time';
 
@@ -272,96 +273,124 @@ export default function WeekGrid({
                         `top` real (basado en su hora), así que pueden
                         solaparse 2-3px — convención Booksy/Fresha.
                       · < 20min (= height < 30px) → solo nombre cliente, sin
-                        hora ni servicio (posición vertical comunica la hora) */}
-                  {dayEvents.map(event => {
-                    const evStartMin = toMinutes(event.time);
-                    const rawTop = (evStartMin - startMin) * WEEK_PX_PER_MIN;
-                    const rawHeight = event.duration * WEEK_PX_PER_MIN;
-                    // 1px de aire arriba/abajo → 2px gap real entre citas
-                    // pegadas. Min-height visual 18px para citas <15min
-                    // (legibilidad); el `top` del siguiente bloque ya está
-                    // en su hora real → puede solapar 2-3px (Booksy-style).
-                    const top = rawTop + 1;
-                    const height = Math.max(rawHeight - 2, 18);
-                    const isShort = height < 30;   // ~< 20min @ 1.5px/min
-                    const isTiny = height < 22;    // ~< 15min → ultra-denso
-                    const showService = height >= 42 && !isShort; // ~30min+
-                    const isBooksy = event.source === 'booksy';
-                    const isCancelled = event.status === 'cancelled';
-                    // #33 — Color por SERVICIO (no por estado). Mismo helper
-                    // que Día/Mes; estado va a badge esquina (commit 3).
-                    const colorToken = resolveBookingColorToken(event, services);
-                    const { className: blockClass, treatment } = appointmentBlockClasses(
-                      colorToken,
-                      event.status,
+                        hora ni servicio (posición vertical comunica la hora)
+                      · CITAS SOLAPADAS en TIEMPO (bug #58 v3, 2026-05-23):
+                        antes el bloque ocupaba left-0.5 right-0.5 (todo el
+                        ancho de la columna). Dos citas con horas que se pisan
+                        → mismo carril vertical, una encima de otra. Ahora
+                        `computeOverlapLayout` (DRY, mismo helper que DayGrid)
+                        reparte en N carriles laterales 1/N. 2px de aire
+                        entre carriles (calc) para que no parezcan pegadas. */}
+                  {(() => {
+                    const layout = computeOverlapLayout(
+                      dayEvents.map((e) => ({
+                        id: e.id,
+                        startMin: toMinutes(e.time),
+                        durationMin: e.duration,
+                      })),
                     );
-                    const badge = statusCornerBadge(event.status);
-                    const displayName =
-                      event.customerName?.trim() ||
-                      event.customerPhone?.trim() ||
-                      'Sin nombre';
+                    return dayEvents.map(event => {
+                      const evStartMin = toMinutes(event.time);
+                      const rawTop = (evStartMin - startMin) * WEEK_PX_PER_MIN;
+                      const rawHeight = event.duration * WEEK_PX_PER_MIN;
+                      // 1px de aire arriba/abajo → 2px gap real entre citas
+                      // pegadas. Min-height visual 18px para citas <15min
+                      // (legibilidad); el `top` del siguiente bloque ya está
+                      // en su hora real → puede solapar 2-3px (Booksy-style).
+                      const top = rawTop + 1;
+                      const height = Math.max(rawHeight - 2, 18);
+                      const isShort = height < 30;   // ~< 20min @ 1.5px/min
+                      const isTiny = height < 22;    // ~< 15min → ultra-denso
+                      const showService = height >= 42 && !isShort; // ~30min+
+                      const isBooksy = event.source === 'booksy';
+                      const isCancelled = event.status === 'cancelled';
+                      // #33 — Color por SERVICIO (no por estado). Mismo helper
+                      // que Día/Mes; estado va a badge esquina (commit 3).
+                      const colorToken = resolveBookingColorToken(event, services);
+                      const { className: blockClass, treatment } = appointmentBlockClasses(
+                        colorToken,
+                        event.status,
+                      );
+                      const badge = statusCornerBadge(event.status);
+                      const displayName =
+                        event.customerName?.trim() ||
+                        event.customerPhone?.trim() ||
+                        'Sin nombre';
+                      // Lane layout: si esta cita comparte minutos con otras
+                      // del mismo día, se reparten el ancho de la columna en
+                      // N carriles. 2px de aire entre carriles (insetX) para
+                      // que dos citas paralelas tengan un hairline visible
+                      // — sin que parezca un único bloque pegado. Bug #58 v3.
+                      const lay = layout.get(event.id) ?? { leftPct: 0, widthPct: 100 };
+                      const insetX = 2;
 
-                    return (
-                      <div
-                        key={event.id}
-                        data-event="true"
-                        onClick={e => {
-                          e.stopPropagation();
-                          onEventClick(event);
-                        }}
-                        className={`absolute left-0.5 right-0.5 z-20 flex flex-col rounded cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${
-                          isTiny ? 'px-1 py-0' : 'px-1 py-0.5'
-                        } ${blockClass} ${treatment}`}
-                        style={{ top, height }}
-                        title={`${event.time} · ${displayName}${event.service ? ` · ${event.service}` : ''}`}
-                      >
-                        {/* Badge estado/Booksy — solo si el bloque tiene
-                            altura suficiente para acomodarlo sin pisar el
-                            texto. En citas ultra-cortas el color del fill
-                            + tooltip ya transmiten el contexto. */}
-                        {!isTiny && (
-                          <div
-                            className="absolute top-0 right-0 z-10 inline-flex items-center justify-center h-3.5 w-3.5 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm"
-                            aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
-                            title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
-                          >
-                            {isBooksy && !isCancelled ? (
-                              <Lock className="h-2 w-2 text-ink-2" aria-hidden="true" />
-                            ) : (
-                              <badge.icon
-                                className={`h-2 w-2 ${badge.tone}`}
-                                aria-hidden="true"
-                              />
-                            )}
-                          </div>
-                        )}
-                        {/* Línea 1.
-                            · isShort (<20min): solo nombre cliente, sin hora.
-                              La hora está implícita en la posición + el gutter.
-                            · resto: hora + cliente (la hora ayuda al barrido
-                              vertical rápido en vista semanal). */}
-                        <p
-                          className={`font-semibold leading-tight truncate ${
-                            isTiny ? 'pr-0' : 'pr-4'
-                          }`}
-                          style={{ fontSize: 'var(--agenda-ev-client-compact)' }}
+                      return (
+                        <div
+                          key={event.id}
+                          data-event="true"
+                          onClick={e => {
+                            e.stopPropagation();
+                            onEventClick(event);
+                          }}
+                          className={`absolute z-20 flex flex-col rounded cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${
+                            isTiny ? 'px-1 py-0' : 'px-1 py-0.5'
+                          } ${blockClass} ${treatment}`}
+                          style={{
+                            top,
+                            height,
+                            left: `calc(${lay.leftPct}% + ${insetX}px)`,
+                            width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
+                          }}
+                          title={`${event.time} · ${displayName}${event.service ? ` · ${event.service}` : ''}`}
                         >
-                          {!isShort && (
-                            <span className="tabular-nums mr-1">{event.time}</span>
+                          {/* Badge estado/Booksy — solo si el bloque tiene
+                              altura suficiente para acomodarlo sin pisar el
+                              texto. En citas ultra-cortas el color del fill
+                              + tooltip ya transmiten el contexto. */}
+                          {!isTiny && (
+                            <div
+                              className="absolute top-0 right-0 z-10 inline-flex items-center justify-center h-3.5 w-3.5 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm"
+                              aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                              title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                            >
+                              {isBooksy && !isCancelled ? (
+                                <Lock className="h-2 w-2 text-ink-2" aria-hidden="true" />
+                              ) : (
+                                <badge.icon
+                                  className={`h-2 w-2 ${badge.tone}`}
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </div>
                           )}
-                          {displayName}
-                        </p>
-                        {showService && (
+                          {/* Línea 1.
+                              · isShort (<20min): solo nombre cliente, sin hora.
+                                La hora está implícita en la posición + el gutter.
+                              · resto: hora + cliente (la hora ayuda al barrido
+                                vertical rápido en vista semanal). */}
                           <p
-                            className="opacity-80 leading-tight truncate"
-                            style={{ fontSize: 'var(--agenda-ev-service-compact)' }}
+                            className={`font-semibold leading-tight truncate ${
+                              isTiny ? 'pr-0' : 'pr-4'
+                            }`}
+                            style={{ fontSize: 'var(--agenda-ev-client-compact)' }}
                           >
-                            {event.service}
+                            {!isShort && (
+                              <span className="tabular-nums mr-1">{event.time}</span>
+                            )}
+                            {displayName}
                           </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {showService && (
+                            <p
+                              className="opacity-80 leading-tight truncate"
+                              style={{ fontSize: 'var(--agenda-ev-service-compact)' }}
+                            >
+                              {event.service}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             );
