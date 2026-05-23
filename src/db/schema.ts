@@ -344,6 +344,16 @@ export const barbers = pgTable('barbers', {
   // Lista ordenable de {thresholdCents, bonusCents}; solo se paga el bono del
   // tramo MÁS ALTO alcanzado (no acumulativo). null o [] ⇒ sin bonos.
   tierBonuses: jsonb('tier_bonuses').$type<{ thresholdCents: number; bonusCents: number }[]>(),
+  // -- Acceso móvil personal del barbero (#71). Token random hex 32 bytes
+  // que el jefe genera UNA vez desde el editor y le manda al barbero por
+  // WhatsApp. El barbero abre el link en su móvil → cookie firmada (HMAC
+  // sobre BETTER_AUTH_SECRET) TTL 1 año → ve solo SU agenda/ventas/propinas.
+  // Sin login, sin PIN — el link ES la auth (modelo "magic link
+  // permanente", mismo patrón que el admin-lock pero firmado por barberId).
+  // Si el barbero pierde el móvil o se va del equipo, el jefe pulsa
+  // "Revocar" / "Regenerar" → token rotado, cookies viejas dejan de validar.
+  personalAccessToken: text('personal_access_token').unique(),
+  personalAccessGeneratedAt: timestamp('personal_access_generated_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
