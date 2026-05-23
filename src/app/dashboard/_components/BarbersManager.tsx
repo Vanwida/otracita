@@ -26,6 +26,7 @@ import {
   Pencil,
   Check,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import Modal from './Modal'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
@@ -137,7 +138,9 @@ export default function BarbersManager({
   const [creating, setCreating] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Banner de error inline NO necesario — feedback se canaliza vía toast
+  // (sonner). Mantenemos el estado solo si hay flows que pinten algo
+  // contextual junto a una sección concreta. De momento removido.
   const [busyId, setBusyId] = useState<string | null>(null)
   // Estado del modal de reasignación — se abre cuando un borrado falla por
   // tener reservas futuras. Contiene la lista de reservas y el barbero a
@@ -175,7 +178,6 @@ export default function BarbersManager({
     const name = newName.trim()
     if (!name) return
     setCreating(true)
-    setErrorMsg(null)
     try {
       const res = await fetch('/api/barbers', {
         method: 'POST',
@@ -184,11 +186,12 @@ export default function BarbersManager({
       })
       const body = await res.json()
       if (!res.ok) {
-        setErrorMsg(body?.error || 'No se pudo añadir.')
+        toast.error(body?.error || 'No se pudo añadir.')
       } else {
         setNewName('')
         await mutate()
         if (body?.barber?.id) setSelectedId(body.barber.id)
+        toast.success('Empleado añadido')
       }
     } finally {
       setCreating(false)
@@ -197,7 +200,6 @@ export default function BarbersManager({
 
   const patchBarber = async (id: string, patch: Partial<BarberRow>) => {
     setBusyId(id)
-    setErrorMsg(null)
     try {
       const res = await fetch(`/api/barbers/${id}`, {
         method: 'PATCH',
@@ -206,7 +208,9 @@ export default function BarbersManager({
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setErrorMsg(body?.error || 'No se pudo guardar.')
+        toast.error(body?.error || 'No se pudo guardar.')
+      } else {
+        toast.success('Guardado')
       }
       await mutate()
     } finally {
@@ -223,13 +227,12 @@ export default function BarbersManager({
     })
     if (!ok) return
     setBusyId(id)
-    setErrorMsg(null)
     try {
       const res = await fetch(`/api/barbers/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         // Si el API devuelve la lista de reservas bloqueantes, abrimos modal
-        // para reasignar/cancelar una a una. Si no, fallback a error inline.
+        // para reasignar/cancelar una a una. Si no, toast con el error.
         if (res.status === 409 && Array.isArray(body?.blockingBookings) && body.blockingBookings.length > 0) {
           setReassignModal({
             barberId: id,
@@ -237,8 +240,10 @@ export default function BarbersManager({
             blockingBookings: body.blockingBookings,
           })
         } else {
-          setErrorMsg(body?.error || 'No se pudo eliminar.')
+          toast.error(body?.error || 'No se pudo eliminar.')
         }
+      } else {
+        toast.success('Empleado eliminado')
       }
       await mutate()
     } finally {
@@ -278,7 +283,6 @@ export default function BarbersManager({
       .filter((b): b is BarberRow => b !== null)
     // Pinta el nuevo orden ya (sin esperar al server).
     await mutate({ barbers: next }, { revalidate: false })
-    setErrorMsg(null)
     try {
       await Promise.all(
         next.map((b, idx) =>
@@ -290,7 +294,7 @@ export default function BarbersManager({
         ),
       )
     } catch {
-      setErrorMsg('No se pudo guardar el orden. Inténtalo de nuevo.')
+      toast.error('No se pudo guardar el orden. Inténtalo de nuevo.')
     } finally {
       await mutate()
     }
@@ -307,12 +311,6 @@ export default function BarbersManager({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {errorMsg && (
-        <div className="mb-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {errorMsg}
-        </div>
-      )}
-
       {/* Master-detail: en mobile (<md) stackean (master arriba, detail
           debajo); en md+ master fijo a la izquierda 288px, detail flex-1.
           El min-h-0 desktop se reemplaza por min-h-0 md:min-h-0 (idem) +
@@ -1028,9 +1026,12 @@ function BlockingBookingRow({
       })
       if (!r.ok) {
         const d = await r.json().catch(() => ({}))
-        setErr(d?.error || 'No se pudo reasignar.')
+        const msg = d?.error || 'No se pudo reasignar.'
+        setErr(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Reserva reasignada')
       onResolved()
     } finally {
       setBusy(false)
@@ -1055,9 +1056,12 @@ function BlockingBookingRow({
       })
       if (!r.ok) {
         const d = await r.json().catch(() => ({}))
-        setErr(d?.error || 'No se pudo cancelar.')
+        const msg = d?.error || 'No se pudo cancelar.'
+        setErr(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Reserva cancelada')
       onResolved()
     } finally {
       setBusy(false)
@@ -1258,7 +1262,9 @@ function BarberServicesEditor({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // setError preservado por compatibilidad con startEdit; ahora el feedback
+  // de save va por toast (sonner).
+  const [, setError] = useState<string | null>(null)
 
   const doesAll = assigned.length === 0
 
@@ -1300,11 +1306,12 @@ function BarberServicesEditor({
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        setError(d?.error || 'No se pudo guardar.')
+        toast.error(d?.error || 'No se pudo guardar.')
         return
       }
       await mutate()
       setEditing(false)
+      toast.success('Servicios guardados')
     } finally {
       setSaving(false)
     }
@@ -1366,11 +1373,6 @@ function BarberServicesEditor({
               </label>
             ))}
           </div>
-          {error && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-              {error}
-            </div>
-          )}
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"

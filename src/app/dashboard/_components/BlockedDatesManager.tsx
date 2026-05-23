@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface BlockedDatesManagerProps {
   initialDates: string[];
@@ -49,14 +50,15 @@ export default function BlockedDatesManager({ initialDates, clientId }: BlockedD
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Error al guardar.');
+        toast.error(data.error || 'Error al guardar.');
         return;
       }
 
       setDates(prev => [...prev, inputDate].sort());
       setInputDate('');
+      toast.success('Día bloqueado');
     } catch {
-      setError('Error de conexion. Intenta de nuevo.');
+      toast.error('Error de conexión. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -75,13 +77,14 @@ export default function BlockedDatesManager({ initialDates, clientId }: BlockedD
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Error al eliminar.');
+        toast.error(data.error || 'Error al eliminar.');
         return;
       }
 
       setDates(prev => prev.filter(d => d !== dateStr));
+      toast.success('Día desbloqueado');
     } catch {
-      setError('Error de conexion. Intenta de nuevo.');
+      toast.error('Error de conexión. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }

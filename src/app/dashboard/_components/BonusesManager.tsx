@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { Plus, Trash2, Award, Loader2, Lock } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import { useConfirm } from './ConfirmDialog'
 
 // -----------------------------------------------------------------------------
@@ -44,7 +45,6 @@ function BonusesManagerInner() {
   })
   const list = data?.bonuses ?? []
   const [adding, setAdding] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const confirm = useConfirm()
 
   async function deleteBonus(id: string) {
@@ -55,13 +55,13 @@ function BonusesManagerInner() {
       variant: 'danger',
     })
     if (!ok) return
-    setError(null)
     const res = await fetch(`/api/bonuses/${id}`, { method: 'DELETE' })
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
-      setError(j.error ?? 'No se pudo eliminar')
+      toast.error(j.error ?? 'No se pudo eliminar')
       return
     }
+    toast.success('Bono eliminado')
     mutate()
   }
 
@@ -81,12 +81,6 @@ function BonusesManagerInner() {
         objetivo y cobrar la recompensa. El progreso de cada uno se introduce
         desde <strong>Caja</strong> al cierre del día.
       </p>
-
-      {error && (
-        <div className="bg-danger/10 border border-danger/20 text-danger text-xs rounded-lg px-3 py-2">
-          {error}
-        </div>
-      )}
 
       <div className="bg-surface border border-line rounded-xl overflow-hidden">
         {list.length === 0 && !adding ? (
@@ -110,9 +104,10 @@ function BonusesManagerInner() {
             onCancel={() => setAdding(false)}
             onCreated={() => {
               setAdding(false)
+              toast.success('Bono creado')
               mutate()
             }}
-            onError={setError}
+            onError={(msg) => msg && toast.error(msg)}
           />
         )}
       </div>
@@ -159,7 +154,13 @@ function BonusRowItem({
       body: JSON.stringify(updates),
     })
     setSaving(false)
-    if (res.ok) onChange()
+    if (res.ok) {
+      toast.success('Guardado')
+      onChange()
+    } else {
+      const j = await res.json().catch(() => ({}))
+      toast.error(j.error ?? 'No se pudo guardar')
+    }
   }
 
   return (
