@@ -44,6 +44,21 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     },
   },
+  // Modo barbero v2 (#71) — campos aditivos en la tabla `user`:
+  //   · role        — 'admin' | 'barber' (default 'admin' = el dueño).
+  //   · clientId    — tenant del que es miembro.
+  //   · barberId    — si role='barber', enlaza al `barbers` row.
+  //   · disabledAt  — soft-disable (revocar acceso).
+  // `input: false` evita que un cliente pueda setear estos campos en el
+  // signup público. Los seteamos server-side al aceptar una invitación.
+  user: {
+    additionalFields: {
+      role: { type: 'string', defaultValue: 'admin', input: false },
+      clientId: { type: 'string', required: false, input: false },
+      barberId: { type: 'string', required: false, input: false },
+      disabledAt: { type: 'date', required: false, input: false },
+    },
+  },
   trustedOrigins: [
     // SITE_ORIGIN puede variar por env (preview/staging) — los demás son
     // hosts legacy del producto que mantenemos para migraciones puntuales.

@@ -344,16 +344,12 @@ export const barbers = pgTable('barbers', {
   // Lista ordenable de {thresholdCents, bonusCents}; solo se paga el bono del
   // tramo MÁS ALTO alcanzado (no acumulativo). null o [] ⇒ sin bonos.
   tierBonuses: jsonb('tier_bonuses').$type<{ thresholdCents: number; bonusCents: number }[]>(),
-  // -- Acceso móvil personal del barbero (#71). Token random hex 32 bytes
-  // que el jefe genera UNA vez desde el editor y le manda al barbero por
-  // WhatsApp. El barbero abre el link en su móvil → cookie firmada (HMAC
-  // sobre BETTER_AUTH_SECRET) TTL 1 año → ve solo SU agenda/ventas/propinas.
-  // Sin login, sin PIN — el link ES la auth (modelo "magic link
-  // permanente", mismo patrón que el admin-lock pero firmado por barberId).
-  // Si el barbero pierde el móvil o se va del equipo, el jefe pulsa
-  // "Revocar" / "Regenerar" → token rotado, cookies viejas dejan de validar.
-  personalAccessToken: text('personal_access_token').unique(),
-  personalAccessGeneratedAt: timestamp('personal_access_generated_at', { withTimezone: true }),
+  // -- Modo barbero v2 (#71 revisitado): cada barbero accede mediante una
+  // cuenta Better Auth (`user` table) con `role='barber'`, `clientId` =
+  // tenant y `barberId` = este registro. El acceso se concede via
+  // invitación por email desde el dashboard del jefe (`barber_invites`).
+  // No hay token personal: el link mágico anónimo del modelo viejo se
+  // eliminó (drop columns `personal_access_token` + `personal_access_generated_at`).
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
@@ -1447,6 +1443,75 @@ export const manualIncomes = pgTable('manual_incomes', {
   date: date('date').notNull(),
   amountCents: integer('amount_cents').notNull(),
   notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// -----------------------------------------------------------------------------
+// Better Auth — `user` table (Modo barbero v2 #71 revisitado).
+//
+// Better Auth provisiona automáticamente esta tabla (id, name, email,
+// emailVerified, image, createdAt, updatedAt) y la gestiona via su propio
+// Pool. La declaramos aquí en Drizzle para poder hacer joins/queries en
+// helpers de auth (resolver tenant a partir de session.userId, validar
+// role='barber', etc.). NO cambiamos la forma de los campos originales
+// de Better Auth — solo añadimos los aditivos del modelo v2.
+//
+// Campos aditivos (migración 0049_barber_user_invites.sql):
+//   · role        — 'admin' | 'barber'. Default 'admin' (el dueño que
+//                   se registra). Los invitados se crean con 'barber'.
+//   · clientId    — tenant del que es miembro. Un user pertenece a UN
+//                   solo tenant. Para admins, redundante con clients.email,
+//                   pero lo mantenemos por consistencia y para evitar
+//                   lookups extra.
+//   · barberId    — si role='barber', enlaza al registro `barbers`. Es
+//                   la pieza que une la sesión Better Auth con la fila
+//                   de equipo.
+//   · disabledAt  — soft-disable. Si != null, el usuario no puede
+//                   iniciar sesión (revocar acceso sin perder histórico
+//                   de FKs).
+// -----------------------------------------------------------------------------
+export const users = pgTable('user', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('emailVerified').default(false).notNull(),
+  image: text('image'),
+  createdAt: timestamp('createdAt', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt', { withTimezone: true }).defaultNow().notNull(),
+  // Modo barbero v2 ------------------------------------------------------
+  role: text('role').notNull().default('admin'),
+  clientId: uuid('clientId').references(() => clients.id, { onDelete: 'set null' }),
+  barberId: uuid('barberId').references(() => barbers.id, { onDelete: 'set null' }),
+  disabledAt: timestamp('disabledAt', { withTimezone: true }),
+});
+
+// -----------------------------------------------------------------------------
+// Barber invites — invitación por email del jefe para que un barbero
+// cree su cuenta Better Auth con role='barber' (Modo barbero v2 #71).
+//
+// Lifecycle:
+//   1. Jefe pulsa "Invitar por email" en /dashboard/equipo/[id] →
+//      POST /api/barber-invites { barberId, email } → row con token
+//      random hex + expiresAt = now()+7d + email enviado vía Postmark.
+//   2. Barbero abre el link `/aceptar-invitacion/[token]`, ve form
+//      password → POST /api/barber-invites/[token]/accept crea user
+//      Better Auth con role='barber', clientId, barberId. Marca
+//      `acceptedAt`. Setea sesión y redirect a /yo.
+//   3. Si el jefe revoca antes de aceptar: marca `revokedAt`. Si el
+//      barbero pierde el link / caducó: nueva invitación reemplaza la
+//      anterior (row nueva — no editamos la vieja).
+// -----------------------------------------------------------------------------
+export const barberInvites = pgTable('barber_invites', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  barberId: uuid('barber_id').references(() => barbers.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  token: text('token').notNull().unique(),
+  invitedByUserId: text('invited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  invitedAt: timestamp('invited_at', { withTimezone: true }).defaultNow().notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
