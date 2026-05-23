@@ -260,7 +260,13 @@ function formatInMadrid(instant: Date): { date: string; time: string } {
  * Cuando no podemos partir, todo va a `service` y `customerName=null`.
  * El barbero lo edita en el preview — mejor null que adivinar mal.
  */
-const SEPARATOR_RE = /\s+[—–\-:]\s+/;
+// Separadores comunes en exports reales:
+//   · em-dash (—), en-dash (–), guion (-), dos puntos (:): exigen espacio
+//     a ambos lados para no partir cosas como "URL: https://..." o
+//     palabras compuestas con guion ("Tinte+Lavado-rápido").
+//   · pipe (|): Booksy/Treatwell lo usan a veces como separador puro;
+//     no aparece en texto natural → aceptamos sin obligar espacios.
+const SEPARATOR_RE = /\s+[—–\-:]\s+|\s*\|\s*/;
 const SERVICE_KEYWORDS = [
   'corte',
   'cortes',

@@ -72,6 +72,28 @@ test('parseSummary: vacío → service="Importado" y name=null', () => {
   assert.equal(r.service, 'Importado');
 });
 
+test('parseSummary: "Cliente | Servicio" parte por pipe (Booksy alt)', () => {
+  // Booksy/Treatwell ocasionalmente exportan con pipe en vez de em-dash.
+  // El pipe no aparece en texto natural — partimos sin exigir espacios.
+  const r = parseSummary('Carlos García | Corte clásico');
+  assert.equal(r.customerName, 'Carlos García');
+  assert.equal(r.service, 'Corte clásico');
+});
+
+test('parseSummary: "Cliente|Servicio" (sin espacios) también parte por pipe', () => {
+  const r = parseSummary('Carlos García|Corte');
+  assert.equal(r.customerName, 'Carlos García');
+  assert.equal(r.service, 'Corte');
+});
+
+test('parseSummary: "Cliente - Servicio - €25" (Booksy con precio en cola)', () => {
+  // Real Booksy export — el precio queda pegado al servicio. No es ideal
+  // pero es aceptable: el barbero lo edita en el preview si lo necesita.
+  const r = parseSummary('Carlos García - Corte clásico - €25');
+  assert.equal(r.customerName, 'Carlos García');
+  assert.ok(r.service.includes('Corte clásico'));
+});
+
 // ── parseIcs ──────────────────────────────────────────────────────────────────
 
 const ICS_BOOKSY_SAMPLE = [

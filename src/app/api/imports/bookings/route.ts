@@ -145,6 +145,22 @@ export async function POST(request: Request) {
     // Cap defensivo — si vienen muchísimos, cortamos.
     const trimmed = futureEvents.slice(0, MAX_ITEMS)
 
+    // Caso real frecuente: el barbero exporta su .ics de Booksy con AÑOS de
+    // citas pasadas y ninguna futura → no hay nada que importar. Saltamos
+    // tanto el SELECT de bookings (sería un FULL SCAN sin filtro de rango)
+    // como el de UIDs (no se va a usar). UI muestra el mensaje "solo citas
+    // pasadas — no se importan" con `skippedPast`.
+    if (trimmed.length === 0) {
+      return Response.json({
+        events: [],
+        collisions: {},
+        skippedPast,
+        truncated: false,
+        barbers: [],
+        defaultDuration: 30,
+      })
+    }
+
     // Cargar bookings del mismo tenant en el rango de fechas implicado para
     // calcular overlaps. Limitamos al MIN-MAX date de los eventos para evitar
     // un SELECT grande.
