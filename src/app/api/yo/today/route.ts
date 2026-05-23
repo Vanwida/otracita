@@ -6,7 +6,12 @@ import {
   barberRoleErrorResponse,
 } from '@/lib/auth/require-barber-role';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
-import { activeManagerPermissions } from '@/lib/manager-permissions';
+import {
+  activeManagerPermissions,
+  hasManagerPermission,
+} from '@/lib/manager-permissions';
+import { barbers as barbersTable } from '@/db/schema';
+import { asc } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
 // GET /api/yo/today — feed de la app móvil del barbero (#71v2).
@@ -52,6 +57,34 @@ export async function GET(req: Request) {
   if (!access.ok) return barberRoleErrorResponse(access);
   const { barber, client, user } = access;
 
+  // Manager con `edit_others_bookings` puede ver la agenda de otro barbero
+  // pasando `?asBarberId=...`. Si el query barberId no existe en el tenant
+  // o no tiene permiso, ignoramos y servimos su propia agenda.
+  const url = new URL(req.url);
+  const asBarberIdRaw = url.searchParams.get('asBarberId');
+  let targetBarber = barber;
+  let teamForSelector: { id: string; name: string }[] = [];
+  if (hasManagerPermission(user, 'edit_others_bookings')) {
+    teamForSelector = await db
+      .select({ id: barbersTable.id, name: barbersTable.name })
+      .from(barbersTable)
+      .where(eq(barbersTable.clientId, client.id))
+      .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
+    if (asBarberIdRaw && asBarberIdRaw !== barber.id) {
+      const found = teamForSelector.find((t) => t.id === asBarberIdRaw);
+      if (found) {
+        // Carga la fila completa del barbero alternativo.
+        const [full] = await db
+          .select()
+          .from(barbersTable)
+          .where(eq(barbersTable.id, found.id));
+        if (full && full.clientId === client.id && full.active) {
+          targetBarber = full;
+        }
+      }
+    }
+  }
+
   const today = todayInBusinessTz();
   const tomorrow = addDays(today, 1);
   const weekStart = startOfWeekMondayISO(today);
@@ -64,7 +97,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(bookings.clientId, client.id),
-        eq(bookings.barberId, barber.id),
+        eq(bookings.barberId, targetBarber.id),
         gte(bookings.date, weekStart),
         lte(bookings.date, weekEnd),
       ),
@@ -80,7 +113,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(bookings.clientId, client.id),
-        eq(bookings.barberId, barber.id),
+        eq(bookings.barberId, targetBarber.id),
         gte(bookings.date, monthStart),
         lte(bookings.date, today),
         eq(bookings.status, 'completed'),
@@ -99,7 +132,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(tips.clientId, client.id),
-        eq(tips.barberId, barber.id),
+        eq(tips.barberId, targetBarber.id),
         eq(tips.status, 'paid'),
         gte(tips.paidAt, todayStart),
         lte(tips.paidAt, todayEnd),
@@ -117,7 +150,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(tips.clientId, client.id),
-        eq(tips.barberId, barber.id),
+        eq(tips.barberId, targetBarber.id),
         eq(tips.status, 'paid'),
       ),
     );
@@ -160,11 +193,18 @@ export async function GET(req: Request) {
 
   return Response.json({
     barber: {
+      id: targetBarber.id,
+      name: targetBarber.name,
+      photoUrl: targetBarber.photoUrl,
+      role: targetBarber.role,
+    },
+    // El barbero "real" del usuario autenticado (útil para diferenciar
+    // cuando un manager mira la agenda de otro). Siempre presente.
+    self: {
       id: barber.id,
       name: barber.name,
-      photoUrl: barber.photoUrl,
-      role: barber.role,
     },
+    team: teamForSelector,
     client: {
       id: client.id,
       businessName: client.businessName,

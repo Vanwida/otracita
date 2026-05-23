@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { Clock, Sparkles } from 'lucide-react';
+import { Clock, Sparkles, Users } from 'lucide-react';
 import type { BarberBooking, TodayFeed } from '../_lib/types';
 import {
   formatEuros,
@@ -24,14 +24,22 @@ const fetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<TodayFeed>);
 
 export default function AgendaClient() {
-  const { data, mutate, isLoading } = useSWR<TodayFeed>(
-    '/api/yo/today',
-    fetcher,
-    { refreshInterval: 60_000, revalidateOnFocus: true },
-  );
+  const [asBarberId, setAsBarberId] = useState<string | null>(null);
+  const swrUrl = asBarberId
+    ? `/api/yo/today?asBarberId=${encodeURIComponent(asBarberId)}`
+    : '/api/yo/today';
+  const { data, mutate, isLoading } = useSWR<TodayFeed>(swrUrl, fetcher, {
+    refreshInterval: 60_000,
+    revalidateOnFocus: true,
+  });
 
   const [filter, setFilter] = useState<FilterKey>('today');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const canEditOthers =
+    (data?.team && data.team.length > 0) ||
+    (data?.permissions?.keys.includes('edit_others_bookings') ?? false);
+  const viewingOther = !!(data?.self && data.barber.id !== data.self.id);
 
   // Tick para refrescar el countdown ("en X min") sin re-fetch.
   const [, setTick] = useState(0);
@@ -65,6 +73,39 @@ export default function AgendaClient() {
 
   return (
     <div className="space-y-5">
+      {/* Selector de barbero — solo manager con `edit_others_bookings` */}
+      {canEditOthers && data?.team && data.team.length > 1 && (
+        <div className="flex items-center gap-2 rounded-control border border-line bg-surface p-2">
+          <Users className="ml-1 h-4 w-4 shrink-0 text-ink-3" />
+          <label className="sr-only" htmlFor="agenda-barber-select">
+            Ver agenda de
+          </label>
+          <select
+            id="agenda-barber-select"
+            value={data.barber.id}
+            onChange={(e) => {
+              const id = e.target.value;
+              setAsBarberId(data.self && id === data.self.id ? null : id);
+              setSelectedId(null);
+            }}
+            className="flex-1 rounded-lg border-0 bg-transparent py-1 text-sm font-medium text-ink outline-none"
+          >
+            {data.team.map((b) => (
+              <option key={b.id} value={b.id}>
+                {data.self && b.id === data.self.id
+                  ? `${b.name} (tú)`
+                  : b.name}
+              </option>
+            ))}
+          </select>
+          {viewingOther && (
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
+              Otro
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Filtros segmentados */}
       <div role="tablist" className="flex rounded-full bg-overlay/60 p-1">
         {FILTERS.map(({ key, label }) => {

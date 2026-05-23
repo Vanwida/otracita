@@ -22,6 +22,22 @@ export interface TodayFeed {
     photoUrl: string | null;
     role: string | null;
   };
+  /**
+   * Barbero "real" del usuario autenticado. Diferente de `barber` cuando un
+   * manager con `edit_others_bookings` está visualizando la agenda de otro
+   * barbero del equipo. Para operator/manager mirando su propia agenda,
+   * `self.id === barber.id`.
+   */
+  self?: {
+    id: string;
+    name: string;
+  };
+  /**
+   * Equipo completo (id+name) si el caller tiene `edit_others_bookings`.
+   * Permite al selector de la agenda elegir a otro barbero. Vacío si no
+   * tiene permiso.
+   */
+  team?: { id: string; name: string }[];
   client: {
     id: string;
     businessName: string | null;

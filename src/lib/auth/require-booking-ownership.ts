@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { bookings, users } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { isAdminUser } from '@/lib/auth/admin';
+import { hasManagerPermission } from '@/lib/manager-permissions';
 
 // -----------------------------------------------------------------------------
 // requireBookingOwnership — guard compartido para operaciones sobre una
@@ -12,8 +13,10 @@ import { isAdminUser } from '@/lib/auth/admin';
 //   · Admin (operador o dueño con email aistudios.pro / alex*) puede operar
 //     sobre cualquier cita del tenant que tenga acceso (vía `clientId`
 //     del booking — verificado por el caller via requireClientAccess).
-//   · role='barber' solo puede operar sobre citas donde
-//     `bookings.barberId === user.barberId`.
+//   · role='barber' OPERATOR (sin manager) solo puede operar sobre citas
+//     donde `bookings.barberId === user.barberId`.
+//   · role='barber' MANAGER con `edit_others_bookings` puede operar sobre
+//     CUALQUIER cita del mismo tenant (similar a admin).
 //
 // El motivo de centralizar: el modo barbero v2 reutiliza los endpoints
 // /api/bookings/[id]/* del admin. Sin guard, un barbero podría operar
@@ -90,14 +93,18 @@ export async function requireBookingOwnership(
     };
   }
 
-  // No-admin: solo si role='barber' y la cita pertenece a su barberId.
+  // No-admin: solo si role='barber'. Si es manager con `edit_others_bookings`
+  // puede operar sobre cualquier cita del tenant (que ya filtramos arriba);
+  // si no, restringimos a sus propias citas.
   if (user.role !== 'barber') {
     return { ok: false, status: 403, error: 'Forbidden' };
   }
   if (!user.barberId) {
     return { ok: false, status: 403, error: 'Cuenta sin barbero asignado.' };
   }
-  if (booking.barberId !== user.barberId) {
+
+  const canEditOthers = hasManagerPermission(user, 'edit_others_bookings');
+  if (!canEditOthers && booking.barberId !== user.barberId) {
     return { ok: false, status: 403, error: 'Esta cita no es tuya.' };
   }
 

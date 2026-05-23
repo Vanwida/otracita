@@ -111,10 +111,13 @@ export async function POST(
   }
 
   // Resuelve el barberId para la propina:
-  //   · barber actor → el suyo.
-  //   · admin → el de la cita (si tiene). Si no, error: necesitamos un
-  //     barberId para registrar la propina.
-  const tipBarberId = actorBarberId ?? booking.barberId ?? null;
+  //   · admin                       → el de la cita.
+  //   · barber actor operando su cita propia (actorBarberId === booking.barberId)
+  //                                 → el suyo (= booking.barberId, equivalente).
+  //   · manager con `edit_others_bookings` operando cita ajena
+  //                                 → el de la cita (NUNCA acreditar al manager).
+  //   Si la cita no tiene barberId, usar el del actor como último recurso.
+  const tipBarberId = booking.barberId ?? actorBarberId ?? null;
   if (tipCents > 0 && !tipBarberId) {
     return Response.json(
       { error: 'No hay barbero asignado a la cita para registrar la propina.' },
