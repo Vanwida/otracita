@@ -69,12 +69,33 @@ interface Props {
   /** SumUp+Reader pareados → cobro instantáneo Cloud API en vez de modal
    *  manual cash/card/online. */
   sumupReaderConnected?: boolean;
+  /**
+   * Modo móvil compacto (`/yo/agenda`). Cuando true:
+   *   · oculta el rail lateral (toggle + drawer) — solo Día visible.
+   *   · oculta el toggle Día/Semana/Mes (la vista queda fijada en Día).
+   *   · oculta "Importar" y "Llenar huecos" (admin-only).
+   *   · "Nueva cita" pasa a botón FAB flotante (icon-only) para no robar
+   *     espacio al header en pantallas de 360px.
+   * El resto del flow (DayGrid, drag&drop, BookingDetailPanel, NewBookingPanel)
+   * es el mismo — operativo total desde móvil.
+   */
+  mobileMode?: boolean;
+  /**
+   * ID canónico del barbero al que restringir la vista (modo móvil del
+   * barbero). Se pasa como `barberId` en la query SWR al endpoint
+   * `/api/dashboard/calendar`, que filtra server-side. El endpoint ya
+   * refuerza la restricción (si el actor no tiene `edit_others_bookings`
+   * ignora el override y fuerza su propio id).
+   */
+  barberFilterId?: string | null;
 }
 
-export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false }: Props) {
+export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false, mobileMode = false, barberFilterId = null }: Props) {
   const confirm = useConfirm();
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
+  // En modo móvil del barbero forzamos 'day' (no hay toggle visible). El
+  // estado existe igual para compartir lógica con el dashboard admin.
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [selectedBarber, setSelectedBarber] = useState('all');
   // Init SSR-safe: el server NO puede saber si es mobile ni leer
@@ -163,8 +184,15 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       start = format(startOfMonth(currentDay), 'yyyy-MM-dd');
       end = format(endOfMonth(currentDay), 'yyyy-MM-dd');
     }
-    return `/api/dashboard/calendar?start=${start}&end=${end}&barber=${selectedBarber}`;
-  }, [currentDay, viewMode, selectedBarber]);
+    // `barberId` (id canónico) tiene prioridad sobre `barber` (nombre)
+    // server-side. `/yo/agenda` lo manda con el id del barbero
+    // autenticado; el endpoint además fuerza el filtro si el actor no
+    // tiene `edit_others_bookings` (defensa en profundidad).
+    const barberIdQuery = barberFilterId
+      ? `&barberId=${encodeURIComponent(barberFilterId)}`
+      : '';
+    return `/api/dashboard/calendar?start=${start}&end=${end}&barber=${selectedBarber}${barberIdQuery}`;
+  }, [currentDay, viewMode, selectedBarber, barberFilterId]);
 
   const {
     data: payload = EMPTY_PAYLOAD,
@@ -617,10 +645,13 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       {/* Controls bar — SIN título: la cabecera del área (page.tsx) ya
           pinta "Agenda" + las pestañas (AreaTabs). Antes había un
           <h1>Calendario</h1> aquí → título doblado y término divergente
-          (G1/N2). Esto es sólo la barra de controles del calendario. */}
+          (G1/N2). Esto es sólo la barra de controles del calendario.
+          En `mobileMode` la barra se compacta: sin rail toggle, sin
+          Day/Week/Month, sin Importar/Promos — solo navegación de día +
+          FAB de Nueva cita al fondo. */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface flex-wrap shrink-0">
-        {/* Rail toggle — solo en Día/Semana */}
-        {viewMode !== 'month' && (
+        {/* Rail toggle — solo en Día/Semana y NO en modo móvil */}
+        {!mobileMode && viewMode !== 'month' && (
           <button
             onClick={toggleRail}
             className="p-1.5 rounded-lg hover:bg-overlay text-ink-2 hover:text-ink transition-colors"
@@ -660,30 +691,33 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           </button>
         </div>
 
-        {/* Day / Week / Month toggle */}
-        <div className="flex rounded-lg bg-overlay border border-line p-0.5">
-          {(['day', 'week', 'month'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setViewMode(m)}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                viewMode === m
-                  ? 'bg-surface shadow-sm text-ink'
-                  : 'text-ink-2 hover:text-ink'
-              }`}
-            >
-              {VIEW_LABELS[m]}
-            </button>
-          ))}
-        </div>
+        {/* Day / Week / Month toggle — oculto en mobileMode (siempre Día) */}
+        {!mobileMode && (
+          <div className="flex rounded-lg bg-overlay border border-line p-0.5">
+            {(['day', 'week', 'month'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === m
+                    ? 'bg-surface shadow-sm text-ink'
+                    : 'text-ink-2 hover:text-ink'
+                }`}
+              >
+                {VIEW_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* El filtro de barbero ya NO vive aquí: el control PRIMARIo de
             "quién" son las columnas paralelas (vista día). Aislar a uno
             solo es secundario y vive en el rail izquierdo ("Empleados y
             recursos"), igual que en Booksy (screenshot 09.39.31). */}
 
-        {/* Promos + import + new booking */}
-        {promosEnabled && (
+        {/* Promos + import + new booking — Importar y Promos son admin-only
+            (operación de tienda, no del barbero); ocultos en mobileMode. */}
+        {!mobileMode && promosEnabled && (
           <button
             type="button"
             onClick={() => setIsPromosOpen(true)}
@@ -694,24 +728,33 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             Llenar huecos
           </button>
         )}
-        <a
-          href="/dashboard/agenda/importar"
-          className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
-          title="Importar reservas desde Booksy / agenda externa"
-        >
-          Importar
-        </a>
-        <button
-          onClick={() => {
-            setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: null });
-            setSelectedBookingId(null);
-            setIsNewBookingOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Nueva cita
-        </button>
+        {!mobileMode && (
+          <a
+            href="/dashboard/agenda/importar"
+            className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
+            title="Importar reservas desde Booksy / agenda externa"
+          >
+            Importar
+          </a>
+        )}
+        {/* "Nueva cita": botón normal en admin; en mobileMode el botón
+            se renderiza FUERA de la barra (FAB flotante abajo a la derecha,
+            ver al final del JSX). Aquí lo omitimos. Pre-rellenamos el slot
+            con el barbero filtrado en móvil para que NewBookingPanel ya
+            traiga seleccionado al barbero correcto. */}
+        {!mobileMode && (
+          <button
+            onClick={() => {
+              setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: barberFilterId ?? null });
+              setSelectedBookingId(null);
+              setIsNewBookingOpen(true);
+            }}
+            className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nueva cita
+          </button>
+        )}
 
         {/* Loading indicator */}
         {loading && <Loader2 className="h-4 w-4 text-ink-3 animate-spin" />}
@@ -741,7 +784,10 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           sería redundante. La leyenda de equipo y el filtro de barbero
           viven ahora DENTRO del rail (fuente única, no duplicar). */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {viewMode !== 'month' && !railCollapsed && (
+        {/* Rail: oculto en mobileMode (es admin-tooling — picker de fecha
+            calendario+selector de barbero; el barbero móvil solo opera su
+            columna y navega día con prev/next o Hoy). */}
+        {!mobileMode && viewMode !== 'month' && !railCollapsed && (
           <>
             {/* Scrim sólo en mobile (<md). Cierra el drawer al tocar fuera.
                 <button> en lugar de <div onClick> para accesibilidad teclado
@@ -964,6 +1010,31 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           refetch();
         }}
       />
+
+      {/* FAB "Nueva cita" — solo móvil. Vive fuera del header para no
+          robar espacio horizontal en pantallas ≤360px. Posicionado
+          encima del BottomNav del shell (`/yo/(app)/layout.tsx` reserva
+          72px + safe-area). Pre-rellena el barbero filtrado para que el
+          panel ya traiga su nombre seleccionado. */}
+      {mobileMode && (
+        <button
+          type="button"
+          onClick={() => {
+            setNewBookingSlot({
+              date: format(currentDay, 'yyyy-MM-dd'),
+              time: format(new Date(), 'HH:mm'),
+              barberId: barberFilterId ?? null,
+            });
+            setSelectedBookingId(null);
+            setIsNewBookingOpen(true);
+          }}
+          aria-label="Nueva cita"
+          className="fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-brand-ink shadow-lg transition-transform active:scale-95"
+          style={{ bottom: 'calc(72px + env(safe-area-inset-bottom) + 16px)' }}
+        >
+          <Plus className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }
