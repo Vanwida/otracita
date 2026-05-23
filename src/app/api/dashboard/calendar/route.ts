@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { bookings, barberBlocks } from '@/db/schema';
+import { bookings, barberBlocks, barbers as barbersTable } from '@/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import {
   requireTenantActor,
@@ -93,6 +93,61 @@ export async function GET(req: NextRequest) {
     barberIdFilter && barberIdFilter !== 'all'
       ? blockRows.filter((b) => b.barberId === barberIdFilter)
       : blockRows;
+
+  // DEBUG TEMPORAL — diagnóstico del bug "Reni/Johan vacíos + filas
+  // huérfanas" en vista Semana. Dumpea (a) actor resolved, (b) filtro
+  // aplicado, (c) sample de bookings devueltos (id + barberId + barber
+  // string + fecha + hora), y (d) barbers ACTIVOS del tenant con sus ids
+  // y nombres — para verificar si el `barberId` de cada booking realmente
+  // coincide con un barbero activo. Si una cita trae un barberId que NO
+  // está en `activeBarberIds`, el frontend la manda a "Sin asignar".
+  // Eliminar tras diagnosticar.
+  const activeBarbersForDebug = await db
+    .select({ id: barbersTable.id, name: barbersTable.name, active: barbersTable.active })
+    .from(barbersTable)
+    .where(eq(barbersTable.clientId, client.id));
+  const activeIds = new Set(
+    activeBarbersForDebug.filter((b) => b.active).map((b) => b.id),
+  );
+  const mismatchedBookings = filteredBookings.filter(
+    (b) => !b.barberId || !activeIds.has(b.barberId),
+  );
+  console.log('[calendar/debug]', {
+    actor: {
+      email: actor.user.email,
+      isAdmin: actor.isAdmin,
+      barberId: actor.barberId,
+      isManager: actor.isManager,
+      managerPermissions: actor.managerPermissions,
+    },
+    clientId: client.id,
+    range: { start, end },
+    queryParams: { barber, barberId: searchParams.get('barberId') },
+    barberIdFilterApplied: barberIdFilter,
+    barbersInDb: activeBarbersForDebug.map((b) => ({
+      id: b.id,
+      name: b.name,
+      active: b.active,
+    })),
+    bookingCount: filteredBookings.length,
+    firstBookingSample: filteredBookings[0]
+      ? {
+          id: filteredBookings[0].id,
+          date: filteredBookings[0].date,
+          time: filteredBookings[0].time,
+          barber: filteredBookings[0].barber,
+          barberId: filteredBookings[0].barberId,
+        }
+      : null,
+    mismatchedCount: mismatchedBookings.length,
+    mismatchedSamples: mismatchedBookings.slice(0, 3).map((b) => ({
+      id: b.id,
+      date: b.date,
+      time: b.time,
+      barber: b.barber,
+      barberId: b.barberId,
+    })),
+  });
 
   const events = filteredBookings.map(b => ({
     id: b.id,
