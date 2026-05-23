@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
+import { Toaster } from 'sonner';
 import { requireBarberRole } from '@/lib/auth/require-barber-role';
 import { activeManagerPermissions } from '@/lib/manager-permissions';
 import BottomNav from './BottomNav';
@@ -54,6 +55,20 @@ export default async function YoAppLayout({
         <main className="px-4 pb-8 pt-4">{children}</main>
       </div>
       <BottomNav permissions={permissions} />
+
+      {/* Toaster sonner — feedback post-save canónico para el shell barbero.
+          En móvil va abajo-centrada por encima del BottomNav (offset). */}
+      <Toaster
+        richColors
+        closeButton
+        position="top-center"
+        duration={3000}
+        toastOptions={{
+          classNames: {
+            toast: 'rounded-xl border border-line shadow-warm-strong',
+          },
+        }}
+      />
     </div>
   );
 }

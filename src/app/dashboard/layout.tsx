@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth/server"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
+import { Toaster } from "sonner"
 import DashboardChatWidget from "@/components/dashboard-chat-widget"
 import { ConfirmDialogHost } from "./_components/ConfirmDialog"
 import { UndoToastHost } from "./_components/UndoToast"
@@ -129,6 +130,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <UndoToastHost />
       <DashboardPwaBootstrap />
       <AdminLockHeartbeat />
+
+      {/* Toaster sonner — feedback post-save canónico para todo el dashboard.
+          richColors aporta tinte success/error sobre tokens del theme.
+          closeButton añade ✕ accesible. Posición bottom-right para no chocar
+          con UndoToastHost (bottom-center). Duration default 3s. */}
+      <Toaster
+        richColors
+        closeButton
+        position="bottom-right"
+        duration={3000}
+        toastOptions={{
+          classNames: {
+            toast: 'rounded-xl border border-line shadow-warm-strong',
+          },
+        }}
+      />
 
     </div>
   )
