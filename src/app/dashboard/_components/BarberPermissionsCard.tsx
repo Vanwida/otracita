@@ -70,14 +70,12 @@ export default function BarberPermissionsCard({
   const [perms, setPerms] = useState<Set<ManagerPermission>>(initialPerms);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   // Si la cuenta cambia (otro barbero seleccionado) → resync state.
   useEffect(() => {
     setIsManager(initialIsManager);
     setPerms(initialPerms);
     setError(null);
-    setSuccess(false);
   }, [initialIsManager, initialPerms]);
 
   const dirty =
@@ -91,13 +89,11 @@ export default function BarberPermissionsCard({
       else next.add(key);
       return next;
     });
-    setSuccess(false);
   };
 
   const save = async () => {
     setBusy(true);
     setError(null);
-    setSuccess(false);
     try {
       const res = await fetch(`/api/barbers/${barberId}/permissions`, {
         method: 'PATCH',
@@ -114,7 +110,6 @@ export default function BarberPermissionsCard({
         toast.error(msg);
         return;
       }
-      setSuccess(true);
       toast.success('Permisos guardados');
       onChanged?.();
     } catch {
@@ -154,7 +149,6 @@ export default function BarberPermissionsCard({
           aria-selected={!isManager}
           onClick={() => {
             setIsManager(false);
-            setSuccess(false);
           }}
           className={`flex items-center justify-center gap-1.5 rounded-control py-2 text-xs font-medium transition-colors ${
             !isManager ? 'bg-surface text-ink shadow-sm' : 'text-ink-2'
@@ -169,7 +163,6 @@ export default function BarberPermissionsCard({
           aria-selected={isManager}
           onClick={() => {
             setIsManager(true);
-            setSuccess(false);
           }}
           className={`flex items-center justify-center gap-1.5 rounded-control py-2 text-xs font-medium transition-colors ${
             isManager ? 'bg-surface text-ink shadow-sm' : 'text-ink-2'
@@ -227,9 +220,6 @@ export default function BarberPermissionsCard({
           <p className="mr-auto text-xs text-danger" role="alert">
             {error}
           </p>
-        )}
-        {!error && success && (
-          <p className="mr-auto text-xs text-success">Guardado.</p>
         )}
         <button
           type="button"

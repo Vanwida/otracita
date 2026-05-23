@@ -1,16 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { Tag, Check, Loader2, X, ExternalLink } from 'lucide-react'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { Tag, Loader2, X, ExternalLink } from 'lucide-react'
+import { toast } from 'sonner'
 
 // -----------------------------------------------------------------------------
 // GtmSettings — input para configurar el Google Tag Manager container ID
-// del barbero. Auto-save al perder foco / pulsar Enter (mismo patrón que
-// TipsSettings / LoyaltySettings — coherente con el resto del dashboard).
+// del barbero. Auto-save al perder foco / pulsar Enter. Feedback post-save vía
+// toast canónico (mismo patrón que el resto del dashboard).
 //
 // Validación local: regex GTM-XXXXXX (entre 6 y 12 alfanuméricos). Si pasa,
-// PATCH a /api/clients/gtm. Si no, mensaje inline sin enviar.
+// PATCH a /api/clients/gtm. Si no, mensaje inline sin enviar (validación de
+// campo es contextual, no toast).
 //
 // Borrar: input vacío + guardar elimina el container ID. El barbero puede
 // pausar el tracking en cualquier momento sin desinstalar la integración.
@@ -22,7 +23,7 @@ interface Props {
   initial: string | null
 }
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+type SaveState = 'idle' | 'saving'
 
 export default function GtmSettings({ initial }: Props) {
   const [value, setValue] = useState(initial ?? '')
@@ -47,16 +48,15 @@ export default function GtmSettings({ initial }: Props) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error ?? 'No se pudo guardar.')
-        setState('error')
+        toast.error(data?.error ?? 'No se pudo guardar')
         return
       }
       setValue(trimmed)
-      setState('saved')
-      setTimeout(() => setState('idle'), FEEDBACK_MS.idleFlash)
+      toast.success('Guardado')
     } catch {
-      setError('Error de red. Inténtalo otra vez.')
-      setState('error')
+      toast.error('Error de red')
+    } finally {
+      setState('idle')
     }
   }
 
@@ -108,12 +108,6 @@ export default function GtmSettings({ initial }: Props) {
           <>
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Guardando…
-          </>
-        )}
-        {state === 'saved' && (
-          <>
-            <Check className="h-3.5 w-3.5 text-success" />
-            <span className="text-success">Guardado</span>
           </>
         )}
       </div>

@@ -165,8 +165,9 @@ export default function NegocioSettings({
     startTransition(async () => {
       try {
         await save(formData)
+        // Feedback "Guardado" lo aporta AjustesSaveBar (pill al lado del botón).
+        // No emitimos toast.success — evita doble feedback visual con el chip.
         setSaveState('saved')
-        toast.success('Guardado')
       } catch (err) {
         setSaveState('idle')
         toast.error(err instanceof Error ? err.message : 'No se pudo guardar')
