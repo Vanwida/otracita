@@ -30,7 +30,7 @@ import Modal from './Modal'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
 import BarberSalaryEditor from './BarberSalaryEditor'
-import BarberPersonalAccessCard from './BarberPersonalAccessCard'
+import BarberInviteCard from './BarberInviteCard'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — Equipo > Empleados en patrón MASTER-DETAIL (Booksy
@@ -73,11 +73,23 @@ interface BarberRow {
   commissionProductsPct: number
   chairRentCents: number
   tierBonuses: { thresholdCents: number; bonusCents: number }[] | null
-  // Acceso móvil personal — #71. El token plano NO se devuelve por la API
-  // GET (solo `hasPersonalAccess` boolean). El token solo se ve UNA vez
-  // en el POST a /api/barbers/[id]/personal-token.
-  hasPersonalAccess: boolean
-  personalAccessGeneratedAt: string | null
+  // Modo barbero v2 (#71v2) — estado de la cuenta Better Auth ligada al
+  // barbero. El GET de /api/barbers enriquece cada fila con:
+  //   · account     — { userId, email, disabledAt } si tiene cuenta activa.
+  //   · pendingInvite — { email, expiresAt, invitedAt } si hay invitación
+  //                     viva sin aceptar.
+  // Cuando ambos son null, el barbero NO tiene acceso a /yo — el jefe
+  // pulsa "Invitar por email" para mandarle el link.
+  account: {
+    userId: string
+    email: string
+    disabledAt: string | null
+  } | null
+  pendingInvite: {
+    email: string
+    expiresAt: string
+    invitedAt: string
+  } | null
   createdAt: string
   updatedAt: string
 }
@@ -867,13 +879,13 @@ function BarberDetail({
           </div>
         </section>
 
-        {/* ── Acceso móvil personal (#71) ──────────────────────────────── */}
+        {/* ── Acceso a /yo (modo barbero v2 #71) ─────────────────────── */}
         <section className="border-t border-line pt-5">
-          <BarberPersonalAccessCard
+          <BarberInviteCard
             barberId={barber.id}
             barberName={barber.name}
-            hasAccess={barber.hasPersonalAccess}
-            generatedAt={barber.personalAccessGeneratedAt}
+            account={barber.account}
+            pendingInvite={barber.pendingInvite}
             onChanged={onSalaryUpdated}
           />
         </section>
