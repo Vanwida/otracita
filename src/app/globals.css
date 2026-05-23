@@ -140,62 +140,41 @@
   --color-barber-6: oklch(0.58 0.12 240);   /* steel blue */
   --color-barber-7: oklch(0.60 0.13 100);   /* moss */
 
-  /* ─── Service identity palette (warm light, 21-deep) ───
-   * El barbero elige uno de estos tokens al crear/editar un servicio.
-   * El bloque de la cita en la agenda usa el tinte (bg) como relleno y el
-   * acento (ink) para texto / borde estado. Sin tokens semánticos para tipos
-   * concretos de servicio: el barbero asigna lo que quiera, los nombres son
-   * abstractos (terracota/olive/sky...) para no encajonar a un negocio.
+  /* ─── Service identity palette (saturada Booksy-style, 12 colores) ───
+   * El barbero elige uno de estos 12 tokens (o un hex custom) al crear/editar
+   * un servicio. El bloque de la cita en la agenda se rellena con este color
+   * SATURADO y el texto se decide por luminancia (var(--color-on-svc-light)
+   * o var(--color-on-svc-dark)). El picker vive en ServicesManager.tsx.
    *
-   * Patrón AA (verificado contra fórmula WCAG): bg L 0.93-0.94 sobre canvas
-   * cream, ink L 0.42-0.46 → ratio ≥ 4.5:1 cuerpo en TODOS los pares (la
-   * diferencia de L ≈ 0.50 garantiza ≥ ~5.5:1 con croma moderado). NO neón,
-   * NO saturado — chroma máximo 0.13, brand lane workwear light+warm. */
-  --color-svc-terracota-bg:    oklch(0.94 0.04 35);   /* tinte terracota */
-  --color-svc-terracota-ink:   oklch(0.45 0.13 35);   /* texto AA sobre tinte */
-  --color-svc-olive-bg:        oklch(0.94 0.04 130);  /* tinte oliva */
-  --color-svc-olive-ink:       oklch(0.42 0.11 130);
-  --color-svc-sky-bg:          oklch(0.94 0.03 220);  /* tinte azul cielo deslavado */
-  --color-svc-sky-ink:         oklch(0.42 0.10 220);
-  --color-svc-gold-bg:         oklch(0.94 0.04 75);   /* tinte oro pálido */
-  --color-svc-gold-ink:        oklch(0.45 0.10 75);
-  --color-svc-mauve-bg:        oklch(0.93 0.03 320);  /* tinte malva apagado */
-  --color-svc-mauve-ink:       oklch(0.43 0.10 320);
-  --color-svc-stone-bg:        oklch(0.93 0.015 60);  /* tinte piedra cálida */
-  --color-svc-stone-ink:       oklch(0.45 0.04 60);
-  --color-svc-slate-bg:        oklch(0.93 0.02 240);  /* tinte pizarra fría tenue */
-  --color-svc-slate-ink:       oklch(0.43 0.05 240);
-  --color-svc-sand-bg:         oklch(0.94 0.03 90);   /* tinte arena */
-  --color-svc-sand-ink:        oklch(0.45 0.07 90);
+   * Por qué saturada y no pastel (paleta vieja, 21 tokens light+warm): la
+   * cita es un bloque pequeño en rejilla densa, los pasteles eran imposibles
+   * de distinguir entre sí. Booksy/Fresha usan saturación visible (chroma
+   * ≥ 0.15) y eso es lo que el barbero necesita para identificar "tinte" vs
+   * "corte" de un vistazo. El chrome del UI sigue light+warm (Patagonia);
+   * esta paleta SATURADA es exclusiva del bloque cita, no del chrome.
+   *
+   * Hues separados ~30° para que no se solapen visualmente. L 0.50-0.78,
+   * chroma 0.13-0.22. El texto auto (light/dark) garantiza AA contra
+   * cualquiera de los 12. */
+  --color-svc-red:      oklch(0.60 0.21 25);    /* rojo confiado */
+  --color-svc-orange:   oklch(0.68 0.18 50);    /* naranja saturado */
+  --color-svc-amber:    oklch(0.78 0.16 75);    /* ámbar (claro, texto oscuro) */
+  --color-svc-olive:    oklch(0.55 0.12 105);   /* oliva profundo */
+  --color-svc-green:    oklch(0.65 0.18 145);   /* verde botánico */
+  --color-svc-emerald:  oklch(0.62 0.17 165);   /* esmeralda azulado */
+  --color-svc-cyan:     oklch(0.68 0.13 200);   /* cian (claro, texto oscuro) */
+  --color-svc-blue:     oklch(0.55 0.18 250);   /* azul vivo */
+  --color-svc-indigo:   oklch(0.50 0.20 275);   /* índigo profundo */
+  --color-svc-purple:   oklch(0.55 0.20 305);   /* púrpura saturado */
+  --color-svc-pink:     oklch(0.62 0.22 350);   /* rosa fucsia */
+  --color-svc-slate:    oklch(0.55 0.04 250);   /* pizarra neutro (default) */
 
-  /* Ampliación #68 — 13 pares nuevos, mismo patrón light+warm. Ordenados por
-   * hue para que la paleta lea natural en el picker (warms → cools → warms). */
-  --color-svc-coral-bg:        oklch(0.94 0.04 25);   /* coral rosado-anaranjado */
-  --color-svc-coral-ink:       oklch(0.46 0.12 25);
-  --color-svc-blush-bg:        oklch(0.94 0.03 10);   /* rosa cálido suave */
-  --color-svc-blush-ink:       oklch(0.46 0.10 10);
-  --color-svc-brick-bg:        oklch(0.93 0.04 20);   /* rojo tostado profundo */
-  --color-svc-brick-ink:       oklch(0.42 0.13 20);
-  --color-svc-peach-bg:        oklch(0.94 0.04 50);   /* melocotón cálido claro */
-  --color-svc-peach-ink:       oklch(0.46 0.10 50);
-  --color-svc-oat-bg:          oklch(0.94 0.025 70);  /* avena beige cálido */
-  --color-svc-oat-ink:         oklch(0.45 0.06 70);
-  --color-svc-mustard-bg:      oklch(0.94 0.04 85);   /* ocre mostaza apagado */
-  --color-svc-mustard-ink:     oklch(0.44 0.10 85);
-  --color-svc-sage-bg:         oklch(0.94 0.03 145);  /* verde sage botánico */
-  --color-svc-sage-ink:        oklch(0.43 0.09 145);
-  --color-svc-jade-bg:         oklch(0.94 0.03 165);  /* verde jade botánico */
-  --color-svc-jade-ink:        oklch(0.43 0.09 165);
-  --color-svc-teal-bg:         oklch(0.94 0.03 195);  /* verde-azul moderado */
-  --color-svc-teal-ink:        oklch(0.43 0.09 195);
-  --color-svc-fog-bg:          oklch(0.93 0.02 230);  /* gris-azul lavado */
-  --color-svc-fog-ink:         oklch(0.44 0.05 230);
-  --color-svc-denim-bg:        oklch(0.93 0.03 250);  /* azul tejano apagado */
-  --color-svc-denim-ink:       oklch(0.43 0.09 250);
-  --color-svc-lavender-bg:     oklch(0.94 0.03 290);  /* púrpura claro lavado */
-  --color-svc-lavender-ink:    oklch(0.44 0.09 290);
-  --color-svc-plum-bg:         oklch(0.93 0.03 340);  /* ciruela vinosa */
-  --color-svc-plum-ink:        oklch(0.43 0.10 340);
+  /* Texto que va ENCIMA de los fondos saturados. Warm-near-white y
+   * warm-near-black (no oklch puro) para que sobre los fondos cromados no se
+   * sienta plástico. Se aplican como utilities (text-on-svc-light /
+   * text-on-svc-dark) — el componente decide cuál por luminancia. */
+  --color-on-svc-light: oklch(0.98 0.005 60);   /* warm near-white sobre fondos oscuros/medios */
+  --color-on-svc-dark:  oklch(0.20 0.02 60);    /* warm near-black sobre fondos claros (amber/cyan) */
 
   /* ─── Typography ─── */
   /* Dashboard / product surfaces: Fraunces + IBM Plex Sans (cargadas via
