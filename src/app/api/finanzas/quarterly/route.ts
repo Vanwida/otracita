@@ -6,7 +6,10 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
-import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import {
+  periodRevenueComponents,
+  periodStockConsumptionCost,
+} from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 
@@ -70,7 +73,7 @@ async function calcMonth(
 
   // Ingreso vía helper compartido (servicios+extras+manual+productos+
   // propinas) — antes solo bookings+manual con 21/121 hardcoded.
-  const [revComponents, gastosRes, fixedRes, gastosIvaRes, fixedIvaRes] = await Promise.all([
+  const [revComponents, gastosRes, fixedRes, gastosIvaRes, fixedIvaRes, materialsCost] = await Promise.all([
     periodRevenueComponents(clientId, start, end),
     db
       .select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
@@ -114,6 +117,7 @@ async function calcMonth(
           inArray(fixedCosts.category, VALID_IVA_CATEGORIES),
         ),
       ),
+    periodStockConsumptionCost(clientId, start, end),
   ])
 
   const revenue = computeRevenueCents(revComponents)
@@ -126,8 +130,10 @@ async function calcMonth(
 
   // Nóminas del equipo este mes (mismo helper que /summary, en BATCH desde
   // el caller) — sin esto el beneficio del trimestre no cuadra con el P&L.
+  // Coste materiales (stock consumido + merma) — mismo criterio que /summary.
+  const materialsCostCents = materialsCost.totalCents
   const totalGastosCents =
-    gastosVariablesCents + costosFijosCents + Math.max(0, nominasCents)
+    gastosVariablesCents + costosFijosCents + Math.max(0, nominasCents) + materialsCostCents
   const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
     computeIvaBreakdown({
       ingresosCents,

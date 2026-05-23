@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { bookings, bookingServices, manualIncomes, productSales, tips } from '@/db/schema';
-import { and, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { bookings, bookingServices, manualIncomes, productSales, products, tips } from '@/db/schema';
+import { and, eq, gte, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { RevenueComponents } from './pnl-math';
 
 // -----------------------------------------------------------------------------
@@ -138,5 +138,124 @@ export async function annualRevenueComponentsByMonth(
   for (const row of productRows) ensure(row.month).productsCents = parseInt(row.total, 10);
   for (const row of tipRows) ensure(row.month).tipsCents = parseInt(row.total, 10);
 
+  return byMonth;
+}
+
+// -----------------------------------------------------------------------------
+// Coste de stock consumido — gasto real del periodo.
+//
+// `product_sales` con `consumption_kind` IN ('internal', 'damage') decrementa
+// stock pero NO suma a revenue (correcto — no hubo flujo de dinero). El error
+// era que TAMPOCO aparecía en gastos: ese producto SE PAGÓ al proveedor y se
+// gastó internamente o se rompió → es coste real que el P&L debe reflejar.
+//
+// Cálculo:   SUM(quantity * COALESCE(cost_price_cents, price_cents))
+//   · `cost_price_cents` = coste de compra unitario (lo ideal).
+//   · `price_cents`      = fallback conservador (margen 0) cuando el jefe aún
+//                          no ha configurado costes. Asegura que el gasto
+//                          aparece desde el día 1 sin pedir setup previo.
+//
+// Desglose `internal` vs `damage` para el UI ("consumo barbero" vs "merma").
+// Espejo simétrico de `periodRevenueComponents` (que filtra por
+// `consumption_kind IS NULL`). Tenant-safe igual que el resto.
+// -----------------------------------------------------------------------------
+
+/** Coste del stock consumido (interno + merma) en céntimos, ya desglosado. */
+export interface StockConsumptionCost {
+  /** Coste del consumo interno del barbero (gomina, cera de uso). */
+  internalCents: number;
+  /** Coste de la merma / rotura. */
+  damageCents: number;
+  /** Suma = internal + damage. Lo que entra en `totalGastosCents`. */
+  totalCents: number;
+}
+
+/**
+ * Suma el coste del stock consumido del periodo `[start, end)`. `start`/`end`
+ * son YYYY-MM-DD (mismo criterio que `periodRevenueComponents`); a Date para
+ * comparar con `product_sales.sold_at`.
+ */
+export async function periodStockConsumptionCost(
+  clientId: string,
+  start: string,
+  end: string,
+): Promise<StockConsumptionCost> {
+  const rows = await db
+    .select({
+      kind: productSales.consumptionKind,
+      total: sql<string>`COALESCE(SUM(${productSales.quantity} * COALESCE(${products.costPriceCents}, ${products.priceCents})), 0)`,
+    })
+    .from(productSales)
+    .innerJoin(products, eq(productSales.productId, products.id))
+    .where(
+      and(
+        eq(productSales.clientId, clientId),
+        isNotNull(productSales.consumptionKind),
+        gte(productSales.soldAt, new Date(start)),
+        lt(productSales.soldAt, new Date(end)),
+      ),
+    )
+    .groupBy(productSales.consumptionKind);
+
+  let internalCents = 0;
+  let damageCents = 0;
+  for (const row of rows) {
+    const cents = parseInt(row.total, 10);
+    if (row.kind === 'internal') internalCents = cents;
+    else if (row.kind === 'damage') damageCents = cents;
+    // Otros kinds futuros: ignorados aquí; añadirlos explícitamente cuando se
+    // introduzcan para evitar contar dos veces sin querer.
+  }
+  return { internalCents, damageCents, totalCents: internalCents + damageCents };
+}
+
+/**
+ * Igual que `periodStockConsumptionCost` pero agregado por MES del año para
+ * `annualRevenueComponentsByMonth` — sin saturar el pool de Neon con 12
+ * queries paralelas. Devuelve un Map month→cost; meses sin consumos no
+ * aparecen (el caller usa 0 por defecto).
+ */
+export async function annualStockConsumptionCostByMonth(
+  clientId: string,
+  yearStart: string,
+  yearEnd: string,
+): Promise<Map<number, StockConsumptionCost>> {
+  const rows = await db
+    .select({
+      month: sql<number>`EXTRACT(MONTH FROM (${productSales.soldAt} AT TIME ZONE 'Europe/Madrid')::date)::int`,
+      kind: productSales.consumptionKind,
+      total: sql<string>`COALESCE(SUM(${productSales.quantity} * COALESCE(${products.costPriceCents}, ${products.priceCents})), 0)`,
+    })
+    .from(productSales)
+    .innerJoin(products, eq(productSales.productId, products.id))
+    .where(
+      and(
+        eq(productSales.clientId, clientId),
+        isNotNull(productSales.consumptionKind),
+        gte(productSales.soldAt, new Date(yearStart)),
+        lt(productSales.soldAt, new Date(yearEnd)),
+      ),
+    )
+    .groupBy(
+      sql`EXTRACT(MONTH FROM (${productSales.soldAt} AT TIME ZONE 'Europe/Madrid')::date)`,
+      productSales.consumptionKind,
+    );
+
+  const byMonth = new Map<number, StockConsumptionCost>();
+  const ensure = (m: number): StockConsumptionCost => {
+    let r = byMonth.get(m);
+    if (!r) {
+      r = { internalCents: 0, damageCents: 0, totalCents: 0 };
+      byMonth.set(m, r);
+    }
+    return r;
+  };
+  for (const row of rows) {
+    const cents = parseInt(row.total, 10);
+    const slot = ensure(row.month);
+    if (row.kind === 'internal') slot.internalCents = cents;
+    else if (row.kind === 'damage') slot.damageCents = cents;
+    slot.totalCents = slot.internalCents + slot.damageCents;
+  }
   return byMonth;
 }

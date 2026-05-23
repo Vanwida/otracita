@@ -6,7 +6,10 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
-import { annualRevenueComponentsByMonth } from '@/lib/finanzas/period-revenue'
+import {
+  annualRevenueComponentsByMonth,
+  annualStockConsumptionCostByMonth,
+} from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 
@@ -56,8 +59,9 @@ export async function GET(request: Request) {
     (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`,
   )
 
-  const [revByMonth, payrollByMonth, expenseRows, fixedRows] = await Promise.all([
+  const [revByMonth, materialsByMonth, payrollByMonth, expenseRows, fixedRows] = await Promise.all([
     annualRevenueComponentsByMonth(clientId, start, end),
+    annualStockConsumptionCostByMonth(clientId, start, end),
     computePayrollTotalsByMonth(clientId, start, end, monthKeys),
 
     // Gastos variables por mes — SUM con desglose IVA
@@ -109,7 +113,10 @@ export async function GET(request: Request) {
     // Nóminas del equipo este mes (mismo helper que /summary, en BATCH).
     // Sin esto el beneficio anual no cuadra con el P&L mensual.
     const nominasCents = Math.max(0, payrollByMonth.totalByMonth.get(monthStr) ?? 0)
-    const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
+    // Coste materiales (stock consumido + merma) — mismo criterio que /summary.
+    const materialsCostCents = materialsByMonth.get(month)?.totalCents ?? 0
+    const totalGastosCents =
+      gastosVariablesCents + costosFijosCents + nominasCents + materialsCostCents
     const { ivaAPagarCents, ingresosNetosCents } = computeIvaBreakdown({
       ingresosCents,
       tipsCents: revenue.tipsCents,

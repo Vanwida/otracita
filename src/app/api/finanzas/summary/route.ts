@@ -7,7 +7,10 @@ import {
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
-import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import {
+  periodRevenueComponents,
+  periodStockConsumptionCost,
+} from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 
 // -----------------------------------------------------------------------------
@@ -71,6 +74,7 @@ export async function GET(request: Request) {
     fixedConIvaResult,
     retirosResult,
     prevYearComponents,
+    materialsCost,
   ] = await Promise.all([
     // Ingreso del periodo (servicios+extras+manual+productos+propinas) vía
     // helper compartido — única fuente, idéntico a quarterly/annual/etc.
@@ -93,6 +97,10 @@ export async function GET(request: Request) {
     // YoY: SOLO servicios+extras del año anterior (comparativa de facturación
     // de servicios, no incluye productos/propinas/manual — semántica original).
     periodRevenueComponents(clientId, prevYearBounds.start, prevYearBounds.end, { includeManual: false }),
+    // Coste de stock consumido (interno + merma) — gasto real del periodo
+    // que antes no aparecía en ningún sitio (issue #56). Fallback a price
+    // si el producto no tiene cost_price_cents configurado.
+    periodStockConsumptionCost(clientId, start, end),
   ])
 
   const revenue = computeRevenueCents(revComponents)
@@ -119,7 +127,11 @@ export async function GET(request: Request) {
 
   // IVA configurable por tenant (clients.ivaRate) + propina fuera de la base
   // imponible — vía helper compartido (única fuente fiscal del P&L).
-  const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
+  // Coste materiales = stock consumido internamente + merma. Es gasto del
+  // local (el producto SE PAGÓ al proveedor) aunque no haya flujo de caja.
+  const materialsCostCents = materialsCost.totalCents
+  const totalGastosCents =
+    gastosVariablesCents + costosFijosCents + nominasCents + materialsCostCents
   const { ivaRepercutidoCents, ivaSoportadoCents, ivaAPagarCents, ingresosNetosCents } =
     computeIvaBreakdown({
       ingresosCents,
@@ -140,6 +152,9 @@ export async function GET(request: Request) {
     gastosVariablesCents,
     costosFijosCents,
     nominasCents,
+    materialsCostCents,
+    materialsCostInternalCents: materialsCost.internalCents,
+    materialsCostDamageCents: materialsCost.damageCents,
     totalGastosCents,
     ivaRepercutidoCents,
     ivaSoportadoCents,

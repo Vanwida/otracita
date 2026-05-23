@@ -6,7 +6,10 @@ import {
   accessErrorResponse,
 } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
-import { periodRevenueComponents } from '@/lib/finanzas/period-revenue'
+import {
+  periodRevenueComponents,
+  periodStockConsumptionCost,
+} from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 
@@ -68,7 +71,7 @@ export async function GET(request: Request) {
       // Mismo basis de ingreso que /summary (servicios+extras+manual+
       // productos+propinas) + mismo IVA configurable, vía helpers compartidos.
       // Sin esto el sparkline divergía del P&L mensual.
-      const [revComponents, gastosRes, fixedRes] = await Promise.all([
+      const [revComponents, gastosRes, fixedRes, materialsCost] = await Promise.all([
         periodRevenueComponents(clientId, start, end),
         db
           .select({ total: sql<string>`COALESCE(SUM(${expenses.amountCents}), 0)` })
@@ -90,6 +93,7 @@ export async function GET(request: Request) {
               lte(fixedCosts.activeFrom, start),
             ),
           ),
+        periodStockConsumptionCost(clientId, start, end),
       ])
 
       const revenue = computeRevenueCents(revComponents)
@@ -99,7 +103,11 @@ export async function GET(request: Request) {
       // Nóminas del equipo este mes — coste real (mismo helper que /summary).
       // Sin esto el beneficio del mes en el sparkline no cuadra con el P&L.
       const nominasCents = Math.max(0, payrollByMonth.get(mk) ?? 0)
-      const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
+      // Coste materiales (stock consumido internamente + merma) — gasto real
+      // aunque no haya caja; mismo criterio que /summary.
+      const materialsCostCents = materialsCost.totalCents
+      const totalGastosCents =
+        gastosVariablesCents + costosFijosCents + nominasCents + materialsCostCents
 
       const { ingresosNetosCents } = computeIvaBreakdown({
         ingresosCents,
