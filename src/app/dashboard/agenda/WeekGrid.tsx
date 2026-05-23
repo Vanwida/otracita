@@ -10,7 +10,7 @@ import {
   resolveBookingColorToken,
   statusCornerBadge,
 } from './_appointment-color';
-import { computeAgendaWindow, toMinutes, PX_PER_MIN } from './_agenda-window';
+import { computeAgendaWindow, toMinutes, WEEK_PX_PER_MIN } from './_agenda-window';
 import { hoursForDate } from '@/lib/availability-hours';
 import { useCurrentTime } from './_hooks/use-current-time';
 
@@ -58,19 +58,31 @@ export default function WeekGrid({
 
   // Ventana DINÁMICA de la semana (fuente única _agenda-window): unión del
   // horario de tienda + citas reales en los 7 días visibles.
-  const { startMin, endMin, totalHeight, hourLabels } = useMemo(
-    () =>
-      computeAgendaWindow({
-        dates: dayStrs,
-        hours,
-        events: events.map((e) => ({
-          date: e.date,
-          time: e.time,
-          duration: e.duration,
-        })),
-      }),
-    [dayStrs, hours, events],
-  );
+  //
+  // `computeAgendaWindow` calcula `totalHeight`/`hourLabels.top` con la
+  // densidad por defecto (PX_PER_MIN = vista Día = 2). En Semana usamos
+  // WEEK_PX_PER_MIN (más denso → más citas en pantalla) y reescalamos esos
+  // dos campos. `startMin`/`endMin` son minutos puros y siguen siendo válidos.
+  const { startMin, endMin, hourLabels } = useMemo(() => {
+    const w = computeAgendaWindow({
+      dates: dayStrs,
+      hours,
+      events: events.map((e) => ({
+        date: e.date,
+        time: e.time,
+        duration: e.duration,
+      })),
+    });
+    // Reetiquetamos las etiquetas a la densidad de Semana — mismas horas en
+    // punto que ya calcula el módulo, sólo cambia el `top` en px.
+    const labels = w.hourLabels.map((hl, i) => ({
+      label: hl.label,
+      top: i * 60 * WEEK_PX_PER_MIN,
+    }));
+    return { startMin: w.startMin, endMin: w.endMin, hourLabels: labels };
+  }, [dayStrs, hours, events]);
+
+  const totalHeight = (endMin - startMin) * WEEK_PX_PER_MIN;
 
   // Auto-scroll inicial: a "ahora" si cae en la ventana (la semana suele
   // contener hoy), si no al inicio de la ventana. Re-corre al cambiar de
@@ -81,13 +93,13 @@ export default function WeekGrid({
     const nowInWindow =
       currentTimeMin >= startMin && currentTimeMin <= endMin;
     const targetMin = nowInWindow ? currentTimeMin : startMin;
-    el.scrollTop = Math.max(0, (targetMin - startMin) * PX_PER_MIN - 100);
+    el.scrollTop = Math.max(0, (targetMin - startMin) * WEEK_PX_PER_MIN - 100);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayStrs[0], startMin, endMin]);
 
   const currentTimePx =
     currentTimeMin >= startMin && currentTimeMin <= endMin
-      ? (currentTimeMin - startMin) * PX_PER_MIN
+      ? (currentTimeMin - startMin) * WEEK_PX_PER_MIN
       : null;
 
   const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
@@ -95,7 +107,7 @@ export default function WeekGrid({
 
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const clickedMinutes = Math.floor(y / PX_PER_MIN) + startMin;
+    const clickedMinutes = Math.floor(y / WEEK_PX_PER_MIN) + startMin;
     const rounded = Math.round(clickedMinutes / 30) * 30;
     const clamped = Math.max(startMin, Math.min(endMin - 30, rounded));
     const h = Math.floor(clamped / 60);
@@ -180,15 +192,15 @@ export default function WeekGrid({
                         {open > startMin && (
                           <div
                             className="absolute left-0 right-0 top-0 offhours-overlay pointer-events-none z-10"
-                            style={{ height: (open - startMin) * PX_PER_MIN }}
+                            style={{ height: (open - startMin) * WEEK_PX_PER_MIN }}
                           />
                         )}
                         {close < endMin && (
                           <div
                             className="absolute left-0 right-0 offhours-overlay pointer-events-none z-10"
                             style={{
-                              top: (close - startMin) * PX_PER_MIN,
-                              height: (endMin - close) * PX_PER_MIN,
+                              top: (close - startMin) * WEEK_PX_PER_MIN,
+                              height: (endMin - close) * WEEK_PX_PER_MIN,
                             }}
                           />
                         )}
@@ -216,7 +228,7 @@ export default function WeekGrid({
                     <div
                       key={`half-${i}`}
                       className="absolute left-0 right-0 border-t border-canvas"
-                      style={{ top: top + 30 * PX_PER_MIN }}
+                      style={{ top: top + 30 * WEEK_PX_PER_MIN }}
                     />
                   ))}
 
@@ -233,25 +245,31 @@ export default function WeekGrid({
                   {/* Events — variante COMPACT (Semana). Diferencias vs Día:
                       · padding mínimo (4px/2px) para no robar alto a citas cortas
                       · fuentes -compact (cliente 11.5px / servicio 10.5px)
-                      · altura ESTRICTA = duration × PX_PER_MIN (sin min-height
-                        forzado). Una cita de 15min ocupa exactamente 30px.
+                      · altura = duration × WEEK_PX_PER_MIN (densidad Semana
+                        = 1.5px/min → 30min ≈ 43px, 45min ≈ 64px). Calibrada
+                        para que Reni vea muchas más citas a la vez que en Día.
                       · gap visual real de 2px entre bloques consecutivos
                         (top+1 / height-2) para que dos citas seguidas NUNCA
                         parezcan una sola — el bug original.
-                      · < 20min (= height < 40px) → solo nombre cliente, sin hora
-                        ni servicio (posición vertical ya comunica la hora) */}
+                      · < 15min (= height < ~22px) → altura visual mínima 18px
+                        para legibilidad. El siguiente bloque empieza en su
+                        `top` real (basado en su hora), así que pueden
+                        solaparse 2-3px — convención Booksy/Fresha.
+                      · < 20min (= height < 30px) → solo nombre cliente, sin
+                        hora ni servicio (posición vertical comunica la hora) */}
                   {dayEvents.map(event => {
                     const evStartMin = toMinutes(event.time);
-                    const rawTop = (evStartMin - startMin) * PX_PER_MIN;
-                    const rawHeight = event.duration * PX_PER_MIN;
+                    const rawTop = (evStartMin - startMin) * WEEK_PX_PER_MIN;
+                    const rawHeight = event.duration * WEEK_PX_PER_MIN;
                     // 1px de aire arriba/abajo → 2px gap real entre citas
-                    // pegadas. No forzamos min-height: si la cita es de 10min
-                    // (=20px) se ve fina pero distinta — Booksy hace lo mismo.
+                    // pegadas. Min-height visual 18px para citas <15min
+                    // (legibilidad); el `top` del siguiente bloque ya está
+                    // en su hora real → puede solapar 2-3px (Booksy-style).
                     const top = rawTop + 1;
-                    const height = Math.max(rawHeight - 2, 14);
-                    const isShort = height < 40;   // ~< 20min
-                    const isTiny = height < 24;    // ~< 12min → ultra-denso
-                    const showService = height >= 56 && !isShort;
+                    const height = Math.max(rawHeight - 2, 18);
+                    const isShort = height < 30;   // ~< 20min @ 1.5px/min
+                    const isTiny = height < 22;    // ~< 15min → ultra-denso
+                    const showService = height >= 42 && !isShort; // ~30min+
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
                     // #33 — Color por SERVICIO (no por estado). Mismo helper

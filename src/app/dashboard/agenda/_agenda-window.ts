@@ -26,8 +26,16 @@ import { hoursForDate, type WeeklyHours } from '../../../lib/availability-hours.
 // Ambas rejillas consumen este módulo — cero lógica de ventana duplicada.
 // -----------------------------------------------------------------------------
 
-/** Píxeles por minuto del eje vertical (densidad de la rejilla). */
+/** Píxeles por minuto del eje vertical (densidad de la rejilla) — vista Día.
+ *  Calibrado para que un slot de 30min ≈ 60px (texto legible, dos líneas). */
 export const PX_PER_MIN = 2;
+
+/** Píxeles por minuto del eje vertical en vista SEMANA. Más denso que Día:
+ *  Reni necesita ver muchas más citas a la vez en la rejilla semanal (siete
+ *  columnas ya estrechan el alto efectivo). A 1.5px/min un bloque de 30min
+ *  ≈ 45px y uno de 45min ≈ 67px — comparable a Booksy/Fresha en semana.
+ *  No afecta a Día (sigue en 2). */
+export const WEEK_PX_PER_MIN = 1.5;
 
 /** Snap de minutos para click-to-create y drag&drop (UX cliente; el
  *  servidor acepta cualquier HH:MM). */
