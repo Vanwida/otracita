@@ -1,22 +1,42 @@
 'use client';
 
 import { useState } from 'react';
-import { Mail, Loader2, Check, X, RefreshCw, AlertCircle } from 'lucide-react';
+import {
+  Mail,
+  Loader2,
+  Check,
+  X,
+  RefreshCw,
+  AlertCircle,
+  Copy,
+  KeyRound,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from './Modal';
+import { useConfirm } from './ConfirmDialog';
+
+// URL fija del panel del barbero. Es global, no por-token: Better Auth
+// redirige aquí tras login. HARD RULE: dominio único `otracita.es`.
+const BARBER_PANEL_URL = 'https://www.otracita.es/yo';
 
 // -----------------------------------------------------------------------------
 // BarberInviteCard — UI dentro del editor de barbero. Tres estados:
 //
 //   1. Sin cuenta + sin invitación → botón "Invitar por email".
-//   2. Invitación pendiente        → email + caducidad + "Reenviar / Revocar".
-//   3. Cuenta activa               → email + "Revocar acceso".
+//   2. Invitación pendiente        → email + caducidad + "Reenviar / Revocar
+//                                     invitación" (borra el token).
+//   3. Cuenta activa               → email + bloque para mandar acceso por
+//                                     WhatsApp + reset de contraseña +
+//                                     "Desactivar acceso" (NO borra, sólo
+//                                     setea `disabledAt`).
+//      Cuenta desactivada           → "Reactivar acceso".
 //
-// Toda la lógica vive en estos endpoints:
-//   POST    /api/barber-invites               { barberId, email }
-//   DELETE  /api/barber-invites/[token]
-//   POST    /api/barber-account/disable      { userId }
-//   POST    /api/barber-account/enable       { userId }
+// Endpoints implicados:
+//   POST    /api/barber-invites                                 { barberId, email }
+//   POST    /api/barber-invites/revoke?barberId=...
+//   POST    /api/barber-account/disable                          { userId }
+//   POST    /api/barber-account/enable                           { userId }
+//   POST    /api/barbers/[id]/request-password-reset             — Better Auth
 // -----------------------------------------------------------------------------
 
 interface Account {
@@ -51,6 +71,7 @@ export default function BarberInviteCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastInviteToken, setLastInviteToken] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const sendInvite = async () => {
     setBusy(true);
@@ -89,7 +110,14 @@ export default function BarberInviteCard({
     // distinto NO funciona — necesitamos un DELETE específico. Mejor:
     // implementamos un endpoint helper. Por ahora, lo hacemos via
     // `/api/barber-invites/revoke?barberId=...`.
-    if (!confirm('¿Revocar la invitación pendiente?')) return;
+    const ok = await confirm({
+      title: '¿Revocar invitación?',
+      message: `${barberName} no podrá usar el enlace recibido por email.`,
+      confirmLabel: 'Revocar',
+      cancelLabel: 'Cancelar',
+      variant: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -116,12 +144,18 @@ export default function BarberInviteCard({
 
   const disableAccount = async () => {
     if (!account) return;
-    if (
-      !confirm(
-        `¿Revocar el acceso de ${barberName}?\n\nDejará de poder entrar a /yo desde su móvil. Las citas pasadas se conservan.`,
-      )
-    )
-      return;
+    // Importante: "desactivar" ≠ "revocar". Sólo seteamos `disabledAt` en
+    // user, la cuenta y los datos se mantienen. Al reactivar el barbero
+    // entra con la misma contraseña, sin invitar de nuevo.
+    const ok = await confirm({
+      title: `¿Desactivar el acceso de ${barberName}?`,
+      message:
+        'No podrá entrar hasta que vuelvas a activarlo. Su cuenta y datos se mantienen.',
+      confirmLabel: 'Desactivar acceso',
+      cancelLabel: 'Cancelar',
+      variant: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -132,12 +166,12 @@ export default function BarberInviteCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = body?.error || 'No se pudo revocar.';
+        const msg = body?.error || 'No se pudo desactivar.';
         setError(msg);
         toast.error(msg);
         return;
       }
-      toast.success('Acceso revocado');
+      toast.success('Acceso desactivado');
       onChanged?.();
     } catch {
       const msg = 'Error de conexión.';
@@ -197,7 +231,7 @@ export default function BarberInviteCard({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-ink">
-              {isDisabled ? 'Acceso revocado' : 'Cuenta activa'}
+              {isDisabled ? 'Acceso desactivado' : 'Cuenta activa'}
             </p>
             <p className="truncate text-xs text-ink-2">{account.email}</p>
           </div>
@@ -207,9 +241,20 @@ export default function BarberInviteCard({
             disabled={busy}
             className="shrink-0 rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-medium text-ink-2 hover:border-line-strong hover:bg-overlay/40 disabled:opacity-50"
           >
-            {busy ? '…' : isDisabled ? 'Reactivar' : 'Revocar'}
+            {busy
+              ? '…'
+              : isDisabled
+                ? 'Reactivar acceso'
+                : 'Desactivar acceso'}
           </button>
         </div>
+        {!isDisabled && (
+          <BarberAccessShare
+            email={account.email}
+            barberId={barberId}
+            barberName={barberName}
+          />
+        )}
         {error && (
           <p className="mt-2 text-xs text-danger" role="alert">
             {error}
@@ -261,7 +306,7 @@ export default function BarberInviteCard({
               className="rounded-lg border border-line bg-canvas px-3 py-1 text-xs font-medium text-ink-2 hover:border-line-strong disabled:opacity-50"
             >
               <X className="mr-1 inline h-3 w-3" />
-              Revocar
+              Revocar invitación
             </button>
           </div>
         </div>
@@ -325,6 +370,114 @@ export default function BarberInviteCard({
         busy={busy}
         error={error}
       />
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// BarberAccessShare — bloque visible cuando la cuenta está activa. Da al jefe:
+//   · URL del panel + email del barbero (para copiar y pegar por WhatsApp).
+//   · Botón "Enviar reset de contraseña" que dispara el flow nativo de Better
+//     Auth vía POST /api/barbers/[id]/request-password-reset.
+// -----------------------------------------------------------------------------
+function BarberAccessShare({
+  email,
+  barberId,
+  barberName,
+}: {
+  email: string;
+  barberId: string;
+  barberName: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const confirm = useConfirm();
+  const message = `Entra a tu panel: ${BARBER_PANEL_URL} · Usuario: ${email}`;
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      toast.success('Copiado');
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('No se pudo copiar');
+    }
+  };
+
+  const onSendReset = async () => {
+    const ok = await confirm({
+      title: `Enviar reset de contraseña a ${barberName}`,
+      message: `Le mandaremos un email a ${email} con un link para que ponga una contraseña nueva. ¿Confirmar?`,
+      confirmLabel: 'Enviar email',
+      cancelLabel: 'Cancelar',
+    });
+    if (!ok) return;
+    setResetBusy(true);
+    try {
+      const res = await fetch(
+        `/api/barbers/${barberId}/request-password-reset`,
+        { method: 'POST' },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body?.error || 'No se pudo enviar el email.');
+        return;
+      }
+      toast.success('Email enviado');
+    } catch {
+      toast.error('Error de conexión.');
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 rounded-control border border-line bg-canvas p-3">
+      <p className="text-xs font-semibold text-ink-2">
+        Mándaselo por WhatsApp
+      </p>
+      <dl className="mt-2 space-y-1 text-xs">
+        <div className="flex gap-2">
+          <dt className="w-16 shrink-0 text-ink-3">Panel</dt>
+          <dd className="min-w-0 flex-1 break-all font-mono text-ink">
+            {BARBER_PANEL_URL}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-16 shrink-0 text-ink-3">Usuario</dt>
+          <dd className="min-w-0 flex-1 break-all font-mono text-ink">
+            {email}
+          </dd>
+        </div>
+      </dl>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onCopy}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-brand-ink hover:bg-brand-strong transition-colors"
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
+          {copied ? 'Copiado' : 'Copiar acceso'}
+        </button>
+        <button
+          type="button"
+          onClick={onSendReset}
+          disabled={resetBusy}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 hover:border-line-strong hover:bg-overlay/40 transition-colors disabled:opacity-50"
+        >
+          {resetBusy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <KeyRound className="h-3.5 w-3.5" />
+          )}
+          {resetBusy ? 'Enviando…' : 'Enviar reset de contraseña'}
+        </button>
+      </div>
     </div>
   );
 }

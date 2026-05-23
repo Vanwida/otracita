@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { Pool } from 'pg';
 import { SITE_ORIGIN } from './site';
+import { sendEmail } from './email/notify';
 
 /**
  * Connection string para `pg` con SSL `verify-full` EXPLÍCITO.
@@ -37,6 +38,47 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
+    // Reset de contraseña. Better Auth genera el token y la URL; aquí
+    // sólo enviamos el email. `url` ya incluye el token + el callbackURL
+    // (que es el `redirectTo` que pasamos en `requestPasswordReset`).
+    // Better Auth resuelve `/api/auth/reset-password/[token]` → redirige
+    // al callbackURL con `?token=` para que la UI consuma `resetPassword`.
+    sendResetPassword: async ({ user, url }) => {
+      const safeUrl = url;
+      await sendEmail({
+        to: user.email,
+        subject: 'Restablece tu contraseña — otracita',
+        text: [
+          'Hola,',
+          '',
+          'Hemos recibido una petición para restablecer tu contraseña en otracita.',
+          '',
+          `Restablécela aquí: ${safeUrl}`,
+          '',
+          'Si no fuiste tú, ignora este email. El enlace caduca en 1 hora.',
+          '',
+          '— otracita',
+        ].join('\n'),
+        html: `<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background:#f5f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f1ea;padding:32px 16px;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;padding:40px 32px;">
+          <tr><td style="font-size:14px;letter-spacing:0.08em;text-transform:uppercase;color:#7a7466;padding-bottom:24px;">otracita</td></tr>
+          <tr><td style="font-size:22px;line-height:1.35;font-weight:600;color:#1a1a1a;padding-bottom:16px;">Restablece tu contraseña</td></tr>
+          <tr><td style="font-size:16px;line-height:1.6;color:#3a3a3a;padding-bottom:24px;">Hemos recibido una petición para restablecer tu contraseña en otracita. Pulsa el botón para crear una nueva.</td></tr>
+          <tr><td style="padding-bottom:24px;"><a href="${safeUrl}" style="display:inline-block;background:#1a1a1a;color:#f5f1ea;text-decoration:none;font-weight:600;padding:14px 22px;border-radius:8px;font-size:15px;">Restablecer contraseña</a></td></tr>
+          <tr><td style="font-size:13px;line-height:1.6;color:#7a7466;padding-bottom:8px;">Si no fuiste tú, ignora este email. El enlace caduca en 1 hora.</td></tr>
+          <tr><td style="font-size:13px;line-height:1.6;color:#7a7466;padding-top:24px;border-top:1px solid #e5dfd2;">— otracita</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`,
+        tag: 'password-reset',
+      });
+    },
   },
   socialProviders: {
     google: {
