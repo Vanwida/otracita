@@ -197,6 +197,7 @@ export const AREAS: Area[] = [
     tabs: [
       { seg: null, label: 'Negocio', href: '/dashboard/ajustes' },
       { seg: 'pagos', label: 'Pagos', href: '/dashboard/ajustes/pagos' },
+      { seg: 'bloqueo', label: 'Bloqueo con PIN', href: '/dashboard/ajustes/bloqueo' },
       { seg: 'suscripcion', label: 'Suscripción', href: '/dashboard/mi-plan' },
       { seg: 'ayuda', label: 'Ayuda', href: '/dashboard/ayuda' },
     ],
