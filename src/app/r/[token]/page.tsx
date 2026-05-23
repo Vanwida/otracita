@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 import { resolveBarberByToken } from '@/lib/barber-auth/tenant'
-import { setBarberSession } from '@/lib/barber-auth/session'
 import InstallScreen from './InstallScreen'
 
 // -----------------------------------------------------------------------------
@@ -11,9 +10,10 @@ import InstallScreen from './InstallScreen'
 //     a pantalla de inicio (iOS Safari y Android Chrome). El jefe envía
 //     este link por WhatsApp ("Bienvenido al equipo, abre esto y añádelo
 //     a pantalla de inicio").
-//   · Si no → setea la cookie firmada y redirige a /r/<token>/agenda.
-//     El barbero llega aquí cada vez que abre el icon de la pantalla de
-//     inicio (la PWA tiene scope=/r/<token>).
+//   · Si no → redirige al Route Handler `/r/[token]/enter` que setea la
+//     cookie y manda a la agenda. La cookie NO puede setearse aquí:
+//     en Next 16, `cookies().set(...)` solo está permitido en Server
+//     Functions / Route Handlers, no durante el render de una page.
 //
 // Sin token válido → mensaje genérico (no filtramos si el barbero existe).
 // -----------------------------------------------------------------------------
@@ -59,7 +59,6 @@ export default async function BarberTokenResolver({
     )
   }
 
-  // Flow normal: setear cookie + redirigir a la agenda.
-  await setBarberSession(resolved.barber.id)
-  redirect(`/r/${token}/agenda`)
+  // Flow normal: delega al Route Handler que sí puede setear cookies.
+  redirect(`/r/${token}/enter`)
 }

@@ -24,7 +24,10 @@ export default function InstallScreen({
     return /android/i.test(navigator.userAgent) ? 'android' : 'ios'
   })
 
-  const continueUrl = `/r/${token}/agenda`
+  // Pasa por /enter (Route Handler) para que setee la cookie firmada
+  // antes de llegar a /agenda. Si linkea directo a /agenda, el layout
+  // redirige a /enter de todas formas — pero un hop extra es feo.
+  const continueUrl = `/r/${token}/enter`
 
   return (
     <main

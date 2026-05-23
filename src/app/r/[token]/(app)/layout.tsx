@@ -27,9 +27,11 @@ export default async function BarberAppLayout({ children, params }: Props) {
   const { token } = await params
   const session = await getBarberSession()
 
-  // Sin cookie → vuelve al resolver para validarse de nuevo.
+  // Sin cookie → al Route Handler que valida token y setea cookie.
+  // (No al page.tsx: en Next 16 cookies().set() no se puede llamar desde
+  // el render de una page; el handler /enter sí puede.)
   if (!session) {
-    redirect(`/r/${token}`)
+    redirect(`/r/${token}/enter`)
   }
 
   const [barber] = await db
