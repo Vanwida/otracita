@@ -297,24 +297,20 @@ ttq.page();
         />
       )}
 
-      {/* ----------------- Cookie banner -------------------------- */}
+      {/* ----------------- Cookie banner --------------------------
+          Una vez el visitante ha elegido (consent persistido en
+          localStorage bajo CONSENT_KEY) el banner desaparece por
+          completo. NO mostramos un botón flotante de reapertura: se
+          superponía al BottomTabBar (mismo z-index) y entorpecía la
+          navegación del menú. Para revisar/cambiar preferencias, el
+          cliente puede entrar en /privacidad o limpiar cookies del
+          navegador. */}
       {showBanner && (
         <CookieBanner
           showDetails={showDetails}
           setShowDetails={setShowDetails}
           onChoice={persistConsent}
         />
-      )}
-
-      {consent && !showBanner && (
-        <button
-          type="button"
-          onClick={() => setShowBanner(true)}
-          aria-label="Preferencias de cookies"
-          className="fixed bottom-3 left-3 z-30 h-9 px-3 rounded-full bg-black/60 text-white text-[11px] backdrop-blur-sm hover:bg-black/80 transition-colors"
-        >
-          Cookies
-        </button>
       )}
     </>
   )
