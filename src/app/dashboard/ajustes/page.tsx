@@ -70,14 +70,6 @@ export default async function AjustesNegocioPage() {
     const servicesRaw = (formData.get('services') as string | null) ?? ''
     const hoursRaw = (formData.get('hours') as string | null) ?? ''
     const slotStepRaw = (formData.get('slotStepMinutes') as string | null) ?? ''
-    // Coordenadas del local. El componente NegocioSettings parsea la URL de
-    // Google Maps que el barbero pega y rellena estos dos hidden inputs en
-    // formato LAT,LNG. Si vienen vacíos o no parseables aquí, mantenemos
-    // los valores actuales (no los blankeamos por error — si el barbero
-    // borró la URL entera, manda explícitamente "" y los nulleamos).
-    const latitudeRaw = (formData.get('latitude') as string | null) ?? ''
-    const longitudeRaw = (formData.get('longitude') as string | null) ?? ''
-    const locationRaw = (formData.get('locationUrl') as string | null) ?? ''
 
     let chatbotServices: unknown = null
     let chatbotHours: unknown = null
@@ -115,26 +107,6 @@ export default async function AjustesNegocioPage() {
     const slotStep = parseInt(slotStepRaw, 10)
     const slotStepSafe = [15, 30, 45].includes(slotStep) ? slotStep : current.slotStepMinutes
 
-    // Resolución de coordenadas:
-    //   · Si llegan latitude+longitude válidos del cliente → los usamos.
-    //   · Si llega locationUrl vacío explícito → blanqueamos a null
-    //     (el barbero borró la URL aposta).
-    //   · Resto → mantenemos lo que ya había en DB.
-    let nextLatitude: number | null = current.latitude
-    let nextLongitude: number | null = current.longitude
-    const parsedLat = latitudeRaw ? Number(latitudeRaw) : NaN
-    const parsedLng = longitudeRaw ? Number(longitudeRaw) : NaN
-    const latOk = Number.isFinite(parsedLat) && parsedLat >= -90 && parsedLat <= 90
-    const lngOk = Number.isFinite(parsedLng) && parsedLng >= -180 && parsedLng <= 180
-    if (latOk && lngOk) {
-      nextLatitude = parsedLat
-      nextLongitude = parsedLng
-    } else if (locationRaw === '') {
-      // Vacío explícito → reset.
-      nextLatitude = null
-      nextLongitude = null
-    }
-
     await db
       .update(clients)
       .set({
@@ -142,8 +114,6 @@ export default async function AjustesNegocioPage() {
         whatsappNumber: whatsappNumber || null,
         phone: whatsappNumber || current.phone,
         address: address || null,
-        latitude: nextLatitude,
-        longitude: nextLongitude,
         chatbotServices: chatbotServices ?? current.chatbotServices,
         // booksyServices kept as it was — its content was replaced by the
         // `barbers` table. Field is legacy holdover; new writes never touch it.
@@ -177,8 +147,6 @@ export default async function AjustesNegocioPage() {
             whatsappNumber: client.whatsappNumber || '',
             phone: client.phone || '',
             address: client.address || '',
-            latitude: client.latitude,
-            longitude: client.longitude,
             services,
             hours,
             slotStepMinutes: client.slotStepMinutes,
