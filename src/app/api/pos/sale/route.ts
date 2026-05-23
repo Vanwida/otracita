@@ -2,9 +2,9 @@ import { db } from '@/db'
 import { bookings, products, productSales } from '@/db/schema'
 import { and, eq, sql } from 'drizzle-orm'
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access'
+  requireTenantActor,
+  tenantActorErrorResponse,
+} from '@/lib/auth/require-tenant-actor'
 import { createBooking } from '@/lib/bookings/create'
 import { bookingTotalCents } from '@/lib/bookings/total'
 import type { BookingServiceLine } from '@/lib/bookings/duration'
@@ -131,8 +131,11 @@ function parseProductLines(input: unknown): ProductLineIn[] {
 }
 
 export async function POST(req: Request) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Admin + role='barber' caen aquí. El barbero opera el TPV desde
+  // `/yo/ventas` (Nueva venta producto walk-in). La venta queda atribuida
+  // al barbero actor por defecto.
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { client } = access
 
   let body: Body
@@ -169,10 +172,12 @@ export async function POST(req: Request) {
   // registra) para que el cuadre y la factura sean coherentes.
   const effectiveMethod: PosMethod = paymentMethod ?? 'card'
 
+  // Default barbero: si el actor es barber y no pasa barberId, atribuir
+  // al actor. Admin sin barberId pasa undefined → resolver auto-asigna.
   const barberId =
     typeof body.barberId === 'string' && body.barberId.length > 0
       ? body.barberId
-      : undefined
+      : (!access.isAdmin && access.barberId ? access.barberId : undefined)
   const customerName =
     typeof body.customerName === 'string' && body.customerName.trim().length > 0
       ? body.customerName.trim()

@@ -7,9 +7,10 @@ import {
 } from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access'
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor'
 
 // -----------------------------------------------------------------------------
 // POST /api/tips/cash — registra una propina en efectivo (Reni V1).
@@ -47,8 +48,11 @@ interface Body {
 }
 
 export async function POST(req: Request) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Admin + role='barber' caen aquí. Barbero solo puede atribuirse propinas
+  // a SÍ MISMO. Manager con `edit_others_bookings` puede atribuir a otro
+  // (caso "el dueño manager registra una propina cash del equipo").
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { client, user } = access
 
   let body: Body
@@ -87,6 +91,18 @@ export async function POST(req: Request) {
       { error: 'Ese barbero no existe o no está activo.' },
       { status: 400 },
     )
+  }
+
+  // Ownership: barbero operator solo se atribuye propinas a sí mismo.
+  // Manager con `edit_others_bookings` puede registrar a nombre de otro.
+  if (!access.isAdmin && access.barberId) {
+    const canAttributeOther = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canAttributeOther && barberId !== access.barberId) {
+      return Response.json(
+        { error: 'Solo puedes registrar tus propias propinas.' },
+        { status: 403 },
+      )
+    }
   }
 
   // Validación opcional: bookingId — si viene, no validamos a fondo (sólo

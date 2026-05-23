@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { products } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import { requireTenantActor, tenantActorErrorResponse } from '@/lib/auth/require-tenant-actor'
 
 // -----------------------------------------------------------------------------
 // /api/products — CRUD básico de productos del barbero.
@@ -41,8 +42,12 @@ function intInRange(v: unknown, min: number, max: number): number | null {
 }
 
 export async function GET(req: Request) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // GET es de solo lectura del catálogo — admin + role='barber' caen aquí
+  // (el barbero lo usa para el picker del TPV "+ Nueva venta producto"
+  // en /yo/ventas). POST/PATCH/DELETE del catálogo siguen siendo admin-only
+  // o gated por `edit_services` (no se cambian en este commit).
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { client } = access
 
   const rows = await db

@@ -2,10 +2,11 @@
 
 import useSWR from 'swr';
 import { useState } from 'react';
-import { Heart, Wallet, CreditCard, BadgeCheck } from 'lucide-react';
+import { Heart, Wallet, CreditCard, BadgeCheck, Plus } from 'lucide-react';
 import type { TodayFeed } from '../_lib/types';
 import { formatEuros } from '../_lib/format';
 import MarkTipsPaidModal from './MarkTipsPaidModal';
+import NewLooseTipSlideOver from './NewLooseTipSlideOver';
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<TodayFeed>);
@@ -16,8 +17,13 @@ export default function PropinasClient() {
     revalidateOnFocus: true,
   });
   const [markOpen, setMarkOpen] = useState(false);
+  const [newTipOpen, setNewTipOpen] = useState(false);
 
   const canMarkTips = data?.permissions?.keys.includes('mark_tips_paid') ?? false;
+  // `self.id` es el barberId real del actor (cuando un manager mira la
+  // agenda de otro, `barber.id` es la del que mira — para registrar la
+  // propina SUELTA siempre atribuimos al actor, no al barbero visto).
+  const selfBarberId = data?.self?.id ?? data?.barber.id ?? null;
 
   return (
     <div className="space-y-5">
@@ -71,6 +77,18 @@ export default function PropinasClient() {
         </div>
       </section>
 
+      {/* Registrar propina suelta cash — operativo para todo barbero. */}
+      {selfBarberId && (
+        <button
+          type="button"
+          onClick={() => setNewTipOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-control bg-brand py-3 text-sm font-semibold text-brand-ink shadow-sm transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Registrar propina en mano
+        </button>
+      )}
+
       {/* Manager: marcar propinas pagadas al equipo (#72) */}
       {canMarkTips && (
         <button
@@ -101,6 +119,18 @@ export default function PropinasClient() {
           mutate();
         }}
       />
+
+      {selfBarberId && (
+        <NewLooseTipSlideOver
+          open={newTipOpen}
+          barberId={selfBarberId}
+          onClose={() => setNewTipOpen(false)}
+          onSaved={() => {
+            setNewTipOpen(false);
+            mutate();
+          }}
+        />
+      )}
     </div>
   );
 }

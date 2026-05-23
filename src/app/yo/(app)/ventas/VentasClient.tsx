@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, Lock } from 'lucide-react';
+import { TrendingUp, Lock, Plus } from 'lucide-react';
 import type { TodayFeed } from '../_lib/types';
 import { formatEuros } from '../_lib/format';
 import CloseRegisterModal from './CloseRegisterModal';
+import NewProductSaleSlideOver from './NewProductSaleSlideOver';
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<TodayFeed>);
@@ -26,6 +27,7 @@ export default function VentasClient() {
 
   const [filter, setFilter] = useState<FilterKey>('today');
   const [closeOpen, setCloseOpen] = useState(false);
+  const [newSaleOpen, setNewSaleOpen] = useState(false);
 
   const canCloseRegister = data?.permissions?.keys.includes('close_register') ?? false;
 
@@ -97,6 +99,18 @@ export default function VentasClient() {
         )}
       </section>
 
+      {/* Nueva venta producto (walk-in TPV mínimo) — disponible para todo
+          barbero. Reusa /api/pos/sale del admin TPV; el endpoint atribuye
+          al barberId del actor por defecto. */}
+      <button
+        type="button"
+        onClick={() => setNewSaleOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-control bg-brand py-3 text-sm font-semibold text-brand-ink shadow-sm transition-colors"
+      >
+        <Plus className="h-4 w-4" />
+        Nueva venta de producto
+      </button>
+
       {/* Cerrar caja — gated por close_register (#72) */}
       {canCloseRegister && (
         <button
@@ -145,6 +159,15 @@ export default function VentasClient() {
         onClose={() => setCloseOpen(false)}
         onClosed={() => {
           setCloseOpen(false);
+          mutate();
+        }}
+      />
+
+      <NewProductSaleSlideOver
+        open={newSaleOpen}
+        onClose={() => setNewSaleOpen(false)}
+        onSold={() => {
+          setNewSaleOpen(false);
           mutate();
         }}
       />
