@@ -3,9 +3,10 @@ import { bookings, barbers, clients } from '@/db/schema'
 import { and, eq, ne } from 'drizzle-orm'
 import { hasBookingOverlap, hhmmToMinutes } from '@/lib/bookings/duration'
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access'
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 // La facturación VeriFactu ya NO se dispara al cerrar la cita — es una
 // acción explícita por venta (POST /api/invoices/from-booking). Por eso
@@ -60,8 +61,11 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Admin + role='barber' caen aquí. Si el actor es barber SIN
+  // `edit_others_bookings`, solo puede operar sobre sus propias citas
+  // (chequeo abajo tras cargar el booking row).
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db
@@ -69,6 +73,18 @@ export async function PATCH(
     .from(bookings)
     .where(and(eq(bookings.id, id), eq(bookings.clientId, access.client.id)))
   if (!booking) return Response.json({ error: 'Reserva no encontrada.' }, { status: 404 })
+
+  // Ownership check para role='barber'. Admin (y manager con permiso)
+  // pasan sin restricción.
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return Response.json(
+        { error: 'Esta cita no es tuya.' },
+        { status: 403 },
+      )
+    }
+  }
 
   let body: {
     barberId?: unknown

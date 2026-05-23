@@ -2,9 +2,24 @@ import { db } from '@/db';
 import { barbers, barberBlocks } from '@/db/schema';
 import { and, asc, eq } from 'drizzle-orm';
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access';
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+  type TenantActorAccess,
+} from '@/lib/auth/require-tenant-actor';
+
+// El barbero solo puede gestionar SUS PROPIOS descansos/ausencias. Manager
+// con `edit_others_bookings` puede gestionar los del equipo. Admin sin
+// restricción. Este helper centraliza el check para los 4 handlers.
+function canManageBarberBlocks(
+  access: Extract<TenantActorAccess, { ok: true }>,
+  targetBarberId: string,
+): boolean {
+  if (access.isAdmin) return true;
+  if (!access.barberId) return false;
+  if (access.barberId === targetBarberId) return true;
+  return actorHasManagerPermission(access, 'edit_others_bookings');
+}
 
 // -----------------------------------------------------------------------------
 // /api/barbers/[id]/blocks — bloqueos EXCEPCIONALES de una fecha concreta:
@@ -44,12 +59,15 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { id } = await params;
 
   const barber = await loadOwnedBarber(access.client.id, id);
   if (!barber) return Response.json({ error: 'No existe.' }, { status: 404 });
+  if (!canManageBarberBlocks(access, id)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const rows = await db
     .select()
@@ -77,12 +95,15 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { id } = await params;
 
   const barber = await loadOwnedBarber(access.client.id, id);
   if (!barber) return Response.json({ error: 'No existe.' }, { status: 404 });
+  if (!canManageBarberBlocks(access, id)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   let body: {
     date?: unknown;
@@ -165,12 +186,15 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { id } = await params;
 
   const barber = await loadOwnedBarber(access.client.id, id);
   if (!barber) return Response.json({ error: 'No existe.' }, { status: 404 });
+  if (!canManageBarberBlocks(access, id)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const blockId = searchParams.get('blockId');
@@ -262,7 +286,8 @@ export async function PATCH(
   }
 
   // Barbero destino: drag&drop entre columnas. Debe pertenecer al mismo
-  // tenant — verificamos cargándolo con loadOwnedBarber.
+  // tenant — verificamos cargándolo con loadOwnedBarber. Si el actor es
+  // barbero limitado, también debe poder gestionar el barbero destino.
   if (body.barberId !== undefined) {
     const nextBarberId = String(body.barberId);
     if (nextBarberId !== row.barberId) {
@@ -274,6 +299,12 @@ export async function PATCH(
         return Response.json(
           { error: 'Barbero destino no existe.' },
           { status: 404 },
+        );
+      }
+      if (!canManageBarberBlocks(access, nextBarberId)) {
+        return Response.json(
+          { error: 'No puedes mover el bloqueo a otro barbero.' },
+          { status: 403 },
         );
       }
       patch.barberId = nextBarberId;
@@ -310,12 +341,15 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { id } = await params;
 
   const barber = await loadOwnedBarber(access.client.id, id);
   if (!barber) return Response.json({ error: 'No existe.' }, { status: 404 });
+  if (!canManageBarberBlocks(access, id)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const blockId = searchParams.get('blockId');

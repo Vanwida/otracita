@@ -3,19 +3,39 @@ import { db } from '@/db';
 import { bookings, barberBlocks } from '@/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access';
+  requireTenantActor,
+  tenantActorErrorResponse,
+} from '@/lib/auth/require-tenant-actor';
+import { hasManagerPermission } from '@/lib/manager-permissions';
 
 export async function GET(req: NextRequest) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
-  const { client } = access;
+  // Admin + role='barber' caen aquí — el modo barbero `/yo/agenda` reusa
+  // el mismo CalendarView del dashboard, así que necesita poder leer la
+  // agenda del tenant. La filtración por barberId la aplicamos abajo en JS.
+  const actor = await requireTenantActor(req);
+  if (!actor.ok) return tenantActorErrorResponse(actor);
+  const { client } = actor;
 
   const { searchParams } = req.nextUrl;
   const start = searchParams.get('start'); // YYYY-MM-DD
   const end = searchParams.get('end');     // YYYY-MM-DD
-  const barber = searchParams.get('barber'); // optional filter
+  const barber = searchParams.get('barber'); // legacy: filtro por nombre
+  // `barberId` (NUEVO) — filtra por id canónico. /yo/agenda lo manda con
+  // el barberId del barbero autenticado para que CalendarView solo
+  // pinte/operar sobre LO SUYO. Si role='barber' y NO tiene
+  // `edit_others_bookings`, forzamos a su propio barberId (defensa en
+  // profundidad — la UI ya gatea, pero el endpoint no se fía).
+  let barberIdFilter = searchParams.get('barberId');
+  if (!actor.isAdmin && actor.barberId) {
+    // hasManagerPermission acepta `{ isManager, managerPermissions }`.
+    const canSeeAll = hasManagerPermission(
+      { isManager: actor.isManager, managerPermissions: actor.managerPermissions },
+      'edit_others_bookings',
+    );
+    if (!canSeeAll) {
+      barberIdFilter = actor.barberId;
+    }
+  }
 
   if (!start || !end) {
     return NextResponse.json({ error: 'start and end required' }, { status: 400 });
@@ -52,11 +72,27 @@ export async function GET(req: NextRequest) {
       ),
   ]);
 
-  // Filter by barber in JS to handle 'all' and nulls cleanly
-  const filteredBookings =
-    barber && barber !== 'all'
-      ? bookingRows.filter(b => b.barber?.toLowerCase() === barber.toLowerCase())
-      : bookingRows;
+  // Filter by barber in JS to handle 'all' and nulls cleanly. Doble filtro
+  // (id + nombre): el id canónico tiene prioridad (/yo/agenda lo manda); el
+  // filtro por nombre legacy se mantiene para el rail del admin que filtra
+  // a "Solo Reni" desde el side rail.
+  let filteredBookings = bookingRows;
+  if (barberIdFilter && barberIdFilter !== 'all') {
+    filteredBookings = filteredBookings.filter(
+      (b) => b.barberId === barberIdFilter,
+    );
+  } else if (barber && barber !== 'all') {
+    filteredBookings = filteredBookings.filter(
+      (b) => b.barber?.toLowerCase() === barber.toLowerCase(),
+    );
+  }
+  // Si el caller es un barbero limitado, también filtramos los `blocks` a
+  // sus propios descansos/ausencias (no tiene sentido pintarle los de
+  // otros). Admin / manager con `edit_others_bookings` ven todo.
+  const filteredBlocks =
+    barberIdFilter && barberIdFilter !== 'all'
+      ? blockRows.filter((b) => b.barberId === barberIdFilter)
+      : blockRows;
 
   const events = filteredBookings.map(b => ({
     id: b.id,
@@ -82,7 +118,7 @@ export async function GET(req: NextRequest) {
     sourceManual: b.sourceManual ?? null,
   }));
 
-  const blocks = blockRows.map(b => ({
+  const blocks = filteredBlocks.map(b => ({
     id: b.id,
     barberId: b.barberId,
     date: b.date,

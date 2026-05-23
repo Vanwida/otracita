@@ -3,15 +3,20 @@ import { db } from '@/db';
 import { barbers as barbersTable } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access';
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor';
 import { createBooking } from '@/lib/bookings/create';
 import { sanitizeExtraServices } from '@/lib/bookings/duration';
 
 export async function POST(req: NextRequest) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  // Admin + role='barber' caen aquí. Si el actor es barbero SIN
+  // `edit_others_bookings`, forzamos `barberId = actor.barberId` (no
+  // puede crear citas para otros barberos). Manager con ese permiso o
+  // admin puede pasar cualquier barberId del tenant.
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { client } = access;
 
   let body: {
@@ -62,6 +67,21 @@ export async function POST(req: NextRequest) {
     if (row) resolvedBarberId = row.id;
     // If the name doesn't match any active barber → treat as "any" instead of
     // rejecting. Better UX than "unknown barber" when a shop renames someone.
+  }
+
+  // Si el actor es barber SIN `edit_others_bookings`, no puede crear citas
+  // para otros barberos: forzamos su id (o rechazamos si intenta otro).
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings');
+    if (!canEditOthers) {
+      if (resolvedBarberId && resolvedBarberId !== access.barberId) {
+        return NextResponse.json(
+          { error: 'No puedes crear citas para otros barberos.' },
+          { status: 403 },
+        );
+      }
+      resolvedBarberId = access.barberId;
+    }
   }
 
   const result = await createBooking({

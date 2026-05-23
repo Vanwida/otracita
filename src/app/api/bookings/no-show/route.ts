@@ -3,15 +3,16 @@ import { db } from '@/db'
 import { bookings, customers, clients } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access'
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor'
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing'
 import { chargeNoShowFee, type NoShowFeeOutcome } from '@/lib/stripe/no-show-fee'
 
 export async function POST(req: NextRequest) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { client, isAdmin } = access
 
   const { bookingId } = await req.json()
@@ -27,6 +28,13 @@ export async function POST(req: NextRequest) {
   }
   if (!isAdmin && booking.clientId !== client.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  // Ownership: barbero solo sobre sus citas, salvo `edit_others_bookings`.
+  if (!isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return NextResponse.json({ error: 'Esta cita no es tuya.' }, { status: 403 })
+    }
   }
 
   // Mark booking as no_show
