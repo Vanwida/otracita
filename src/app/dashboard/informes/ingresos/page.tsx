@@ -10,11 +10,10 @@ import {
   CreditCard,
   Smartphone,
   Globe,
-  Layers,
   HelpCircle,
 } from 'lucide-react'
 import { db } from '@/db'
-import { bookings, productSales, products, tips } from '@/db/schema'
+import { bookings, productSales, products, tips, payments } from '@/db/schema'
 import { sql } from 'drizzle-orm'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
@@ -173,63 +172,113 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
   //   · product_sales.payment_method → cash | card | online  (legacy coarse)
   //   · tips.payment_method      → cash | card | NULL  (NULL = legacy card)
   //
-  // Normalizamos los coarse de products/tips al set granular del usuario:
-  //   card → card_physical (productos: típico datáfono; tips: card_online
-  //   por flow Stripe Checkout — ver comment en schema.ts líneas 1027-1033).
+  // Normalizamos los coarse de products/tips al set granular:
+  //   productos card → card_physical (típico datáfono),
+  //   tips card/NULL → card_online (flow Stripe Checkout — ver comment en
+  //   schema.ts líneas 1027-1033).
   //
-  // Bookings con `mixed` NO se expanden via payments aquí: el usuario quiere
-  // ver `mixed` como categoría propia ("cuántas citas se cobraron
-  // fraccionadas"). El detalle granular intra-booking ya existe en
-  // ClosingReport (cierre de caja diario).
+  // Bookings con `mixed` SE DESPLIEGAN via tabla `payments` (status='succeeded'):
+  // si una cita 100€ es 50€ cash + 50€ card_physical, NO sumamos 100€ a
+  // "mixed", sumamos 50€ a cash + 50€ a card_physical. Esto refleja el
+  // dinero real entrado por cada vía (mismo criterio que ClosingReport y
+  // load-breakdown.ts). Decir "300€ en fraccionado" oculta cuánto efectivo
+  // real entró en caja.
+  //
+  // Edge: si un booking marcado 'mixed' NO tiene rows en `payments` (legacy
+  // o estado inconsistente), cae al bucket 'unknown' antes que mentir.
   //
   // Bookings con paymentMethod NULL → bucket "unknown" (legacy / cobrados
   // antes de activar caja efectivo). Se oculta si es 0.
   const methodRows =
     (await db
       .execute(sql`
-    WITH all_rows AS (
-      -- Bookings: granular method o 'unknown' si NULL.
-      SELECT COALESCE(NULLIF(b.payment_method, ''), 'unknown') AS method,
-             (b.price * 100)::bigint AS cents
-      FROM ${bookings} b
-      WHERE b.client_id = ${client.id}
-        AND b.status = 'completed'
-        AND b.date >= ${dateLo}
-        AND b.date < ${periodEndIso}
-        AND b.price IS NOT NULL
-        AND b.price > 0
+    WITH
+      -- Bookings 'mixed' del periodo (los que necesitan despliegue via payments).
+      mixed_bookings AS (
+        SELECT b.id, (b.price * 100)::bigint AS booking_cents
+        FROM ${bookings} b
+        WHERE b.client_id = ${client.id}
+          AND b.status = 'completed'
+          AND b.date >= ${dateLo}
+          AND b.date < ${periodEndIso}
+          AND b.price IS NOT NULL
+          AND b.price > 0
+          AND b.payment_method = 'mixed'
+      ),
+      -- Splits cobrados de esos bookings (granular cash/card_physical/bizum/card_online).
+      mixed_splits AS (
+        SELECT
+          COALESCE(NULLIF(p.method, ''), 'unknown') AS method,
+          p.amount_cents::bigint AS cents,
+          p.booking_id
+        FROM ${payments} p
+        JOIN mixed_bookings mb ON mb.id = p.booking_id
+        WHERE p.client_id = ${client.id}
+          AND p.status = 'succeeded'
+          AND p.amount_cents > 0
+      ),
+      -- Bookings 'mixed' SIN payments asociados (edge: legacy o inconsistente)
+      -- van a 'unknown' para no inventar granularidad.
+      mixed_orphans AS (
+        SELECT 'unknown'::text AS method, mb.booking_cents AS cents
+        FROM mixed_bookings mb
+        WHERE NOT EXISTS (
+          SELECT 1 FROM mixed_splits ms WHERE ms.booking_id = mb.id
+        )
+      ),
+      all_rows AS (
+        -- Bookings NO-mixed: granular method directo, o 'unknown' si NULL.
+        SELECT COALESCE(NULLIF(b.payment_method, ''), 'unknown') AS method,
+               (b.price * 100)::bigint AS cents
+        FROM ${bookings} b
+        WHERE b.client_id = ${client.id}
+          AND b.status = 'completed'
+          AND b.date >= ${dateLo}
+          AND b.date < ${periodEndIso}
+          AND b.price IS NOT NULL
+          AND b.price > 0
+          AND (b.payment_method IS DISTINCT FROM 'mixed')
 
-      UNION ALL
+        UNION ALL
 
-      -- Product sales: coarse → granular (card → card_physical).
-      SELECT CASE ps.payment_method
-               WHEN 'card' THEN 'card_physical'
-               WHEN 'online' THEN 'card_online'
-               WHEN 'cash' THEN 'cash'
-               ELSE COALESCE(ps.payment_method, 'unknown')
-             END AS method,
-             ps.total_cents::bigint AS cents
-      FROM ${productSales} ps
-      WHERE ps.client_id = ${client.id}
-        AND ps.consumption_kind IS NULL
-        AND ps.sold_at >= ${dateLo}::date
-        AND ps.sold_at < ${periodEndIso}::date
+        -- Bookings 'mixed' desplegados: una row por split.
+        SELECT method, cents FROM mixed_splits
 
-      UNION ALL
+        UNION ALL
 
-      -- Tips: cash → cash, card/NULL → card_online (flow Stripe Checkout).
-      SELECT CASE COALESCE(t.payment_method, 'card')
-               WHEN 'cash' THEN 'cash'
-               WHEN 'card' THEN 'card_online'
-               ELSE COALESCE(t.payment_method, 'card_online')
-             END AS method,
-             t.amount_cents::bigint AS cents
-      FROM ${tips} t
-      WHERE t.client_id = ${client.id}
-        AND t.status = 'paid'
-        AND t.paid_at >= ${dateLo}::date
-        AND t.paid_at < ${periodEndIso}::date
-    )
+        SELECT method, cents FROM mixed_orphans
+
+        UNION ALL
+
+        -- Product sales: coarse → granular (card → card_physical).
+        SELECT CASE ps.payment_method
+                 WHEN 'card' THEN 'card_physical'
+                 WHEN 'online' THEN 'card_online'
+                 WHEN 'cash' THEN 'cash'
+                 ELSE COALESCE(ps.payment_method, 'unknown')
+               END AS method,
+               ps.total_cents::bigint AS cents
+        FROM ${productSales} ps
+        WHERE ps.client_id = ${client.id}
+          AND ps.consumption_kind IS NULL
+          AND ps.sold_at >= ${dateLo}::date
+          AND ps.sold_at < ${periodEndIso}::date
+
+        UNION ALL
+
+        -- Tips: cash → cash, card/NULL → card_online (flow Stripe Checkout).
+        SELECT CASE COALESCE(t.payment_method, 'card')
+                 WHEN 'cash' THEN 'cash'
+                 WHEN 'card' THEN 'card_online'
+                 ELSE COALESCE(t.payment_method, 'card_online')
+               END AS method,
+               t.amount_cents::bigint AS cents
+        FROM ${tips} t
+        WHERE t.client_id = ${client.id}
+          AND t.status = 'paid'
+          AND t.paid_at >= ${dateLo}::date
+          AND t.paid_at < ${periodEndIso}::date
+      )
     SELECT method,
            COUNT(*)::int AS count,
            COALESCE(SUM(cents), 0)::bigint AS cents
@@ -258,14 +307,14 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
   }
 
   // Orden fijo: efectivo primero (lo más físico/relevante para cuadre),
-  // tarjeta física, bizum, online, mixed, unknown. Cualquier categoría con
-  // 0 € se oculta — petición explícita del usuario.
+  // tarjeta física, bizum, online, sin clasificar. `mixed` ya no es bucket
+  // visible — los splits se desplegaron al método real. Cualquier categoría
+  // con 0 € se oculta — petición explícita del usuario.
   const methods = [
     { key: 'cash', label: 'Efectivo', icon: Banknote },
     { key: 'card_physical', label: 'Tarjeta · Datáfono', icon: CreditCard },
     { key: 'bizum', label: 'Bizum', icon: Smartphone },
     { key: 'card_online', label: 'Online · Stripe', icon: Globe },
-    { key: 'mixed', label: 'Fraccionado', icon: Layers },
     { key: 'unknown', label: 'Sin clasificar', icon: HelpCircle },
   ]
     .map((m) => ({
