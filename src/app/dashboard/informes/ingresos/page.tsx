@@ -1,7 +1,18 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { Scissors, ShoppingBag, Heart, Wallet } from 'lucide-react'
+import {
+  Scissors,
+  ShoppingBag,
+  Heart,
+  Wallet,
+  Banknote,
+  CreditCard,
+  Smartphone,
+  Globe,
+  Layers,
+  HelpCircle,
+} from 'lucide-react'
 import { db } from '@/db'
 import { bookings, productSales, products, tips } from '@/db/schema'
 import { sql } from 'drizzle-orm'
@@ -152,6 +163,120 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
   const productosCents = Number(typeRow?.productos_cents ?? 0)
   const propinasCents = Number(typeRow?.propinas_cents ?? 0)
   const totalCents = serviciosCents + productosCents + propinasCents
+
+  // ── Desglose por método de pago. Suma sobre las MISMAS 3 fuentes que
+  // `Ingreso por tipo` (bookings + productSales + tips) para que el total
+  // cuadre. Granularidad:
+  //
+  //   · bookings.payment_method  → cash | card_physical | bizum | card_online
+  //                                | mixed | NULL (legacy / sin caja activa)
+  //   · product_sales.payment_method → cash | card | online  (legacy coarse)
+  //   · tips.payment_method      → cash | card | NULL  (NULL = legacy card)
+  //
+  // Normalizamos los coarse de products/tips al set granular del usuario:
+  //   card → card_physical (productos: típico datáfono; tips: card_online
+  //   por flow Stripe Checkout — ver comment en schema.ts líneas 1027-1033).
+  //
+  // Bookings con `mixed` NO se expanden via payments aquí: el usuario quiere
+  // ver `mixed` como categoría propia ("cuántas citas se cobraron
+  // fraccionadas"). El detalle granular intra-booking ya existe en
+  // ClosingReport (cierre de caja diario).
+  //
+  // Bookings con paymentMethod NULL → bucket "unknown" (legacy / cobrados
+  // antes de activar caja efectivo). Se oculta si es 0.
+  const methodRows =
+    (await db
+      .execute(sql`
+    WITH all_rows AS (
+      -- Bookings: granular method o 'unknown' si NULL.
+      SELECT COALESCE(NULLIF(b.payment_method, ''), 'unknown') AS method,
+             (b.price * 100)::bigint AS cents
+      FROM ${bookings} b
+      WHERE b.client_id = ${client.id}
+        AND b.status = 'completed'
+        AND b.date >= ${dateLo}
+        AND b.date < ${periodEndIso}
+        AND b.price IS NOT NULL
+        AND b.price > 0
+
+      UNION ALL
+
+      -- Product sales: coarse → granular (card → card_physical).
+      SELECT CASE ps.payment_method
+               WHEN 'card' THEN 'card_physical'
+               WHEN 'online' THEN 'card_online'
+               WHEN 'cash' THEN 'cash'
+               ELSE COALESCE(ps.payment_method, 'unknown')
+             END AS method,
+             ps.total_cents::bigint AS cents
+      FROM ${productSales} ps
+      WHERE ps.client_id = ${client.id}
+        AND ps.consumption_kind IS NULL
+        AND ps.sold_at >= ${dateLo}::date
+        AND ps.sold_at < ${periodEndIso}::date
+
+      UNION ALL
+
+      -- Tips: cash → cash, card/NULL → card_online (flow Stripe Checkout).
+      SELECT CASE COALESCE(t.payment_method, 'card')
+               WHEN 'cash' THEN 'cash'
+               WHEN 'card' THEN 'card_online'
+               ELSE COALESCE(t.payment_method, 'card_online')
+             END AS method,
+             t.amount_cents::bigint AS cents
+      FROM ${tips} t
+      WHERE t.client_id = ${client.id}
+        AND t.status = 'paid'
+        AND t.paid_at >= ${dateLo}::date
+        AND t.paid_at < ${periodEndIso}::date
+    )
+    SELECT method,
+           COUNT(*)::int AS count,
+           COALESCE(SUM(cents), 0)::bigint AS cents
+    FROM all_rows
+    GROUP BY method
+  `)
+      .then(
+        (r) =>
+          (
+            r as unknown as {
+              rows: {
+                method: string
+                count: number
+                cents: string | number
+              }[]
+            }
+          ).rows,
+      )) ?? []
+
+  const byMethod = new Map<string, { cents: number; count: number }>()
+  for (const r of methodRows) {
+    byMethod.set(r.method, {
+      cents: Number(r.cents),
+      count: Number(r.count),
+    })
+  }
+
+  // Orden fijo: efectivo primero (lo más físico/relevante para cuadre),
+  // tarjeta física, bizum, online, mixed, unknown. Cualquier categoría con
+  // 0 € se oculta — petición explícita del usuario.
+  const methods = [
+    { key: 'cash', label: 'Efectivo', icon: Banknote },
+    { key: 'card_physical', label: 'Tarjeta · Datáfono', icon: CreditCard },
+    { key: 'bizum', label: 'Bizum', icon: Smartphone },
+    { key: 'card_online', label: 'Online · Stripe', icon: Globe },
+    { key: 'mixed', label: 'Fraccionado', icon: Layers },
+    { key: 'unknown', label: 'Sin clasificar', icon: HelpCircle },
+  ]
+    .map((m) => ({
+      ...m,
+      cents: byMethod.get(m.key)?.cents ?? 0,
+      count: byMethod.get(m.key)?.count ?? 0,
+    }))
+    .filter((m) => m.cents > 0)
+
+  const methodsTotalCents = methods.reduce((a, m) => a + m.cents, 0)
+  const methodsBase = methodsTotalCents || 1
 
   // ── Evolución mensual de ingresos por servicios (últimos 12 meses).
   const monthlyRows =
@@ -312,6 +437,72 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
                 })}
               </ul>
             </section>
+
+            {/* Desglose por método de pago — qué entra por cada vía
+                (efectivo / datáfono / Bizum / online / fraccionado). Las
+                categorías a 0 se ocultan. */}
+            {methods.length > 0 && (
+              <section className="panel">
+                <header
+                  className="flex items-baseline justify-between gap-3 border-b border-line px-[var(--space-card)] py-3"
+                  style={{ background: 'var(--table-head-bg)' }}
+                >
+                  <h2 className="text-[0.8125rem] font-semibold text-ink">
+                    Por método de pago · {periodLabel}
+                  </h2>
+                  <p className="text-[0.75rem] text-ink-2">
+                    {formatCents(methodsTotalCents)} en {methods.length}{' '}
+                    {methods.length === 1 ? 'método' : 'métodos'}
+                  </p>
+                </header>
+                <div
+                  className="grid divide-y divide-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-5"
+                  // Cuando hay <5 métodos visibles, el grid no llena la fila
+                  // lg:5 — auto-fit no funciona con grid-cols-N, así que
+                  // forzamos columnas dinámicas via inline (más simple que
+                  // tener un mapa de clases `grid-cols-${N}` que Tailwind no
+                  // puede purgar).
+                  style={
+                    methods.length < 5
+                      ? {
+                          gridTemplateColumns: `repeat(${methods.length}, minmax(0, 1fr))`,
+                        }
+                      : undefined
+                  }
+                >
+                  {methods.map((m) => {
+                    const Icon = m.icon
+                    const pct = Math.round((m.cents / methodsBase) * 100)
+                    return (
+                      <div
+                        key={m.key}
+                        className="px-[var(--space-card)] py-3"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Icon
+                            className="h-3.5 w-3.5 shrink-0 text-ink-2"
+                            aria-hidden="true"
+                          />
+                          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-ink-2">
+                            {m.label}
+                          </p>
+                        </div>
+                        <p
+                          className="mt-1 font-bold text-ink tabular-nums leading-none"
+                          style={{ fontSize: 'var(--text-figure)' }}
+                        >
+                          {formatCents(m.cents)}
+                        </p>
+                        <p className="mt-1 text-[0.75rem] text-ink-2 tabular-nums">
+                          {pct}% · {m.count.toLocaleString('es-ES')}{' '}
+                          {m.count === 1 ? 'cobro' : 'cobros'}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Ventas por servicio (top 10). */}
