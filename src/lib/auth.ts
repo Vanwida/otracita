@@ -57,6 +57,12 @@ export const auth = betterAuth({
       clientId: { type: 'string', required: false, input: false },
       barberId: { type: 'string', required: false, input: false },
       disabledAt: { type: 'date', required: false, input: false },
+      // Permisos granulares (#72) — capa Manager sobre rol Barber. Edita
+      // solo el dueño (admin) desde /api/barbers/[id]/permissions. Aquí
+      // los declaramos como `input: false` para que Better Auth nunca los
+      // acepte por signup público.
+      isManager: { type: 'boolean', defaultValue: false, input: false },
+      managerPermissions: { type: 'string[]', defaultValue: [], input: false },
     },
   },
   trustedOrigins: [

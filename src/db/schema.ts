@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, doublePrecision } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 
 // Clients (barbershops that buy our service)
@@ -1483,6 +1484,17 @@ export const users = pgTable('user', {
   clientId: uuid('clientId').references(() => clients.id, { onDelete: 'set null' }),
   barberId: uuid('barberId').references(() => barbers.id, { onDelete: 'set null' }),
   disabledAt: timestamp('disabledAt', { withTimezone: true }),
+  // Permisos granulares (#72) — capa Manager sobre el rol Barber.
+  //   · isManager           — flag toggle desde el editor del barbero.
+  //   · managerPermissions  — jsonb array de claves (MANAGER_PERMISSION_KEYS).
+  // Operator (default): solo ve sus citas/ventas/propinas y cobra lo suyo.
+  // Manager: además, lo que cada `managerPermissions` desbloquee (ver finanzas,
+  // editar citas de otros, cerrar caja, etc.). Solo el dueño (admin) lo edita.
+  isManager: boolean('isManager').notNull().default(false),
+  managerPermissions: jsonb('managerPermissions')
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
 });
 
 // -----------------------------------------------------------------------------
