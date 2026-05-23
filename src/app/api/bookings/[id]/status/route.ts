@@ -1,7 +1,11 @@
 import { db } from '@/db'
 import { bookings, cashMovements } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
-import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import {
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor'
 
 // -----------------------------------------------------------------------------
 // GET /api/bookings/[id]/status
@@ -21,8 +25,11 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Polling read tras "Acerca la tarjeta…" — barber-role debe poder
+  // sondear el estado de SU cobro en /yo/agenda. Ownership check abajo
+  // tras cargar el booking row.
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db
@@ -30,11 +37,20 @@ export async function GET(
       id: bookings.id,
       status: bookings.status,
       paymentMethod: bookings.paymentMethod,
+      barberId: bookings.barberId,
     })
     .from(bookings)
     .where(and(eq(bookings.id, id), eq(bookings.clientId, access.client.id)))
 
   if (!booking) return Response.json({ error: 'Reserva no encontrada' }, { status: 404 })
+
+  // Ownership: barber operator solo sondea sus propias citas.
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return Response.json({ error: 'Esta cita no es tuya.' }, { status: 403 })
+    }
+  }
 
   // ¿Llegó ya el callback de SumUp? Lo vemos por la presencia de un
   // cash_movement con reference_id apuntando a este booking que tenga

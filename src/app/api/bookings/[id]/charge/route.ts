@@ -8,9 +8,10 @@ import {
   cashSessions,
 } from '@/db/schema';
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access';
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor';
 import { bookingTotalCents } from '@/lib/bookings/total';
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
 import {
@@ -50,7 +51,9 @@ import { isNull } from 'drizzle-orm';
 // `tryRatingFollowupForCompletedBooking`.
 //
 // Multi-tenancy: la reserva debe pertenecer al cliente autenticado. NUNCA
-// confiamos `clientId` del body — sale de `requireClientAccess`.
+// confiamos `clientId` del body — sale de `requireTenantActor`. Barber-role
+// (operator) solo cobra sus propias citas; manager con `edit_others_bookings`
+// y admin pasan sin restricción.
 // -----------------------------------------------------------------------------
 
 function errorResponse(error: ChargeErrorResponse, status = 400): Response {
@@ -61,8 +64,10 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  // Admin + role='barber' caen aquí. Si el actor es barber SIN
+  // `edit_others_bookings`, solo puede cobrar SUS propias citas.
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { client, user } = access;
   const { id: bookingId } = await params;
 
@@ -92,6 +97,18 @@ export async function POST(
       { error: 'Solo se cobran reservas confirmadas.', code: 'booking_not_chargeable' },
       400,
     );
+  }
+
+  // Ownership: barber operator (sin `edit_others_bookings`) solo cobra
+  // sus propias citas. Admin y manager con permiso pasan sin restricción.
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings');
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return errorResponse(
+        { error: 'Esta cita no es tuya.', code: 'booking_not_chargeable' },
+        403,
+      );
+    }
   }
 
   // ── Total esperado (cents). Foot-gun: bookings.price es EUROS. ────────

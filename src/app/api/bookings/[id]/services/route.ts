@@ -2,9 +2,10 @@ import { db } from '@/db'
 import { bookings, bookingServices } from '@/db/schema'
 import { and, eq, ne } from 'drizzle-orm'
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access'
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor'
 import {
   computeBookingSnapshot,
   sanitizeExtraServices,
@@ -34,15 +35,19 @@ import {
 // lógica que create.ts: match por barberId o nombre + buffer del cliente,
 // excluyendo la propia cita). Si solapa → 409, no se escribe nada.
 //
-// Tenant-scoped vía requireClientAccess. NUNCA se acepta clientId del body.
+// Tenant-scoped vía requireTenantActor. NUNCA se acepta clientId del body.
+// Barber-role (operator) solo opera sobre sus propias citas; manager con
+// `edit_others_bookings` y admin pasan sin restricción.
 // -----------------------------------------------------------------------------
 
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Admin + role='barber'. Barber operator (sin `edit_others_bookings`)
+  // solo edita extras de SUS propias citas. Ownership check tras cargar.
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db
@@ -51,6 +56,13 @@ export async function PUT(
     .where(and(eq(bookings.id, id), eq(bookings.clientId, access.client.id)))
   if (!booking) {
     return Response.json({ error: 'Reserva no encontrada.' }, { status: 404 })
+  }
+
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return Response.json({ error: 'Esta cita no es tuya.' }, { status: 403 })
+    }
   }
 
   // Solo se edita libremente mientras NO haya documento fiscal. completed →
@@ -215,8 +227,10 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Lectura: admin + barber-role. Ownership igual que PUT — un barber
+  // operator no debe ver extras de citas ajenas.
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { id } = await params
 
   const [booking] = await db
@@ -225,6 +239,13 @@ export async function GET(
     .where(and(eq(bookings.id, id), eq(bookings.clientId, access.client.id)))
   if (!booking) {
     return Response.json({ error: 'Reserva no encontrada.' }, { status: 404 })
+  }
+
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return Response.json({ error: 'Esta cita no es tuya.' }, { status: 403 })
+    }
   }
 
   const extras = await db

@@ -2,9 +2,9 @@ import { db } from '@/db'
 import { customers, bookings } from '@/db/schema'
 import { and, eq, sql } from 'drizzle-orm'
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access'
+  requireTenantActor,
+  tenantActorErrorResponse,
+} from '@/lib/auth/require-tenant-actor'
 import { canonicalPhone } from '@/lib/phone'
 
 // -----------------------------------------------------------------------------
@@ -22,13 +22,15 @@ import { canonicalPhone } from '@/lib/phone'
 //   - Si totalBookings ≤ 1 → Nuevo. La cita actual es la primera.
 //   - Si totalBookings ≥ 2 → Habitual. visitNumber es totalBookings tal cual.
 //
-// Multi-tenancy: SIEMPRE requireClientAccess; el lookup va guardado por
-// clientId + phone canónico (idem patrón de loadClientProfile).
+// Multi-tenancy: SIEMPRE requireTenantActor (admin + barber-role); el lookup
+// va guardado por clientId + phone canónico. Es un read agregado de la
+// agenda — no requiere ownership por cita (un barbero ve a su cliente
+// repetido aunque la cita en cuestión sea suya o no).
 // -----------------------------------------------------------------------------
 
 export async function GET(req: Request) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { client } = access
 
   const url = new URL(req.url)

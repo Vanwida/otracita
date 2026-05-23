@@ -1,7 +1,11 @@
 import { db } from '@/db'
 import { bookings, products, productSales } from '@/db/schema'
 import { and, eq, sql } from 'drizzle-orm'
-import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
+import {
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor'
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 
 // -----------------------------------------------------------------------------
@@ -52,8 +56,11 @@ const VALID_CONSUMPTION_KINDS = ['internal', 'damage'] as const
 type ConsumptionKind = (typeof VALID_CONSUMPTION_KINDS)[number]
 
 export async function POST(req: Request) {
-  const access = await requireClientAccess(req)
-  if (!access.ok) return accessErrorResponse(access)
+  // Admin + role='barber'. Las ventas de producto desde la agenda /yo/
+  // necesitan que el barbero pueda registrar — el endpoint atribuye al
+  // barberId por defecto (ver fallback abajo).
+  const access = await requireTenantActor(req)
+  if (!access.ok) return tenantActorErrorResponse(access)
   const { client } = access
 
   let body: Body
@@ -117,8 +124,28 @@ export async function POST(req: Request) {
       .from(bookings)
       .where(and(eq(bookings.id, bookingId), eq(bookings.clientId, client.id)))
     if (!booking) return Response.json({ error: 'Reserva no encontrada' }, { status: 404 })
+    // Ownership: barber operator solo añade ventas a SUS propias citas.
+    if (!access.isAdmin && access.barberId) {
+      const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+      if (!canEditOthers && booking.barberId !== access.barberId) {
+        return Response.json({ error: 'Esta cita no es tuya.' }, { status: 403 })
+      }
+    }
     if (!barberId && booking.barberId) barberId = booking.barberId
     if (!customerPhone && booking.customerPhone) customerPhone = booking.customerPhone
+  }
+
+  // Si NO hay bookingId Y el actor es barber-role sin barberId del body,
+  // atribuir la venta walk-in al actor. Operator puro: forzamos su barberId
+  // (no puede inventar otro). Manager con `edit_others_bookings`: respetamos
+  // lo que mande el body (puede atribuir a cualquier compañero).
+  if (!bookingId && !access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings')
+    if (!canEditOthers) {
+      barberId = access.barberId
+    } else if (!barberId) {
+      barberId = access.barberId
+    }
   }
 
   // Stock atómico: si el producto trackea stock, decrementar con condición.

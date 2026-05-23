@@ -2,9 +2,10 @@ import { and, eq, gte } from 'drizzle-orm';
 import { db } from '@/db';
 import { bookings, barbers, tips } from '@/db/schema';
 import {
-  requireClientAccess,
-  accessErrorResponse,
-} from '@/lib/auth/require-client-access';
+  requireTenantActor,
+  tenantActorErrorResponse,
+  actorHasManagerPermission,
+} from '@/lib/auth/require-tenant-actor';
 import { recordTipSequential } from '@/lib/payments/record-tip';
 
 // -----------------------------------------------------------------------------
@@ -41,8 +42,10 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireClientAccess(req);
-  if (!access.ok) return accessErrorResponse(access);
+  // Admin + role='barber'. Si el actor es barber sin `edit_others_bookings`,
+  // solo puede registrar tip sobre SUS propias citas.
+  const access = await requireTenantActor(req);
+  if (!access.ok) return tenantActorErrorResponse(access);
   const { client, user } = access;
   const { id: bookingId } = await params;
 
@@ -81,6 +84,17 @@ export async function POST(
     .where(and(eq(bookings.id, bookingId), eq(bookings.clientId, client.id)));
   if (!booking) {
     return Response.json({ error: 'Reserva no encontrada.' }, { status: 404 });
+  }
+
+  // Ownership: barber operator solo registra tip sobre sus propias citas.
+  if (!access.isAdmin && access.barberId) {
+    const canEditOthers = actorHasManagerPermission(access, 'edit_others_bookings');
+    if (!canEditOthers && booking.barberId !== access.barberId) {
+      return Response.json(
+        { error: 'Esta cita no es tuya.' },
+        { status: 403 },
+      );
+    }
   }
 
   // Barbero válido + activo del tenant.
