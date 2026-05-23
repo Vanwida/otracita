@@ -66,6 +66,13 @@ export default function NewBookingPanel({
   // Sync initial values when panel opens. Si vino un initialBarberId
   // (columna clicada en agenda), preseleccionamos ese barbero por nombre;
   // si no, "Sin preferencia".
+  //
+  // RESET CANÓNICO (state-leak guard): el componente NO se desmonta entre
+  // aperturas (vive siempre montado bajo CalendarView, controlado por
+  // `isOpen`), así que cualquier campo no reseteado aquí arrastraría el
+  // valor de la reserva anterior. Reseteamos TODO lo que el usuario puede
+  // tocar — cliente, servicio principal, extras, error. Mismo patrón que
+  // NewLooseTipSlideOver / NewProductSaleSlideOver / AddProductSaleModal.
   useEffect(() => {
     if (isOpen) {
       setDate(initialDate);
@@ -75,13 +82,20 @@ export default function NewBookingPanel({
         : '';
       setBarber(preset);
       setError(null);
-      // Nueva apertura = empezar limpio: sin cliente enlazado arrastrado
-      // de una reserva anterior.
+      // Cliente — nueva apertura = empezar limpio (no arrastrar cliente
+      // enlazado de una reserva anterior).
       setCustomerName('');
       setCustomerPhone('');
       setLinkedPhone(null);
+      // Servicio principal + extras — defaults del catálogo. Sin esto, el
+      // form aparecía pre-rellenado con el servicio/precio de la reserva
+      // anterior (bug #66, state leak entre aperturas).
+      setService(services[0]?.name || '');
+      setDuration(services[0]?.duration ?? 30);
+      setPrice(services[0]?.price ?? null);
+      setExtraServices([]);
     }
-  }, [isOpen, initialDate, initialTime, initialBarberId, barbers]);
+  }, [isOpen, initialDate, initialTime, initialBarberId, barbers, services]);
 
   // El autorrelleno duración/precio al elegir servicio vive ahora en
   // <ServiceLinePicker> (fuente única, FIX C).
