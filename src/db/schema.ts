@@ -209,26 +209,27 @@ export const clients = pgTable('clients', {
   tiktokHandle: text('tiktok_handle'),                       // without @
   facebookUrl: text('facebook_url'),
   websiteUrl: text('website_url'),
-  // Acceso del equipo — un solo PIN compartido para que el equipo entre al
-  // dashboard (modo equipo) sin login individual. Confianza interna: el
-  // jefe oculta SOLO áreas sensibles (finanzas, nóminas, comisiones,
-  // ajustes técnicos) marcándolas fuera de `teamAllowedAreas`. NO hay
-  // trazabilidad por barbero; si se va alguien → regenerar PIN. El hash se
-  // guarda con scrypt (Node nativo, sin dependencia externa). Cuando
-  // `teamAccessEnabled = false`, /equipo/[slug]/login devuelve 404.
-  teamAccessEnabled: boolean('team_access_enabled').default(false).notNull(),
-  teamPinHash: text('team_pin_hash'),
-  teamPinUpdatedAt: timestamp('team_pin_updated_at', { withTimezone: true }),
+  // Admin-lock — bloqueo con PIN del JEFE para áreas sensibles del dashboard.
+  // El dashboard vive en modo barbero por defecto (cualquiera del equipo
+  // opera el iPad tras login admin inicial). El jefe marca con candado las
+  // áreas confidenciales (P&L, nóminas, comisiones, ajustes técnicos, mi
+  // plan) y al tocarlas se pide el PIN del jefe → cookie "admin-lock"
+  // 30 min. Tras inactividad o "Cerrar gestión" → vuelve a bloquearse.
+  //
+  // Las columnas DB se reutilizan del concepto previo "modo equipo"
+  // (revertido) con nombres team_* — mantenemos el nombre de COLUMNA para
+  // no tocar la migración, pero el FIELD en código tiene semántica nueva.
+  /** El jefe ha activado el lock con PIN. Si false, ningún área pide PIN. */
+  lockEnabled: boolean('team_access_enabled').default(false).notNull(),
+  /** Hash scrypt$N$r$p$saltHex$keyHex del PIN del jefe. Null = sin PIN. */
+  adminPinHash: text('team_pin_hash'),
+  adminPinUpdatedAt: timestamp('team_pin_updated_at', { withTimezone: true }),
   /**
-   * Lista de áreas permitidas para el modo equipo. Claves estables:
-   *   'agenda' | 'clientes' | 'equipo' | 'ventas' | 'marketing' |
-   *   'informes' | 'ajustes'
-   * Vacío / null → solo "agenda" por default (regla de mínima sorpresa).
-   * Las sub-áreas sensibles (facturas, nóminas, comisiones, finanzas) se
-   * filtran adicionalmente en el layout aunque su área top-level esté
-   * activa.
+   * Lista de áreas a BLOQUEAR. Claves estables — ver
+   * src/lib/admin-lock/areas.ts (ADMIN_LOCKABLE_AREA_KEYS). Vacío/null →
+   * ningún área bloqueada (el lock está activo pero no se aplica a nada).
    */
-  teamAllowedAreas: jsonb('team_allowed_areas').$type<string[]>().default([]),
+  adminLockedAreas: jsonb('team_allowed_areas').$type<string[]>().default([]),
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
