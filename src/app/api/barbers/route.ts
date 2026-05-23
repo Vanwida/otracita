@@ -35,7 +35,20 @@ export async function GET(req: Request) {
         .where(and(eq(barbers.clientId, access.client.id), eq(barbers.active, true)))
         .orderBy(asc(barbers.displayOrder), asc(barbers.name));
 
-  return Response.json({ barbers: rows });
+  // #71 — NUNCA devolver el `personalAccessToken` plano en el listado.
+  // El token se ve UNA sola vez al generarlo (POST a /personal-token).
+  // El listado solo expone si EXISTE (`hasPersonalAccess`) y cuándo se
+  // generó. Si el jefe lo pierde, regenera.
+  const sanitized = rows.map((b) => {
+    const { personalAccessToken: _t, ...rest } = b;
+    void _t;
+    return {
+      ...rest,
+      hasPersonalAccess: b.personalAccessToken != null,
+    };
+  });
+
+  return Response.json({ barbers: sanitized });
 }
 
 export async function POST(req: Request) {

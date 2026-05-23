@@ -30,6 +30,7 @@ import Modal from './Modal'
 import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
 import BarberSalaryEditor from './BarberSalaryEditor'
+import BarberPersonalAccessCard from './BarberPersonalAccessCard'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — Equipo > Empleados en patrón MASTER-DETAIL (Booksy
@@ -72,6 +73,11 @@ interface BarberRow {
   commissionProductsPct: number
   chairRentCents: number
   tierBonuses: { thresholdCents: number; bonusCents: number }[] | null
+  // Acceso móvil personal — #71. El token plano NO se devuelve por la API
+  // GET (solo `hasPersonalAccess` boolean). El token solo se ve UNA vez
+  // en el POST a /api/barbers/[id]/personal-token.
+  hasPersonalAccess: boolean
+  personalAccessGeneratedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -859,6 +865,17 @@ function BarberDetail({
               Añadir día
             </button>
           </div>
+        </section>
+
+        {/* ── Acceso móvil personal (#71) ──────────────────────────────── */}
+        <section className="border-t border-line pt-5">
+          <BarberPersonalAccessCard
+            barberId={barber.id}
+            barberName={barber.name}
+            hasAccess={barber.hasPersonalAccess}
+            generatedAt={barber.personalAccessGeneratedAt}
+            onChanged={onSalaryUpdated}
+          />
         </section>
 
         {/* ── Perfil de pago ────────────────────────────────────────────── */}
