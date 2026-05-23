@@ -409,6 +409,34 @@ export const barberBlocks = pgTable('barber_blocks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Excepciones de horario por fecha concreta a nivel de LOCAL. El semanal
+// recurrente vive en `clients.chatbotHours` (lunes-domingo, "HH:MM-HH:MM"
+// o "Cerrado"). Esta tabla permite override puntual: "el martes 28 abro
+// 9-22 en vez de 10-20", o "cierro el día 1 a media tarde", etc. Es
+// distinto de `clients.blockedDates` (que cierra el día COMPLETO):
+//   · blockedDates  ⇒ no se ofrecen citas, día completo cerrado.
+//   · clientDayHourOverrides ⇒ se ofrecen citas dentro de ESTE rango
+//     (en vez del recurrente). Si `hours = 'Cerrado'` ⇒ día cerrado
+//     vía override (equivalente a blockedDates pero con la posibilidad
+//     de añadir una nota).
+//
+// Una sola fila por (clientId, date) — `unique` lo garantiza. El motor
+// de availability comprueba esta tabla ANTES de mirar el semanal: si
+// hay override, manda; si no, fallback a chatbotHours[weekday].
+export const clientDayHourOverrides = pgTable('client_day_hour_overrides', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),                                       // YYYY-MM-DD
+  hours: text('hours').notNull(),                                     // "HH:MM-HH:MM" o "Cerrado"
+  note: text('note'),                                                 // texto libre opcional ("Festivo", "Evento", ...)
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniqueClientDate: unique('client_day_hour_overrides_client_date_unique').on(
+    table.clientId, table.date,
+  ),
+}));
+
 // Bonos del local. UN catálogo por barbería: el dueño define qué bonos
 // existen (reseñas, upsell, cortes, etc.) y cualquier barbero puede
 // acumular progreso hacia ellos. Manual-only v1 — el dueño teclea desde
@@ -680,6 +708,13 @@ export const bookings = pgTable('bookings', {
   // existentes no necesitan tocar nada.
   sourceManual: text('source_manual'),
   booksyBookingId: text('booksy_booking_id'), // Booksy reference ID for dedup + update matching
+  // iCalendar UID del VEVENT origen cuando esta cita vino de una importación
+  // de archivo .ics (Booksy export, Treatwell, Google Calendar). Clave de
+  // idempotencia: si el barbero re-importa el mismo .ics, los eventos con UID
+  // ya presente se omiten. UNIQUE per (clientId, importedIcalUid) en el index
+  // parcial — null para bookings normales (la inmensa mayoría) no consume el
+  // índice. Ver `src/lib/imports/ical-bookings.ts` y migration 0052.
+  importedIcalUid: text('imported_ical_uid'),
   rawEmailSnippet: text('raw_email_snippet'), // first 500 chars of parsed email, for debugging
   reminderSent: boolean('reminder_sent').default(false),
   // Set when the post-service follow-up WhatsApp (rating + optional tip) has

@@ -272,6 +272,18 @@ export async function PATCH(
 
   await db.update(barbers).set(patch).where(eq(barbers.id, id));
   const [updated] = await db.select().from(barbers).where(eq(barbers.id, id));
+
+  // Si lo editado afecta a la PWA pública (horario, blockedDates, active,
+  // role/photo/onlineBookable — todo lo que el slug muestra o usa para
+  // disponibilidad), marcamos el slug como stale. Idem para los demás
+  // campos: el coste de un revalidate sobrante es despreciable y el coste
+  // de NO revalidar es un horario fantasma para el cliente final.
+  const { revalidatePath } = await import('next/cache');
+  if (access.client.publicSlug) {
+    revalidatePath(`/${access.client.publicSlug}`);
+  }
+  revalidatePath('/[slug]', 'page');
+
   return Response.json({ barber: updated });
 }
 
@@ -347,5 +359,12 @@ export async function DELETE(
     .update(barbers)
     .set({ active: false, updatedAt: new Date() })
     .where(eq(barbers.id, id));
+
+  const { revalidatePath } = await import('next/cache');
+  if (access.client.publicSlug) {
+    revalidatePath(`/${access.client.publicSlug}`);
+  }
+  revalidatePath('/[slug]', 'page');
+
   return Response.json({ ok: true });
 }

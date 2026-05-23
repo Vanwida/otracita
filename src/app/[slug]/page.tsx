@@ -4,6 +4,14 @@ import { db } from '@/db'
 import { barbers as barbersTable, clients } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { hoursForDate } from '@/lib/availability'
+import { loadShopOverridesForDate } from '@/lib/shop-day-overrides'
+
+// Página dinámica — depende del horario, branding y servicios del local. Sin
+// esto, Next puede pre-renderizar el slug y dejar al cliente con datos
+// obsoletos hasta el siguiente deploy. Combinado con `revalidatePath('/[slug]',
+// 'page')` en los server actions que tocan estos campos, el ciclo es: jefe
+// guarda → la próxima visita ya renderiza fresh. Ver `dashboard/ajustes/page.tsx`.
+export const dynamic = 'force-dynamic'
 import { MapPin, Clock } from 'lucide-react'
 import PublicBookingFlow from './PublicBookingFlow'
 import SocialLinks from './SocialLinks'
@@ -100,7 +108,12 @@ export default async function PublicBookingPage({ params }: Props) {
 
   const { client, barbers } = data
   const today = todayIso()
-  const todayHours = hoursForDate(today, (client.chatbotHours as Record<string, string> | null) ?? null)
+  const todayOverrides = await loadShopOverridesForDate(client.id, today)
+  const todayHours = hoursForDate(
+    today,
+    (client.chatbotHours as Record<string, string> | null) ?? null,
+    todayOverrides,
+  )
   const services: ServiceItem[] = ((client.chatbotServices as Array<Record<string, unknown>>) || [])
     .map((s) => ({
       name: String(s.name || ''),

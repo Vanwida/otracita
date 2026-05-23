@@ -15,6 +15,7 @@ import {
   formatDateSpanish,
 } from '@/lib/google-calendar';
 import { getAvailableSlotsFromDB } from '@/lib/availability';
+import { loadShopOverridesForDate } from '@/lib/shop-day-overrides';
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup';
 import { createBooking as createBookingDb } from '@/lib/bookings/create';
@@ -1573,6 +1574,7 @@ async function handleDateSelection(
           date: selectedDate,
           serviceDuration: duration,
           shopHours: config.hours,
+          shopDayOverrides: await loadShopOverridesForDate(config.id, selectedDate),
           shopBlockedDates: config.blockedDates,
           barbers: config.barbers,
           barberId: ctx.selectedBarberId ?? null,

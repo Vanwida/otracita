@@ -11,6 +11,7 @@ import {
   type TimeSlot,
   type HoursForDay,
   type WeeklyHours,
+  type DayHourOverrides,
 } from '@/lib/availability-hours';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
 
@@ -18,7 +19,7 @@ import { BUSINESS_TIMEZONE } from '@/lib/time';
 // their `@/lib/availability` import path. The implementations live in the
 // client-safe `availability-hours.ts` (db-free) — see that file's header.
 export { hoursForDate };
-export type { TimeSlot, HoursForDay, WeeklyHours };
+export type { TimeSlot, HoursForDay, WeeklyHours, DayHourOverrides };
 
 // -----------------------------------------------------------------------------
 // Availability engine — the single source of truth for "when can a customer
@@ -43,10 +44,19 @@ function barberHoursForDate(
   barber: BarberConfig,
   date: string,
   shopHours: WeeklyHours | null,
+  shopDayOverrides: DayHourOverrides | null,
 ): HoursForDay | null {
-  // Inherit shop hours unless the barber has an explicit schedule.
-  const effective = barber.hours ?? shopHours;
-  return hoursForDate(date, effective);
+  // 1) Si el barbero tiene horario propio (no inherit), ese manda y NO se
+  //    aplica el override del local — los overrides shop-wide afectan a
+  //    quien hereda el horario del local (que es lo que esperaría el dueño:
+  //    "el martes 28 abro 1h más" se traduce a quienes operan en horario
+  //    de local; un barbero con horario custom mantiene el suyo).
+  // 2) Si el barbero hereda (hours==null), aplicamos el semanal del local
+  //    con su override puntual por fecha (si existe).
+  if (barber.hours) {
+    return hoursForDate(date, barber.hours);
+  }
+  return hoursForDate(date, shopHours, shopDayOverrides);
 }
 
 function barberIsBlocked(barber: BarberConfig, date: string, shopBlocked: string[]): boolean {
@@ -61,6 +71,13 @@ export interface AvailabilityOptions {
   serviceDuration: number;
   /** Shop-wide hours, used as fallback for barbers with hours=null. */
   shopHours: WeeklyHours | null;
+  /**
+   * Overrides puntuales del horario del local por fecha concreta. Ganan al
+   * recurrente solo cuando hay entrada para esa fecha. Solo afectan a
+   * barberos que heredan el horario del local (barber.hours === null).
+   * Opcional para no obligar a los callers legacy a pasar `null`.
+   */
+  shopDayOverrides?: DayHourOverrides | null;
   /** Shop-wide blocked dates, always apply on top of per-barber blocked. */
   shopBlockedDates: string[];
   /** All active barbers for the shop (config.barbers). */
@@ -95,6 +112,7 @@ export async function getAvailableSlotsFromDB(
     date,
     serviceDuration,
     shopHours,
+    shopDayOverrides,
     shopBlockedDates,
     barbers,
     barberId,
@@ -127,7 +145,7 @@ export async function getAvailableSlotsFromDB(
   // open hours today. If none remain → no availability.
   const openCandidates = candidates
     .filter((b) => !barberIsBlocked(b, date, shopBlockedDates))
-    .map((b) => ({ barber: b, hours: barberHoursForDate(b, date, shopHours) }))
+    .map((b) => ({ barber: b, hours: barberHoursForDate(b, date, shopHours, shopDayOverrides ?? null) }))
     .filter((x): x is { barber: BarberConfig; hours: HoursForDay } => x.hours != null);
   if (openCandidates.length === 0) return [];
 
@@ -239,6 +257,7 @@ export async function pickBarberForCustomer(args: {
   time: string;
   duration: number;
   shopHours: WeeklyHours | null;
+  shopDayOverrides?: DayHourOverrides | null;
   shopBlockedDates: string[];
   serviceBufferMinutes: number;
 }): Promise<BarberConfig | null> {
@@ -250,6 +269,7 @@ export async function pickBarberForCustomer(args: {
     time,
     duration,
     shopHours,
+    shopDayOverrides,
     shopBlockedDates,
     serviceBufferMinutes,
   } = args;
@@ -277,7 +297,7 @@ export async function pickBarberForCustomer(args: {
   const isFree = (barber: BarberConfig): boolean => {
     // 1. Barber must have hours today.
     if (barberIsBlocked(barber, date, shopBlockedDates)) return false;
-    const hours = barberHoursForDate(barber, date, shopHours);
+    const hours = barberHoursForDate(barber, date, shopHours, shopDayOverrides ?? null);
     if (!hours) return false;
     const bhStart = parseMinutes(hours.start);
     const bhEnd = parseMinutes(hours.end);

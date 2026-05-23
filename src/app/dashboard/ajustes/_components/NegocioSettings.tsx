@@ -7,6 +7,7 @@ import {
   Scissors,
   Clock,
   CalendarX,
+  CalendarClock,
   ExternalLink,
   Phone,
   MapPin,
@@ -14,6 +15,7 @@ import {
   Timer,
   type LucideIcon,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import ServicesManager from '@/app/dashboard/_components/ServicesManager'
 import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
 import FormGrid from '@/app/dashboard/_components/FormGrid'
@@ -23,6 +25,8 @@ import AjustesLayout from './AjustesLayout'
 import AjustesSaveBar, { type SaveState } from './AjustesSaveBar'
 import HoursSlideOver from './HoursSlideOver'
 import BlockedDatesSlideOver from './BlockedDatesSlideOver'
+import DayHourOverridesSlideOver from './DayHourOverridesSlideOver'
+import type { DayOverride } from '@/app/dashboard/_components/DayHourOverridesManager'
 
 // -----------------------------------------------------------------------------
 // NegocioSettings — pestaña Negocio rediseñada (épica Reni #44).
@@ -78,6 +82,7 @@ interface Props {
     hours: HoursMap | null
     slotStepMinutes: number
     blockedDates: string[]
+    dayOverrides: DayOverride[]
   }
   save: (formData: FormData) => Promise<void>
 }
@@ -141,6 +146,7 @@ export default function NegocioSettings({
   // inputs ocultos para que el server action reciba el shape esperado.
   const [hoursOpen, setHoursOpen] = useState(false)
   const [blockedOpen, setBlockedOpen] = useState(false)
+  const [overridesOpen, setOverridesOpen] = useState(false)
   const [hoursDraft, setHoursDraft] = useState<HoursMap | null>(initial.hours)
   const [slotStep, setSlotStep] = useState<number>(initial.slotStepMinutes ?? 15)
 
@@ -157,8 +163,14 @@ export default function NegocioSettings({
   const onSubmit = (formData: FormData) => {
     setSaveState('saving')
     startTransition(async () => {
-      await save(formData)
-      setSaveState('saved')
+      try {
+        await save(formData)
+        setSaveState('saved')
+        toast.success('Guardado')
+      } catch (err) {
+        setSaveState('idle')
+        toast.error(err instanceof Error ? err.message : 'No se pudo guardar')
+      }
     })
   }
 
@@ -174,6 +186,20 @@ export default function NegocioSettings({
     .slice(0, 3)
     .map(formatDateShort)
     .join(', ')
+
+  // Resumen de excepciones por fecha — las que aún no han pasado.
+  const todayIso = new Date().toISOString().split('T')[0]
+  const upcomingOverrides = initial.dayOverrides
+    .filter((o) => o.date >= todayIso)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const overridesCount = upcomingOverrides.length
+  const overridesPreview = upcomingOverrides
+    .slice(0, 2)
+    .map((o) => {
+      const label = formatDateShort(o.date)
+      return o.hours === 'Cerrado' ? `${label} cerrado` : `${label} ${o.hours}`
+    })
+    .join(' · ')
 
   return (
     <AjustesLayout
@@ -331,6 +357,44 @@ export default function NegocioSettings({
                 </p>
               )}
             </Card>
+
+            {/* Card 4: Excepciones por fecha — extender/recortar/cerrar un día
+                 concreto sin tocar el semanal recurrente. */}
+            <Card
+              icon={CalendarClock}
+              title="Excepciones por fecha"
+              action={
+                <EditButton
+                  onClick={() => setOverridesOpen(true)}
+                  label="Editar excepciones por fecha"
+                />
+              }
+            >
+              {overridesCount === 0 ? (
+                <p className="text-xs text-ink-3">
+                  Horario distinto al recurrente solo un día concreto, o
+                  cerrar un día puntual.
+                </p>
+              ) : (
+                <p className="text-xs text-ink-2">
+                  <span className="font-semibold text-ink">
+                    {overridesCount}
+                  </span>{' '}
+                  {overridesCount === 1
+                    ? 'excepción próxima'
+                    : 'excepciones próximas'}
+                  {overridesPreview && (
+                    <>
+                      {' · '}
+                      <span className="text-ink-3">{overridesPreview}</span>
+                      {overridesCount > 2 && (
+                        <span className="text-ink-3">…</span>
+                      )}
+                    </>
+                  )}
+                </p>
+              )}
+            </Card>
           </div>
         </FormGrid>
 
@@ -368,6 +432,11 @@ export default function NegocioSettings({
         onClose={() => setBlockedOpen(false)}
         initialDates={initial.blockedDates}
         clientId={clientId}
+      />
+      <DayHourOverridesSlideOver
+        open={overridesOpen}
+        onClose={() => setOverridesOpen(false)}
+        initial={initial.dayOverrides}
       />
     </AjustesLayout>
   )

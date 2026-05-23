@@ -2,8 +2,15 @@ import { db } from '@/db'
 import { barbers as barbersTable, clients } from '@/db/schema'
 import { and, asc, eq } from 'drizzle-orm'
 import { getAvailableSlotsFromDB } from '@/lib/availability'
+import { loadShopOverridesForDate } from '@/lib/shop-day-overrides'
 import type { BarberConfig } from '@/lib/whatsapp/config'
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit'
+
+// Endpoint dinámico: depende del horario del local + fecha + barberos. Sin
+// caching server-side ni CDN. La PWA pública refresca esto cada vez que el
+// cliente cambia de día/servicio, así que un horario editado desde admin se
+// ve en cuanto el navegador re-pida la fecha (≤1 min de latencia humana).
+export const dynamic = 'force-dynamic'
 
 // -----------------------------------------------------------------------------
 // GET /api/public/availability/grid?slug=...&service=...&date=YYYY-MM-DD
@@ -53,11 +60,14 @@ export async function GET(req: Request) {
   const matched = services.find((s) => s?.name?.toLowerCase() === service.toLowerCase())
   if (!matched) return Response.json({ error: 'Servicio no encontrado' }, { status: 404 })
 
-  const barberRows = await db
-    .select()
-    .from(barbersTable)
-    .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
-    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name))
+  const [barberRows, shopDayOverrides] = await Promise.all([
+    db
+      .select()
+      .from(barbersTable)
+      .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
+      .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name)),
+    loadShopOverridesForDate(client.id, date),
+  ])
   const barbers: BarberConfig[] = barberRows.map((b) => ({
     id: b.id,
     name: b.name,
@@ -71,6 +81,7 @@ export async function GET(req: Request) {
     date,
     serviceDuration: matched.duration || 30,
     shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
+    shopDayOverrides,
     shopBlockedDates: (client.blockedDates as string[]) ?? [],
     barbers,
     minLeadTimeMinutes: client.minLeadTimeMinutes,
@@ -93,5 +104,11 @@ export async function GET(req: Request) {
   const byBarber: Record<string, Array<{ start: string; end: string }>> = {}
   for (const row of perBarber) byBarber[row.id] = row.slots
 
-  return Response.json({ union, byBarber })
+  // Cache-Control no-store: el horario/disponibilidad cambia con cada
+  // booking nuevo y cada edición de admin → cualquier capa de CDN/browser
+  // que cachee aquí provoca slots fantasma. Forzamos always-fresh.
+  return Response.json(
+    { union, byBarber },
+    { headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' } },
+  )
 }

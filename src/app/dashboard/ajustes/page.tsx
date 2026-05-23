@@ -11,6 +11,7 @@ import type { HoursMap } from '@/app/dashboard/_components/HoursEditor'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
 import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
+import { loadAllShopOverrides } from '@/lib/shop-day-overrides'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ajustes — pestaña NEGOCIO (índice del área Ajustes).
@@ -46,6 +47,7 @@ export default async function AjustesNegocioPage() {
   const services = (client.chatbotServices as ServiceItem[] | null) || []
   const hours = (client.chatbotHours as HoursMap | null) || null
   const blockedDates = (client.blockedDates as string[]) || []
+  const dayOverrides = await loadAllShopOverrides(client.id)
 
   /**
    * Server action — guarda los campos básicos del negocio (info, servicios,
@@ -127,6 +129,15 @@ export default async function AjustesNegocioPage() {
 
     const { revalidatePath } = await import('next/cache')
     revalidatePath('/dashboard/ajustes')
+    // La PWA pública /[slug] renderiza estos mismos campos (horario, servicios,
+    // info del negocio). Sin revalidate, Next puede servir una versión cacheada
+    // hasta la siguiente visita "fría" del cliente — por eso el horario "no se
+    // actualiza nunca" desde el punto de vista del cliente final. Aquí marcamos
+    // el slug pattern como stale para que el primer hit re-renderice fresh.
+    if (current.publicSlug) {
+      revalidatePath(`/${current.publicSlug}`)
+    }
+    revalidatePath('/[slug]', 'page')
   }
 
   return (
@@ -151,6 +162,7 @@ export default async function AjustesNegocioPage() {
             hours,
             slotStepMinutes: client.slotStepMinutes,
             blockedDates,
+            dayOverrides,
           }}
           save={saveBusiness}
         />

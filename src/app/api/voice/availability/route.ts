@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { barbers as barbersTable } from '@/db/schema';
 import { and, asc, eq } from 'drizzle-orm';
 import { getAvailableSlotsFromDB } from '@/lib/availability';
+import { loadShopOverridesForDate } from '@/lib/shop-day-overrides';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import {
   requireClientAccess,
@@ -46,11 +47,14 @@ export async function POST(req: NextRequest) {
   );
   const duration = matched?.duration ?? 30;
 
-  const activeBarbers = await db
-    .select()
-    .from(barbersTable)
-    .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
-    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name));
+  const [activeBarbers, shopDayOverrides] = await Promise.all([
+    db
+      .select()
+      .from(barbersTable)
+      .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
+      .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name)),
+    loadShopOverridesForDate(client.id, date),
+  ]);
   const barberConfigs: BarberConfig[] = activeBarbers.map((b) => ({
     id: b.id,
     name: b.name,
@@ -75,6 +79,7 @@ export async function POST(req: NextRequest) {
       date,
       serviceDuration: duration,
       shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
+      shopDayOverrides,
       shopBlockedDates: (client.blockedDates as string[]) ?? [],
       barbers: barberConfigs,
       barberId,

@@ -46,5 +46,14 @@ export async function POST(req: NextRequest) {
     .set({ blockedDates: updated, updatedAt: new Date() })
     .where(eq(clients.id, client.id));
 
+  // Los días bloqueados se renderizan en la PWA pública (date picker oculta
+  // esas fechas). Sin revalidate, el cliente podría seguir viendo una fecha
+  // ya bloqueada como disponible hasta el siguiente full reload.
+  const { revalidatePath } = await import('next/cache');
+  if (client.publicSlug) {
+    revalidatePath(`/${client.publicSlug}`);
+  }
+  revalidatePath('/[slug]', 'page');
+
   return NextResponse.json({ ok: true, blockedDates: updated });
 }

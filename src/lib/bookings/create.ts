@@ -4,6 +4,7 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { pickBarberForCustomer } from '@/lib/availability';
 import { unavailabilityFor, unavailabilityIntervals } from '@/lib/unavailability';
 import { loadShopUnavailability } from '@/lib/unavailability-db';
+import { loadShopOverridesForDate } from '@/lib/shop-day-overrides';
 import {
   computeBookingSnapshot,
   hasBookingOverlap,
@@ -104,6 +105,16 @@ export interface CreateBookingOptions {
    *  los descansos/bloqueos (esos no son "calendar conflict", son
    *  imposibilidad física). */
   allowOverlap?: boolean;
+  /** Importación masiva: no manda push al cliente y no dispara nada hacia
+   *  él. El cliente original ya tiene la cita en su sistema viejo (Booksy/
+   *  Treatwell). Mandarle "Cita confirmada" sería confuso. Default false →
+   *  comportamiento idéntico para callers existentes. Solo lo usa la
+   *  ruta de import .ics. */
+  silent?: boolean;
+  /** UID iCal del VEVENT origen — clave de idempotencia para imports .ics.
+   *  Si ya existe un booking con (clientId, importedIcalUid) → skip antes
+   *  de entrar a la pipeline. Default null para 5/5 callers existentes. */
+  importedIcalUid?: string | null;
 }
 
 export type CreateBookingError =
@@ -223,6 +234,8 @@ export async function createBooking(
     cardConsent,
     requireCard = false,
     allowOverlap = false,
+    silent = false,
+    importedIcalUid = null,
   } = options;
 
   // --- Input validation -----------------------------------------------------
@@ -443,6 +456,7 @@ export async function createBooking(
       time,
       duration,
       shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
+      shopDayOverrides: await loadShopOverridesForDate(client.id, date),
       shopBlockedDates: (client.blockedDates as string[]) ?? [],
       serviceBufferMinutes: bufferMin,
     });
@@ -479,6 +493,9 @@ export async function createBooking(
       referrerSource: attribution?.source ?? null,
       referrerMedium: attribution?.medium ?? null,
       referrerCampaign: attribution?.campaign ?? null,
+      // UID iCal del VEVENT origen (idempotencia per tenant). Null para
+      // todo lo que no sea import .ics.
+      importedIcalUid: importedIcalUid ?? null,
     })
     .returning();
 
@@ -604,7 +621,11 @@ export async function createBooking(
   // Skipped when the booking came from the WhatsApp bot — the engine
   // sends a "Cita confirmada" reply in the same chat thread right after,
   // so the push would just duplicate the same notification.
-  if (source !== 'bot') {
+  //
+  // También skipped si el caller pasó `silent: true` — caso típico:
+  // importación masiva desde .ics, donde el cliente ya tiene la cita
+  // en su sistema viejo y un push extra sería ruido.
+  if (source !== 'bot' && !silent) {
     (async () => {
       try {
         const { sendPushByPhone } = await import('@/lib/app-auth/push');

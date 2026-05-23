@@ -114,6 +114,17 @@ export async function PATCH(req: Request) {
 
   await db.update(clients).set(patch).where(eq(clients.id, access.client.id))
   const [updated] = await db.select().from(clients).where(eq(clients.id, access.client.id))
+
+  // Branding/slug/visibility cambian lo que renderiza /[slug] — sin revalidate
+  // el cliente final puede ver la versión anterior hasta el siguiente fetch
+  // frío. El slug "viejo" (antes del rename) ya no resuelve, no necesita
+  // revalidate; el nuevo sí.
+  const { revalidatePath } = await import('next/cache')
+  if (updated.publicSlug) {
+    revalidatePath(`/${updated.publicSlug}`)
+  }
+  revalidatePath('/[slug]', 'page')
+
   return Response.json({
     ok: true,
     slug: updated.publicSlug,
