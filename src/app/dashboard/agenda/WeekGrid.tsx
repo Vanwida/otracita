@@ -1,404 +1,486 @@
 'use client';
 
-import { useEffect, useRef, useMemo } from 'react';
+import { useMemo } from 'react';
 import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Lock } from 'lucide-react';
-import type { CalendarEvent } from './types';
+import { Lock, UsersRound } from 'lucide-react';
+import Link from 'next/link';
+import type { CalendarEvent, Barber } from './types';
 import {
   appointmentBlockClasses,
   resolveBookingColorToken,
   statusCornerBadge,
 } from './_appointment-color';
-import { computeAgendaWindow, toMinutes, WEEK_PX_PER_MIN } from './_agenda-window';
-import { computeOverlapLayout } from './_event-layout';
-import { hoursForDate } from '@/lib/availability-hours';
-import { useCurrentTime } from './_hooks/use-current-time';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
+import { buildWeekCell } from './_lib/week-cell';
 
-// La ventana temporal ya NO es fija — se deriva de los datos de la SEMANA
-// visible en `_agenda-window` (misma fuente que DayGrid). Antes
-// GRID_START/END estaban hardcodeados a 08:00–22:00 y una tienda que abría
-// a las 07:00 perdía esa hora también en Semana.
+// -----------------------------------------------------------------------------
+// WeekGrid — modelo MATRIZ barberos × días (paridad Booksy/Fresha).
+//
+// Antes la vista Semana era "7 columnas día × timeline vertical proporcional".
+// El problema: con 3+ barberos y citas paralelas el bug #58 (3 iteraciones)
+// nunca se resolvía bien — citas que se pisaban quedaban superpuestas o en
+// carriles 1/N tan finos que no se leían. Booksy y Fresha resolvieron esto
+// hace años con un modelo distinto:
+//
+//   · FILAS    = barberos (1 swimlane por barbero activo)
+//   · COLUMNAS = los 7 días de la semana
+//   · CELDA    = lista densa de citas de ESE barbero en ESE día, con bloques
+//                de TAMAÑO FIJO (no proporcionales al tiempo). Cada bloque
+//                muestra rango horario + servicio. Cuando no caben todas,
+//                las primeras N + link "Mostrar todo (X)" que cambia a Día
+//                filtrada por ese barbero.
+//
+// El cuerpo de la vista Día (DayGrid) sigue siendo timeline visual con scroll
+// vertical — sólo cambia el modelo en Semana. La paleta saturada y los
+// helpers de color/badge se reusan tal cual desde `_appointment-color`.
+// -----------------------------------------------------------------------------
+
+// Máximo de bloques visibles por celda antes de colapsar en "Mostrar todo".
+// 6 es el dulce de Booksy/Fresha — más allá la celda se vuelve ilegible y la
+// densidad ya no aporta. El número se queda hardcoded a propósito: no es algo
+// que un barbero deba poder configurar (premature config, ver CLAUDE.md).
+const MAX_VISIBLE_PER_CELL = 6;
 
 interface Props {
   weekStart: Date;
   events: CalendarEvent[];
+  /** Equipo del tenant (incluye displayOrder, photoUrl). Las filas de la
+   *  matriz son estos barberos en orden. Si está vacío, mostramos empty
+   *  state apuntando a Equipo. */
+  barbers: Barber[];
   /** Catálogo de servicios — color del bloque por servicio (#33). */
   services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
   blockedDates: string[];
-  /** Horario semanal de la tienda — alimenta la ventana dinámica y el
-   *  sombreado fuera-de-horario, consistente con la vista Día. */
-  hours: Record<string, string> | null;
   onEventClick: (event: CalendarEvent) => void;
-  onSlotClick: (date: string, time: string) => void;
-  /** Click en la cabecera de un día (nombre + número) → cambia a vista
-   *  Día centrada en ese día. Lo despacha el parent (CalendarView), que
-   *  posee el estado de `viewMode` y `currentDay` (fuente única, DRY con
-   *  el toggle Día/Semana/Mes y el botón "Hoy"). */
+  /** Click en cabecera de día (LUN 18) → cambia a vista Día centrada. */
   onSelectDay: (date: Date) => void;
+  /** Click en "Mostrar todo (N) ›" en una celda → cambia a vista Día
+   *  centrada en ese día Y filtrada por ese barbero. CalendarView posee el
+   *  state (viewMode + currentDay + selectedBarber). */
+  onShowAllDay: (date: Date, barber: Barber) => void;
+  /** Click en una celda VACÍA → crea cita rápida en ese barbero/día. La
+   *  hora se setea por defecto a 10:00 (Booksy no abre slot picker en cell;
+   *  el barbero confirma hora en NewBookingPanel). */
+  onCellClick: (date: string, barberId: string) => void;
+}
+
+/** Iniciales de un nombre — máx 2 letras, mayúsculas. "José Ruiz" → "JR". */
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+/** Hora "HH:MM" → minutos desde medianoche, para ordenar citas dentro de una
+ *  celda. No queremos depender de date-fns aquí (helper local sencillo). */
+function timeToMinutes(t: string): number {
+  const [h = '0', m = '0'] = t.split(':');
+  return Number(h) * 60 + Number(m);
+}
+
+/** Suma `mins` minutos a "HH:MM" y devuelve "HH:MM". Para imprimir el rango
+ *  completo "15:00 - 15:45" en el bloque. */
+function addMinutesToHHMM(time: string, mins: number): string {
+  const total = timeToMinutes(time) + mins;
+  // Clamp defensivo: una cita que rebase medianoche sería un dato corrupto.
+  // La vista Semana no tiene por qué crashear — el bloque mostrará "23:59".
+  const clamped = Math.max(0, Math.min(24 * 60 - 1, total));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 export default function WeekGrid({
   weekStart,
   events,
+  barbers,
   services,
   blockedDates,
-  hours,
   onEventClick,
-  onSlotClick,
   onSelectDay,
+  onShowAllDay,
+  onCellClick,
 }: Props) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  // Reloj vivo — refresca cada 60s para que la línea "ahora" avance sin
-  // recargar (bug Reni 2026-05-22). `today` se deriva del mismo Date para
-  // que el resaltado de la columna de hoy también pase de un día a otro
-  // sin reload si el dashboard queda abierto cruzando medianoche.
-  const nowDate = useCurrentTime();
-  const today = nowDate;
-  const currentTimeMin = nowDate.getHours() * 60 + nowDate.getMinutes();
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const dayStrs = useMemo(
-    () => days.map((d) => format(d, 'yyyy-MM-dd')),
-    [days],
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart],
   );
+  const today = new Date();
 
-  // Ventana DINÁMICA de la semana (fuente única _agenda-window): unión del
-  // horario de tienda + citas reales en los 7 días visibles.
-  //
-  // `computeAgendaWindow` calcula `totalHeight`/`hourLabels.top` con la
-  // densidad por defecto (PX_PER_MIN = vista Día = 2). En Semana usamos
-  // WEEK_PX_PER_MIN (más denso → más citas en pantalla) y reescalamos esos
-  // dos campos. `startMin`/`endMin` son minutos puros y siguen siendo válidos.
-  const { startMin, endMin, hourLabels } = useMemo(() => {
-    const w = computeAgendaWindow({
-      dates: dayStrs,
-      hours,
-      events: events.map((e) => ({
-        date: e.date,
-        time: e.time,
-        duration: e.duration,
-      })),
-    });
-    // Reetiquetamos las etiquetas a la densidad de Semana — mismas horas en
-    // punto que ya calcula el módulo, sólo cambia el `top` en px.
-    const labels = w.hourLabels.map((hl, i) => ({
-      label: hl.label,
-      top: i * 60 * WEEK_PX_PER_MIN,
-    }));
-    return { startMin: w.startMin, endMin: w.endMin, hourLabels: labels };
-  }, [dayStrs, hours, events]);
+  // Indexamos las citas por (barberId, date) una sola vez. Para barberos sin
+  // id canónico (legacy) caemos a match por NAME normalizado. Citas
+  // canceladas se incluyen — el barbero quiere VER el hueco que se canceló
+  // (mismo criterio que DayGrid: accountability + reproducir el hueco).
+  const eventsByCell = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    const nameToId = new Map<string, string>();
+    for (const b of barbers) {
+      nameToId.set(b.name.trim().toLowerCase(), b.id);
+    }
+    for (const ev of events) {
+      // Resolver el barberId canónico de cada cita. Prioridad: el id que
+      // ya viene en la cita; si no, lookup por nombre. Si nada matchea,
+      // se ignora (no hay swimlane "Sin asignar" en Semana — la vista
+      // matriz es por equipo registrado; los huérfanos se ven en Día).
+      let barberId = ev.barberId ?? null;
+      if (!barberId && ev.barber) {
+        barberId = nameToId.get(ev.barber.trim().toLowerCase()) ?? null;
+      }
+      if (!barberId) continue;
+      const key = `${barberId}|${ev.date}`;
+      const list = map.get(key);
+      if (list) list.push(ev);
+      else map.set(key, [ev]);
+    }
+    // Ordenar cada celda por hora ascendente (la API ya las suele devolver
+    // así pero no lo garantiza; este sort es barato — N citas/celda ≪ 50).
+    for (const list of map.values()) {
+      list.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+    }
+    return map;
+  }, [events, barbers]);
 
-  const totalHeight = (endMin - startMin) * WEEK_PX_PER_MIN;
-
-  // Auto-scroll inicial: a "ahora" si cae en la ventana (la semana suele
-  // contener hoy), si no al inicio de la ventana. Re-corre al cambiar de
-  // semana/ventana. Scroll interno — la página nunca scrollea.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const nowInWindow =
-      currentTimeMin >= startMin && currentTimeMin <= endMin;
-    const targetMin = nowInWindow ? currentTimeMin : startMin;
-    el.scrollTop = Math.max(0, (targetMin - startMin) * WEEK_PX_PER_MIN - 100);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dayStrs[0], startMin, endMin]);
-
-  const currentTimePx =
-    currentTimeMin >= startMin && currentTimeMin <= endMin
-      ? (currentTimeMin - startMin) * WEEK_PX_PER_MIN
-      : null;
-
-  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
-    if ((e.target as HTMLElement).closest('[data-event]')) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const clickedMinutes = Math.floor(y / WEEK_PX_PER_MIN) + startMin;
-    const rounded = Math.round(clickedMinutes / 30) * 30;
-    const clamped = Math.max(startMin, Math.min(endMin - 30, rounded));
-    const h = Math.floor(clamped / 60);
-    const m = clamped % 60;
-    const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    onSlotClick(dateStr, time);
-  };
-
-  const getEventsForDay = (dateStr: string) =>
-    events.filter(e => e.date === dateStr);
-
-  return (
-    <div className="flex flex-1 overflow-hidden bg-surface">
-      {/* Time gutter */}
-      <div className="w-12 shrink-0 relative bg-surface border-r border-line" style={{ height: totalHeight + 32 }}>
-        <div className="h-8" /> {/* header spacer */}
-        <div className="relative" style={{ height: totalHeight }}>
-          {/* Current time dot in gutter */}
-          {currentTimePx !== null && (
-            <div
-              className="absolute right-0 z-20"
-              style={{ top: currentTimePx - 5 }}
-            >
-              <div className="h-2.5 w-2.5 rounded-full bg-time-now translate-x-1/2" />
-            </div>
-          )}
-          {hourLabels.map(({ label, top }) => (
-            <div
-              key={label}
-              className="absolute right-2 text-[10px] text-ink-2 select-none"
-              style={{ top: top - 6 }}
-            >
-              {label}
-            </div>
-          ))}
+  // Empty state: tenant sin equipo activo. La matriz no tiene filas que
+  // pintar y el CTA correcto es ir a /dashboard/equipo a añadir barberos.
+  if (barbers.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-canvas p-8">
+        <div className="text-center max-w-sm">
+          <div className="mx-auto h-12 w-12 rounded-full bg-overlay flex items-center justify-center mb-4">
+            <UsersRound className="h-6 w-6 text-ink-3" aria-hidden="true" />
+          </div>
+          <h2 className="text-base font-semibold text-ink mb-2">
+            Sin equipo configurado
+          </h2>
+          <p className="text-sm text-ink-2 mb-4 leading-relaxed">
+            La vista Semana es una matriz de barberos por día. Añade al menos
+            un barbero para ver la agenda semanal.
+          </p>
+          <Link
+            href="/dashboard/equipo"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
+          >
+            Ir a Equipo
+          </Link>
         </div>
       </div>
+    );
+  }
 
-      {/* Day columns scroll wrapper */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollRef}>
-        <div className="flex min-w-0" style={{ minWidth: '560px' }}>
-          {days.map(day => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const isToday = isSameDay(day, today);
-            const isBlocked = blockedDates.includes(dateStr);
-            const dayEvents = getEventsForDay(dateStr);
+  // Layout: CSS Grid con columna sticky izquierda (barberos) + 7 columnas
+  // (días). Scroll horizontal en mobile cuando hay 5+ barberos × 7 días.
+  // grid-template-columns: 120px para la columna de barberos en desktop;
+  // las 7 de día son fr (responsive) con min para que no se rompan a
+  // anchos imposibles de leer. La cabecera de día va sticky-top; la columna
+  // de barberos sticky-left → la esquina sup-izq queda fija siempre.
+  return (
+    <div className="flex flex-1 overflow-auto bg-canvas">
+      <div
+        role="grid"
+        aria-label="Agenda semanal por barbero"
+        className="grid w-full min-w-[840px]"
+        style={{
+          // 120px columna barberos + 7×(min 140px, ideal 1fr). minmax
+          // garantiza legibilidad en pantallas estrechas (scroll horizontal
+          // si total > viewport) y reparto equitativo en desktop.
+          gridTemplateColumns: '120px repeat(7, minmax(140px, 1fr))',
+        }}
+      >
+        {/* Esquina sup-izq: vacía. Sticky en ambos ejes para no taparse
+            al scrollear ni vertical ni horizontalmente. z-30 para quedar
+            por encima de cabecera (z-20) y columna barberos (z-10). */}
+        <div className="sticky top-0 left-0 z-30 h-12 bg-surface border-b border-r border-line" />
 
-            return (
-              <div
-                key={dateStr}
-                className={`flex-1 flex flex-col border-r border-line last:border-r-0 min-w-0 ${isToday ? 'bg-today-tint' : 'bg-surface'}`}
+        {/* Cabecera de columnas: días (LUN 18, MAR 19…). Sticky top. */}
+        {days.map((day) => {
+          const isToday = isSameDay(day, today);
+          const dateStr = format(day, 'yyyy-MM-dd');
+          return (
+            <button
+              key={dateStr}
+              type="button"
+              onClick={() => onSelectDay(day)}
+              aria-label={`Ver agenda del ${format(day, "EEEE d 'de' MMMM", { locale: es })}`}
+              className={`sticky top-0 z-20 h-12 flex flex-col items-center justify-center gap-0.5 border-b border-r border-line last:border-r-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset cursor-pointer ${
+                isToday ? 'bg-today-tint hover:bg-today-tint' : 'bg-surface hover:bg-overlay'
+              }`}
+            >
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wider leading-none ${
+                  isToday ? 'text-brand' : 'text-ink-2'
+                }`}
               >
-                {/* Column header — botón completo, no solo el número. Click
-                    → cambia la vista a "Día" centrada en ese día (DRY: usa
-                    el mismo setter que el toggle Día/Semana/Mes del
-                    CalendarView, vía `onSelectDay`). El target horizontal
-                    cubre toda la columna; vertical 32px (h-8) por alineación
-                    con el gutter — el strip completo dispara el click. */}
-                <button
-                  type="button"
-                  onClick={() => onSelectDay(day)}
-                  aria-label={`Ver agenda del ${format(day, "EEEE d 'de' MMMM", { locale: es })}`}
-                  className="h-8 w-full flex flex-col items-center justify-center border-b border-line shrink-0 cursor-pointer hover:bg-overlay focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset transition-colors"
-                >
-                  <span
-                    className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-brand' : 'text-ink-2'}`}
-                  >
-                    {format(day, 'EEE', { locale: es })}
-                  </span>
-                  <span
-                    className={`text-xs font-bold leading-none ${isToday ? 'text-brand' : 'text-ink-2'}`}
-                  >
-                    {format(day, 'd')}
-                  </span>
-                </button>
+                {format(day, 'EEE', { locale: es })}
+              </span>
+              <span
+                className={`text-sm font-bold leading-none tabular-nums ${
+                  isToday ? 'text-brand' : 'text-ink'
+                }`}
+              >
+                {format(day, 'd')}
+              </span>
+            </button>
+          );
+        })}
 
-                {/* Column body */}
-                <div
-                  className="relative cursor-pointer"
-                  style={{ height: totalHeight }}
-                  onClick={e => handleColumnClick(e, dateStr)}
-                >
-                  {/* Fuera de horario de ESE día (consistente con la vista
-                      Día): tinte + trama contra la ventana dinámica. */}
-                  {(() => {
-                    const dh = hoursForDate(dateStr, hours);
-                    if (!dh) return null;
-                    const open = toMinutes(dh.start);
-                    const close = toMinutes(dh.end);
-                    return (
-                      <>
-                        {open > startMin && (
-                          <div
-                            className="absolute left-0 right-0 top-0 offhours-overlay pointer-events-none z-10"
-                            style={{ height: (open - startMin) * WEEK_PX_PER_MIN }}
-                          />
-                        )}
-                        {close < endMin && (
-                          <div
-                            className="absolute left-0 right-0 offhours-overlay pointer-events-none z-10"
-                            style={{
-                              top: (close - startMin) * WEEK_PX_PER_MIN,
-                              height: (endMin - close) * WEEK_PX_PER_MIN,
-                            }}
-                          />
-                        )}
-                      </>
-                    );
-                  })()}
-
-                  {/* Blocked overlay */}
-                  {isBlocked && (
-                    <div className="absolute inset-0 z-10 pointer-events-none blocked-overlay" />
-                  )}
-
-                  {/* Hour lines */}
-                  {hourLabels.map(({ top }, i) => (
-                    <div
-                      key={i}
-                      className="absolute left-0 right-0 border-t border-line"
-                      style={{ top }}
-                    />
-                  ))}
-
-                  {/* Half-hour lines — sin la última (su +30min saldría de
-                      la ventana, que siempre cierra en hora en punto). */}
-                  {hourLabels.slice(0, -1).map(({ top }, i) => (
-                    <div
-                      key={`half-${i}`}
-                      className="absolute left-0 right-0 border-t border-canvas"
-                      style={{ top: top + 30 * WEEK_PX_PER_MIN }}
-                    />
-                  ))}
-
-                  {/* Current time indicator */}
-                  {isToday && currentTimePx !== null && (
-                    <div
-                      className="absolute left-0 right-0 z-30 pointer-events-none"
-                      style={{ top: currentTimePx }}
-                    >
-                      <div className="h-px bg-time-now" />
-                    </div>
-                  )}
-
-                  {/* Events — variante COMPACT (Semana). Diferencias vs Día:
-                      · padding mínimo (4px/2px) para no robar alto a citas cortas
-                      · fuentes -compact (cliente 11.5px / servicio 10.5px)
-                      · altura = duration × WEEK_PX_PER_MIN (densidad Semana
-                        = 1.5px/min → 30min ≈ 43px, 45min ≈ 64px). Calibrada
-                        para que Reni vea muchas más citas a la vez que en Día.
-                      · gap visual real de 2px entre bloques consecutivos
-                        (top+1 / height-2) para que dos citas seguidas NUNCA
-                        parezcan una sola — el bug original.
-                      · < 15min (= height < ~22px) → altura visual mínima 18px
-                        para legibilidad. El siguiente bloque empieza en su
-                        `top` real (basado en su hora), así que pueden
-                        solaparse 2-3px — convención Booksy/Fresha.
-                      · < 20min (= height < 30px) → solo nombre cliente, sin
-                        hora ni servicio (posición vertical comunica la hora)
-                      · CITAS SOLAPADAS en TIEMPO (bug #58 v3, 2026-05-23):
-                        antes el bloque ocupaba left-0.5 right-0.5 (todo el
-                        ancho de la columna). Dos citas con horas que se pisan
-                        → mismo carril vertical, una encima de otra. Ahora
-                        `computeOverlapLayout` (DRY, mismo helper que DayGrid)
-                        reparte en N carriles laterales 1/N. 2px de aire
-                        entre carriles (calc) para que no parezcan pegadas. */}
-                  {(() => {
-                    const layout = computeOverlapLayout(
-                      dayEvents.map((e) => ({
-                        id: e.id,
-                        startMin: toMinutes(e.time),
-                        durationMin: e.duration,
-                      })),
-                    );
-                    return dayEvents.map(event => {
-                      const evStartMin = toMinutes(event.time);
-                      const rawTop = (evStartMin - startMin) * WEEK_PX_PER_MIN;
-                      const rawHeight = event.duration * WEEK_PX_PER_MIN;
-                      // 1px de aire arriba/abajo → 2px gap real entre citas
-                      // pegadas. Min-height visual 18px para citas <15min
-                      // (legibilidad); el `top` del siguiente bloque ya está
-                      // en su hora real → puede solapar 2-3px (Booksy-style).
-                      const top = rawTop + 1;
-                      const height = Math.max(rawHeight - 2, 18);
-                      const isShort = height < 30;   // ~< 20min @ 1.5px/min
-                      const isTiny = height < 22;    // ~< 15min → ultra-denso
-                      const showService = height >= 42 && !isShort; // ~30min+
-                      const isBooksy = event.source === 'booksy';
-                      const isCancelled = event.status === 'cancelled';
-                      // #33 — Color por SERVICIO (no por estado). Mismo helper
-                      // que Día/Mes; estado va a badge esquina (commit 3).
-                      const colorToken = resolveBookingColorToken(event, services);
-                      const { className: blockClass, style: blockColorStyle, treatment } =
-                        appointmentBlockClasses(colorToken, event.status);
-                      const badge = statusCornerBadge(event.status);
-                      const displayName =
-                        event.customerName?.trim() ||
-                        event.customerPhone?.trim() ||
-                        'Sin nombre';
-                      // Lane layout: si esta cita comparte minutos con otras
-                      // del mismo día, se reparten el ancho de la columna en
-                      // N carriles. 2px de aire entre carriles (insetX) para
-                      // que dos citas paralelas tengan un hairline visible
-                      // — sin que parezca un único bloque pegado. Bug #58 v3.
-                      const lay = layout.get(event.id) ?? { leftPct: 0, widthPct: 100 };
-                      const insetX = 2;
-
-                      return (
-                        <div
-                          key={event.id}
-                          data-event="true"
-                          onClick={e => {
-                            e.stopPropagation();
-                            onEventClick(event);
-                          }}
-                          className={`absolute z-20 flex flex-col rounded cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${
-                            isTiny ? 'px-1 py-0' : 'px-1 py-0.5'
-                          } ${blockClass} ${treatment}`}
-                          style={{
-                            top,
-                            height,
-                            left: `calc(${lay.leftPct}% + ${insetX}px)`,
-                            width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
-                            // Custom hex: el helper devuelve bg/color/boxShadow
-                            // inline. Tokens canónicos dejan estos campos
-                            // undefined y el color va por className.
-                            ...blockColorStyle,
-                          }}
-                          title={`${event.time} · ${displayName}${event.service ? ` · ${event.service}` : ''}`}
-                        >
-                          {/* Badge estado/Booksy — solo si el bloque tiene
-                              altura suficiente para acomodarlo sin pisar el
-                              texto. En citas ultra-cortas el color del fill
-                              + tooltip ya transmiten el contexto. */}
-                          {!isTiny && (
-                            <div
-                              className="absolute top-0 right-0 z-10 inline-flex items-center justify-center h-3.5 w-3.5 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm"
-                              aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
-                              title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
-                            >
-                              {isBooksy && !isCancelled ? (
-                                <Lock className="h-2 w-2 text-ink-2" aria-hidden="true" />
-                              ) : (
-                                <badge.icon
-                                  className={`h-2 w-2 ${badge.tone}`}
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </div>
-                          )}
-                          {/* Línea 1.
-                              · isShort (<20min): solo nombre cliente, sin hora.
-                                La hora está implícita en la posición + el gutter.
-                              · resto: hora + cliente (la hora ayuda al barrido
-                                vertical rápido en vista semanal). */}
-                          <p
-                            className={`font-semibold leading-tight truncate ${
-                              isTiny ? 'pr-0' : 'pr-4'
-                            }`}
-                            style={{ fontSize: 'var(--agenda-ev-client-compact)' }}
-                          >
-                            {!isShort && (
-                              <span className="tabular-nums mr-1">{event.time}</span>
-                            )}
-                            {displayName}
-                          </p>
-                          {showService && (
-                            <p
-                              className="opacity-80 leading-tight truncate"
-                              style={{ fontSize: 'var(--agenda-ev-service-compact)' }}
-                            >
-                              {event.service}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Filas: una por barbero. Cada fila = celda sticky-left (avatar+
+            nombre) + 7 celdas de día. */}
+        {barbers.map((barber) => (
+          <BarberRow
+            key={barber.id}
+            barber={barber}
+            days={days}
+            today={today}
+            blockedDates={blockedDates}
+            eventsByCell={eventsByCell}
+            services={services}
+            onEventClick={onEventClick}
+            onShowAllDay={onShowAllDay}
+            onCellClick={onCellClick}
+          />
+        ))}
       </div>
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// BarberRow — una fila de la matriz: header sticky-left + 7 celdas día.
+// Se aísla en su propio componente para que el `key={barber.id}` sea estable
+// y React no remueva nodos al reordenar el equipo.
+// -----------------------------------------------------------------------------
+function BarberRow({
+  barber,
+  days,
+  today,
+  blockedDates,
+  eventsByCell,
+  services,
+  onEventClick,
+  onShowAllDay,
+  onCellClick,
+}: {
+  barber: Barber;
+  days: Date[];
+  today: Date;
+  blockedDates: string[];
+  eventsByCell: Map<string, CalendarEvent[]>;
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
+  onEventClick: (event: CalendarEvent) => void;
+  onShowAllDay: (date: Date, barber: Barber) => void;
+  onCellClick: (date: string, barberId: string) => void;
+}) {
+  return (
+    <>
+      {/* Header de fila (barbero) — sticky left. Borde derecho fuerte para
+          separar visualmente la columna fija del cuerpo de la matriz. */}
+      <div
+        role="rowheader"
+        className="sticky left-0 z-10 bg-surface border-b border-r border-line flex items-center gap-2 px-2 py-2 min-h-[88px]"
+      >
+        {barber.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={barberPhotoUrl(barber.id) ?? ''}
+            alt=""
+            className="h-9 w-9 rounded-full object-cover border border-line shrink-0"
+          />
+        ) : (
+          <span
+            className="h-9 w-9 rounded-full flex items-center justify-center text-[11px] font-bold text-brand-ink shrink-0 bg-brand"
+            aria-hidden="true"
+          >
+            {initials(barber.name)}
+          </span>
+        )}
+        <span className="text-[13px] font-semibold text-ink truncate leading-tight">
+          {barber.name}
+        </span>
+      </div>
+
+      {/* 7 celdas día. */}
+      {days.map((day) => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const isToday = isSameDay(day, today);
+        const isBlocked = blockedDates.includes(dateStr);
+        const cellKey = `${barber.id}|${dateStr}`;
+        const cellEvents = eventsByCell.get(cellKey) ?? [];
+        const { visible, overflowCount } = buildWeekCell(
+          cellEvents,
+          MAX_VISIBLE_PER_CELL,
+        );
+
+        return (
+          <WeekCell
+            key={cellKey}
+            dateStr={dateStr}
+            day={day}
+            barber={barber}
+            isToday={isToday}
+            isBlocked={isBlocked}
+            visible={visible}
+            overflowCount={overflowCount}
+            services={services}
+            onEventClick={onEventClick}
+            onShowAllDay={onShowAllDay}
+            onCellClick={onCellClick}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// WeekCell — celda barbero×día. Lista bloques + link "Mostrar todo".
+// -----------------------------------------------------------------------------
+function WeekCell({
+  dateStr,
+  day,
+  barber,
+  isToday,
+  isBlocked,
+  visible,
+  overflowCount,
+  services,
+  onEventClick,
+  onShowAllDay,
+  onCellClick,
+}: {
+  dateStr: string;
+  day: Date;
+  barber: Barber;
+  isToday: boolean;
+  isBlocked: boolean;
+  visible: CalendarEvent[];
+  overflowCount: number;
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
+  onEventClick: (event: CalendarEvent) => void;
+  onShowAllDay: (date: Date, barber: Barber) => void;
+  onCellClick: (date: string, barberId: string) => void;
+}) {
+  const isEmpty = visible.length === 0 && overflowCount === 0;
+
+  return (
+    <div
+      role="gridcell"
+      className={`relative border-b border-r border-line last:border-r-0 p-1.5 min-h-[88px] flex flex-col gap-1 ${
+        isToday ? 'bg-today-tint' : 'bg-surface'
+      } ${isBlocked ? 'blocked-overlay' : ''}`}
+      onClick={(e) => {
+        // Click sobre la celda VACÍA → crea cita rápida. Si el click cayó
+        // sobre un bloque o el link "Mostrar todo", esos handlers ya
+        // hicieron stopPropagation. Defensa adicional: si el target es
+        // un elemento interactivo, ignoramos.
+        if ((e.target as HTMLElement).closest('[data-event]')) return;
+        if ((e.target as HTMLElement).closest('[data-overflow-link]')) return;
+        onCellClick(dateStr, barber.id);
+      }}
+      style={{ cursor: isEmpty ? 'pointer' : 'default' }}
+    >
+      {visible.map((event) => (
+        <WeekBlock
+          key={event.id}
+          event={event}
+          services={services}
+          onEventClick={onEventClick}
+        />
+      ))}
+
+      {overflowCount > 0 && (
+        <button
+          type="button"
+          data-overflow-link="true"
+          onClick={(e) => {
+            e.stopPropagation();
+            onShowAllDay(day, barber);
+          }}
+          className="text-[11px] font-semibold text-brand-strong hover:text-brand transition-colors text-left mt-auto cursor-pointer focus:outline-none focus-visible:underline"
+        >
+          Mostrar todo ({overflowCount + visible.length}) ›
+        </button>
+      )}
+
+      {/* Empty state minimalista: una línea apenas visible para que la
+          celda no parezca rota. Hover pasa el cursor a pointer (creación
+          rápida). Booksy hace lo mismo — celdas vacías son clickables. */}
+      {isEmpty && (
+        <span className="text-[11px] text-ink-3/60 select-none">—</span>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// WeekBlock — un bloque de cita en la celda. Altura FIJA (no proporcional al
+// tiempo). Dos líneas: rango horario + servicio. Color por servicio,
+// badge de estado en esquina sup-der.
+// -----------------------------------------------------------------------------
+function WeekBlock({
+  event,
+  services,
+  onEventClick,
+}: {
+  event: CalendarEvent;
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
+  onEventClick: (event: CalendarEvent) => void;
+}) {
+  const colorToken = resolveBookingColorToken(event, services);
+  const { className: blockClass, style: blockColorStyle, treatment } =
+    appointmentBlockClasses(colorToken, event.status);
+  const badge = statusCornerBadge(event.status);
+  const isBooksy = event.source === 'booksy';
+  const isCancelled = event.status === 'cancelled';
+  const endTime = addMinutesToHHMM(event.time, event.duration);
+  const rangeLabel = `${event.time} - ${endTime}`;
+
+  return (
+    <button
+      type="button"
+      data-event="true"
+      onClick={(e) => {
+        e.stopPropagation();
+        onEventClick(event);
+      }}
+      title={`${rangeLabel}${event.service ? ` · ${event.service}` : ''}${
+        event.customerName ? ` · ${event.customerName}` : ''
+      }`}
+      // Altura fija ~38px (dos líneas compactas) — no proporcional al
+      // tiempo. Padding mínimo. radius pequeño. Hover atenúa.
+      className={`relative flex flex-col rounded-[4px] px-1.5 py-1 text-left overflow-hidden transition-opacity hover:opacity-85 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ink ${blockClass} ${treatment}`}
+      style={blockColorStyle}
+    >
+      {/* Badge estado (esq sup-der). Booksy → candado; resto → ícono según
+          status. El color del fill ya comunica el SERVICIO (paleta saturada),
+          el badge da el ESTADO sin pisar el texto. */}
+      <span
+        className="absolute top-0.5 right-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full bg-surface/90 backdrop-blur-sm shadow-sm"
+        aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+        title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+      >
+        {isBooksy && !isCancelled ? (
+          <Lock className="h-2 w-2 text-ink-2" aria-hidden="true" />
+        ) : (
+          <badge.icon className={`h-2 w-2 ${badge.tone}`} aria-hidden="true" />
+        )}
+      </span>
+      {/* Línea 1: rango horario completo. tabular-nums para que las cifras
+          alineen en columna vertical (mejor escaneo del barbero). pr-4 deja
+          espacio para el badge sin pisarse. */}
+      <span className="text-[10.5px] font-bold leading-tight tabular-nums pr-4">
+        {rangeLabel}
+      </span>
+      {/* Línea 2: nombre del servicio. NO el cliente — privacidad + densidad
+          (Booksy hace lo mismo). Truncado con ellipsis si pasa el ancho. */}
+      {event.service && (
+        <span className="text-[10.5px] leading-tight truncate opacity-90">
+          {event.service}
+        </span>
+      )}
+    </button>
   );
 }

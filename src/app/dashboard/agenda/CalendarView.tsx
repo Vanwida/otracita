@@ -892,18 +892,43 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             <WeekGrid
               weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
               events={events}
+              barbers={
+                // En `mobileMode + barberFilterId` la vista Semana muestra
+                // sólo la swimlane del barbero (es la matriz 1×7 que cabe
+                // bien en pantallas estrechas). En admin/desktop pasamos
+                // todo el equipo y la matriz es N×7.
+                mobileMode && barberFilterId
+                  ? barbers.filter((b) => b.id === barberFilterId)
+                  : barbers
+              }
               services={services}
               blockedDates={blockedDates}
-              hours={hours}
               onEventClick={handleEventClick}
-              onSlotClick={handleSlotClick}
               onSelectDay={(d) => {
-                // Click en la cabecera de un día de la vista Semana →
-                // saltamos a vista Día centrada en ese día. Reutiliza los
-                // mismos setters que el toggle Día/Semana/Mes y el botón
-                // "Hoy" (fuente única, DRY).
+                // Click en la cabecera de un día → vista Día centrada.
+                // Reutiliza los mismos setters que el toggle Día/Semana/Mes
+                // y el botón "Hoy" (fuente única, DRY).
                 setCurrentDay(d);
                 setViewMode('day');
+              }}
+              onShowAllDay={(d, barber) => {
+                // Click en "Mostrar todo (X) ›" en una celda → vista Día
+                // centrada en ese día Y filtrada por ese barbero. Reusa el
+                // estado `selectedBarber` (filtro por NOMBRE que ya consume
+                // /api/dashboard/calendar) en vez de añadir un segundo eje
+                // de estado — DRY con el filtro del rail lateral.
+                setCurrentDay(d);
+                setSelectedBarber(barber.name);
+                setViewMode('day');
+              }}
+              onCellClick={(date, barberId) => {
+                // Click en celda vacía → "Nueva cita" prefijada al
+                // barbero+día de la celda. Misma rampa que `handleSlotAction`
+                // sin pasar por el menú contextual (las celdas de Semana ya
+                // son específicas — no hay duda de qué barbero).
+                setNewBookingSlot({ date, time: '10:00', barberId });
+                setSelectedBookingId(null);
+                setIsNewBookingOpen(true);
               }}
             />
           ) : (
