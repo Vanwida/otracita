@@ -11,6 +11,7 @@ import { UndoToastHost } from "./_components/UndoToast"
 import AppRail from "@/app/dashboard/_components/AppRail"
 import MobileSidebar from "@/app/dashboard/_components/MobileSidebar"
 import DashboardPwaBootstrap from "@/app/dashboard/_components/DashboardPwaBootstrap"
+import AdminLockHeartbeat from "@/app/dashboard/_components/AdminLockHeartbeat"
 import { Wordmark } from "@/components/brand"
 import { db } from "@/db"
 import { clients } from "@/db/schema"
@@ -115,6 +116,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <ConfirmDialogHost />
       <UndoToastHost />
       <DashboardPwaBootstrap />
+      <AdminLockHeartbeat />
 
     </div>
   )
