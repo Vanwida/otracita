@@ -14,6 +14,7 @@ import ReportLayout from '../_components/ReportLayout'
 import { CITAS_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/citas — pestaña CITAS del área Informes.
@@ -58,6 +59,9 @@ const STATUS_META: Record<
 const STATUS_ORDER = ['completed', 'confirmed', 'no_show', 'cancelled'] as const
 
 export default async function InformesCitasPage({ searchParams }: PageProps) {
+  const lockOverlay = await renderAdminLockGuard('informes')
+  if (lockOverlay) return lockOverlay
+
   const params = await searchParams
   const { client, periodLabel, periodStartIso, periodEndIso } =
     await loadReportContext(params)

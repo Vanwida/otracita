@@ -5,6 +5,7 @@ import { ChevronRight, Settings } from 'lucide-react'
 import AreaContent from '../../_components/AreaContent'
 import OnlinePaymentsSummary from '../../_components/OnlinePaymentsSummary'
 import { loadVentasData } from '../_data'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ventas/cobros — pestaña COBROS del área Ventas (OPERATIVA).
@@ -24,6 +25,9 @@ interface PageProps {
 }
 
 export default async function VentasCobrosPage({ searchParams }: PageProps) {
+  const lockOverlay = await renderAdminLockGuard('ventas-cobros')
+  if (lockOverlay) return lockOverlay
+
   const params = await searchParams
   const { client } = await loadVentasData(params)
 

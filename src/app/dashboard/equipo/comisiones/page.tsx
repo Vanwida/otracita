@@ -9,6 +9,7 @@ import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import AreaContent from '../../_components/AreaContent'
 import ComisionesClient from './ComisionesClient'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/equipo/comisiones — pestaña "Comisiones" (R8 + R9).
@@ -28,6 +29,9 @@ interface ServiceRow {
 }
 
 export default async function EquipoComisionesPage() {
+  const lockOverlay = await renderAdminLockGuard('equipo-comisiones')
+  if (lockOverlay) return lockOverlay
+
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 

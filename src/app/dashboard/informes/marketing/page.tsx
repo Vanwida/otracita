@@ -14,6 +14,7 @@ import ReportLayout from '../_components/ReportLayout'
 import { MARKETING_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 import { getSourceMeta } from '@/lib/sources'
 import {
   getClientSourceBreakdown,
@@ -79,6 +80,9 @@ function formatDateTime(iso: string): string {
 }
 
 export default async function InformesMarketingPage({ searchParams }: PageProps) {
+  const lockOverlay = await renderAdminLockGuard('informes')
+  if (lockOverlay) return lockOverlay
+
   const params = await searchParams
   const { client, periodLabel, periodStartIso, periodEndIso } =
     await loadReportContext(params)

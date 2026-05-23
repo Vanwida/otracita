@@ -26,6 +26,7 @@ import VerifactuBadge, {
   type VerifactuStatus,
 } from '../../facturas/_components/VerifactuBadge'
 import VerifactuHelpPanel from '../../facturas/_components/VerifactuHelpPanel'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ventas/facturas — pestaña FACTURAS del área Ventas.
@@ -79,6 +80,9 @@ export default async function VentasFacturasPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
+  const lockOverlay = await renderAdminLockGuard('ventas-facturas')
+  if (lockOverlay) return lockOverlay
+
   const params = await searchParams
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')

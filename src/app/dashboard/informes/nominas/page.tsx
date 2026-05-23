@@ -13,6 +13,7 @@ import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
 import EmptyState from '../../_components/EmptyState'
 import PayrollMonthView from './PayrollMonthView'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/nominas — pestaña NÓMINAS del área Informes.
@@ -32,6 +33,9 @@ interface PageProps {
 }
 
 export default async function InformesNominasPage({ searchParams }: PageProps) {
+  const lockOverlay = await renderAdminLockGuard('informes')
+  if (lockOverlay) return lockOverlay
+
   const { month: rawMonth } = await searchParams
 
   const session = await auth.api.getSession({ headers: await headers() })

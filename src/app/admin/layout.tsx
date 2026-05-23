@@ -9,6 +9,7 @@ import { Monogram } from '@/components/brand';
 import { isAdminUser } from '@/lib/auth/admin';
 import { AdminSidebarNav } from './_components/AdminSidebarNav';
 import { getAdminNavBadges } from '@/lib/admin/nav-badges';
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -23,6 +24,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!isAdminUser(session)) {
     redirect('/dashboard');
   }
+
+  // Admin-lock — el iPad puede estar logueado como el jefe (que ADEMÁS es
+  // admin de la plataforma). Si el jefe ha marcado el área "admin" como
+  // sensible, el panel admin pide el PIN. Acabar aquí antes de cargar las
+  // badges evita queries innecesarias.
+  const lockOverlay = await renderAdminLockGuard('admin');
+  if (lockOverlay) return lockOverlay;
 
   // Counts that drive the red badges in the sidebar. Single query batch so
   // the layout cost is bounded as we add more badge sources.

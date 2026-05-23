@@ -15,6 +15,7 @@ import PanelSwitch from './PanelSwitch'
 import OperatorPanel from './OperatorPanel'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes — área Informes (nomenclatura estándar; ex-Finanzas).
@@ -64,6 +65,11 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
 
   const [client] = await db.select().from(clients).where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
+
+  // Admin-lock — early bail-out: si el área está bloqueada, NO corremos las
+  // queries costosas del P&L. El overlay PIN ocupa el slot.
+  const lockOverlay = await renderAdminLockGuard('informes')
+  if (lockOverlay) return lockOverlay
 
   if (!hasFeature(client, 'controlFinanciero')) {
     return (

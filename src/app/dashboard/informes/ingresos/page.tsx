@@ -14,6 +14,7 @@ import { INGRESOS_RAIL } from '../_components/report-rail-config'
 import BarberBreakdown from '../../caja/BarberBreakdown'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/informes/ingresos — pestaña INGRESOS del área Informes.
@@ -50,6 +51,9 @@ function formatCents(cents: number): string {
 }
 
 export default async function InformesIngresosPage({ searchParams }: PageProps) {
+  const lockOverlay = await renderAdminLockGuard('informes')
+  if (lockOverlay) return lockOverlay
+
   const params = await searchParams
   const { client, periodLabel, periodStartIso, periodEndIso } =
     await loadReportContext(params)

@@ -15,6 +15,7 @@ import ReportLayout from '../_components/ReportLayout'
 import { CLIENTES_RAIL } from '../_components/report-rail-config'
 import EmptyState from '../../_components/EmptyState'
 import { loadReportContext } from '../_report-data'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 import {
   getClientSourceBreakdown,
   sumSourceBreakdown,
@@ -65,6 +66,9 @@ function formatCents(cents: number): string {
 }
 
 export default async function InformesClientesPage({ searchParams }: PageProps) {
+  const lockOverlay = await renderAdminLockGuard('informes')
+  if (lockOverlay) return lockOverlay
+
   const params = await searchParams
   const { client, periodLabel, periodStartIso, periodEndIso } =
     await loadReportContext(params)

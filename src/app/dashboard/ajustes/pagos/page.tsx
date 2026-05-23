@@ -17,6 +17,7 @@ import ConnectSettings from '../../_components/ConnectSettings'
 import AjustesLayout from '../_components/AjustesLayout'
 import InvoicingCard from '../_components/InvoicingCard'
 import { pluralizeEs } from '@/lib/i18n/plural-es'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ajustes/pagos — pestaña PAGOS del área Ajustes.
@@ -33,6 +34,9 @@ import { pluralizeEs } from '@/lib/i18n/plural-es'
 // -----------------------------------------------------------------------------
 
 export default async function AjustesPagosPage() {
+  const lockOverlay = await renderAdminLockGuard('ajustes')
+  if (lockOverlay) return lockOverlay
+
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 

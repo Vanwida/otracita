@@ -12,6 +12,7 @@ import AreaContent from '../../_components/AreaContent'
 import BonusesManager from '../../_components/BonusesManager'
 import BonusTracker from '../../caja/BonusTracker'
 import EmptyState from '../../_components/EmptyState'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 // -----------------------------------------------------------------------------
 // /dashboard/equipo/bonos — pestaña BONOS del área Equipo.
@@ -25,6 +26,9 @@ import EmptyState from '../../_components/EmptyState'
 // -----------------------------------------------------------------------------
 
 export default async function EquipoBonosPage() {
+  const lockOverlay = await renderAdminLockGuard('equipo-bonos')
+  if (lockOverlay) return lockOverlay
+
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 

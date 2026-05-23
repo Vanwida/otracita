@@ -16,6 +16,7 @@ import UpgradeToProButton from './UpgradeToProButton'
 import { stripe } from '@/lib/stripe'
 import { PLANS } from '@/lib/stripe'
 import { getTier, isInTrial, trialDaysLeft, type Tier } from '@/lib/billing/tier'
+import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
 interface InvoiceSummary {
   id: string
@@ -36,6 +37,9 @@ interface InvoiceSummary {
 // users to the new invoicing feature without making them hunt for it.
 // -----------------------------------------------------------------------------
 export default async function MiPlanPage() {
+  const lockOverlay = await renderAdminLockGuard('mi-plan')
+  if (lockOverlay) return lockOverlay
+
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) redirect('/login')
 
