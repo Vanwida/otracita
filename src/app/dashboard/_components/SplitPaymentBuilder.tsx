@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import NumberInput from './NumberInput'
 import {
   PAYMENT_METHODS,
@@ -116,9 +117,9 @@ export default function SplitPaymentBuilder({
       setSubmitting(false)
     } catch (e) {
       setSubmitting(false)
-      setError(
-        e instanceof Error ? e.message : 'No se pudo cobrar. Inténtalo otra vez.',
-      )
+      const msg = e instanceof Error ? e.message : 'No se pudo cobrar. Inténtalo otra vez.'
+      setError(msg)
+      toast.error(msg)
     }
   }
 

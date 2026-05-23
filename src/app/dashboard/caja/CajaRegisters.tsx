@@ -18,6 +18,7 @@ import {
   Heart,
   Sliders,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import Modal from '../_components/Modal'
@@ -857,9 +858,12 @@ function OpenCashModal({
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.error || 'No se pudo abrir la caja')
+        const msg = body.error || 'No se pudo abrir la caja'
+        setError(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Caja abierta')
       // El backfill (bookings + ventas existentes del día absorbidos al
       // abrir caja) se refleja al barbero vía el revalidate de SWR en
       // `onOpened`. Antes había aquí un `console.info` con el conteo —
@@ -869,7 +873,9 @@ function OpenCashModal({
       onOpened()
       onClose()
     } catch {
-      setError('Error de red')
+      const msg = 'Error de red'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
@@ -987,7 +993,9 @@ function CloseCashModal({
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.error || 'No se pudo cerrar la caja')
+        const msg = body.error || 'No se pudo cerrar la caja'
+        setError(msg)
+        toast.error(msg)
         return
       }
       const data = (await res.json()) as {
@@ -1010,8 +1018,11 @@ function CloseCashModal({
         cardCounted: data.summary.cardCountedCents,
         cardDescuadre: data.summary.cardDescuadreCents,
       })
+      toast.success('Caja cerrada')
     } catch {
-      setError('Error de red')
+      const msg = 'Error de red'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
@@ -1349,13 +1360,18 @@ function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
         })
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
-          setError(body.error || 'No se pudo registrar la propina')
+          const msg = body.error || 'No se pudo registrar la propina'
+          setError(msg)
+          toast.error(msg)
           return
         }
+        toast.success('Propina registrada')
         onCreated()
         onClose()
       } catch {
-        setError('Error de red')
+        const msg = 'Error de red'
+        setError(msg)
+        toast.error(msg)
       } finally {
         setSubmitting(false)
       }
@@ -1376,13 +1392,18 @@ function NewMovementModal({ open, onClose, onCreated }: NewMovementModalProps) {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.error || 'No se pudo registrar el apunte')
+        const msg = body.error || 'No se pudo registrar el apunte'
+        setError(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Apunte registrado')
       onCreated()
       onClose()
     } catch {
-      setError('Error de red')
+      const msg = 'Error de red'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }

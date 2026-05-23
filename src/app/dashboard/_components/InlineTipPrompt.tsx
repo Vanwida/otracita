@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from 'react'
 import { Check, Heart, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import NumberInput from './NumberInput'
 import { formatCents } from '@/lib/format'
 import { dispatchTracking } from '@/lib/tracking/dispatch'
@@ -108,7 +109,9 @@ export default function InlineTipPrompt({
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body?.error || 'No se pudo registrar la propina.')
+        const msg = body?.error || 'No se pudo registrar la propina.'
+        setError(msg)
+        toast.error(msg)
         setSubmitting(false)
         return
       }
@@ -119,9 +122,12 @@ export default function InlineTipPrompt({
         currency: 'EUR',
         transactionId: `tip-${bookingId}`,
       })
+      toast.success('Propina registrada')
       onTipResolved(effectiveTipCents)
     } catch {
-      setError('Sin conexión. La propina no se registró.')
+      const msg = 'Sin conexión. La propina no se registró.'
+      setError(msg)
+      toast.error(msg)
       setSubmitting(false)
     }
   }
