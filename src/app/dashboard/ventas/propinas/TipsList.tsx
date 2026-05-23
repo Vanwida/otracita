@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Undo2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import DataTable, { type Column } from '@/app/dashboard/_components/DataTable'
 import Modal from '@/app/dashboard/_components/Modal'
 import { formatCents } from '@/lib/format'
@@ -106,7 +107,6 @@ export default function TipsList({ tips, barberNames }: Props) {
   const [rows, setRows] = useState<TipRow[]>(tips)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [payout, setPayout] = useState<PayoutModalState | null>(null)
   const [payoutError, setPayoutError] = useState<string | null>(null)
   const [undoingId, setUndoingId] = useState<string | null>(null)
@@ -120,7 +120,6 @@ export default function TipsList({ tips, barberNames }: Props) {
     )
     setSavingId(tipId)
     setSavedId(null)
-    setError(null)
     try {
       const res = await fetch(`/api/tips/${tipId}`, {
         method: 'PATCH',
@@ -130,14 +129,15 @@ export default function TipsList({ tips, barberNames }: Props) {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setRows(prev) // rollback
-        setError(data?.error || 'No se pudo asignar la propina.')
+        toast.error(data?.error || 'No se pudo asignar la propina.')
         return
       }
       setSavedId(tipId)
+      toast.success('Propina asignada')
       setTimeout(() => setSavedId((s) => (s === tipId ? null : s)), FEEDBACK_MS.copied)
     } catch {
       setRows(prev)
-      setError('Error de red. La propina no se asignó.')
+      toast.error('Error de red. La propina no se asignó.')
     } finally {
       setSavingId(null)
     }
@@ -175,6 +175,7 @@ export default function TipsList({ tips, barberNames }: Props) {
         ),
       )
       setPayout(null)
+      toast.success('Propina marcada como pagada')
     } catch {
       setPayout({ ...payout, submitting: false })
       setPayoutError('Error de red. Inténtalo de nuevo.')
@@ -184,7 +185,6 @@ export default function TipsList({ tips, barberNames }: Props) {
   async function undoPayout(tipId: string) {
     const prev = rows
     setUndoingId(tipId)
-    setError(null)
     // Optimista.
     setRows((r) =>
       r.map((t) =>
@@ -202,11 +202,13 @@ export default function TipsList({ tips, barberNames }: Props) {
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
         setRows(prev)
-        setError(data.error ?? 'No se pudo deshacer el pago.')
+        toast.error(data.error ?? 'No se pudo deshacer el pago.')
+        return
       }
+      toast.success('Pago deshecho')
     } catch {
       setRows(prev)
-      setError('Error de red. No se pudo deshacer.')
+      toast.error('Error de red. No se pudo deshacer.')
     } finally {
       setUndoingId(null)
     }
@@ -230,15 +232,6 @@ export default function TipsList({ tips, barberNames }: Props) {
             · asígnalas al barbero y márcalas como pagadas cuando se las hayas entregado
           </span>
         </header>
-
-        {error && (
-          <p
-            role="alert"
-            className="px-4 py-2 text-xs text-danger bg-danger/10 border-b border-danger/20"
-          >
-            {error}
-          </p>
-        )}
 
         {/* DataTable consume el chrome canónico (sticky head, zebra/hover por
             tokens). Patrón responsive: columna "Cliente" oculta en <sm

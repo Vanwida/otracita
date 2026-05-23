@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Search, Loader2, Gift, Plus, Minus, Check } from 'lucide-react'
+import { toast } from 'sonner'
 import type { LoyaltyProgress, LoyaltyReward } from '@/lib/loyalty/types'
 import NumberInput from './NumberInput'
 
@@ -99,10 +100,13 @@ export default function LoyaltyCustomerLookup({ enabled }: { enabled: boolean })
       })
       const d = await r.json()
       if (!r.ok) {
-        alert(d?.error || 'No se pudo canjear')
+        toast.error(d?.error || 'No se pudo canjear')
         return
       }
+      toast.success('Canje aplicado')
       await refresh()
+    } catch {
+      toast.error('Error de red al canjear')
     } finally {
       setBusy(null)
     }
@@ -119,10 +123,13 @@ export default function LoyaltyCustomerLookup({ enabled }: { enabled: boolean })
       })
       const d = await r.json()
       if (!r.ok) {
-        alert(d?.error || 'No se pudo ajustar')
+        toast.error(d?.error || 'No se pudo ajustar')
         return
       }
+      toast.success('Ajuste aplicado')
       await refresh()
+    } catch {
+      toast.error('Error de red al ajustar')
     } finally {
       setBusy(null)
     }

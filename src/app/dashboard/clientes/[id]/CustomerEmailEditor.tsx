@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Pencil, Check, Loader2, Mail } from 'lucide-react'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { Pencil, Loader2, Mail } from 'lucide-react'
+import { toast } from 'sonner'
 
 // -----------------------------------------------------------------------------
 // Editor inline del email del cliente. Espejo de CustomerNotesEditor pero
@@ -34,8 +34,6 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
   const [email, setEmail] = useState(initialEmail)
   const [draft, setDraft] = useState(initialEmail)
   const [editing, setEditing] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   const trimmed = draft.trim()
@@ -43,9 +41,8 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
   const localInvalid = trimmed.length > 0 && (trimmed.length > MAX_LENGTH || !EMAIL_RE.test(trimmed))
 
   const onSave = () => {
-    setError(null)
     if (localInvalid) {
-      setError('Email inválido')
+      toast.error('Email inválido')
       return
     }
     startTransition(async () => {
@@ -57,17 +54,16 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
         })
         if (!r.ok) {
           const d = (await r.json().catch(() => ({}))) as { error?: string }
-          setError(d?.error ?? 'No se pudo guardar')
+          toast.error(d?.error ?? 'No se pudo guardar')
           return
         }
         const next = trimmed.toLowerCase()
         setEmail(next)
         setDraft(next)
         setEditing(false)
-        setSaved(true)
-        setTimeout(() => setSaved(false), FEEDBACK_MS.copied)
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -75,7 +71,6 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
   const onCancel = () => {
     setDraft(email)
     setEditing(false)
-    setError(null)
   }
 
   return (
@@ -86,11 +81,6 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
           <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">
             Email
           </h2>
-          {saved && (
-            <span className="inline-flex items-center gap-1 text-xs text-success">
-              <Check className="h-3 w-3" /> Guardado
-            </span>
-          )}
         </div>
         {!editing && (
           <button
@@ -120,7 +110,6 @@ export default function CustomerEmailEditor({ customerId, initialEmail }: Props)
               Déjalo vacío para quitarlo.
             </p>
             <div className="flex items-center gap-2">
-              {error && <span className="text-xs text-danger">{error}</span>}
               <button
                 type="button"
                 onClick={onCancel}

@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Pencil, Check, Loader2, StickyNote } from 'lucide-react'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { Pencil, Loader2, StickyNote } from 'lucide-react'
+import { toast } from 'sonner'
 
 // -----------------------------------------------------------------------------
 // Editor inline para notas privadas del barbero sobre un cliente.
@@ -30,12 +30,9 @@ export default function CustomerNotesEditor({ customerId, initialNotes }: Props)
   const [notes, setNotes] = useState(initialNotes)
   const [draft, setDraft] = useState(initialNotes)
   const [editing, setEditing] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   const onSave = () => {
-    setError(null)
     startTransition(async () => {
       try {
         const r = await fetch(`/api/customers/${customerId}/notes`, {
@@ -45,15 +42,14 @@ export default function CustomerNotesEditor({ customerId, initialNotes }: Props)
         })
         if (!r.ok) {
           const d = (await r.json().catch(() => ({}))) as { error?: string }
-          setError(d?.error ?? 'No se pudo guardar')
+          toast.error(d?.error ?? 'No se pudo guardar')
           return
         }
         setNotes(draft)
         setEditing(false)
-        setSaved(true)
-        setTimeout(() => setSaved(false), FEEDBACK_MS.copied)
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -61,7 +57,6 @@ export default function CustomerNotesEditor({ customerId, initialNotes }: Props)
   const onCancel = () => {
     setDraft(notes)
     setEditing(false)
-    setError(null)
   }
 
   return (
@@ -72,11 +67,6 @@ export default function CustomerNotesEditor({ customerId, initialNotes }: Props)
           <h2 className="text-sm font-semibold text-ink uppercase tracking-widest">
             Notas privadas
           </h2>
-          {saved && (
-            <span className="inline-flex items-center gap-1 text-xs text-success">
-              <Check className="h-3 w-3" /> Guardado
-            </span>
-          )}
         </div>
         {!editing && (
           <button
@@ -103,7 +93,6 @@ export default function CustomerNotesEditor({ customerId, initialNotes }: Props)
           <div className="flex items-center justify-between gap-3 mt-2">
             <p className="text-[11px] text-ink-3">{draft.length}/{MAX_LENGTH}</p>
             <div className="flex items-center gap-2">
-              {error && <span className="text-xs text-danger">{error}</span>}
               <button
                 type="button"
                 onClick={onCancel}

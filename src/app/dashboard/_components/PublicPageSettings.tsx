@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { upload } from '@vercel/blob/client'
 import { Check, Copy, ExternalLink, Loader2, Globe, Upload, Trash2, Sun, Moon } from 'lucide-react'
+import { toast } from 'sonner'
 import { BRAND_TERRACOTA_HEX, PUBLIC_PWA_THEME } from '@/lib/brand-hex'
 import FormGrid from './FormGrid'
 import { FEEDBACK_MS } from '@/lib/ui-timings'
@@ -53,8 +54,6 @@ export default function PublicPageSettings({ initial }: Props) {
   const [facebookUrl, setFacebookUrl] = useState(initial.facebookUrl || '')
   const [websiteUrl, setWebsiteUrl] = useState(initial.websiteUrl || '')
   const [saving, startTransition] = useTransition()
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   const publicUrl = slug ? `${SITE_ORIGIN}/${slug}` : ''
@@ -71,8 +70,6 @@ export default function PublicPageSettings({ initial }: Props) {
   }
 
   const onSave = () => {
-    setError(null)
-    setSaved(false)
     startTransition(async () => {
       try {
         const res = await fetch('/api/public-page/config', {
@@ -95,22 +92,19 @@ export default function PublicPageSettings({ initial }: Props) {
         })
         const data = await res.json()
         if (!res.ok) {
-          setError(data.error || 'No se pudo guardar.')
+          toast.error(data.error || 'No se pudo guardar.')
           return
         }
         // Server may have tweaked the slug to avoid collisions — adopt.
         if (data.slug) setSlug(data.slug)
-        setSaved(true)
+        toast.success('Guardado')
         // Re-fetch del Server Component padre (dashboard/app, dashboard/ajustes/...)
         // para que la URL pública, QR, color y resto de campos derivados del
         // `client` server-rendered reflejen los cambios sin recargar la
-        // página. Sin esto el usuario veía valores nuevos en el form pero la
-        // hero card / preview seguía con los viejos → impresión de "no se
-        // guardó".
+        // página.
         router.refresh()
-        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -334,13 +328,6 @@ export default function PublicPageSettings({ initial }: Props) {
           y el usuario no podía guardar en pantallas pequeñas / formularios
           completos. Mismo patrón que ServicesManager / HoursSlideOver. */}
       <div className="shrink-0 border-t border-line bg-surface px-5 py-3 flex items-center justify-end gap-3">
-        {saved && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-success">
-            <Check className="h-4 w-4" />
-            Guardado
-          </span>
-        )}
-        {error && <span className="text-sm text-danger">{error}</span>}
         <button
           type="button"
           onClick={onSave}

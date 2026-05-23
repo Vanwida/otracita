@@ -12,6 +12,7 @@ import {
   Plus,
   ChevronDown,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import BonusesManager from '../../_components/BonusesManager'
 
 // -----------------------------------------------------------------------------
@@ -234,8 +235,6 @@ function BarberOverrides({
   // Mapa serviceName → pct (string para permitir input vacío = "usa global").
   const [draft, setDraft] = useState<Record<string, string> | null>(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
 
   const initial: Record<string, string> = {}
   for (const o of data?.overrides ?? []) initial[o.serviceName] = String(o.pct)
@@ -250,7 +249,6 @@ function BarberOverrides({
 
   async function save() {
     setSaving(true)
-    setError(null)
     const overrides = Object.entries(values)
       .map(([serviceName, pctRaw]) => ({ serviceName, pct: Number(pctRaw) }))
       .filter((o) => Number.isFinite(o.pct))
@@ -262,11 +260,11 @@ function BarberOverrides({
     setSaving(false)
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
-      setError(j.error ?? 'No se pudo guardar')
+      toast.error(j.error ?? 'No se pudo guardar')
       return
     }
     setDraft(null)
-    setSavedAt(Date.now())
+    toast.success('Guardado')
     mutate()
   }
 
@@ -309,12 +307,6 @@ function BarberOverrides({
         Vacío = usa el {globalPct}% global del barbero en ese servicio.
       </p>
 
-      {error && (
-        <div className="bg-danger/10 border border-danger/20 text-danger text-xs rounded-lg px-3 py-2 mt-3">
-          {error}
-        </div>
-      )}
-
       <div className="flex items-center gap-3 mt-3">
         <button
           type="button"
@@ -324,9 +316,6 @@ function BarberOverrides({
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar comisiones'}
         </button>
-        {savedAt && draft === null && (
-          <span className="text-xs text-success">Guardado</span>
-        )}
       </div>
     </div>
   )
@@ -364,7 +353,13 @@ function Competitions() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, active }),
     })
-    if (res.ok) mutate()
+    if (res.ok) {
+      toast.success(active ? 'Competición reactivada' : 'Competición archivada')
+      mutate()
+    } else {
+      const j = await res.json().catch(() => ({}))
+      toast.error(j.error ?? 'No se pudo actualizar')
+    }
   }
 
   if (isLoading) {
@@ -401,6 +396,7 @@ function Competitions() {
           onCancel={() => setAdding(false)}
           onCreated={() => {
             setAdding(false)
+            toast.success('Competición creada')
             mutate()
           }}
           onError={setError}

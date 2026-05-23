@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
-import { Award, Check, Loader2, CheckCircle2, Info } from 'lucide-react'
+import { Award, Loader2, CheckCircle2, Info } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import { computeBonusProgress, formatBonusValue, type BonusUnit, type BonusKind } from '@/lib/bonuses/progress'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
@@ -84,8 +84,6 @@ export default function BonusTracker() {
   // Inputs del día: `${bonusId}|${barberId}` → string
   const [values, setValues] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [savedAt, setSavedAt] = useState<Date | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   if (lb || lbb || le) return null
 
@@ -141,7 +139,6 @@ export default function BonusTracker() {
   }
 
   async function submit() {
-    setError(null)
     const toSend: Array<{ bonusId: string; barberId: string; value: number }> = []
     for (const [key, raw] of Object.entries(values)) {
       const parsed = parseFloat(raw.replace(',', '.'))
@@ -153,7 +150,7 @@ export default function BonusTracker() {
       toSend.push({ bonusId, barberId, value })
     }
     if (toSend.length === 0) {
-      setError('Pon algún valor antes de guardar.')
+      toast.error('Pon algún valor antes de guardar.')
       return
     }
     setSubmitting(true)
@@ -165,7 +162,7 @@ export default function BonusTracker() {
       })
       const json = await res.json()
       if (!res.ok) {
-        setError(json.error ?? 'No se pudo guardar')
+        toast.error(json.error ?? 'No se pudo guardar')
         setSubmitting(false)
         return
       }
@@ -173,13 +170,10 @@ export default function BonusTracker() {
       await mutateEntries()
       // Si el mes consultado por algún otro componente es el mismo, también.
       globalMutate(entriesUrl)
-      setSavedAt(new Date())
       setValues({})
-      // Antes 3000ms (outlier sin justificar). Bajado a FEEDBACK_MS.saved
-      // (2500) — consistencia con el resto del dashboard.
-      setTimeout(() => setSavedAt(null), FEEDBACK_MS.saved)
+      toast.success('Progreso guardado')
     } catch {
-      setError('Error de red')
+      toast.error('Error de red')
     } finally {
       setSubmitting(false)
     }
@@ -326,18 +320,9 @@ export default function BonusTracker() {
         ))}
       </div>
 
-      {/* Footer — error + status + submit */}
+      {/* Footer — hint + submit. Feedback de save (success/error) va al toast. */}
       <div className="px-5 py-4 border-t border-line flex items-center justify-between gap-3 flex-wrap">
-        {error ? (
-          <p className="text-xs text-danger flex-1">{error}</p>
-        ) : savedAt ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-success">
-            <Check className="h-3.5 w-3.5" />
-            Guardado · progreso actualizado
-          </span>
-        ) : (
-          <span className="text-xs text-ink-3">Añade unidades en cada barbero y guarda.</span>
-        )}
+        <span className="text-xs text-ink-3">Añade unidades en cada barbero y guarda.</span>
         <button
           type="button"
           onClick={submit}

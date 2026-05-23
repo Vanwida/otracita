@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Gift, Check, Loader2, Plus, X, Info } from 'lucide-react'
+import { Gift, Loader2, Plus, X, Info } from 'lucide-react'
+import { toast } from 'sonner'
 import DropdownMenu from '@/components/DropdownMenu'
 import FormGrid from './FormGrid'
 import NumberInput from './NumberInput'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 import type {
   LoyaltyConfig,
   LoyaltyPointsConfig,
@@ -63,12 +63,8 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
   )
 
   const [saving, startTransition] = useTransition()
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const onSave = () => {
-    setError(null)
-    setSaved(false)
     const config = mode === 'stamps' ? stamps : points
     startTransition(async () => {
       try {
@@ -79,13 +75,12 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
         })
         const data = await res.json()
         if (!res.ok) {
-          setError(data?.error || 'No se pudo guardar')
+          toast.error(data?.error || 'No se pudo guardar')
           return
         }
-        setSaved(true)
-        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -157,13 +152,6 @@ export default function LoyaltySettings({ initial, availableServices }: Props) {
 
       {/* Save bar */}
       <div className="flex items-center justify-end gap-3 pt-5 mt-5 border-t border-line">
-        {saved && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-success">
-            <Check className="h-4 w-4" />
-            Guardado
-          </span>
-        )}
-        {error && <span className="text-sm text-danger">{error}</span>}
         <button
           type="button"
           onClick={onSave}

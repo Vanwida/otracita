@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Info, Check, Loader2 } from 'lucide-react'
+import { AlertTriangle, Info, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import NumberInput from './NumberInput'
 import FormGrid from './FormGrid'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // InvoicingSettings — panel de datos fiscales + numeración + toggle de
@@ -69,7 +69,8 @@ export default function InvoicingSettings({ initial }: Props) {
   )
 
   const [saving, startTransition] = useTransition()
-  const [saved, setSaved] = useState(false)
+  // Errores inline solo para validación específica de campo (NIF, prefix). El
+  // feedback post-save (success/error) va al toast canónico (sonner).
   const [error, setError] = useState<string | null>(null)
 
   // RD 1619/2012 art. 6 — emisor block requires los 5 campos fiscales.
@@ -91,7 +92,6 @@ export default function InvoicingSettings({ initial }: Props) {
 
   const onSave = () => {
     setError(null)
-    setSaved(false)
 
     const parsedNext = nextNumber
     if (parsedNext === null || !Number.isFinite(parsedNext) || parsedNext < 1) {
@@ -118,20 +118,19 @@ export default function InvoicingSettings({ initial }: Props) {
         })
         const d = (await r.json().catch(() => ({}))) as { error?: string; invoicingEnabled?: boolean }
         if (!r.ok) {
-          setError(d?.error ?? 'No se pudo guardar')
+          toast.error(d?.error ?? 'No se pudo guardar')
           return
         }
         // Sync local toggle con lo que el backend persistió (por si lo
         // bajó a false porque faltaban campos).
         if (typeof d.invoicingEnabled === 'boolean') setEnabled(d.invoicingEnabled)
-        setSaved(true)
+        toast.success('Guardado')
         // Re-fetch del Server Component padre (InvoicingCard summary) para
         // que el resumen externo (estado activa/inactiva, próximo número)
         // refleje los cambios sin recargar la página.
         router.refresh()
-        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -307,12 +306,6 @@ export default function InvoicingSettings({ initial }: Props) {
           sea más largo que el viewport. Mismo patrón canónico que
           ServicesManager / HoursSlideOver / PublicPageSettings. */}
       <div className="shrink-0 border-t border-line bg-surface px-5 py-3 flex items-center justify-end gap-3">
-        {saved && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-success">
-            <Check className="h-4 w-4" />
-            Guardado
-          </span>
-        )}
         {error && <span className="text-sm text-danger">{error}</span>}
         <button
           type="button"

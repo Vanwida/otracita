@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Banknote, Loader2, Check } from 'lucide-react'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { Banknote, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // -----------------------------------------------------------------------------
 // CashRegisterToggle — switch opt-in del control de caja efectivo.
@@ -27,11 +27,8 @@ export default function CashRegisterToggle({ initialEnabled }: Props) {
   const [, startTransition] = useTransition()
   const [enabled, setEnabled] = useState(initialEnabled)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [savedFlash, setSavedFlash] = useState(false)
 
   async function toggle(next: boolean) {
-    setError(null)
     setSaving(true)
     try {
       const res = await fetch('/api/cash/config', {
@@ -41,15 +38,14 @@ export default function CashRegisterToggle({ initialEnabled }: Props) {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.error || 'No se pudo actualizar')
+        toast.error(body.error || 'No se pudo actualizar')
         return
       }
       setEnabled(next)
-      setSavedFlash(true)
-      setTimeout(() => setSavedFlash(false), FEEDBACK_MS.copied)
+      toast.success('Guardado')
       startTransition(() => router.refresh())
     } catch {
-      setError('Error de red')
+      toast.error('Error de red')
     } finally {
       setSaving(false)
     }
@@ -90,14 +86,6 @@ export default function CashRegisterToggle({ initialEnabled }: Props) {
               Para verla, sube al inicio de esta página. Para desactivarla, cierra primero la caja del día si está abierta.
             </p>
           )}
-
-          {savedFlash && (
-            <p className="mt-2 text-xs text-success inline-flex items-center gap-1">
-              <Check className="h-3 w-3" />
-              Guardado
-            </p>
-          )}
-          {error && <p className="mt-2 text-xs text-danger">{error}</p>}
         </div>
       </div>
     </section>

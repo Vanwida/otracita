@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Loader2, Coins, Plus, X } from 'lucide-react'
+import { Loader2, Coins, Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { SALARY_PRESETS } from '@/lib/payroll/presets'
 import type { SalaryType, BarberSalaryProfile, TierBonus } from '@/lib/payroll/types'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // BarberSalaryEditor — panel inline en BarbersManager para configurar el
@@ -48,8 +48,6 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
     })),
   )
   const [saving, setSaving] = useState(false)
-  const [savedAt, setSavedAt] = useState<Date | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   const showTiers = salaryType === 'salaried_with_tier_bonus'
 
@@ -97,7 +95,6 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
 
   async function save() {
     setSaving(true)
-    setError(null)
     try {
       // F1 — Construimos el payload de tramos. Si el barbero NO usa el preset
       // F1, mandamos null para que el storage refleje "sin tramos" (evita
@@ -122,15 +119,14 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
       })
       const json = await res.json()
       if (!res.ok) {
-        setError(json.error ?? 'No se pudo guardar')
+        toast.error(json.error ?? 'No se pudo guardar')
         setSaving(false)
         return
       }
-      setSavedAt(new Date())
-      setTimeout(() => setSavedAt(null), FEEDBACK_MS.saved)
+      toast.success('Guardado')
       onSaved?.()
     } catch {
-      setError('Error de red')
+      toast.error('Error de red')
     } finally {
       setSaving(false)
     }
@@ -286,19 +282,7 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
         </div>
       )}
 
-      {error && (
-        <p className="text-xs text-danger bg-danger/10 border border-danger/20 rounded px-3 py-2">
-          {error}
-        </p>
-      )}
-
       <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
-        {savedAt && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-success">
-            <Check className="h-3.5 w-3.5" />
-            Guardado
-          </span>
-        )}
         <button
           type="button"
           onClick={save}

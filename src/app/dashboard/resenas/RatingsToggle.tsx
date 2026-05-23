@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Star, Check, Loader2 } from 'lucide-react'
+import { Star, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import NumberInput from '../_components/NumberInput'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // Card de configuración del flow post-servicio:
@@ -28,15 +28,9 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
   const [enabled, setEnabled] = useState(initialEnabled)
   const [delay, setDelay] = useState(String(initialDelayMinutes))
   const [savedDelay, setSavedDelay] = useState(initialDelayMinutes)
-  const [savedTag, setSavedTag] = useState<'toggle' | 'delay' | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
-  const persist = (
-    payload: { ratingsEnabled: boolean; followupMinutesAfter?: number },
-    tag: 'toggle' | 'delay',
-  ) => {
-    setError(null)
+  const persist = (payload: { ratingsEnabled: boolean; followupMinutesAfter?: number }) => {
     startTransition(async () => {
       try {
         const r = await fetch('/api/ratings/config', {
@@ -46,16 +40,15 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
         })
         if (!r.ok) {
           const d = (await r.json().catch(() => ({}))) as { error?: string }
-          setError(d?.error ?? 'No se pudo guardar')
+          toast.error(d?.error ?? 'No se pudo guardar')
           return
         }
         if (typeof payload.followupMinutesAfter === 'number') {
           setSavedDelay(payload.followupMinutesAfter)
         }
-        setSavedTag(tag)
-        setTimeout(() => setSavedTag(null), FEEDBACK_MS.copied)
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -63,16 +56,16 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
   const onToggle = () => {
     const next = !enabled
     setEnabled(next)
-    persist({ ratingsEnabled: next }, 'toggle')
+    persist({ ratingsEnabled: next })
   }
 
   const onSaveDelay = () => {
     const minutes = Number.parseInt(delay, 10)
     if (!Number.isFinite(minutes) || minutes < 15 || minutes > 240) {
-      setError('Usa un valor entre 15 y 240 minutos.')
+      toast.error('Usa un valor entre 15 y 240 minutos.')
       return
     }
-    persist({ ratingsEnabled: enabled, followupMinutesAfter: minutes }, 'delay')
+    persist({ ratingsEnabled: enabled, followupMinutesAfter: minutes })
   }
 
   const delayChanged = delay.trim() !== String(savedDelay)
@@ -162,14 +155,6 @@ export default function RatingsToggle({ initialEnabled, initialDelayMinutes }: P
               Activa para empezar a recopilar opiniones de tus clientes.
             </p>
           )}
-
-          {savedTag && (
-            <span className="mt-3 inline-flex items-center gap-1 text-xs text-success">
-              <Check className="h-3 w-3" />
-              {savedTag === 'toggle' ? 'Estado guardado' : 'Tiempo guardado'}
-            </span>
-          )}
-          {error && <p className="mt-3 text-xs text-danger">{error}</p>}
         </div>
       </div>
     </section>

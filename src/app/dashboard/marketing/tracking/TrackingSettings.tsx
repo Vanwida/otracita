@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Eye,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { FEEDBACK_MS } from '@/lib/ui-timings'
 import {
   TRACKING_FIELDS,
@@ -174,12 +175,15 @@ export default function TrackingSettings({ initial, publicSlug }: Props) {
       }
       if (!res.ok) {
         if (data.conflict) {
-          setGlobalError(data.error ?? 'Conflicto de IDs duplicados.')
+          const msg = data.error ?? 'Conflicto de IDs duplicados.'
+          setGlobalError(msg)
+          toast.error(msg)
         } else {
           setErrors((prev) => ({
             ...prev,
             [field]: data.error ?? 'No se pudo guardar.',
           }))
+          toast.error(data.error ?? 'No se pudo guardar')
         }
         setState((s) => ({ ...s, [field]: 'error' }))
         return
@@ -189,6 +193,7 @@ export default function TrackingSettings({ initial, publicSlug }: Props) {
       // case-insensitive) — el usuario ve lo que se guardó realmente.
       setValues((v) => ({ ...v, [field]: normalized }))
       setState((s) => ({ ...s, [field]: 'saved' }))
+      toast.success('Guardado')
       setTimeout(
         () =>
           setState((s) => ({
@@ -203,6 +208,7 @@ export default function TrackingSettings({ initial, publicSlug }: Props) {
         [field]: 'Error de red. Inténtalo otra vez.',
       }))
       setState((s) => ({ ...s, [field]: 'error' }))
+      toast.error('Error de red')
     }
   }
 

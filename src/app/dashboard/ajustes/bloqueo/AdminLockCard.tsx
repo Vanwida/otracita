@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { Check, Copy, Eye, EyeOff, KeyRound, Lock, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { FEEDBACK_MS } from '@/lib/ui-timings'
 import {
   ADMIN_LOCKABLE_AREA_LABELS,
@@ -43,20 +44,12 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
   const [customPin, setCustomPin] = React.useState('')
   const [customMode, setCustomMode] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
-  const [saved, setSaved] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
-
-  function flashSaved() {
-    setSaved(true)
-    setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
-  }
 
   function patchConfig(payload: {
     lockEnabled?: boolean
     adminLockedAreas?: AdminLockableAreaKey[]
   }) {
-    setError(null)
     startTransition(async () => {
       try {
         const r = await fetch('/api/admin-lock/config', {
@@ -66,12 +59,12 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
         })
         if (!r.ok) {
           const d = (await r.json().catch(() => ({}))) as { error?: string }
-          setError(d?.error ?? 'No se pudo guardar')
+          toast.error(d?.error ?? 'No se pudo guardar')
           return
         }
-        flashSaved()
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -91,9 +84,8 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
   }
 
   function generatePinReq(mode: 'random' | 'custom') {
-    setError(null)
     if (mode === 'custom' && !/^\d{4,6}$/.test(customPin)) {
-      setError('El PIN debe ser de 4 a 6 dígitos.')
+      toast.error('El PIN debe ser de 4 a 6 dígitos.')
       return
     }
     const body: Record<string, unknown> =
@@ -107,7 +99,7 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
         })
         if (!r.ok) {
           const d = (await r.json().catch(() => ({}))) as { error?: string }
-          setError(d?.error ?? 'No se pudo generar el PIN')
+          toast.error(d?.error ?? 'No se pudo generar el PIN')
           return
         }
         const data = (await r.json()) as { pin: string }
@@ -117,9 +109,9 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
         setPinUpdatedAt(new Date().toISOString())
         setCustomPin('')
         setCustomMode(false)
-        flashSaved()
+        toast.success('PIN guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -130,7 +122,7 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
       setCopied(true)
       setTimeout(() => setCopied(false), FEEDBACK_MS.copied)
     } catch {
-      setError('No se pudo copiar')
+      toast.error('No se pudo copiar')
     }
   }
 
@@ -362,21 +354,6 @@ export default function AdminLockCard({ initial, availableAreas }: Props) {
         </p>
       </section>
 
-      {(error || saved) && (
-        <div className="md:col-span-2">
-          {error && (
-            <p className="text-sm text-danger" role="alert">
-              {error}
-            </p>
-          )}
-          {saved && !error && (
-            <p className="inline-flex items-center gap-1 text-sm text-success">
-              <Check className="h-4 w-4" aria-hidden="true" />
-              Guardado
-            </p>
-          )}
-        </div>
-      )}
     </div>
   )
 }

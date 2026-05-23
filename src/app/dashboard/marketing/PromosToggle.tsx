@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Megaphone, Check } from 'lucide-react'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
+import { Megaphone } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface Props {
   initialEnabled: boolean
@@ -15,13 +15,10 @@ interface Props {
 // -----------------------------------------------------------------------------
 export default function PromosToggle({ initialEnabled }: Props) {
   const [enabled, setEnabled] = useState(initialEnabled)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   const toggle = () => {
     const next = !enabled
-    setError(null)
     startTransition(async () => {
       try {
         const r = await fetch('/api/promos/config', {
@@ -31,14 +28,13 @@ export default function PromosToggle({ initialEnabled }: Props) {
         })
         if (!r.ok) {
           const d = (await r.json().catch(() => ({}))) as { error?: string }
-          setError(d?.error ?? 'No se pudo guardar')
+          toast.error(d?.error ?? 'No se pudo guardar')
           return
         }
         setEnabled(next)
-        setSaved(true)
-        setTimeout(() => setSaved(false), FEEDBACK_MS.copied)
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -92,13 +88,6 @@ export default function PromosToggle({ initialEnabled }: Props) {
               Al activarlo declaras que tus clientes consienten recibir comunicaciones promocionales.
             </p>
           )}
-          {saved && (
-            <span className="mt-3 inline-flex items-center gap-1 text-xs text-success">
-              <Check className="h-3 w-3" />
-              Guardado
-            </span>
-          )}
-          {error && <p className="mt-3 text-xs text-danger">{error}</p>}
         </div>
       </div>
     </section>

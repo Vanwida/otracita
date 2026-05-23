@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Heart, Check, AlertCircle, Loader2 } from 'lucide-react'
+import { Heart, AlertCircle, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import FormGrid from './FormGrid'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 export interface TipsInitial {
   tipsEnabled: boolean
@@ -33,13 +33,14 @@ export default function TipsSettings({ initial }: Props) {
     (initial.tipsSuggestedCents || [200, 300, 500]).slice(0, 3).map((c) => (c / 100).toFixed(2)),
   )
   const [saving, startTransition] = useTransition()
-  const [saved, setSaved] = useState(false)
+  // Error inline solo para validación específica (importe mínimo). Feedback
+  // post-save (success/error red) va al toast canónico (sonner).
   const [error, setError] = useState<string | null>(null)
   const [showFiscalNote, setShowFiscalNote] = useState(false)
 
   const onToggle = (next: boolean) => {
     if (next && !initial.connectActive) {
-      setError('Para activar propinas primero activa "Cobros online" arriba.')
+      toast.error('Para activar propinas primero activa "Cobros online" arriba.')
       return
     }
     setError(null)
@@ -49,7 +50,6 @@ export default function TipsSettings({ initial }: Props) {
 
   const onSave = () => {
     setError(null)
-    setSaved(false)
 
     // Parse amounts. Accept empty rows — sanitizer server-side fills defaults.
     const cents = amounts
@@ -76,13 +76,12 @@ export default function TipsSettings({ initial }: Props) {
         })
         const data = await res.json()
         if (!res.ok) {
-          setError(data?.error || 'No se pudo guardar')
+          toast.error(data?.error || 'No se pudo guardar')
           return
         }
-        setSaved(true)
-        setTimeout(() => setSaved(false), FEEDBACK_MS.saved)
+        toast.success('Guardado')
       } catch {
-        setError('Error de red')
+        toast.error('Error de red')
       }
     })
   }
@@ -157,12 +156,6 @@ export default function TipsSettings({ initial }: Props) {
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">
-        {saved && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-success">
-            <Check className="h-4 w-4" />
-            Guardado
-          </span>
-        )}
         {error && <span className="text-sm text-danger">{error}</span>}
         <button
           type="button"
