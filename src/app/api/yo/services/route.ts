@@ -98,5 +98,17 @@ export async function PATCH(req: Request) {
     .set({ chatbotServices: clean })
     .where(eq(clients.id, clientStub.id));
 
+  // El catálogo de servicios se renderiza en la PWA pública /[slug] (lista de
+  // servicios + precios + duración). Sin revalidate, un manager editándolo
+  // desde el dashboard "Yo" deja al cliente final viendo el catálogo viejo
+  // hasta el siguiente fetch frío. Mismo patrón que /api/blocked-dates y
+  // /api/public-page/config (commit a1b8377). Necesitamos el slug del cliente
+  // — `clientStub` lo trae cuando viene de requireManagerPermission.
+  const { revalidatePath } = await import('next/cache');
+  if (clientStub.publicSlug) {
+    revalidatePath(`/${clientStub.publicSlug}`);
+  }
+  revalidatePath('/[slug]', 'page');
+
   return Response.json({ services: clean });
 }
