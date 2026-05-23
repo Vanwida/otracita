@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // service-colors — catálogo cerrado de colores semánticos para servicios.
 //
-// El barbero elige uno de 8 tokens al crear/editar un servicio. El bloque de
+// El barbero elige uno de 21 tokens al crear/editar un servicio. El bloque de
 // cita en la agenda (#33) usará el par {bg, ink} correspondiente para pintarse.
 //
 // Por qué tokens y no hex:
@@ -18,17 +18,38 @@
 // Los tokens viven en globals.css dentro de `@theme` como pares
 // --color-svc-<name>-bg / --color-svc-<name>-ink. Tailwind v4 los expone como
 // utilities (`bg-svc-terracota-bg`, `text-svc-terracota-ink`, etc.).
+//
+// Orden: el array está ordenado por hue (warms → cools → warms-magenta) para
+// que el picker grid de #34 lea natural — el barbero recorre la paleta como
+// un círculo cromático, no como una lista alfabética.
 // -----------------------------------------------------------------------------
 
 export const SERVICE_COLOR_TOKENS = [
+  // Warms (hue 10-90)
+  'blush',
+  'brick',
+  'coral',
   'terracota',
-  'olive',
-  'sky',
-  'gold',
-  'mauve',
+  'peach',
   'stone',
-  'slate',
+  'oat',
   'sand',
+  'gold',
+  'mustard',
+  // Greens (hue 130-200)
+  'olive',
+  'sage',
+  'jade',
+  'teal',
+  // Cools (hue 220-290)
+  'sky',
+  'fog',
+  'slate',
+  'denim',
+  'lavender',
+  // Magenta-warms (hue 320-340)
+  'mauve',
+  'plum',
 ] as const
 
 export type ServiceColorToken = (typeof SERVICE_COLOR_TOKENS)[number]
@@ -74,35 +95,35 @@ export const SERVICE_COLOR_CLASSES: Record<
   ServiceColorToken,
   { bg: string; ink: string; border: string; ring: string }
 > = {
+  blush: {
+    bg: 'bg-svc-blush-bg',
+    ink: 'text-svc-blush-ink',
+    border: 'border-svc-blush-ink',
+    ring: 'ring-svc-blush-ink',
+  },
+  brick: {
+    bg: 'bg-svc-brick-bg',
+    ink: 'text-svc-brick-ink',
+    border: 'border-svc-brick-ink',
+    ring: 'ring-svc-brick-ink',
+  },
+  coral: {
+    bg: 'bg-svc-coral-bg',
+    ink: 'text-svc-coral-ink',
+    border: 'border-svc-coral-ink',
+    ring: 'ring-svc-coral-ink',
+  },
   terracota: {
     bg: 'bg-svc-terracota-bg',
     ink: 'text-svc-terracota-ink',
     border: 'border-svc-terracota-ink',
     ring: 'ring-svc-terracota-ink',
   },
-  olive: {
-    bg: 'bg-svc-olive-bg',
-    ink: 'text-svc-olive-ink',
-    border: 'border-svc-olive-ink',
-    ring: 'ring-svc-olive-ink',
-  },
-  sky: {
-    bg: 'bg-svc-sky-bg',
-    ink: 'text-svc-sky-ink',
-    border: 'border-svc-sky-ink',
-    ring: 'ring-svc-sky-ink',
-  },
-  gold: {
-    bg: 'bg-svc-gold-bg',
-    ink: 'text-svc-gold-ink',
-    border: 'border-svc-gold-ink',
-    ring: 'ring-svc-gold-ink',
-  },
-  mauve: {
-    bg: 'bg-svc-mauve-bg',
-    ink: 'text-svc-mauve-ink',
-    border: 'border-svc-mauve-ink',
-    ring: 'ring-svc-mauve-ink',
+  peach: {
+    bg: 'bg-svc-peach-bg',
+    ink: 'text-svc-peach-ink',
+    border: 'border-svc-peach-ink',
+    ring: 'ring-svc-peach-ink',
   },
   stone: {
     bg: 'bg-svc-stone-bg',
@@ -110,17 +131,95 @@ export const SERVICE_COLOR_CLASSES: Record<
     border: 'border-svc-stone-ink',
     ring: 'ring-svc-stone-ink',
   },
-  slate: {
-    bg: 'bg-svc-slate-bg',
-    ink: 'text-svc-slate-ink',
-    border: 'border-svc-slate-ink',
-    ring: 'ring-svc-slate-ink',
+  oat: {
+    bg: 'bg-svc-oat-bg',
+    ink: 'text-svc-oat-ink',
+    border: 'border-svc-oat-ink',
+    ring: 'ring-svc-oat-ink',
   },
   sand: {
     bg: 'bg-svc-sand-bg',
     ink: 'text-svc-sand-ink',
     border: 'border-svc-sand-ink',
     ring: 'ring-svc-sand-ink',
+  },
+  gold: {
+    bg: 'bg-svc-gold-bg',
+    ink: 'text-svc-gold-ink',
+    border: 'border-svc-gold-ink',
+    ring: 'ring-svc-gold-ink',
+  },
+  mustard: {
+    bg: 'bg-svc-mustard-bg',
+    ink: 'text-svc-mustard-ink',
+    border: 'border-svc-mustard-ink',
+    ring: 'ring-svc-mustard-ink',
+  },
+  olive: {
+    bg: 'bg-svc-olive-bg',
+    ink: 'text-svc-olive-ink',
+    border: 'border-svc-olive-ink',
+    ring: 'ring-svc-olive-ink',
+  },
+  sage: {
+    bg: 'bg-svc-sage-bg',
+    ink: 'text-svc-sage-ink',
+    border: 'border-svc-sage-ink',
+    ring: 'ring-svc-sage-ink',
+  },
+  jade: {
+    bg: 'bg-svc-jade-bg',
+    ink: 'text-svc-jade-ink',
+    border: 'border-svc-jade-ink',
+    ring: 'ring-svc-jade-ink',
+  },
+  teal: {
+    bg: 'bg-svc-teal-bg',
+    ink: 'text-svc-teal-ink',
+    border: 'border-svc-teal-ink',
+    ring: 'ring-svc-teal-ink',
+  },
+  sky: {
+    bg: 'bg-svc-sky-bg',
+    ink: 'text-svc-sky-ink',
+    border: 'border-svc-sky-ink',
+    ring: 'ring-svc-sky-ink',
+  },
+  fog: {
+    bg: 'bg-svc-fog-bg',
+    ink: 'text-svc-fog-ink',
+    border: 'border-svc-fog-ink',
+    ring: 'ring-svc-fog-ink',
+  },
+  slate: {
+    bg: 'bg-svc-slate-bg',
+    ink: 'text-svc-slate-ink',
+    border: 'border-svc-slate-ink',
+    ring: 'ring-svc-slate-ink',
+  },
+  denim: {
+    bg: 'bg-svc-denim-bg',
+    ink: 'text-svc-denim-ink',
+    border: 'border-svc-denim-ink',
+    ring: 'ring-svc-denim-ink',
+  },
+  lavender: {
+    bg: 'bg-svc-lavender-bg',
+    ink: 'text-svc-lavender-ink',
+    border: 'border-svc-lavender-ink',
+    ring: 'ring-svc-lavender-ink',
+  },
+  mauve: {
+    bg: 'bg-svc-mauve-bg',
+    ink: 'text-svc-mauve-ink',
+    border: 'border-svc-mauve-ink',
+    ring: 'ring-svc-mauve-ink',
+  },
+  plum: {
+    bg: 'bg-svc-plum-bg',
+    ink: 'text-svc-plum-ink',
+    border: 'border-svc-plum-ink',
+    ring: 'ring-svc-plum-ink',
   },
 }
 
@@ -130,12 +229,25 @@ export const SERVICE_COLOR_CLASSES: Record<
  * color, no su nombre.
  */
 export const SERVICE_COLOR_LABELS: Record<ServiceColorToken, string> = {
+  blush: 'Rubor',
+  brick: 'Ladrillo',
+  coral: 'Coral',
   terracota: 'Terracota',
-  olive: 'Oliva',
-  sky: 'Cielo',
-  gold: 'Oro',
-  mauve: 'Malva',
+  peach: 'Melocotón',
   stone: 'Piedra',
-  slate: 'Pizarra',
+  oat: 'Avena',
   sand: 'Arena',
+  gold: 'Oro',
+  mustard: 'Mostaza',
+  olive: 'Oliva',
+  sage: 'Salvia',
+  jade: 'Jade',
+  teal: 'Verde azulado',
+  sky: 'Cielo',
+  fog: 'Niebla',
+  slate: 'Pizarra',
+  denim: 'Tejano',
+  lavender: 'Lavanda',
+  mauve: 'Malva',
+  plum: 'Ciruela',
 }
