@@ -15,6 +15,7 @@ import { hoursForDate } from '@/lib/availability-hours';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-window';
 import { computeOverlapLayout } from './_event-layout';
 import { useCurrentTime } from './_hooks/use-current-time';
+import { useDragAutoScroll } from './_hooks/use-drag-auto-scroll';
 
 // La VENTANA temporal (inicio/fin/alto/etiquetas) ya NO es fija — se deriva
 // de los datos del día visible en `_agenda-window` (fuente única, también
@@ -435,6 +436,13 @@ export default function DayGrid({
       onEventMove(eventId, { date: dateStr, time, barberId });
     }
   };
+
+  // Auto-scroll vertical durante drag&drop (#67). Cuando el barbero arrastra
+  // una cita o un bloque hacia un destino lejano (ej. 10:00 → 18:00), si el
+  // cursor entra en los 60px superiores/inferiores del contenedor de la
+  // agenda, este lo scrollea solo. Hook genérico que escucha `dragover`
+  // global mientras `draggingId !== null` — patrón Google Calendar.
+  useDragAutoScroll(scrollRef, { enabled: draggingId !== null });
 
   // Auto-scroll inicial (patrón Google Calendar / Cal.com / FullCalendar
   // `scrollTime`): si es HOY y "ahora" cae dentro de la ventana → llevar a
