@@ -32,6 +32,7 @@ import { useConfirm } from './ConfirmDialog'
 import BarberSalaryEditor from './BarberSalaryEditor'
 import BarberInviteCard from './BarberInviteCard'
 import BarberPermissionsCard from './BarberPermissionsCard'
+import { barberPhotoUrl } from '@/lib/barber-photo-url'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — Equipo > Empleados en patrón MASTER-DETAIL (Booksy
@@ -574,7 +575,7 @@ function BarberListItem({
           aria-current={selected ? 'true' : undefined}
         >
           <BarberAvatar
-            url={barber.photoUrl}
+            url={barber.photoUrl ? barberPhotoUrl(barber.id) : null}
             name={barber.name}
             className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-line bg-overlay"
             fallbackClassName="text-xs font-bold text-ink-2"
@@ -688,7 +689,7 @@ function BarberDetail({
       {/* Cabecera del detalle */}
       <div className="flex items-start gap-4 border-b border-line p-5">
         <BarberAvatar
-          url={barber.photoUrl}
+          url={barber.photoUrl ? barberPhotoUrl(barber.id) : null}
           name={barber.name}
           alt={barber.name}
           className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-line bg-overlay"

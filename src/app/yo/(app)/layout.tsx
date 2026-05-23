@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { Toaster } from 'sonner';
 import { requireBarberRole } from '@/lib/auth/require-barber-role';
 import { activeManagerPermissions } from '@/lib/manager-permissions';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
 import BottomNav from './BottomNav';
 
 // -----------------------------------------------------------------------------
@@ -49,7 +50,7 @@ export default async function YoAppLayout({
       <div className="mx-auto max-w-[480px]">
         <Header
           barberName={barber.name}
-          photoUrl={barber.photoUrl}
+          photoUrl={barber.photoUrl ? barberPhotoUrl(barber.id) : null}
           businessName={client.businessName}
         />
         <main className="px-4 pb-8 pt-4">{children}</main>

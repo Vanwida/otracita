@@ -4,6 +4,7 @@ import Link from 'next/link';
 import useSWR from 'swr';
 import { Users, Calendar, TrendingUp, ChevronRight } from 'lucide-react';
 import { formatEuros } from '../_lib/format';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
 
 // -----------------------------------------------------------------------------
 // EquipoClient (#72) — pantalla del manager con `view_commissions` o
@@ -136,7 +137,7 @@ function BarberRow({
       {barber.photoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={barber.photoUrl}
+          src={barberPhotoUrl(barber.id) ?? ''}
           alt={barber.name}
           className="h-12 w-12 rounded-full border border-line object-cover"
         />

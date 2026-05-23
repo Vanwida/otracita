@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { upload } from '@vercel/blob/client';
 import { Camera, Loader2, LogOut, Scissors, TrendingUp, Heart } from 'lucide-react';
 import { authClient } from '@/lib/auth/client';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
 import type { TodayFeed } from '../_lib/types';
 import { formatEuros } from '../_lib/format';
 
@@ -112,7 +113,7 @@ export default function TuClient() {
           {barber?.photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={barber.photoUrl}
+              src={barberPhotoUrl(barber.id) ?? ''}
               alt={barber.name}
               className="h-20 w-20 rounded-full border border-line object-cover"
             />

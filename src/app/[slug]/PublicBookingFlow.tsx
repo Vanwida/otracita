@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, Scissors, Euro, Clock, ChevronRight, X, Star } from 'lucide-react'
 import { captureLastTouch, readStoredAttribution } from '@/lib/attribution/capture'
+import { barberPhotoUrl } from '@/lib/barber-photo-url'
 import NoShowCardModal from './NoShowCardModal'
 import { dispatchTracking } from '@/lib/tracking/dispatch'
 
@@ -480,7 +481,7 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
                   selected={barberId === b.id}
                   onClick={() => barberAvailable(b.id) && setBarberId(b.id)}
                   name={b.name}
-                  photoUrl={b.photoUrl}
+                  photoUrl={b.photoUrl ? barberPhotoUrl(b.id) : null}
                   available={barberAvailable(b.id)}
                 />
               ))}

@@ -12,6 +12,7 @@ import {
   statusCornerBadge,
 } from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
 import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-window';
 import { computeOverlapLayout } from './_event-layout';
 import { useCurrentTime } from './_hooks/use-current-time';
@@ -636,7 +637,7 @@ export default function DayGrid({
                       {col.barber?.photoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={col.barber.photoUrl}
+                          src={barberPhotoUrl(col.barber.id) ?? ''}
                           alt=""
                           className="h-10 w-10 rounded-full object-cover border border-line shrink-0"
                         />

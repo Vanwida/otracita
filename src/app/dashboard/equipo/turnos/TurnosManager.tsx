@@ -31,6 +31,7 @@ import ScheduleEditorModal from './ScheduleEditorModal'
 import AbsenceModal from './AbsenceModal'
 import BlockModal from './BlockModal'
 import { BUSINESS_TIMEZONE } from '@/lib/time';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
 
 // -----------------------------------------------------------------------------
 // TurnosManager — timeline de turnos del equipo (R12 horario/descansos, R2
@@ -377,7 +378,7 @@ function Avatar({ barber }: { barber: TurnosBarber }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={barber.photoUrl}
+        src={barberPhotoUrl(barber.id) ?? ''}
         alt=""
         className="h-7 w-7 rounded-full object-cover border border-line shrink-0"
       />

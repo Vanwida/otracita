@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { barbers, barberInvites, clients } from '@/db/schema';
 import { and, eq, isNull, gt } from 'drizzle-orm';
+import { barberPhotoUrl } from '@/lib/barber-photo-url';
 import AcceptInviteClient from './AcceptInviteClient';
 
 // -----------------------------------------------------------------------------
@@ -64,7 +65,7 @@ export default async function AceptarInvitacionPage({ params }: Props) {
       token={token}
       email={invite.email}
       barberName={barber.name}
-      barberPhoto={barber.photoUrl}
+      barberPhoto={barber.photoUrl ? barberPhotoUrl(barber.id) : null}
       businessName={client.businessName}
     />
   );
