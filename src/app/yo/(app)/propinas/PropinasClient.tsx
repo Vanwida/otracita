@@ -1,18 +1,23 @@
 'use client';
 
 import useSWR from 'swr';
-import { Heart, Wallet, CreditCard } from 'lucide-react';
+import { useState } from 'react';
+import { Heart, Wallet, CreditCard, BadgeCheck } from 'lucide-react';
 import type { TodayFeed } from '../_lib/types';
 import { formatEuros } from '../_lib/format';
+import MarkTipsPaidModal from './MarkTipsPaidModal';
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<TodayFeed>);
 
 export default function PropinasClient() {
-  const { data } = useSWR<TodayFeed>('/api/yo/today', fetcher, {
+  const { data, mutate } = useSWR<TodayFeed>('/api/yo/today', fetcher, {
     refreshInterval: 60_000,
     revalidateOnFocus: true,
   });
+  const [markOpen, setMarkOpen] = useState(false);
+
+  const canMarkTips = data?.permissions?.keys.includes('mark_tips_paid') ?? false;
 
   return (
     <div className="space-y-5">
@@ -66,6 +71,18 @@ export default function PropinasClient() {
         </div>
       </section>
 
+      {/* Manager: marcar propinas pagadas al equipo (#72) */}
+      {canMarkTips && (
+        <button
+          type="button"
+          onClick={() => setMarkOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface py-3 text-sm font-semibold text-ink shadow-sm transition-colors hover:bg-overlay/40"
+        >
+          <BadgeCheck className="h-4 w-4" />
+          Marcar propinas pagadas al equipo
+        </button>
+      )}
+
       <section className="rounded-control border border-line bg-surface p-4 text-center">
         <p className="text-xs text-ink-3">Total acumulado este mes</p>
         <p className="mt-1 text-2xl font-bold text-ink">
@@ -75,6 +92,15 @@ export default function PropinasClient() {
           )}
         </p>
       </section>
+
+      <MarkTipsPaidModal
+        open={markOpen}
+        onClose={() => setMarkOpen(false)}
+        onDone={() => {
+          setMarkOpen(false);
+          mutate();
+        }}
+      />
     </div>
   );
 }

@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, Lock } from 'lucide-react';
 import type { TodayFeed } from '../_lib/types';
 import { formatEuros } from '../_lib/format';
+import CloseRegisterModal from './CloseRegisterModal';
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => r.json() as Promise<TodayFeed>);
@@ -18,12 +19,15 @@ const FILTERS = [
 type FilterKey = (typeof FILTERS)[number]['key'];
 
 export default function VentasClient() {
-  const { data } = useSWR<TodayFeed>('/api/yo/today', fetcher, {
+  const { data, mutate } = useSWR<TodayFeed>('/api/yo/today', fetcher, {
     refreshInterval: 60_000,
     revalidateOnFocus: true,
   });
 
   const [filter, setFilter] = useState<FilterKey>('today');
+  const [closeOpen, setCloseOpen] = useState(false);
+
+  const canCloseRegister = data?.permissions?.keys.includes('close_register') ?? false;
 
   const headlineCents = useMemo(() => {
     if (!data) return 0;
@@ -93,6 +97,18 @@ export default function VentasClient() {
         )}
       </section>
 
+      {/* Cerrar caja — gated por close_register (#72) */}
+      {canCloseRegister && (
+        <button
+          type="button"
+          onClick={() => setCloseOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface py-3 text-sm font-semibold text-ink shadow-sm transition-colors hover:bg-overlay/40"
+        >
+          <Lock className="h-4 w-4" />
+          Cerrar caja del día
+        </button>
+      )}
+
       <section>
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-ink-3">
           Histórico de la semana
@@ -123,6 +139,15 @@ export default function VentasClient() {
           ))}
         </ul>
       </section>
+
+      <CloseRegisterModal
+        open={closeOpen}
+        onClose={() => setCloseOpen(false)}
+        onClosed={() => {
+          setCloseOpen(false);
+          mutate();
+        }}
+      />
     </div>
   );
 }
