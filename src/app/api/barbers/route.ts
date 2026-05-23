@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { barbers } from '@/db/schema';
-import { and, asc, eq } from 'drizzle-orm';
+import { barbers, users, barberInvites } from '@/db/schema';
+import { and, asc, eq, isNull, gt } from 'drizzle-orm';
 import {
   requireClientAccess,
   accessErrorResponse,
@@ -35,16 +35,74 @@ export async function GET(req: Request) {
         .where(and(eq(barbers.clientId, access.client.id), eq(barbers.active, true)))
         .orderBy(asc(barbers.displayOrder), asc(barbers.name));
 
-  // #71 — NUNCA devolver el `personalAccessToken` plano en el listado.
-  // El token se ve UNA sola vez al generarlo (POST a /personal-token).
-  // El listado solo expone si EXISTE (`hasPersonalAccess`) y cuándo se
-  // generó. Si el jefe lo pierde, regenera.
+  // Modo barbero v2 — enriquecemos cada fila con el estado de la cuenta:
+  //   · `accountUserId` / `accountEmail` / `accountDisabledAt` si el
+  //     barbero ya tiene cuenta Better Auth activa.
+  //   · `pendingInvite` (email + expiresAt) si hay una invitación viva
+  //     sin aceptar ni revocar.
+  const barberIds = rows.map((r) => r.id);
+
+  const linkedUsers = barberIds.length
+    ? await db
+        .select({
+          id: users.id,
+          email: users.email,
+          barberId: users.barberId,
+          disabledAt: users.disabledAt,
+        })
+        .from(users)
+        .where(eq(users.role, 'barber'))
+    : [];
+  const userByBarberId = new Map<string, (typeof linkedUsers)[number]>();
+  for (const u of linkedUsers) {
+    if (u.barberId && barberIds.includes(u.barberId)) {
+      userByBarberId.set(u.barberId, u);
+    }
+  }
+
+  const now = new Date();
+  const pendingInvites = barberIds.length
+    ? await db
+        .select({
+          barberId: barberInvites.barberId,
+          email: barberInvites.email,
+          expiresAt: barberInvites.expiresAt,
+          invitedAt: barberInvites.invitedAt,
+        })
+        .from(barberInvites)
+        .where(
+          and(
+            eq(barberInvites.clientId, access.client.id),
+            isNull(barberInvites.acceptedAt),
+            isNull(barberInvites.revokedAt),
+            gt(barberInvites.expiresAt, now),
+          ),
+        )
+    : [];
+  const inviteByBarberId = new Map<string, (typeof pendingInvites)[number]>();
+  for (const inv of pendingInvites) {
+    if (inv.barberId) inviteByBarberId.set(inv.barberId, inv);
+  }
+
   const sanitized = rows.map((b) => {
-    const { personalAccessToken: _t, ...rest } = b;
-    void _t;
+    const u = userByBarberId.get(b.id) ?? null;
+    const inv = inviteByBarberId.get(b.id) ?? null;
     return {
-      ...rest,
-      hasPersonalAccess: b.personalAccessToken != null,
+      ...b,
+      account: u
+        ? {
+            userId: u.id,
+            email: u.email,
+            disabledAt: u.disabledAt ? u.disabledAt.toISOString() : null,
+          }
+        : null,
+      pendingInvite: inv
+        ? {
+            email: inv.email,
+            expiresAt: inv.expiresAt.toISOString(),
+            invitedAt: inv.invitedAt.toISOString(),
+          }
+        : null,
     };
   });
 
