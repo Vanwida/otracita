@@ -107,10 +107,8 @@ export default function MonthGrid({
                     // #33 — Color por SERVICIO (no por estado). Mismo helper
                     // que Día/Semana; estado va a badge esquina (commit 3).
                     const colorToken = resolveBookingColorToken(event, services);
-                    const { className: chipClass, treatment } = appointmentChipClasses(
-                      colorToken,
-                      event.status,
-                    );
+                    const { className: chipClass, style: chipColorStyle, treatment } =
+                      appointmentChipClasses(colorToken, event.status);
                     const badge = statusCornerBadge(event.status);
 
                     return (
@@ -122,6 +120,7 @@ export default function MonthGrid({
                           onEventClick(event);
                         }}
                         className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer transition-opacity hover:opacity-80 ${chipClass} ${treatment}`}
+                        style={chipColorStyle}
                         title={event.title}
                       >
                         {badge && (

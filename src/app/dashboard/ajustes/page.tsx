@@ -23,7 +23,11 @@ import { loadAllShopOverrides } from '@/lib/shop-day-overrides'
 // /dashboard/negocio → redirect aquí. LÓGICA DE SERVIDOR INTACTA.
 // -----------------------------------------------------------------------------
 
-import { isServiceColorToken, type ServiceColorToken } from '@/lib/service-colors'
+import {
+  isServiceColorToken,
+  isCustomHex,
+  type ServiceColorToken,
+} from '@/lib/service-colors'
 
 interface ServiceItem {
   name: string
@@ -31,7 +35,8 @@ interface ServiceItem {
   price: string | number
   description?: string
   featured?: boolean
-  colorToken?: ServiceColorToken
+  /** Token canónico de la paleta o hex `#RRGGBB` custom. */
+  colorToken?: ServiceColorToken | string
 }
 
 export default async function AjustesNegocioPage() {
@@ -81,20 +86,23 @@ export default async function AjustesNegocioPage() {
     // Sanea colorToken contra la whitelist. Nunca confiamos en el JSON
     // entrante: `chatbotServices` es jsonb sin schema en Postgres, así que
     // si alguien manda `colorToken: "rm -rf"` lo silenciamos antes de
-    // guardar. Los consumidores ven el campo limpio o ausente.
+    // guardar. Aceptamos token canónico (red/blue/...) O hex `#RRGGBB`
+    // (custom picker). Cualquier otro valor → se elimina el campo y el
+    // consumidor cae al DEFAULT.
     if (Array.isArray(chatbotServices)) {
       chatbotServices = chatbotServices.map((raw) => {
         if (typeof raw !== 'object' || raw === null) return raw
         const svc = raw as Record<string, unknown>
-        if ('colorToken' in svc && !isServiceColorToken(svc.colorToken)) {
-          // Elimina el campo en vez de forzar default — así el consumidor
-          // aplica su propio fallback (DEFAULT_SERVICE_COLOR vive en
-          // src/lib/service-colors.ts).
-          const sanitized = { ...svc }
-          delete sanitized.colorToken
-          return sanitized
+        if (!('colorToken' in svc)) return svc
+        const ct = svc.colorToken
+        if (isServiceColorToken(ct)) return svc
+        if (isCustomHex(ct)) {
+          // Normaliza a minúsculas — formato canónico que persistimos.
+          return { ...svc, colorToken: (ct as string).toLowerCase() }
         }
-        return svc
+        const sanitized = { ...svc }
+        delete sanitized.colorToken
+        return sanitized
       })
     }
 

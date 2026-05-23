@@ -307,10 +307,8 @@ export default function WeekGrid({
                       // #33 — Color por SERVICIO (no por estado). Mismo helper
                       // que Día/Mes; estado va a badge esquina (commit 3).
                       const colorToken = resolveBookingColorToken(event, services);
-                      const { className: blockClass, treatment } = appointmentBlockClasses(
-                        colorToken,
-                        event.status,
-                      );
+                      const { className: blockClass, style: blockColorStyle, treatment } =
+                        appointmentBlockClasses(colorToken, event.status);
                       const badge = statusCornerBadge(event.status);
                       const displayName =
                         event.customerName?.trim() ||
@@ -340,6 +338,10 @@ export default function WeekGrid({
                             height,
                             left: `calc(${lay.leftPct}% + ${insetX}px)`,
                             width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
+                            // Custom hex: el helper devuelve bg/color/boxShadow
+                            // inline. Tokens canónicos dejan estos campos
+                            // undefined y el color va por className.
+                            ...blockColorStyle,
                           }}
                           title={`${event.time} · ${displayName}${event.service ? ` · ${event.service}` : ''}`}
                         >

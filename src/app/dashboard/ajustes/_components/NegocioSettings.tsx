@@ -66,7 +66,8 @@ interface ServiceItem {
   price: number | string
   description?: string
   featured?: boolean
-  colorToken?: ServiceColorToken
+  /** Token canónico de la paleta o hex `#RRGGBB` custom. */
+  colorToken?: ServiceColorToken | string
 }
 
 interface Props {

@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Plus, Pencil, Trash2, Check, X, Clock, Euro, Star } from 'lucide-react'
+import React, { useRef, useState } from 'react'
+import { Plus, Pencil, Trash2, Check, X, Clock, Euro, Star, Pipette } from 'lucide-react'
 import SlideOver from './SlideOver'
 import {
   SERVICE_COLOR_TOKENS,
@@ -9,7 +9,10 @@ import {
   SERVICE_COLOR_LABELS,
   DEFAULT_SERVICE_COLOR,
   isServiceColorToken,
+  isCustomHex,
+  isValidServiceColor,
   normalizeServiceColor,
+  pickTextColorFor,
   type ServiceColorToken,
 } from '@/lib/service-colors'
 
@@ -23,14 +26,18 @@ import {
 // Ajustes → Negocio.
 //
 // Cada servicio: nombre, duración, precio, descripción, `featured`
-// (destacar en home) y `colorToken` (color del bloque en agenda). Se guardan
-// como JSON en `clients.chatbotServices` — añadir campos no requiere
-// migración. La whitelist de colorToken la valida el server action de la
-// página padre (saveBusiness en /dashboard/ajustes/page.tsx).
+// (destacar en home) y `colorToken` (color del bloque en agenda — token de
+// la paleta saturada O hex custom `#RRGGBB`). Se guardan como JSON en
+// `clients.chatbotServices` — añadir campos no requiere migración. La
+// whitelist la valida el server action de la página padre (saveBusiness en
+// /dashboard/ajustes/page.tsx).
 //
 // El padre lee el JSON serializado del input oculto `services` para enviarlo
 // al server action.
 // -----------------------------------------------------------------------------
+
+/** Color de un servicio: token de la paleta saturada o hex custom `#RRGGBB`. */
+type ServiceColor = ServiceColorToken | string
 
 interface Service {
   name: string
@@ -38,7 +45,8 @@ interface Service {
   price: number | string
   description?: string
   featured?: boolean
-  colorToken?: ServiceColorToken
+  /** Token de paleta o hex custom (#RRGGBB en minúsculas). */
+  colorToken?: ServiceColor
 }
 
 interface Props {
@@ -55,22 +63,61 @@ const EMPTY: Service = {
 }
 const MAX_FEATURED = 3
 const DURATION_STEP = 5
+/** Hex inicial del picker custom cuando el barbero abre por primera vez el
+ *  selector — fucsia vivo que no se confunde con ningún token canónico. */
+const CUSTOM_DEFAULT_HEX = '#ff4dac'
 
-/** Sanea un service entrante (puede venir del jsonb sin colorToken). */
+/** Sanea un service entrante. `colorToken` puede ser token canónico, hex
+ *  custom o un valor viejo de la paleta pastel (ya no soportado) — en
+ *  cualquier caso inválido cae al DEFAULT. */
 function withDefaults(s: Service): Service {
+  const raw = s.colorToken
+  const color: ServiceColor = isValidServiceColor(raw)
+    ? isCustomHex(raw)
+      ? raw.toLowerCase()
+      : (raw as ServiceColorToken)
+    : DEFAULT_SERVICE_COLOR
   return {
     description: '',
     featured: false,
     ...s,
-    colorToken: isServiceColorToken(s.colorToken) ? s.colorToken : DEFAULT_SERVICE_COLOR,
+    colorToken: color,
+  }
+}
+
+/** Para un color (token o hex), devuelve `{ bg, textColor }` para inline
+ *  style. Útil para previews, chips de fila y dot mini. Usa CSS vars de
+ *  globals.css (`--color-svc-<token>` / `--color-on-svc-light|dark`). */
+function inlineSwatchStyle(value: ServiceColor): {
+  backgroundColor: string
+  color: string
+} {
+  if (isCustomHex(value)) {
+    const textLD = pickTextColorFor(value)
+    return {
+      backgroundColor: value,
+      color:
+        textLD === 'light'
+          ? 'var(--color-on-svc-light)'
+          : 'var(--color-on-svc-dark)',
+    }
+  }
+  const token = isServiceColorToken(value) ? value : DEFAULT_SERVICE_COLOR
+  const textLD = pickTextColorFor(token)
+  return {
+    backgroundColor: `var(--color-svc-${token})`,
+    color:
+      textLD === 'light'
+        ? 'var(--color-on-svc-light)'
+        : 'var(--color-on-svc-dark)',
   }
 }
 
 // ─── Subcomponentes ──────────────────────────────────────────────────────────
 
 /**
- * Chip de color del picker. 44×44px (WCAG 2.5.5 target-size) en su zona
- * activa, con el círculo de color centrado.
+ * Chip de un color de la paleta. 44×44px (WCAG 2.5.5 target-size). El círculo
+ * es el color SATURADO completo; el check va blanco/negro según luminancia.
  */
 function ColorChip({
   token,
@@ -90,14 +137,83 @@ function ColorChip({
       aria-label={`Color ${label}`}
       aria-pressed={selected}
       title={label}
-      className={`relative h-11 w-11 rounded-full flex items-center justify-center transition-all ${
+      className={`relative h-11 w-11 rounded-full flex items-center justify-center transition-all ${c.bg} ${
         selected
-          ? `${c.bg} ring-2 ${c.ring} ring-offset-2 ring-offset-surface scale-105`
-          : `${c.bg} ring-1 ring-line hover:ring-line-strong`
+          ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface scale-105'
+          : 'ring-1 ring-line hover:ring-line-strong'
       }`}
     >
       {selected && <Check className={`h-4 w-4 ${c.ink}`} strokeWidth={2.5} />}
     </button>
+  )
+}
+
+/**
+ * Chip "Personalizado" — abre `<input type="color">` HTML5 nativo (sin
+ * librería externa). Si el barbero ya tiene un hex elegido lo muestra como
+ * fondo; si no, muestra un swatch multicolor con icono de gotero.
+ */
+function CustomColorChip({
+  value,
+  selected,
+  onSelect,
+}: {
+  /** Hex actual (cuando el color del servicio es custom) o undefined. */
+  value: string | undefined
+  selected: boolean
+  onSelect: (hex: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const hasValue = !!value && isCustomHex(value)
+  const display = hasValue ? value! : CUSTOM_DEFAULT_HEX
+  const textLD = pickTextColorFor(display)
+  const overlayColor =
+    textLD === 'light' ? 'var(--color-on-svc-light)' : 'var(--color-on-svc-dark)'
+
+  return (
+    <div
+      className={`relative h-11 w-11 rounded-full transition-all ${
+        selected
+          ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface scale-105'
+          : 'ring-1 ring-line hover:ring-line-strong'
+      }`}
+      title="Personalizado"
+    >
+      {/* Input nativo HTML5 — captura el click y abre el picker del SO. NO
+          instalamos `react-color`. Mantiene tab-focus para teclado. */}
+      <input
+        ref={inputRef}
+        type="color"
+        value={display}
+        onChange={(e) => onSelect(e.target.value.toLowerCase())}
+        aria-label="Color personalizado"
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+      {/* Visual del chip — pointer-events-none para que el click llegue al
+          input que está encima en z-stacking. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-full flex items-center justify-center"
+        style={
+          hasValue
+            ? { backgroundColor: display }
+            : {
+                background:
+                  'conic-gradient(from 0deg, #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)',
+              }
+        }
+      >
+        {selected && hasValue ? (
+          <Check className="h-4 w-4" strokeWidth={2.5} style={{ color: overlayColor }} />
+        ) : (
+          <Pipette
+            className="h-4 w-4"
+            strokeWidth={2.25}
+            style={{ color: hasValue ? overlayColor : 'oklch(0.20 0.02 60)' }}
+          />
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -109,20 +225,30 @@ function ColorChip({
 function ServicePreview({
   name,
   duration,
-  colorToken,
+  color,
 }: {
   name: string
   duration: number | string
-  colorToken: ServiceColorToken
+  color: ServiceColor
 }) {
-  const c = SERVICE_COLOR_CLASSES[colorToken]
+  const swatch = inlineSwatchStyle(color)
   const displayName = name.trim() || 'Nombre del servicio'
   const displayDuration = duration || 0
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] text-ink-3 uppercase tracking-wide">Así se verá en la agenda</p>
+      <p className="text-[11px] text-ink-3 uppercase tracking-wide">
+        Así se verá en la agenda
+      </p>
       <div
-        className={`${c.bg} ${c.ink} border-l-[3px] ${c.border} rounded-r-md px-2.5 py-1.5 max-w-xs`}
+        className="rounded-md px-2.5 py-1.5 max-w-xs"
+        style={{
+          ...swatch,
+          // Hairline interior del mismo color (color-mix con black/white) —
+          // mismo patrón que el bloque real en la agenda.
+          boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${swatch.backgroundColor}, ${
+            pickTextColorFor(color) === 'light' ? 'black' : 'white'
+          } 24%)`,
+        }}
       >
         <p className="text-[13px] font-semibold leading-tight truncate">{displayName}</p>
         <p className="text-[11px] opacity-80 leading-tight mt-0.5">{displayDuration} min</p>
@@ -134,7 +260,7 @@ function ServicePreview({
 /**
  * Form completo del servicio. Vive dentro del SlideOver — descripción con
  * espacio holgado (rows=4), precio/duración en grid 2-col, color picker
- * con todos los chips a la vista.
+ * con los 12 chips + el chip "Personalizado".
  */
 function ServiceForm({
   draft,
@@ -151,7 +277,8 @@ function ServiceForm({
   saveLabel: string
   featuredCount: number
 }) {
-  const color: ServiceColorToken = normalizeServiceColor(draft.colorToken)
+  const color: ServiceColor = normalizeServiceColor(draft.colorToken)
+  const isCustom = isCustomHex(color)
   const featuredLockedOut = !draft.featured && featuredCount >= MAX_FEATURED
   const canSave =
     draft.name.trim().length > 0 &&
@@ -226,7 +353,7 @@ function ServiceForm({
           </div>
         </div>
 
-        {/* Color picker */}
+        {/* Color picker — 12 tokens + chip "Personalizado" */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-ink">
             Color del bloque en la agenda
@@ -236,23 +363,31 @@ function ServiceForm({
               <ColorChip
                 key={t}
                 token={t}
-                selected={color === t}
+                selected={!isCustom && color === t}
                 onSelect={(next) =>
                   setDraft((d) => ({ ...d, colorToken: next }))
                 }
               />
             ))}
+            <CustomColorChip
+              value={isCustom ? (color as string) : undefined}
+              selected={isCustom}
+              onSelect={(hex) => setDraft((d) => ({ ...d, colorToken: hex }))}
+            />
           </div>
+          {isCustom && (
+            <p className="text-[11px] text-ink-3 font-mono">{color}</p>
+          )}
         </div>
 
         {/* Preview en vivo */}
         <ServicePreview
           name={draft.name}
           duration={draft.duration}
-          colorToken={color}
+          color={color}
         />
 
-        {/* Descripción — ahora respira (rows=4) */}
+        {/* Descripción — rows=4, respira */}
         <div className="space-y-1.5">
           <label htmlFor="svc-desc" className="text-xs font-medium text-ink">
             Descripción
@@ -420,13 +555,16 @@ export default function ServicesManager({ initial }: Props) {
         >
           {services.map((svc, i) => {
             const rowColor = normalizeServiceColor(svc.colorToken)
-            const c = SERVICE_COLOR_CLASSES[rowColor]
+            const dotBg = isCustomHex(rowColor)
+              ? (rowColor as string)
+              : `var(--color-svc-${rowColor})`
             return (
               <li key={i}>
                 <div className="px-4 py-3 flex items-center gap-3 hover:bg-overlay/40 transition-colors">
                   {/* Color dot */}
                   <span
-                    className={`h-3 w-3 rounded-full shrink-0 ${c.bg} ring-1 ${c.ring}`}
+                    className="h-3 w-3 rounded-full shrink-0 ring-1 ring-line"
+                    style={{ backgroundColor: dotBg }}
                     aria-hidden
                   />
                   {/* Star — toggle featured */}

@@ -920,10 +920,8 @@ export default function DayGrid({
                     // #33 — Color del bloque = color del SERVICIO (no del
                     // estado). El estado vive en un badge separado (commit 3).
                     const colorToken = resolveBookingColorToken(event, services);
-                    const { className: blockClass, treatment } = appointmentBlockClasses(
-                      colorToken,
-                      event.status,
-                    );
+                    const { className: blockClass, style: blockColorStyle, treatment } =
+                      appointmentBlockClasses(colorToken, event.status);
                     const badge = statusCornerBadge(event.status);
 
                     const isDraggable = !isBooksy && !isCancelled;
@@ -977,6 +975,11 @@ export default function DayGrid({
                           height,
                           left: `calc(${lay.leftPct}% + ${insetX}px)`,
                           width: `calc(${lay.widthPct}% - ${insetX * 2}px)`,
+                          // Custom hex: el helper devuelve backgroundColor,
+                          // color y boxShadow inline (Tailwind no genera
+                          // utilities dinámicas para hex). Tokens canónicos
+                          // van por className y dejan estos campos undefined.
+                          ...blockColorStyle,
                         }}
                         // Tooltip nativo incluye hora — antes el rango
                         // horario vivía en la primera línea del bloque y

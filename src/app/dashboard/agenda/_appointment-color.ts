@@ -3,7 +3,9 @@ import {
   type ServiceColorToken,
   DEFAULT_SERVICE_COLOR,
   isServiceColorToken,
+  isCustomHex,
   SERVICE_COLOR_CLASSES,
+  pickTextColorFor,
 } from '@/lib/service-colors';
 
 // -----------------------------------------------------------------------------
@@ -189,8 +191,10 @@ export function statusBadge(
 // -----------------------------------------------------------------------------
 // #33 — Color del bloque por SERVICIO, no por estado.
 //
-// El barbero asigna un `colorToken` a cada servicio (terracota/olive/…). El
-// bloque de cita en la agenda se tinta con ese par {bg, ink}. El ESTADO se
+// El barbero asigna un `colorToken` a cada servicio: o uno de los 12 colores
+// saturados de la paleta (red/orange/.../slate) o un hex `#RRGGBB`
+// personalizado vía `<input type="color">`. El bloque de cita se rellena con
+// ese color y el texto se calcula por luminancia (light/dark). El ESTADO se
 // comunica con un badge en la esquina sup-der (icono + tono), no con el
 // fondo del bloque. La cancelación se trata aparte: opacity + line-through
 // sobre el color del servicio (no devolvemos color "gris cancelada", la
@@ -199,8 +203,8 @@ export function statusBadge(
 // `appointmentBlockStyle` / `appointmentChipStyle` siguen aquí porque
 // AgendaSideRail los usa para pintar la leyenda de ESTADO (panel lateral).
 // Para el render del bloque en Día/Semana/Mes los grids consumen
-// `appointmentBlockClasses` / `appointmentChipClasses` (clases Tailwind
-// derivadas de `colorToken`, sin inline style).
+// `appointmentBlockClasses` / `appointmentChipClasses` — que devuelven
+// `className` para tokens canónicos o `style` inline para hex custom.
 // -----------------------------------------------------------------------------
 
 /** Servicio configurado mínimo necesario para resolver color. Usa solo
@@ -211,54 +215,94 @@ export interface ServiceWithColor {
   colorToken?: string | null;
 }
 
-/** Resuelve el token de color para una cita a partir del catálogo de
+/** Valor de color de un servicio: o bien un token de la paleta canónica
+ *  (12 colores) o bien un hex `#RRGGBB` custom elegido por el barbero. */
+export type ServiceColorValue = ServiceColorToken | string;
+
+/** Resuelve el color de un servicio para una cita a partir del catálogo de
  *  servicios del cliente. Si el servicio no se encuentra o no tiene
- *  `colorToken` válido, devuelve el por defecto (terracota = brand). */
+ *  `colorToken` válido (ni token canónico ni hex), devuelve el por defecto. */
 export function resolveBookingColorToken(
   booking: { service: string },
   services: ReadonlyArray<ServiceWithColor>,
-): ServiceColorToken {
+): ServiceColorValue {
   const match = services.find((s) => s.name === booking.service);
-  if (match?.colorToken && isServiceColorToken(match.colorToken)) {
-    return match.colorToken;
+  const raw = match?.colorToken;
+  if (typeof raw === 'string') {
+    if (isServiceColorToken(raw)) return raw;
+    if (isCustomHex(raw)) return raw.toLowerCase();
   }
   return DEFAULT_SERVICE_COLOR;
 }
 
-/** Clases del bloque (Día/Semana) basadas en el color del SERVICIO. Devuelve
- *  un string listo para concatenar en `className`. `treatment` añade
- *  line-through cuando la cita está cancelada (consistente con el style
- *  anterior, pero ahora el color del servicio NO desaparece — solo se
- *  atenúa con opacity).
- *
- *  Incluye `bg + text-ink + ring-ink-15%` (hairline del color del servicio
- *  para dar profundidad sin un borde sólido fuerte). El ring se aplica con
- *  utility `ring-1 ring-inset` + opacidad via Tailwind v4 modifier. */
+/** Resultado del render de un bloque/chip de cita. Para tokens de la paleta
+ *  devolvemos `className` (utilities Tailwind). Para hex custom devolvemos
+ *  `style` inline (no podemos generar utilities dinámicas en build). El
+ *  consumidor mergea ambos: el caso normal solo usa `className`, el caso
+ *  custom solo usa `style`. `treatment` (line-through cancelled) es común. */
+export interface AppointmentColorRender {
+  /** Clases Tailwind del color (vacío si el color es custom hex). */
+  className: string;
+  /** Style inline para hex custom (undefined si el color es token). */
+  style?: React.CSSProperties;
+  /** Tratamiento del texto: 'line-through' para canceladas. */
+  treatment: string;
+}
+
+/** Render del bloque (Día/Semana) o chip (Mes). Una sola función para ambos
+ *  — la única diferencia entre vistas era la lógica de color y la queremos
+ *  unificada (un chip de mes es solo una versión densa del mismo color). */
 export function appointmentBlockClasses(
-  token: ServiceColorToken,
+  value: ServiceColorValue,
   status: string,
-): { className: string; treatment: string } {
-  const c = SERVICE_COLOR_CLASSES[token];
+): AppointmentColorRender {
   const isCancelled = normalizeStatus(status) === 'cancelled';
-  // ring-inset + ring del ink saturado del servicio al 30% → hairline cálido
-  // que NO compite con el contenido pero da profundidad y unifica con el bg.
-  // Tailwind v4 acepta `ring-svc-X-ink/30` como utility válida.
+  const treatment = isCancelled ? 'line-through' : '';
+  const dim = isCancelled ? 'opacity-60' : '';
+
+  // Custom hex — style inline, sin clases de color (Tailwind no genera
+  // utilities dinámicas). El texto se calcula por luminancia.
+  if (isCustomHex(value)) {
+    const textLD = pickTextColorFor(value);
+    const textColor =
+      textLD === 'light'
+        ? 'var(--color-on-svc-light)'
+        : 'var(--color-on-svc-dark)';
+    return {
+      className: dim.trim(),
+      style: {
+        backgroundColor: value,
+        color: textColor,
+        // Hairline interno del mismo color (24% más oscuro/claro vía
+        // color-mix) para profundidad sutil — equivalente al ring que se
+        // usa para tokens.
+        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${value}, ${
+          textLD === 'light' ? 'black' : 'white'
+        } 24%)`,
+      },
+      treatment,
+    };
+  }
+
+  // Token canónico — clases utility de la paleta.
+  const token = isServiceColorToken(value) ? value : DEFAULT_SERVICE_COLOR;
+  const c = SERVICE_COLOR_CLASSES[token];
+  // ring-inset + ring del color del servicio al 30% → hairline que NO compite
+  // con el contenido pero da profundidad y unifica con el bg. Tailwind v4
+  // acepta `ring-svc-X/30` como utility válida.
   const ring = `ring-1 ring-inset ${c.ring}/30`;
   return {
-    className: `${c.bg} ${c.ink} ${ring} ${isCancelled ? 'opacity-60' : ''}`.trim(),
-    treatment: isCancelled ? 'line-through' : '',
+    className: `${c.bg} ${c.ink} ${ring} ${dim}`.trim(),
+    treatment,
   };
 }
 
-/** Variante "chip" del mes — mismas clases (bg + ink) que el bloque. La
- *  cancelación atenúa con opacity sobre el color del servicio. */
+/** Variante "chip" del mes — alias de `appointmentBlockClasses`. */
 export function appointmentChipClasses(
-  token: ServiceColorToken,
+  value: ServiceColorValue,
   status: string,
-): { className: string; treatment: string } {
-  // Misma lógica que el bloque — un chip de mes es solo una versión densa
-  // del mismo color. No hay variación visual entre vistas.
-  return appointmentBlockClasses(token, status);
+): AppointmentColorRender {
+  return appointmentBlockClasses(value, status);
 }
 
 /** Umbrales (px) de altura del bloque para decidir qué campos caben en
