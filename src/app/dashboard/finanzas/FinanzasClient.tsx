@@ -976,6 +976,43 @@ export default function FinanzasClient({
                 </button>
               )}
 
+              {/* Coste materiales — stock consumido internamente + merma.
+                  Auto-calculado desde product_sales con consumption_kind ≠ NULL
+                  (consumo barbero o rotura). El producto SE PAGÓ al proveedor →
+                  gasto real aunque no haya flujo de caja. Fallback al precio de
+                  venta cuando el producto no tiene coste de compra configurado
+                  (margen 0 hasta que el jefe edite el producto). Detalle:
+                  /dashboard/ventas/transacciones filtrando por consumo/merma. */}
+              {summary.materialsCostCents > 0 && (
+                <>
+                  <div className="px-4 pt-3 pb-1 border-t border-line">
+                    <p className="text-xs text-ink-3 font-medium uppercase tracking-wider">Coste materiales</p>
+                  </div>
+                  {summary.materialsCostInternalCents > 0 && (
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-line">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-ink">Consumo del barbero</p>
+                        <p className="text-[11px] text-ink-3 mt-0.5">Productos usados internamente</p>
+                      </div>
+                      <span className="tabular-nums text-sm font-semibold text-ink shrink-0">
+                        {formatCents(summary.materialsCostInternalCents)}
+                      </span>
+                    </div>
+                  )}
+                  {summary.materialsCostDamageCents > 0 && (
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-line">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-ink">Merma</p>
+                        <p className="text-[11px] text-ink-3 mt-0.5">Roturas y caducidades</p>
+                      </div>
+                      <span className="tabular-nums text-sm font-semibold text-ink shrink-0">
+                        {formatCents(summary.materialsCostDamageCents)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* Nóminas del equipo — auto-calculadas. Sólo aparece si hay
                   algún barbero con perfil de pago configurado. El detalle
                   se gestiona en /dashboard/equipo. */}

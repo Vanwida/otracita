@@ -22,6 +22,15 @@ export type FinanzasSummary = {
    *  de cada barbero (ver /dashboard/equipo). Se suma a totalGastosCents
    *  y por tanto resta del beneficio. */
   nominasCents: number
+  /** Coste de stock consumido este mes (consumo interno barbero + merma).
+   *  El producto SE PAGÓ al proveedor — gasto real aunque no haya caja.
+   *  Fallback a precio de venta cuando el producto no tiene coste config.
+   *  Suma de los dos desgloses. */
+  materialsCostCents: number
+  /** Sub-línea: coste del consumo interno del barbero (gomina, cera). */
+  materialsCostInternalCents: number
+  /** Sub-línea: coste de la merma / rotura. */
+  materialsCostDamageCents: number
   totalGastosCents: number
   ivaRepercutidoCents: number
   ivaSoportadoCents: number

@@ -214,6 +214,9 @@ export default function PrintReport({
             <PrintRow label="Ingresos brutos (con IVA)" value={formatCents(summary.ingresosCents)} />
             <PrintRow label="Gastos variables" value={`-${formatCents(summary.gastosVariablesCents)}`} indent />
             <PrintRow label="Costes fijos activos" value={`-${formatCents(summary.costosFijosCents)}`} indent />
+            {summary.materialsCostCents > 0 && (
+              <PrintRow label="Coste materiales (consumo + merma)" value={`-${formatCents(summary.materialsCostCents)}`} indent />
+            )}
             {summary.nominasCents > 0 && (
               <PrintRow label="Nóminas del equipo" value={`-${formatCents(summary.nominasCents)}`} indent />
             )}

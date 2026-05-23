@@ -14,6 +14,7 @@ import AreaTabs from '../_components/AreaTabs'
 import PanelSwitch from './PanelSwitch'
 import OperatorPanel from './OperatorPanel'
 import { computeMonthlyPayroll } from '@/lib/payroll/monthly'
+import { periodStockConsumptionCost } from '@/lib/finanzas/period-revenue'
 import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-math'
 import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 
@@ -213,7 +214,13 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   const payroll = await computeMonthlyPayroll(client.id, { start, end })
   const nominasCents = Math.max(0, payroll.totalCents)
 
-  const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents
+  // Coste materiales = stock consumido internamente + merma. Es gasto real
+  // (el producto SE PAGÓ al proveedor) aunque no haya flujo de caja → entra
+  // en totalGastosCents igual que en /api/finanzas/summary.
+  const materialsCost = await periodStockConsumptionCost(client.id, start, end)
+  const materialsCostCents = materialsCost.totalCents
+
+  const totalGastosCents = gastosVariablesCents + costosFijosCents + nominasCents + materialsCostCents
 
   // IVA soportado: solo categorías con IVA (productos, suministros, publicidad)
   const gastosConIvaCents = monthExpenses
@@ -257,6 +264,9 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     gastosVariablesCents,
     costosFijosCents,
     nominasCents,
+    materialsCostCents,
+    materialsCostInternalCents: materialsCost.internalCents,
+    materialsCostDamageCents: materialsCost.damageCents,
     totalGastosCents,
     ivaRepercutidoCents,
     ivaSoportadoCents,
