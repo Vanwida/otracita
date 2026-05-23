@@ -318,18 +318,15 @@ export const barbers = pgTable('barbers', {
   // Public-page assets. Optional — falls back to name-only rendering.
   photoUrl: text('photo_url'),
   bio: text('bio'),
-  // Perfil Booksy del empleado (screenshots 10.16.45 / 10.16.58). ADITIVO:
+  // Perfil del empleado.
   //  · role          → puesto libre ("Top barber", "Aprendiz"…). null = sin
   //                     puesto → la UI muestra "Profesional" por defecto.
-  //  · permissionLevel→ nivel de acceso. 'empleado' por defecto (el único
-  //                     que la UI v1 distingue; 'admin' reservado para
-  //                     cuando haya control de acceso por barbero).
-  //  · onlineBookable → si el cliente puede reservar con él online (toggle
-  //                     "Disponible para reservas online" de Booksy).
+  //  · onlineBookable → si el cliente puede reservar con él online.
   //                     Default true = comportamiento histórico (todos
   //                     reservables) → cero regresión.
+  // Permisos de acceso reales viven en `user.role + isManager +
+  // managerPermissions` (#72). El campo viejo `permissionLevel` se eliminó.
   role: text('role'),
-  permissionLevel: text('permission_level').default('empleado').notNull(),
   onlineBookable: boolean('online_bookable').default(true).notNull(),
   // Perfil de pago — 5 piezas que se combinan para calcular nómina mensual.
   // null en salaryType = sin configurar (no aparece en /finanzas/nóminas).

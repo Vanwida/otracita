@@ -21,7 +21,6 @@ import {
   Wallet,
   Scissors,
   Globe,
-  Shield,
   FileText,
   Pencil,
   Check,
@@ -66,7 +65,6 @@ interface BarberRow {
   // Perfil Booksy del empleado.
   bio: string | null
   role: string | null
-  permissionLevel: 'empleado' | 'admin'
   onlineBookable: boolean
   // Perfil de pago — feature Pro. Null en salaryType = sin configurar.
   salaryType: 'fijo' | 'mixto' | 'autonomo' | 'salaried_with_tier_bonus' | null
@@ -762,39 +760,16 @@ function BarberDetail({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <div>
-              <label
-                htmlFor={`perm-${barber.id}`}
-                className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-ink-2"
-              >
-                <Shield className="h-3.5 w-3.5" />
-                Nivel de permiso
-              </label>
-              <select
-                id={`perm-${barber.id}`}
-                value={barber.permissionLevel}
-                onChange={(e) =>
-                  onPatch({ permissionLevel: e.target.value as BarberRow['permissionLevel'] })
-                }
-                className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-brand"
-              >
-                <option value="empleado">Empleado</option>
-                <option value="admin">Administrador</option>
-              </select>
-            </div>
-
-            <label className="flex cursor-pointer items-center gap-2 self-end pb-2 text-sm text-ink">
-              <input
-                type="checkbox"
-                checked={barber.onlineBookable}
-                onChange={(e) => onPatch({ onlineBookable: e.target.checked })}
-                className="h-4 w-4 accent-[var(--color-brand)]"
-              />
-              <Globe className="h-4 w-4 text-ink-2" />
-              Disponible para reservas online
-            </label>
-          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={barber.onlineBookable}
+              onChange={(e) => onPatch({ onlineBookable: e.target.checked })}
+              className="h-4 w-4 accent-[var(--color-brand)]"
+            />
+            <Globe className="h-4 w-4 text-ink-2" />
+            Disponible para reservas online
+          </label>
         </section>
 
         {/* ── Horario ───────────────────────────────────────────────────── */}

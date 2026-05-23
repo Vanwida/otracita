@@ -59,7 +59,6 @@ export async function PATCH(
     // Perfil Booksy del empleado.
     bio?: unknown;
     role?: unknown;
-    permissionLevel?: unknown;
     onlineBookable?: unknown;
     // Perfil de pago — Pro feature, validado abajo.
     salaryType?: unknown;
@@ -156,7 +155,7 @@ export async function PATCH(
     patch.active = body.active;
   }
 
-  // -- Perfil Booksy del empleado (role / permissionLevel / onlineBookable
+  // -- Perfil del empleado (role / onlineBookable
   //    / bio). Todos opcionales; defaults en schema cubren lo no enviado.
   if ('bio' in body) {
     if (body.bio === null || body.bio === '') {
@@ -175,17 +174,6 @@ export async function PATCH(
       patch.role = body.role.trim().slice(0, 80);
     } else {
       return Response.json({ error: 'role debe ser string o null.' }, { status: 400 });
-    }
-  }
-
-  if ('permissionLevel' in body) {
-    if (body.permissionLevel === 'empleado' || body.permissionLevel === 'admin') {
-      patch.permissionLevel = body.permissionLevel;
-    } else {
-      return Response.json(
-        { error: "permissionLevel debe ser 'empleado' o 'admin'." },
-        { status: 400 },
-      );
     }
   }
 
