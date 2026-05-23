@@ -897,6 +897,14 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               hours={hours}
               onEventClick={handleEventClick}
               onSlotClick={handleSlotClick}
+              onSelectDay={(d) => {
+                // Click en la cabecera de un día de la vista Semana →
+                // saltamos a vista Día centrada en ese día. Reutiliza los
+                // mismos setters que el toggle Día/Semana/Mes y el botón
+                // "Hoy" (fuente única, DRY).
+                setCurrentDay(d);
+                setViewMode('day');
+              }}
             />
           ) : (
             <MonthGrid

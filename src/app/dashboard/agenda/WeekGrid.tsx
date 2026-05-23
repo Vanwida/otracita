@@ -30,6 +30,11 @@ interface Props {
   hours: Record<string, string> | null;
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (date: string, time: string) => void;
+  /** Click en la cabecera de un día (nombre + número) → cambia a vista
+   *  Día centrada en ese día. Lo despacha el parent (CalendarView), que
+   *  posee el estado de `viewMode` y `currentDay` (fuente única, DRY con
+   *  el toggle Día/Semana/Mes y el botón "Hoy"). */
+  onSelectDay: (date: Date) => void;
 }
 
 export default function WeekGrid({
@@ -40,6 +45,7 @@ export default function WeekGrid({
   hours,
   onEventClick,
   onSlotClick,
+  onSelectDay,
 }: Props) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   // Reloj vivo — refresca cada 60s para que la línea "ahora" avance sin
@@ -160,8 +166,18 @@ export default function WeekGrid({
                 key={dateStr}
                 className={`flex-1 flex flex-col border-r border-line last:border-r-0 min-w-0 ${isToday ? 'bg-today-tint' : 'bg-surface'}`}
               >
-                {/* Column header */}
-                <div className="h-8 flex flex-col items-center justify-center border-b border-line shrink-0">
+                {/* Column header — botón completo, no solo el número. Click
+                    → cambia la vista a "Día" centrada en ese día (DRY: usa
+                    el mismo setter que el toggle Día/Semana/Mes del
+                    CalendarView, vía `onSelectDay`). El target horizontal
+                    cubre toda la columna; vertical 32px (h-8) por alineación
+                    con el gutter — el strip completo dispara el click. */}
+                <button
+                  type="button"
+                  onClick={() => onSelectDay(day)}
+                  aria-label={`Ver agenda del ${format(day, "EEEE d 'de' MMMM", { locale: es })}`}
+                  className="h-8 w-full flex flex-col items-center justify-center border-b border-line shrink-0 cursor-pointer hover:bg-overlay focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset transition-colors"
+                >
                   <span
                     className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-brand' : 'text-ink-2'}`}
                   >
@@ -172,7 +188,7 @@ export default function WeekGrid({
                   >
                     {format(day, 'd')}
                   </span>
-                </div>
+                </button>
 
                 {/* Column body */}
                 <div
