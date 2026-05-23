@@ -49,6 +49,8 @@ export async function GET(req: Request) {
           email: users.email,
           barberId: users.barberId,
           disabledAt: users.disabledAt,
+          isManager: users.isManager,
+          managerPermissions: users.managerPermissions,
         })
         .from(users)
         .where(eq(users.role, 'barber'))
@@ -94,6 +96,10 @@ export async function GET(req: Request) {
             userId: u.id,
             email: u.email,
             disabledAt: u.disabledAt ? u.disabledAt.toISOString() : null,
+            isManager: u.isManager ?? false,
+            managerPermissions: Array.isArray(u.managerPermissions)
+              ? u.managerPermissions
+              : [],
           }
         : null,
       pendingInvite: inv

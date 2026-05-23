@@ -31,6 +31,7 @@ import HoursEditor, { type HoursMap } from './HoursEditor'
 import { useConfirm } from './ConfirmDialog'
 import BarberSalaryEditor from './BarberSalaryEditor'
 import BarberInviteCard from './BarberInviteCard'
+import BarberPermissionsCard from './BarberPermissionsCard'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — Equipo > Empleados en patrón MASTER-DETAIL (Booksy
@@ -84,6 +85,8 @@ interface BarberRow {
     userId: string
     email: string
     disabledAt: string | null
+    isManager: boolean
+    managerPermissions: string[]
   } | null
   pendingInvite: {
     email: string
@@ -886,6 +889,16 @@ function BarberDetail({
             barberName={barber.name}
             account={barber.account}
             pendingInvite={barber.pendingInvite}
+            onChanged={onSalaryUpdated}
+          />
+        </section>
+
+        {/* ── Rol y permisos granulares (#72) ─────────────────────────── */}
+        <section className="border-t border-line pt-5">
+          <BarberPermissionsCard
+            barberId={barber.id}
+            barberName={barber.name}
+            account={barber.account}
             onChanged={onSalaryUpdated}
           />
         </section>
