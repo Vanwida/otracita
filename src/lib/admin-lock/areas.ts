@@ -9,6 +9,10 @@
 // Claves estables (NUNCA renombrar — viven en clients.adminLockedAreas jsonb):
 // -----------------------------------------------------------------------------
 
+// NOTA: el "Panel admin" (/admin/*) NO entra aquí. Es el panel interno de
+// otracita (dueño de la plataforma) y ya está gateado por `isAdminUser` de
+// Better Auth (role=ADMIN). El jefe no debe poder marcar como sensible un
+// área que es ajena a su negocio.
 export const ADMIN_LOCKABLE_AREA_KEYS = [
   'informes',
   'equipo-comisiones',
@@ -17,7 +21,6 @@ export const ADMIN_LOCKABLE_AREA_KEYS = [
   'ventas-cobros',
   'ajustes',
   'mi-plan',
-  'admin',
 ] as const
 
 export type AdminLockableAreaKey = (typeof ADMIN_LOCKABLE_AREA_KEYS)[number]
@@ -30,7 +33,6 @@ export const ADMIN_LOCKABLE_AREA_LABELS: Record<AdminLockableAreaKey, string> = 
   'ventas-cobros': 'Ventas — Cobros',
   ajustes: 'Ajustes (negocio, pagos, plan)',
   'mi-plan': 'Mi plan / Suscripción',
-  admin: 'Panel admin',
 }
 
 export function isAdminLockableAreaKey(value: unknown): value is AdminLockableAreaKey {
