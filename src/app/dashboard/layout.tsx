@@ -17,6 +17,7 @@ import { db } from "@/db"
 import { clients } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { isAdminUser } from "@/lib/auth/admin"
+import { users } from "@/db/schema"
 
 // PWA del dashboard — instalable en iPad/iPhone/Android desde el propio
 // /dashboard. El manifest vive en /dashboard/manifest.webmanifest (scope
@@ -57,6 +58,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!session?.user) {
     redirect("/login")
+  }
+
+  // Modo barbero v2 (#71) — si el user tiene role='barber', su sitio NO
+  // es el dashboard sino /yo. Resolvemos a DB (los additionalFields de
+  // Better Auth pueden no estar en el objeto session según versión).
+  const [userRow] = await db.select().from(users).where(eq(users.id, session.user.id))
+  if (userRow?.disabledAt) {
+    redirect("/login?error=disabled")
+  }
+  if (userRow?.role === 'barber') {
+    redirect("/yo/agenda")
   }
 
   let client = null

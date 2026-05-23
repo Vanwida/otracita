@@ -22,11 +22,25 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  async function routeByRole() {
+    // El backend decide. Modo barbero v2: role='barber' → /yo/agenda,
+    // resto → /dashboard. Centralizado en /api/me/landing.
+    try {
+      const res = await fetch('/api/me/landing', { cache: 'no-store' });
+      const body = (await res.json()) as { redirectTo?: string };
+      const target = typeof body.redirectTo === 'string' ? body.redirectTo : '/dashboard';
+      window.location.href = target;
+    } catch {
+      window.location.href = '/dashboard';
+    }
+  }
+
   async function handleGoogle() {
     setGoogleLoading(true);
+    // Google SSO: callback a un endpoint que reenvía por role.
     await authClient.signIn.social({
       provider: 'google',
-      callbackURL: '/dashboard',
+      callbackURL: '/api/me/landing-redirect',
     });
   }
 
@@ -43,11 +57,16 @@ export default function LoginPage() {
     const { error: signInError } = await authClient.signIn.email({ email, password });
 
     if (!signInError) {
-      router.push('/dashboard');
+      await routeByRole();
       return;
     }
 
-    // User might not exist — try sign up
+    // User might not exist — try sign up. NOTA: signUp aquí solo crea
+    // dueños (role='admin' default). Los barberos NO entran por esta
+    // pantalla, entran via /aceptar-invitacion/[token]. Si alguien
+    // intenta registrarse y ya tiene una invitación pendiente para
+    // ese email, debería usar el link del email — pero por simplicidad
+    // dejamos el signUp aquí como fallback.
     const { error: signUpError } = await authClient.signUp.email({
       email,
       password,
@@ -55,13 +74,19 @@ export default function LoginPage() {
     });
 
     if (!signUpError) {
-      router.push('/dashboard');
+      await routeByRole();
       return;
     }
 
     setError(signUpError.message || 'Error de autenticación');
     setLoading(false);
   }
+
+  // Mantener router declarado para evitar regresiones si otro código lo
+  // referencia. Cambiamos a window.location.href para forzar full reload
+  // tras login (importante para que el server pille la cookie en el
+  // primer render de /yo).
+  void router;
 
   return (
     <div className="flex h-screen items-center justify-center bg-canvas">
