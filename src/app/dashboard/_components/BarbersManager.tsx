@@ -443,6 +443,62 @@ export default function BarbersManager({
 // fila, recompone el orden y lo persiste vía onReorder. Flechas ↑↓ ocultas
 // (teclado / lectores de pantalla) para que el reorden sea accesible.
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// BarberAvatar — render canónico del retrato del barbero con fallback a
+// iniciales. Si la imagen falla al cargar (URL muerta, blob borrado, CDN caído,
+// red bloqueando vercel-storage…), `onError` apaga el <img> y mostramos las
+// iniciales en su lugar. Antes del fix se veía un "círculo vacío" sobre
+// `bg-overlay` cuando el src apuntaba a un recurso inalcanzable.
+// -----------------------------------------------------------------------------
+function BarberAvatar({
+  url,
+  name,
+  className,
+  fallbackClassName,
+  alt,
+}: {
+  url: string | null
+  name: string
+  /** Clases del contenedor (forma/tamaño/borde). */
+  className: string
+  /** Clases del texto de iniciales (tamaño/peso). */
+  fallbackClassName: string
+  /** alt explícito; si no, decorativo. */
+  alt?: string
+}) {
+  const [failed, setFailed] = useState(false)
+
+  // Reset failure si cambia la URL (p. ej. tras subir una foto nueva).
+  useEffect(() => {
+    setFailed(false)
+  }, [url])
+
+  const initials = name.slice(0, 1).toUpperCase()
+  const showImg = url && !failed
+
+  return (
+    <div className={className}>
+      {showImg ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={alt ?? ''}
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <span
+          className={`flex h-full w-full items-center justify-center ${fallbackClassName}`}
+          aria-label={alt}
+        >
+          {initials}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function BarberListItem({
   barber,
   selected,
@@ -517,18 +573,12 @@ function BarberListItem({
           className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
           aria-current={selected ? 'true' : undefined}
         >
-          {barber.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={barber.photoUrl}
-              alt=""
-              className="h-9 w-9 shrink-0 rounded-full border border-line object-cover"
-            />
-          ) : (
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-overlay text-xs font-bold text-ink-2">
-              {barber.name.slice(0, 1).toUpperCase()}
-            </span>
-          )}
+          <BarberAvatar
+            url={barber.photoUrl}
+            name={barber.name}
+            className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-line bg-overlay"
+            fallbackClassName="text-xs font-bold text-ink-2"
+          />
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium text-ink">{barber.name}</span>
             <span className="block truncate text-[11px] uppercase tracking-wide text-ink-3">
@@ -637,20 +687,13 @@ function BarberDetail({
     <div className="flex h-full flex-col">
       {/* Cabecera del detalle */}
       <div className="flex items-start gap-4 border-b border-line p-5">
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-line bg-overlay">
-          {barber.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={barber.photoUrl}
-              alt={barber.name}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center text-lg font-bold text-ink-2">
-              {barber.name.slice(0, 1).toUpperCase()}
-            </span>
-          )}
-        </div>
+        <BarberAvatar
+          url={barber.photoUrl}
+          name={barber.name}
+          alt={barber.name}
+          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-line bg-overlay"
+          fallbackClassName="text-lg font-bold text-ink-2"
+        />
         <div className="min-w-0 flex-1">
           <input
             type="text"
@@ -1108,6 +1151,12 @@ function BarberPhotoUpload({
 }) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [imgFailed, setImgFailed] = useState(false)
+
+  // Si cambia la URL (nueva subida, quitar) limpiamos el flag de error.
+  useEffect(() => {
+    setImgFailed(false)
+  }, [url])
 
   const onPick = async (file: File) => {
     setError(null)
@@ -1131,9 +1180,14 @@ function BarberPhotoUpload({
   return (
     <div className="flex items-start gap-3">
       <div className="relative h-20 w-20 rounded-lg overflow-hidden bg-overlay border border-line shrink-0 flex items-center justify-center">
-        {url ? (
+        {url && !imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="Foto del barbero" className="h-full w-full object-cover" />
+          <img
+            src={url}
+            alt="Foto del barbero"
+            onError={() => setImgFailed(true)}
+            className="h-full w-full object-cover"
+          />
         ) : (
           <User className="h-8 w-8 text-ink-3" />
         )}
