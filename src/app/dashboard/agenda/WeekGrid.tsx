@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { format, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Lock, UsersRound } from 'lucide-react';
+import { Lock, User, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import type { CalendarEvent, Barber } from './types';
 import {
@@ -42,6 +42,12 @@ import { buildWeekCell } from './_lib/week-cell';
 // que un barbero deba poder configurar (premature config, ver CLAUDE.md).
 const MAX_VISIBLE_PER_CELL = 6;
 
+// ID interno reservado para la swimlane "Sin asignar". Se usa como key del
+// índice (barberId|date) cuando una cita tiene barberId=null o apunta a un
+// barbero inactivo (no figura en `barbers`). NUNCA puede colisionar con un
+// UUID real de la tabla `barbers` (los IDs reales son uuid v4).
+const UNASSIGNED_BARBER_ID = '__unassigned__';
+
 interface Props {
   weekStart: Date;
   events: CalendarEvent[];
@@ -57,8 +63,10 @@ interface Props {
   onSelectDay: (date: Date) => void;
   /** Click en "Mostrar todo (N) ›" en una celda → cambia a vista Día
    *  centrada en ese día Y filtrada por ese barbero. CalendarView posee el
-   *  state (viewMode + currentDay + selectedBarber). */
-  onShowAllDay: (date: Date, barber: Barber) => void;
+   *  state (viewMode + currentDay + selectedBarber). `barber === null` en
+   *  la fila "Sin asignar": el receptor debe ir a la vista Día SIN filtro
+   *  para que las citas huérfanas se vean en el timeline real. */
+  onShowAllDay: (date: Date, barber: Barber | null) => void;
   /** Click en una celda VACÍA → crea cita rápida en ese barbero/día. La
    *  hora se setea por defecto a 10:00 (Booksy no abre slot picker en cell;
    *  el barbero confirma hora en NewBookingPanel). */
@@ -112,26 +120,37 @@ export default function WeekGrid({
   const today = new Date();
 
   // Indexamos las citas por (barberId, date) una sola vez. Para barberos sin
-  // id canónico (legacy) caemos a match por NAME normalizado. Citas
-  // canceladas se incluyen — el barbero quiere VER el hueco que se canceló
-  // (mismo criterio que DayGrid: accountability + reproducir el hueco).
-  const eventsByCell = useMemo(() => {
+  // id canónico (legacy) caemos a match por NAME normalizado. Si la cita no
+  // matchea con ningún barbero del equipo activo (barberId=null o apunta a
+  // un barbero inactivo / borrado / con nombre que ya no existe), cae en la
+  // swimlane especial `UNASSIGNED_BARBER_ID` que se pinta como una fila
+  // "Sin asignar" al final de la matriz. Booksy/Fresha hacen lo mismo.
+  // Citas canceladas se incluyen — el barbero quiere VER el hueco que se
+  // canceló (mismo criterio que DayGrid: accountability + reproducir el hueco).
+  const { eventsByCell, hasUnassigned } = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
+    const activeBarberIds = new Set<string>();
     const nameToId = new Map<string, string>();
     for (const b of barbers) {
+      activeBarberIds.add(b.id);
       nameToId.set(b.name.trim().toLowerCase(), b.id);
     }
+    let unassignedCount = 0;
     for (const ev of events) {
-      // Resolver el barberId canónico de cada cita. Prioridad: el id que
-      // ya viene en la cita; si no, lookup por nombre. Si nada matchea,
-      // se ignora (no hay swimlane "Sin asignar" en Semana — la vista
-      // matriz es por equipo registrado; los huérfanos se ven en Día).
-      let barberId = ev.barberId ?? null;
-      if (!barberId && ev.barber) {
+      // Resolver el barberId canónico de cada cita contra el equipo activo.
+      // Si la cita trae un barberId que ya no existe en `barbers` (inactivo
+      // o borrado), lo descartamos como si fuera null — la fila "Sin
+      // asignar" lo absorbe en vez de crear una fila huérfana fantasma.
+      let barberId: string | null = null;
+      if (ev.barberId && activeBarberIds.has(ev.barberId)) {
+        barberId = ev.barberId;
+      } else if (ev.barber) {
         barberId = nameToId.get(ev.barber.trim().toLowerCase()) ?? null;
       }
-      if (!barberId) continue;
-      const key = `${barberId}|${ev.date}`;
+      const key = barberId
+        ? `${barberId}|${ev.date}`
+        : `${UNASSIGNED_BARBER_ID}|${ev.date}`;
+      if (!barberId) unassignedCount += 1;
       const list = map.get(key);
       if (list) list.push(ev);
       else map.set(key, [ev]);
@@ -141,7 +160,7 @@ export default function WeekGrid({
     for (const list of map.values()) {
       list.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
     }
-    return map;
+    return { eventsByCell: map, hasUnassigned: unassignedCount > 0 };
   }, [events, barbers]);
 
   // Empty state: tenant sin equipo activo. La matriz no tiene filas que
@@ -227,8 +246,8 @@ export default function WeekGrid({
           );
         })}
 
-        {/* Filas: una por barbero. Cada fila = celda sticky-left (avatar+
-            nombre) + 7 celdas de día. */}
+        {/* Filas: una por barbero activo. Cada fila = celda sticky-left
+            (avatar+nombre) + 7 celdas de día. */}
         {barbers.map((barber) => (
           <BarberRow
             key={barber.id}
@@ -243,6 +262,24 @@ export default function WeekGrid({
             onCellClick={onCellClick}
           />
         ))}
+
+        {/* Fila "Sin asignar" — SIEMPRE al final, sólo si hay >= 1 cita
+            sin barbero válido. Agrupa citas con barberId=null o que apuntan
+            a un barbero inactivo/borrado. Las celdas vacías de esta fila NO
+            son clickables (no tiene sentido crear "nueva cita" en un slot
+            sin asignación de barbero — el flujo correcto es elegir barbero
+            explícito) y "Mostrar todo" abre la vista Día sin filtro. */}
+        {hasUnassigned && (
+          <UnassignedRow
+            days={days}
+            today={today}
+            blockedDates={blockedDates}
+            eventsByCell={eventsByCell}
+            services={services}
+            onEventClick={onEventClick}
+            onShowAllDay={onShowAllDay}
+          />
+        )}
       </div>
     </div>
   );
@@ -271,7 +308,7 @@ function BarberRow({
   eventsByCell: Map<string, CalendarEvent[]>;
   services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
   onEventClick: (event: CalendarEvent) => void;
-  onShowAllDay: (date: Date, barber: Barber) => void;
+  onShowAllDay: (date: Date, barber: Barber | null) => void;
   onCellClick: (date: string, barberId: string) => void;
 }) {
   return (
@@ -360,10 +397,18 @@ function WeekCell({
   overflowCount: number;
   services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
   onEventClick: (event: CalendarEvent) => void;
-  onShowAllDay: (date: Date, barber: Barber) => void;
-  onCellClick: (date: string, barberId: string) => void;
+  /** `barber` es el real para filas normales; en la swimlane "Sin asignar"
+   *  llega con id especial y el handler de "Mostrar todo" se invoca con
+   *  null (sin filtro) — se resuelve internamente en `WeekCell`. */
+  onShowAllDay: (date: Date, barber: Barber | null) => void;
+  /** Null en la swimlane "Sin asignar": las celdas vacías no permiten crear
+   *  cita (no hay barbero al que asignársela). En las filas normales este
+   *  callback recibe el barbero+día y abre NewBookingPanel prefijado. */
+  onCellClick: ((date: string, barberId: string) => void) | null;
 }) {
   const isEmpty = visible.length === 0 && overflowCount === 0;
+  const isClickable = isEmpty && onCellClick !== null;
+  const isUnassignedRow = barber.id === UNASSIGNED_BARBER_ID;
 
   return (
     <div
@@ -375,12 +420,14 @@ function WeekCell({
         // Click sobre la celda VACÍA → crea cita rápida. Si el click cayó
         // sobre un bloque o el link "Mostrar todo", esos handlers ya
         // hicieron stopPropagation. Defensa adicional: si el target es
-        // un elemento interactivo, ignoramos.
+        // un elemento interactivo, ignoramos. En la fila "Sin asignar"
+        // (onCellClick=null) las celdas vacías son inertes.
+        if (!onCellClick) return;
         if ((e.target as HTMLElement).closest('[data-event]')) return;
         if ((e.target as HTMLElement).closest('[data-overflow-link]')) return;
         onCellClick(dateStr, barber.id);
       }}
-      style={{ cursor: isEmpty ? 'pointer' : 'default' }}
+      style={{ cursor: isClickable ? 'pointer' : 'default' }}
     >
       {visible.map((event) => (
         <WeekBlock
@@ -397,7 +444,10 @@ function WeekCell({
           data-overflow-link="true"
           onClick={(e) => {
             e.stopPropagation();
-            onShowAllDay(day, barber);
+            // En la swimlane "Sin asignar" pasamos null: la vista Día se
+            // abre sin filtro de barbero, para ver las huérfanas en el
+            // timeline completo del día.
+            onShowAllDay(day, isUnassignedRow ? null : barber);
           }}
           className="text-[11px] font-semibold text-brand-strong hover:text-brand transition-colors text-left mt-auto cursor-pointer focus:outline-none focus-visible:underline"
         >
@@ -412,6 +462,94 @@ function WeekCell({
         <span className="text-[11px] text-ink-3/60 select-none">—</span>
       )}
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// UnassignedRow — swimlane especial al final de la matriz para citas sin
+// barbero válido (barberId=null o apunta a un barbero inactivo/borrado).
+// El header lleva un avatar genérico con icono User y label "Sin asignar".
+// Comportamiento diferenciado:
+//   · celdas vacías NO clickables (no se puede crear cita "sin asignar"
+//     desde aquí — el flujo correcto es elegir barbero en NewBookingPanel).
+//   · "Mostrar todo (N) ›" abre la vista Día sin filtro de barbero,
+//     centrada en ese día, para que el barbero vea las huérfanas en
+//     contexto del timeline real.
+// -----------------------------------------------------------------------------
+function UnassignedRow({
+  days,
+  today,
+  blockedDates,
+  eventsByCell,
+  services,
+  onEventClick,
+  onShowAllDay,
+}: {
+  days: Date[];
+  today: Date;
+  blockedDates: string[];
+  eventsByCell: Map<string, CalendarEvent[]>;
+  services: ReadonlyArray<{ name: string; colorToken?: string | null }>;
+  onEventClick: (event: CalendarEvent) => void;
+  onShowAllDay: (date: Date, barber: Barber | null) => void;
+}) {
+  // Pseudo-barber sólo para satisfacer la firma de WeekCell / onShowAllDay.
+  // displayOrder=-1 es señal interna ("va al final"); el name "" se traduce
+  // en filtro vacío si llega al rail (no filtra por nombre — comportamiento
+  // deseado, queremos ver TODAS las citas del día al hacer "Mostrar todo").
+  const pseudoBarber: Barber = {
+    id: UNASSIGNED_BARBER_ID,
+    name: '',
+    photoUrl: null,
+    displayOrder: -1,
+  };
+
+  return (
+    <>
+      <div
+        role="rowheader"
+        className="sticky left-0 z-10 bg-surface border-b border-r border-line flex items-center gap-2 px-2 py-2 min-h-[88px]"
+      >
+        <span
+          className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 bg-overlay border border-line"
+          aria-hidden="true"
+        >
+          <User className="h-4 w-4 text-ink-3" />
+        </span>
+        <span className="text-[13px] font-semibold text-ink-2 truncate leading-tight italic">
+          Sin asignar
+        </span>
+      </div>
+
+      {days.map((day) => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const isToday = isSameDay(day, today);
+        const isBlocked = blockedDates.includes(dateStr);
+        const cellKey = `${UNASSIGNED_BARBER_ID}|${dateStr}`;
+        const cellEvents = eventsByCell.get(cellKey) ?? [];
+        const { visible, overflowCount } = buildWeekCell(
+          cellEvents,
+          MAX_VISIBLE_PER_CELL,
+        );
+
+        return (
+          <WeekCell
+            key={cellKey}
+            dateStr={dateStr}
+            day={day}
+            barber={pseudoBarber}
+            isToday={isToday}
+            isBlocked={isBlocked}
+            visible={visible}
+            overflowCount={overflowCount}
+            services={services}
+            onEventClick={onEventClick}
+            onShowAllDay={onShowAllDay}
+            onCellClick={null}
+          />
+        );
+      })}
+    </>
   );
 }
 

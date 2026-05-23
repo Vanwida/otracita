@@ -917,8 +917,12 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
                 // estado `selectedBarber` (filtro por NOMBRE que ya consume
                 // /api/dashboard/calendar) en vez de añadir un segundo eje
                 // de estado — DRY con el filtro del rail lateral.
+                //
+                // `barber === null` viene de la swimlane "Sin asignar":
+                // no aplicamos filtro (mostramos TODAS las citas del día,
+                // para ver las huérfanas en el timeline real).
                 setCurrentDay(d);
-                setSelectedBarber(barber.name);
+                setSelectedBarber(barber ? barber.name : 'all');
                 setViewMode('day');
               }}
               onCellClick={(date, barberId) => {
