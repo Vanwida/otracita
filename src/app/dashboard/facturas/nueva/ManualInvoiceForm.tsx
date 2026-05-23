@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { Loader2, AlertCircle, Info } from 'lucide-react'
+import { toast } from 'sonner'
 import FormGrid from '@/app/dashboard/_components/FormGrid'
 
 // -----------------------------------------------------------------------------
@@ -137,15 +138,20 @@ export default function ManualInvoiceForm({
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        setError(data.error || 'No se pudo emitir la factura.')
+        const msg = data.error || 'No se pudo emitir la factura.'
+        setError(msg)
+        toast.error(msg)
         setLoading(false)
         return
       }
 
+      toast.success('Factura emitida')
       router.push(`/dashboard/facturas/${data.invoiceId}`)
       router.refresh()
     } catch {
-      setError('Error de red. Inténtalo de nuevo.')
+      const msg = 'Error de red. Inténtalo de nuevo.'
+      setError(msg)
+      toast.error(msg)
       setLoading(false)
     }
   }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import Modal from '../../_components/Modal'
 import {
   HOURS_DAYS,
@@ -169,7 +170,9 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
       })
       if (!hoursRes.ok) {
         const d = await hoursRes.json().catch(() => ({}))
-        setError(d?.error || 'No se pudo guardar el horario.')
+        const msg = d?.error || 'No se pudo guardar el horario.'
+        setError(msg)
+        toast.error(msg)
         return
       }
 
@@ -203,10 +206,13 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
         // El error de la API ahora se muestra tal cual (ya son copy de
         // barbero — ver /api/barbers/[id]/breaks). El fallback solo aplica
         // a fallos de red / 500.
-        setError(d?.error || 'Se guardó el horario pero los descansos no. Inténtalo otra vez.')
+        const msg = d?.error || 'Se guardó el horario pero los descansos no. Inténtalo otra vez.'
+        setError(msg)
+        toast.error(msg)
         return
       }
 
+      toast.success('Horario guardado')
       onSaved()
     } finally {
       setSaving(false)

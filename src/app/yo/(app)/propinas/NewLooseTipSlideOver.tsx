@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Heart } from 'lucide-react';
+import { toast } from 'sonner';
 import SlideOver from '@/app/dashboard/_components/SlideOver';
 
 // -----------------------------------------------------------------------------
@@ -68,13 +69,18 @@ export default function NewLooseTipSlideOver({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo registrar la propina.');
+        const msg = body?.error || 'No se pudo registrar la propina.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Propina registrada');
       onSaved();
       onClose();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

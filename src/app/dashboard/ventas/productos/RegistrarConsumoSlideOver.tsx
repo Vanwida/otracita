@@ -11,6 +11,7 @@ import {
   User,
   X,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import SlideOver from '../../_components/SlideOver'
 import NumberInput from '../../_components/NumberInput'
 
@@ -156,13 +157,18 @@ export default function RegistrarConsumoSlideOver({
         error?: string
       }
       if (!r.ok) {
-        setError(d.error ?? 'No se pudo registrar')
+        const msg = d.error ?? 'No se pudo registrar'
+        setError(msg)
+        toast.error(msg)
         return
       }
       setDone({ name: selected.name, kind })
+      toast.success('Consumo registrado')
       onCreated?.()
     } catch {
-      setError('Error de red')
+      const msg = 'Error de red'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }

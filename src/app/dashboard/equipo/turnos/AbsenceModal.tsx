@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import Modal from '../../_components/Modal'
 import type { TurnosBarber } from './TurnosManager'
 
@@ -90,9 +91,12 @@ export default function AbsenceModal({ barber, defaultDate, onClose, onSaved }: 
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        setError(d?.error || 'No se pudo guardar la ausencia.')
+        const msg = d?.error || 'No se pudo guardar la ausencia.'
+        setError(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Ausencia guardada')
       onSaved()
     } finally {
       setSaving(false)

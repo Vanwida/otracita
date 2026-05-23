@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { Loader2, ShoppingBag } from 'lucide-react';
+import { toast } from 'sonner';
 import SlideOver from '@/app/dashboard/_components/SlideOver';
 import { formatEuros } from '../_lib/format';
 
@@ -102,13 +103,18 @@ export default function NewProductSaleSlideOver({ open, onClose, onSold }: Props
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo registrar la venta.');
+        const msg = body?.error || 'No se pudo registrar la venta.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Venta registrada');
       onSold();
       onClose();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import Modal from '../../_components/Modal'
 import { HHMM_RE, toMinutes } from './weekdays'
 import type { TurnosBarber } from './TurnosManager'
@@ -75,9 +76,12 @@ export default function BlockModal({ barber, defaultDate, defaultStart, onClose,
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        setError(d?.error || 'No se pudo guardar.')
+        const msg = d?.error || 'No se pudo guardar.'
+        setError(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Descanso guardado')
       onSaved()
     } finally {
       setSaving(false)

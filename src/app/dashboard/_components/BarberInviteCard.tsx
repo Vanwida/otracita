@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Mail, Loader2, Check, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import Modal from './Modal';
 
 // -----------------------------------------------------------------------------
@@ -62,15 +63,20 @@ export default function BarberInviteCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo enviar la invitación.');
+        const msg = body?.error || 'No se pudo enviar la invitación.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
       setLastInviteToken(typeof body?.invite?.token === 'string' ? body.invite.token : null);
       setModalOpen(false);
       setEmailDraft('');
+      toast.success('Invitación enviada');
       onChanged?.();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -92,12 +98,17 @@ export default function BarberInviteCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo revocar.');
+        const msg = body?.error || 'No se pudo revocar.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Invitación revocada');
       onChanged?.();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -121,12 +132,17 @@ export default function BarberInviteCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo revocar.');
+        const msg = body?.error || 'No se pudo revocar.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Acceso revocado');
       onChanged?.();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -144,12 +160,17 @@ export default function BarberInviteCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo reactivar.');
+        const msg = body?.error || 'No se pudo reactivar.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Acceso reactivado');
       onChanged?.();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

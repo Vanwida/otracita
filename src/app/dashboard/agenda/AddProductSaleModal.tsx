@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Loader2, ShoppingBag, Plus, Minus, Check } from 'lucide-react'
+import { toast } from 'sonner'
 import Modal from '../_components/Modal'
 import NumberInput from '../_components/NumberInput'
 
@@ -109,13 +110,18 @@ export default function AddProductSaleModal({
       })
       const d = (await r.json().catch(() => ({}))) as { sale?: unknown; error?: string }
       if (!r.ok) {
-        setError(d.error ?? 'No se pudo registrar la venta')
+        const msg = d.error ?? 'No se pudo registrar la venta'
+        setError(msg)
+        toast.error(msg)
         return
       }
       setDone({ name: selected.name, total: totalCents })
+      toast.success('Venta registrada')
       onCreated?.()
     } catch {
-      setError('Error de red')
+      const msg = 'Error de red'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }

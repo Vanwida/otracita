@@ -2,6 +2,7 @@
 
 import { Loader2, Plus } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import SlideOver from '../_components/SlideOver';
 import CustomerTypeahead from '../_components/CustomerTypeahead';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
@@ -174,7 +175,9 @@ export default function NewBookingPanel({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Error al crear la reserva.');
+        const msg = data.error || 'Error al crear la reserva.';
+        setError(msg);
+        toast.error(msg);
         setLoading(false);
         return;
       }
@@ -187,8 +190,11 @@ export default function NewBookingPanel({
       setLinkedPhone(null);
       setExtraServices([]);
       setError(null);
+      toast.success('Reserva creada');
     } catch {
-      setError('Error de red. Inténtalo de nuevo.');
+      const msg = 'Error de red. Inténtalo de nuevo.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
