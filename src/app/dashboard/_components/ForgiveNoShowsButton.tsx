@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Heart } from 'lucide-react'
+import { toast } from 'sonner'
 import { useConfirm } from './ConfirmDialog'
 
 interface Props {
@@ -41,9 +42,12 @@ export default function ForgiveNoShowsButton({ customerId, customerName }: Props
           const data = (await res.json().catch(() => ({}))) as { error?: string }
           throw new Error(data.error || 'No se pudo perdonar')
         }
+        toast.success('Cliente perdonado')
         router.refresh()
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error')
+        const msg = e instanceof Error ? e.message : 'Error'
+        setError(msg)
+        toast.error(msg)
       }
     })
   }

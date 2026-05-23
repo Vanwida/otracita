@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Unlock } from 'lucide-react'
+import { toast } from 'sonner'
 import { useConfirm } from './ConfirmDialog'
 
 interface Props {
@@ -35,9 +36,12 @@ export default function UnblockCustomerButton({ customerId }: Props) {
           const data = (await res.json().catch(() => ({}))) as { error?: string }
           throw new Error(data.error || 'No se pudo desbloquear')
         }
+        toast.success('Cliente desbloqueado')
         router.refresh()
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error')
+        const msg = e instanceof Error ? e.message : 'Error'
+        setError(msg)
+        toast.error(msg)
       }
     })
   }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Shield, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   MANAGER_PERMISSION_KEYS,
   MANAGER_PERMISSION_LABELS,
@@ -108,13 +109,18 @@ export default function BarberPermissionsCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error || 'No se pudo guardar.');
+        const msg = body?.error || 'No se pudo guardar.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
       setSuccess(true);
+      toast.success('Permisos guardados');
       onChanged?.();
     } catch {
-      setError('Error de conexión.');
+      const msg = 'Error de conexión.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

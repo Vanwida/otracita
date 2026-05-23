@@ -16,6 +16,7 @@ import {
   Copy,
   Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   type HoursDay,
   hoursDayForDate,
@@ -807,9 +808,12 @@ function CopyWeekModal({
         ),
       )
       if (results.some((r) => !r.ok)) {
-        setError('Algunos barberos no se pudieron actualizar. Revisa e inténtalo de nuevo.')
+        const msg = 'Algunos barberos no se pudieron actualizar. Revisa e inténtalo de nuevo.'
+        setError(msg)
+        toast.error(msg)
         return
       }
+      toast.success('Horario copiado')
       onSaved()
     } finally {
       setSaving(false)
