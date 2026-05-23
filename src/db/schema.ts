@@ -1114,6 +1114,13 @@ export const products = pgTable('products', {
   description: text('description'),
   imageUrl: text('image_url'),
   priceCents: integer('price_cents').notNull(),                            // IVA incluido — el barbero ingresa precio final
+  // Coste de compra unitario (lo que le cuesta al local cada unidad, IVA
+  // incluido). NULL = no configurado; en ese caso el motor de P&L usa
+  // `priceCents` (precio de venta) como fallback conservador para que el
+  // consumo interno / merma se contabilice como gasto desde el día 1 sin
+  // pedirle al jefe que configure nada. Cuando el jefe edita el producto y
+  // mete el coste real, el desglose pasa a ser preciso.
+  costPriceCents: integer('cost_price_cents'),
   stockQuantity: integer('stock_quantity'),                                // null = ilimitado / no trackeado
   active: boolean('active').default(true).notNull(),                       // soft-delete via active=false
   displayOrder: integer('display_order').default(0).notNull(),
