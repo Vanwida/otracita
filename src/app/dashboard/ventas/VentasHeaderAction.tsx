@@ -19,11 +19,14 @@ import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 // -----------------------------------------------------------------------------
 
 const PERIOD_ROUTES = new Set([
-  '/dashboard/ventas/resumen',
   '/dashboard/ventas/cobros',
   // Propinas se beneficia del selector (R7 Reni): el barbero quiere ver
   // propinas de hoy / semana / mes para reconciliar cash vs card.
   '/dashboard/ventas/propinas',
+  // NOTA: /dashboard/ventas/resumen NO va aquí — esa pestaña pasó a ser
+  // detalle por DÍA estilo cierre de caja (#64) y tiene su propio DayPicker
+  // dentro del page. El selector de periodo confundiría al mostrar otra
+  // ventana temporal en paralelo.
 ])
 
 export default function VentasHeaderAction() {

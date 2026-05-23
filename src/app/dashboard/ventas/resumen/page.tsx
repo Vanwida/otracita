@@ -1,79 +1,84 @@
 export const dynamic = 'force-dynamic'
 
-import { Heart, CalendarCheck, ShoppingBag, Wallet } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
+import { db } from '@/db'
+import { clients } from '@/db/schema'
+import { eq } from 'drizzle-orm'
+import { auth } from '@/lib/auth/server'
+import { parseIsoDate, toLocalIso } from '@/lib/dashboard/period'
+import { loadBreakdownForDay } from '@/lib/cash/load-breakdown'
 import AreaContent from '../../_components/AreaContent'
-import StatStrip, { type Stat } from '../../_components/StatStrip'
-import { computeTrend } from '../../_components/KpiCard'
-import BarberBreakdown from '../../caja/BarberBreakdown'
-import { loadVentasData } from '../_data'
-import { formatEuros, pluralizeEs } from '@/lib/i18n/plural-es'
+import ClosingReport from '../../caja/ClosingReport'
+import DayPicker from './DayPicker'
 
 // -----------------------------------------------------------------------------
-// /dashboard/ventas/resumen — pestaña RESUMEN (secundaria).
+// /dashboard/ventas/resumen — Resumen DETALLADO del día seleccionado (#64).
 //
-// La ruta índice de Ventas pasó a ser el TPV "Nueva venta" (lo que un
-// barbero de Booksy busca primero). Resumen sigue existiendo como pestaña:
-// patrón Booksy "Panel de control" (09.48.41), tira de KPIs + desglose,
-// todo cabe en pantalla. El chrome (título + periodo + pestañas) vive en
-// `ventas/layout.tsx`. Esta página solo aporta el contenido.
+// Antes esta pestaña era una tira de 4 KPIs + barberos. Reni necesita un
+// detalle estilo "cierre de caja" pero NAVEGABLE por día — no solo la
+// sesión activa. Esta página le da exactamente eso:
 //
-// LÓGICA DE SERVIDOR INTACTA: los KPIs salen de `loadVentasData`, que es el
-// mismo bloque de queries del antiguo `caja/page.tsx` extraído 1:1. Privacidad
-// igual: Ventas es de ENTRADA EXPLÍCITA (click en el rail), nunca por defecto.
+//   · Selector de día arriba (Hoy / Ayer / últimos 5 días + datepicker).
+//   · ClosingReport completo abajo, alimentado por loadBreakdownForDay:
+//       - Día con sesión cerrada → snapshot persistido (inmutable).
+//       - Día con sesión viva → cálculo en vivo (compute.ts).
+//       - Día sin sesión → sintetizado desde bookings + product_sales + tips.
+//
+// Multi-tenant: client se resuelve por sesión (igual que loadVentasData),
+// nunca por query. El query param `d` solo elige la FECHA — el aislamiento
+// va por server-side auth.
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string; date?: string; start?: string; end?: string }>
+  searchParams: Promise<{ d?: string }>
 }
 
 export default async function VentasResumenPage({ searchParams }: PageProps) {
   const params = await searchParams
-  const d = await loadVentasData(params)
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.email) redirect('/login')
 
-  const stats: Stat[] = [
-    {
-      label: `Facturado · ${d.periodLabel}`,
-      value: d.billedEur > 0 ? formatEuros(d.billedEur) : '—',
-      icon: Wallet,
-      trend: computeTrend(d.billedEur, d.billedPrev),
-    },
-    {
-      label: 'Servicios',
-      value: d.completedCount.toLocaleString('es-ES'),
-      icon: CalendarCheck,
-      trend: computeTrend(d.completedCount, d.completedPrev),
-      hint:
-        d.completedCount > 0
-          ? `Ticket medio ${formatEuros(d.ticketMedio)}`
-          : undefined,
-    },
-    {
-      label: 'Productos',
-      value: d.upsellsEur > 0 ? formatEuros(d.upsellsEur) : '—',
-      icon: ShoppingBag,
-      hint:
-        d.upsellsCount > 0
-          ? pluralizeEs(d.upsellsCount, 'venta', 'ventas')
-          : undefined,
-    },
-    {
-      label: 'Propinas',
-      value: d.tipsEur > 0 ? formatEuros(d.tipsEur) : '—',
-      icon: Heart,
-      trend: computeTrend(d.tipsEur, d.tipsPrevEur),
-    },
-  ]
+  const [client] = await db
+    .select()
+    .from(clients)
+    .where(eq(clients.email, session.user.email))
+  if (!client) redirect('/dashboard/setup')
+
+  const todayIso = toLocalIso(new Date())
+
+  // Validamos `?d=YYYY-MM-DD`. Vacío o inválido → hoy. No aceptamos futuros
+  // (no tiene sentido un resumen del mañana — y evita confusiones de TZ).
+  const requested = params.d ?? ''
+  const requestedDate = parseIsoDate(requested)
+  const selectedDay =
+    requestedDate && requested <= todayIso ? requested : todayIso
+
+  const breakdown = await loadBreakdownForDay(client.id, selectedDay)
 
   return (
     <AreaContent scroll="region" maxWidth="7xl">
-      {/* KPI strip denso — protagonista del periodo. */}
-      <StatStrip stats={stats} ariaLabel="Resumen financiero del periodo" />
+      <div className="space-y-4">
+        <DayPicker
+          selectedDay={selectedDay}
+          today={todayIso}
+          source={breakdown.source}
+        />
 
-      {/* Desglose por barbero — solo si hay ≥2 barberos activos. */}
-      <div className="mt-6">
-        <BarberBreakdown
-          clientId={d.client.id}
-          periodStartIso={d.periodStartIso}
+        <ClosingReport
+          openingCents={breakdown.openingCents}
+          openedAt={breakdown.openedAt}
+          openedByEmail={breakdown.openedByEmail}
+          cashExpectedCents={breakdown.cashExpectedCents}
+          cardExpectedCents={breakdown.cardExpectedCents}
+          onlineExpectedCents={breakdown.onlineExpectedCents}
+          totals={breakdown.totals}
+          byMethod={breakdown.byMethod}
+          byKind={breakdown.byKind}
+          byBarber={breakdown.byBarber}
+          byPaymentDetail={breakdown.byPaymentDetail}
+          movements={breakdown.movements}
+          unknownMethodCount={breakdown.unknownMethodCount}
         />
       </div>
     </AreaContent>
