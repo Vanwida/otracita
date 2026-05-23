@@ -97,6 +97,15 @@
   --agenda-ev-service: 0.84375rem; /* 13.5px — servicio */
   --agenda-ev-meta:    0.75rem;    /* 12px — estado/etiqueta inline */
 
+  /* Variante COMPACT para la vista Semana (7 columnas en el mismo ancho).
+   * Día se lee a un metro (foco del barbero), Semana se lee de un vistazo
+   * — necesita densidad. Booksy usa ~11px en Semana vs ~14px en Día.
+   * Aquí: cliente 11.5px (límite cómodo), servicio 10.5px. Bordes inferiores
+   * de WCAG no aplican (no es texto crítico aislado: hay color + posición +
+   * tooltip). */
+  --agenda-ev-client-compact:  0.71875rem; /* 11.5px — cliente en Semana */
+  --agenda-ev-service-compact: 0.65625rem; /* 10.5px — servicio en Semana */
+
   /* ─── Agenda off-hours / blocked (FIX 3) ───
    * El cuerpo de columna es blanco (--color-surface). Antes la franja
    * fuera-de-horario usaba --color-overlay (#F0EBE3 ≈ oklch 0.93) — sobre

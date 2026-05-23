@@ -230,14 +230,28 @@ export default function WeekGrid({
                     </div>
                   )}
 
-                  {/* Events */}
+                  {/* Events — variante COMPACT (Semana). Diferencias vs Día:
+                      · padding mínimo (4px/2px) para no robar alto a citas cortas
+                      · fuentes -compact (cliente 11.5px / servicio 10.5px)
+                      · altura ESTRICTA = duration × PX_PER_MIN (sin min-height
+                        forzado). Una cita de 15min ocupa exactamente 30px.
+                      · gap visual real de 2px entre bloques consecutivos
+                        (top+1 / height-2) para que dos citas seguidas NUNCA
+                        parezcan una sola — el bug original.
+                      · < 20min (= height < 40px) → solo nombre cliente, sin hora
+                        ni servicio (posición vertical ya comunica la hora) */}
                   {dayEvents.map(event => {
                     const evStartMin = toMinutes(event.time);
-                    const top = (evStartMin - startMin) * PX_PER_MIN;
-                    // Alto mínimo legible (igual criterio que Día, algo más
-                    // bajo por la densidad de 7 columnas).
-                    const height = Math.max(event.duration * PX_PER_MIN, 34);
-                    const showService = height >= 50;
+                    const rawTop = (evStartMin - startMin) * PX_PER_MIN;
+                    const rawHeight = event.duration * PX_PER_MIN;
+                    // 1px de aire arriba/abajo → 2px gap real entre citas
+                    // pegadas. No forzamos min-height: si la cita es de 10min
+                    // (=20px) se ve fina pero distinta — Booksy hace lo mismo.
+                    const top = rawTop + 1;
+                    const height = Math.max(rawHeight - 2, 14);
+                    const isShort = height < 40;   // ~< 20min
+                    const isTiny = height < 24;    // ~< 12min → ultra-denso
+                    const showService = height >= 56 && !isShort;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
                     // #33 — Color por SERVICIO (no por estado). Mismo helper
@@ -248,6 +262,10 @@ export default function WeekGrid({
                       event.status,
                     );
                     const badge = statusCornerBadge(event.status);
+                    const displayName =
+                      event.customerName?.trim() ||
+                      event.customerPhone?.trim() ||
+                      'Sin nombre';
 
                     return (
                       <div
@@ -257,39 +275,52 @@ export default function WeekGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute left-1 right-1 z-20 flex flex-col gap-0.5 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${blockClass} ${treatment}`}
+                        className={`absolute left-0.5 right-0.5 z-20 flex flex-col rounded cursor-pointer overflow-hidden transition-opacity hover:opacity-80 ${
+                          isTiny ? 'px-1 py-0' : 'px-1 py-0.5'
+                        } ${blockClass} ${treatment}`}
                         style={{ top, height }}
-                        title={event.title}
+                        title={`${event.time} · ${displayName}${event.service ? ` · ${event.service}` : ''}`}
                       >
-                        {/* Estado/Booksy — esquina sup-der (#33). Mismo
-                            patrón que DayGrid: disco translúcido + ícono. */}
-                        <div
-                          className="absolute top-0.5 right-0.5 z-10 inline-flex items-center justify-center h-4 w-4 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm"
-                          aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
-                          title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
-                        >
-                          {isBooksy && !isCancelled ? (
-                            <Lock className="h-2.5 w-2.5 text-ink-2" aria-hidden="true" />
-                          ) : (
-                            <badge.icon
-                              className={`h-2.5 w-2.5 ${badge.tone}`}
-                              aria-hidden="true"
-                            />
-                          )}
-                        </div>
-                        {/* Línea 1 — hora + cliente. Reservamos paddings
-                            para no chocar con el badge esquina. */}
+                        {/* Badge estado/Booksy — solo si el bloque tiene
+                            altura suficiente para acomodarlo sin pisar el
+                            texto. En citas ultra-cortas el color del fill
+                            + tooltip ya transmiten el contexto. */}
+                        {!isTiny && (
+                          <div
+                            className="absolute top-0 right-0 z-10 inline-flex items-center justify-center h-3.5 w-3.5 rounded-full bg-surface/85 backdrop-blur-sm shadow-sm"
+                            aria-label={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                            title={isBooksy && !isCancelled ? 'Cita de Booksy' : badge.label}
+                          >
+                            {isBooksy && !isCancelled ? (
+                              <Lock className="h-2 w-2 text-ink-2" aria-hidden="true" />
+                            ) : (
+                              <badge.icon
+                                className={`h-2 w-2 ${badge.tone}`}
+                                aria-hidden="true"
+                              />
+                            )}
+                          </div>
+                        )}
+                        {/* Línea 1.
+                            · isShort (<20min): solo nombre cliente, sin hora.
+                              La hora está implícita en la posición + el gutter.
+                            · resto: hora + cliente (la hora ayuda al barrido
+                              vertical rápido en vista semanal). */}
                         <p
-                          className="font-semibold leading-tight truncate pr-5"
-                          style={{ fontSize: 'var(--agenda-ev-client)' }}
+                          className={`font-semibold leading-tight truncate ${
+                            isTiny ? 'pr-0' : 'pr-4'
+                          }`}
+                          style={{ fontSize: 'var(--agenda-ev-client-compact)' }}
                         >
-                          <span className="tabular-nums">{event.time}</span>{' '}
-                          {event.customerName || event.customerPhone}
+                          {!isShort && (
+                            <span className="tabular-nums mr-1">{event.time}</span>
+                          )}
+                          {displayName}
                         </p>
                         {showService && (
                           <p
                             className="opacity-80 leading-tight truncate"
-                            style={{ fontSize: 'var(--agenda-ev-service)' }}
+                            style={{ fontSize: 'var(--agenda-ev-service-compact)' }}
                           >
                             {event.service}
                           </p>
