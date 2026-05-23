@@ -32,7 +32,7 @@ function generateToken(): string {
 }
 
 function buildPublicUrl(token: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://otracita.app'
+  const base = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.otracita.es'
   // Quitamos slash final si lo hubiera, no asumimos nada del entorno.
   const trimmed = base.replace(/\/$/, '')
   return `${trimmed}/r/${token}?install=1`
