@@ -64,7 +64,7 @@ function buildInitial(
 ): Record<HoursDay, DayState> {
   // `hours` falls back to shop hours when the barber inherits — show the
   // effective schedule so the editor matches the timeline.
-  const map = barber.hours ?? shopHours
+  const map = barber.hours ?? {}
   const out = {} as Record<HoursDay, DayState>
   for (const day of HOURS_DAYS) {
     const win = parseHoursValue(map?.[day])
