@@ -33,6 +33,7 @@ import BarberSalaryEditor from './BarberSalaryEditor'
 import BarberInviteCard from './BarberInviteCard'
 import BarberPermissionsCard from './BarberPermissionsCard'
 import { barberPhotoUrl } from '@/lib/barber-photo-url'
+import BarberAvatar from './BarberAvatar'
 
 // -----------------------------------------------------------------------------
 // BarbersManager — Equipo > Empleados en patrón MASTER-DETAIL (Booksy
@@ -445,60 +446,6 @@ export default function BarbersManager({
 // (teclado / lectores de pantalla) para que el reorden sea accesible.
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// BarberAvatar — render canónico del retrato del barbero con fallback a
-// iniciales. Si la imagen falla al cargar (URL muerta, blob borrado, CDN caído,
-// red bloqueando vercel-storage…), `onError` apaga el <img> y mostramos las
-// iniciales en su lugar. Antes del fix se veía un "círculo vacío" sobre
-// `bg-overlay` cuando el src apuntaba a un recurso inalcanzable.
-// -----------------------------------------------------------------------------
-function BarberAvatar({
-  url,
-  name,
-  className,
-  fallbackClassName,
-  alt,
-}: {
-  url: string | null
-  name: string
-  /** Clases del contenedor (forma/tamaño/borde). */
-  className: string
-  /** Clases del texto de iniciales (tamaño/peso). */
-  fallbackClassName: string
-  /** alt explícito; si no, decorativo. */
-  alt?: string
-}) {
-  const [failed, setFailed] = useState(false)
-
-  // Reset failure si cambia la URL (p. ej. tras subir una foto nueva).
-  useEffect(() => {
-    setFailed(false)
-  }, [url])
-
-  const initials = name.slice(0, 1).toUpperCase()
-  const showImg = url && !failed
-
-  return (
-    <div className={className}>
-      {showImg ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={url}
-          alt={alt ?? ''}
-          onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <span
-          className={`flex h-full w-full items-center justify-center ${fallbackClassName}`}
-          aria-label={alt}
-        >
-          {initials}
-        </span>
-      )}
-    </div>
-  )
-}
 
 function BarberListItem({
   barber,

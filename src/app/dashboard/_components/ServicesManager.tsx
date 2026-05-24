@@ -401,11 +401,11 @@ function ServiceForm({
             }
             placeholder="Ej.: Corte clásico a máquina y tijera, acabado con toalla caliente."
             rows={4}
-            maxLength={240}
+            maxLength={1000}
             className="w-full bg-canvas border border-line rounded-lg px-3 py-2.5 text-sm text-ink focus:border-brand focus:bg-surface focus:shadow-[0_0_0_3px_var(--color-brand-softer)] outline-none transition-colors resize-none leading-relaxed"
           />
           <p className="text-[11px] text-ink-3">
-            {(draft.description || '').length}/240
+            {(draft.description || '').length}/1000
           </p>
         </div>
 
