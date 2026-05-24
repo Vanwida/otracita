@@ -211,6 +211,7 @@ export default function PendingClosureList({
           tener que entrar a su detalle. */}
       {chargeBooking && chargeBooking.price !== null && chargeBooking.price > 0 && (
         <ChargeFlow
+          key={chargeBooking.id}
           booking={{
             id: chargeBooking.id,
             price: chargeBooking.price,

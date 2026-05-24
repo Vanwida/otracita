@@ -1090,6 +1090,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
           renderiza con price > 0 (las citas gratis usan PATCH legacy). */}
       {booking && booking.price !== null && booking.price > 0 && (
         <ChargeFlow
+          key={booking.id}
           booking={{
             id: booking.id,
             price: booking.price,
