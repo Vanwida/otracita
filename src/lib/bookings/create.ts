@@ -105,6 +105,12 @@ export interface CreateBookingOptions {
    *  los descansos/bloqueos (esos no son "calendar conflict", son
    *  imposibilidad física). */
   allowOverlap?: boolean;
+  /** Override de admin: crear fuera del horario laboral del barbero (sin
+   *  preferencia de barbero). Solo lo manda el dashboard tras confirm del
+   *  barbero "está fuera de horario, ¿seguro?". Cuando es true y
+   *  pickBarberForCustomer no resuelve nadie, asignamos el primer barbero
+   *  activo ignorando las restricciones de hora. */
+  allowOutOfHours?: boolean;
   /** Importación masiva: no manda push al cliente y no dispara nada hacia
    *  él. El cliente original ya tiene la cita en su sistema viejo (Booksy/
    *  Treatwell). Mandarle "Cita confirmada" sería confuso. Default false →
@@ -234,6 +240,7 @@ export async function createBooking(
     cardConsent,
     requireCard = false,
     allowOverlap = false,
+    allowOutOfHours = false,
     silent = false,
     importedIcalUid = null,
   } = options;
@@ -461,11 +468,16 @@ export async function createBooking(
       serviceBufferMinutes: bufferMin,
     });
     if (!resolved) {
-      return {
-        success: false,
-        error: 'no_barber_available',
-        message: 'No hay profesionales libres en ese horario.',
-      };
+      if (allowOutOfHours && activeBarbers.length > 0) {
+        // El barbero confirmó crear fuera de horario: asignamos el primero activo.
+        resolved = activeBarbers[0];
+      } else {
+        return {
+          success: false,
+          error: 'no_barber_available',
+          message: 'No hay profesionales libres en ese horario.',
+        };
+      }
     }
   }
 

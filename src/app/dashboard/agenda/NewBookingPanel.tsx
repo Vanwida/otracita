@@ -143,7 +143,7 @@ export default function NewBookingPanel({
     setLoading(true);
     setError(null);
 
-    const doPost = (allowOverlap: boolean) =>
+    const doPost = (allowOverlap: boolean, allowOutOfHours: boolean) =>
       fetch('/api/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,11 +158,12 @@ export default function NewBookingPanel({
           price: price ?? undefined,
           extraServices: extraServices.length > 0 ? extraServices : undefined,
           ...(allowOverlap ? { allowOverlap: true } : {}),
+          ...(allowOutOfHours ? { allowOutOfHours: true } : {}),
         }),
       });
 
     try {
-      let res = await doPost(false);
+      let res = await doPost(false, false);
 
       // 409 = solape. Preguntamos antes de rechazar (Booksy/GCal-style).
       if (res.status === 409) {
@@ -173,8 +174,33 @@ export default function NewBookingPanel({
           cancelLabel: 'Cancelar',
         });
         if (ok) {
-          res = await doPost(true);
+          res = await doPost(true, false);
         } else {
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 422 con errorCode no_barber_available = fuera de horario laboral.
+      if (res.status === 422) {
+        const data = await res.json().catch(() => ({}));
+        if (data.errorCode === 'no_barber_available') {
+          const ok = await confirm({
+            title: 'Fuera del horario habitual',
+            message: 'Esta cita está fuera del horario de trabajo. ¿La creas igualmente?',
+            confirmLabel: 'Crear igual',
+            cancelLabel: 'Cancelar',
+          });
+          if (ok) {
+            res = await doPost(false, true);
+          } else {
+            setLoading(false);
+            return;
+          }
+        } else {
+          const msg = data.error || 'Horario no disponible.';
+          setError(msg);
+          toast.error(msg);
           setLoading(false);
           return;
         }

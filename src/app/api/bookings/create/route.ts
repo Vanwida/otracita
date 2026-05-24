@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
     extraServices?: unknown;
     /** Dashboard-only: el barbero ya confirmó "sí, solapa, lo creo igual". */
     allowOverlap?: boolean;
+    /** Dashboard-only: el barbero confirmó crear fuera de horario laboral. */
+    allowOutOfHours?: boolean;
   };
 
   try {
@@ -102,6 +104,7 @@ export async function POST(req: NextRequest) {
     // así que sus guardas no se ven afectadas.
     source: 'dashboard',
     allowOverlap: body.allowOverlap === true,
+    allowOutOfHours: body.allowOutOfHours === true,
   });
 
   if (!result.success) {
@@ -109,7 +112,7 @@ export async function POST(req: NextRequest) {
       result.error === 'overlap' ? 409
       : result.error === 'lead_time' || result.error === 'horizon' || result.error === 'no_barber_available' ? 422
       : 400;
-    return NextResponse.json({ error: result.message }, { status });
+    return NextResponse.json({ error: result.message, errorCode: result.error }, { status });
   }
 
   return NextResponse.json(result.booking, { status: 201 });
