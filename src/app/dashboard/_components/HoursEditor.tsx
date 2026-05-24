@@ -42,7 +42,19 @@ const DEFAULT_HOURS: HoursMap = {
  * along the surrounding <form>.
  */
 export default function HoursEditor({ initial, name = 'hours', onChange }: Props) {
-  const [hours, setHours] = useState<HoursMap>({ ...DEFAULT_HOURS, ...(initial || {}) })
+  // Si `initial` ya trae datos, los usamos TAL CUAL — sin mergear con
+  // DEFAULT_HOURS. El merge anterior `{ ...DEFAULT_HOURS, ...initial }`
+  // sobreescribía días faltantes con valores hardcoded (ej. domingo →
+  // "Cerrado") aunque la BD del local tuviese ese día abierto vía otra
+  // ruta, y al primer onChange persistía esa basura. DEFAULT_HOURS solo
+  // aplica cuando NO hay configuración previa (initial null / vacío:
+  // setup inicial). Toda fila se renderiza siempre porque el map de
+  // `DAYS` itera 7 días y cae a 'Cerrado' si la clave no existe.
+  const [hours, setHours] = useState<HoursMap>(() =>
+    initial && Object.keys(initial).length > 0
+      ? { ...initial }
+      : { ...DEFAULT_HOURS },
+  )
 
   const json = JSON.stringify(hours)
 

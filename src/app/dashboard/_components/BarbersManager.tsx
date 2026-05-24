@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { upload } from '@vercel/blob/client'
@@ -1184,7 +1184,13 @@ function BarberPhotoUpload({
 
 // -----------------------------------------------------------------------------
 // BarberHoursEditor — thin wrapper around HoursEditor in controlled mode.
-// HoursEditor now exposes an onChange prop so we save per-barber directly.
+// HoursEditor expone onChange por cada keystroke de los inputs HH:MM, y
+// `onChange` aquí dispara un PATCH a /api/barbers/[id]. Sin debounce eso
+// significaba un PATCH por tecla (spam + persistencia de valores intermedios
+// mientras escribías "10:0"). Debouncimos a 600ms: el feedback "Guardado"
+// llega al soltar la tecla, y el server recibe el mapa estable. Usamos un
+// ref para `onChange` porque el padre re-crea la callback en cada render y
+// si la metiéramos en deps del useEffect, el timeout se resetearía siempre.
 // -----------------------------------------------------------------------------
 function BarberHoursEditor({
   initial,
@@ -1195,9 +1201,29 @@ function BarberHoursEditor({
   onChange: (next: HoursMap) => void
   onReset: () => void
 }) {
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  })
+
+  const initialJson = JSON.stringify(initial ?? {})
+  const lastSavedRef = useRef<string>(initialJson)
+  const [draft, setDraft] = useState<HoursMap | null>(initial)
+
+  useEffect(() => {
+    if (!draft) return
+    const json = JSON.stringify(draft)
+    if (json === lastSavedRef.current) return
+    const t = setTimeout(() => {
+      lastSavedRef.current = json
+      onChangeRef.current(draft)
+    }, 600)
+    return () => clearTimeout(t)
+  }, [draft])
+
   return (
     <div className="space-y-3">
-      <HoursEditor initial={initial} onChange={onChange} />
+      <HoursEditor initial={initial} onChange={setDraft} />
       <button
         type="button"
         onClick={onReset}

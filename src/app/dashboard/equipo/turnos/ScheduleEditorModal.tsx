@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import Modal from '../../_components/Modal'
@@ -58,12 +58,11 @@ const DEFAULT_START = '11:00'
 const DEFAULT_END = '20:00'
 const DEFAULT_BREAK = { start: '13:00', end: '14:00' }
 
-function buildInitial(
-  barber: TurnosBarber,
-  shopHours: Record<string, string> | null,
-): Record<HoursDay, DayState> {
-  // `hours` falls back to shop hours when the barber inherits — show the
-  // effective schedule so the editor matches the timeline.
+function buildInitial(barber: TurnosBarber): Record<HoursDay, DayState> {
+  // Mostramos el horario PROPIO del barbero (cero fallback a shop hours,
+  // commit 405a15d). Si hereda, todos los días aparecen cerrados — el
+  // banner explica la situación y el dirty-tracking en save() impide que
+  // pulsar Guardar sin tocar nada rompa la herencia con un mapa explícito.
   const map = barber.hours ?? {}
   const out = {} as Record<HoursDay, DayState>
   for (const day of HOURS_DAYS) {
@@ -78,10 +77,30 @@ function buildInitial(
   return out
 }
 
-export default function ScheduleEditorModal({ barber, shopHours, onClose, onSaved }: Props) {
+/** Snapshot del estado actual en la misma shape que persiste `barber.hours`. */
+function computeHoursMap(state: Record<HoursDay, DayState>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const day of HOURS_DAYS) {
+    const d = state[day]
+    out[day] = d.open ? `${d.start}-${d.end}` : 'Cerrado'
+  }
+  return out
+}
+
+// `shopHours` se mantiene en Props (lo pasa TurnosManager) pero ya no se
+// usa: el editor muestra el horario PROPIO del barbero (commit 405a15d).
+// Lo dejamos en la interfaz por si una iteración futura quiere mostrarlo
+// como referencia en el banner de "hereda el horario del local".
+export default function ScheduleEditorModal({ barber, onClose, onSaved }: Props) {
+  const inherited = barber.hours == null
   const [days, setDays] = useState<Record<HoursDay, DayState>>(() =>
-    buildInitial(barber, shopHours),
+    buildInitial(barber),
   )
+  // Baseline para detectar cambios reales del horario. Si el usuario abre
+  // el modal y guarda sin tocar nada, `save()` NO escribe `hours` y el
+  // barbero conserva su `null` (sigue heredando). Antes guardábamos siempre
+  // el mapa de 7 días → un click en Guardar bake-in-eaba la herencia.
+  const initialHoursRef = useRef<Record<string, string>>(computeHoursMap(days))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -157,23 +176,30 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
     setSaving(true)
     setError(null)
     try {
-      // 1. hours map — Spanish keys, "Cerrado" for off days (matches HoursEditor).
-      const hoursMap: Record<string, string> = {}
-      for (const day of HOURS_DAYS) {
-        const d = days[day]
-        hoursMap[day] = d.open ? `${d.start}-${d.end}` : 'Cerrado'
-      }
-      const hoursRes = await fetch(`/api/barbers/${barber.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hours: hoursMap }),
-      })
-      if (!hoursRes.ok) {
-        const d = await hoursRes.json().catch(() => ({}))
-        const msg = d?.error || 'No se pudo guardar el horario.'
-        setError(msg)
-        toast.error(msg)
-        return
+      // 1. hours map — sólo PATCH si cambió respecto al baseline. Esto
+      //    preserva la herencia (`barber.hours = null`) cuando el usuario
+      //    abre el modal para mirar y le da a Guardar sin tocar nada. Si
+      //    hubo cambios, persistimos el mapa COMPLETO de 7 días (Spanish
+      //    keys, "Cerrado" para los off) — el barbero pasa a tener horario
+      //    propio explícito.
+      const currentMap = computeHoursMap(days)
+      const hoursChanged = HOURS_DAYS.some(
+        (day) => currentMap[day] !== initialHoursRef.current[day],
+      )
+      if (hoursChanged) {
+        const hoursRes = await fetch(`/api/barbers/${barber.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hours: currentMap }),
+        })
+        if (!hoursRes.ok) {
+          const d = await hoursRes.json().catch(() => ({}))
+          const msg = d?.error || 'No se pudo guardar el horario.'
+          setError(msg)
+          toast.error(msg)
+          return
+        }
+        initialHoursRef.current = currentMap
       }
 
       // 2. breaks — flatten to the API shape (weekday integer per day).
@@ -219,6 +245,30 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
     }
   }
 
+  /** Quita el horario propio del barbero y vuelve a heredar el del local. */
+  async function resetToInherit() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/barbers/${barber.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hours: null }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        const msg = d?.error || 'No se pudo volver al horario del local.'
+        setError(msg)
+        toast.error(msg)
+        return
+      }
+      toast.success('Vuelto al horario del local')
+      onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Modal
       open
@@ -249,6 +299,29 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
     >
         {/* Day rows */}
         <div className="px-5 py-4 space-y-3">
+          {/* Estado de herencia — el modal muestra el horario PROPIO del
+              barbero (no el efectivo). Sin este banner, un editor vacío en
+              un barbero que hereda parecería un bug. */}
+          {inherited ? (
+            <div className="rounded-lg border border-line bg-overlay/50 px-3 py-2 text-xs text-ink-2">
+              Este barbero <span className="font-medium text-ink">hereda el horario del local</span>.
+              Configura los días aquí solo si quieres darle un horario propio
+              (sin afectar al resto del equipo).
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-overlay/50 px-3 py-2 text-xs text-ink-2">
+              <span>Este barbero tiene un horario propio (no hereda el del local).</span>
+              <button
+                type="button"
+                onClick={resetToInherit}
+                disabled={saving}
+                className="font-medium text-brand hover:text-brand-strong disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Volver al horario del local
+              </button>
+            </div>
+          )}
+
           {HOURS_DAYS.map((day) => {
             const d = days[day]
             const win = d.open && HHMM_RE.test(d.start) && HHMM_RE.test(d.end)
