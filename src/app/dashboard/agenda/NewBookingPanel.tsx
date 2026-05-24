@@ -7,6 +7,7 @@ import SlideOver from '../_components/SlideOver';
 import CustomerTypeahead from '../_components/CustomerTypeahead';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
 import { useConfirm } from '../_components/ConfirmDialog';
+import BarberAvatar from '../_components/BarberAvatar';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 
 import type { Barber } from './types';
@@ -312,18 +313,56 @@ export default function NewBookingPanel({
               {barbers.length > 0 && (
                 <div>
                   <label className={LABEL_CLASS}>Barbero</label>
-                  <select
-                    value={barber}
-                    onChange={e => setBarber(e.target.value)}
-                    className={INPUT_CLASS}
-                  >
-                    <option value="">Sin preferencia</option>
+                  <div className="flex flex-wrap gap-2">
+                    {/* Sin preferencia */}
+                    <label
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition-colors text-sm ${
+                        barber === ''
+                          ? 'border-brand bg-[var(--color-brand-softer)] text-ink font-medium'
+                          : 'border-line bg-canvas text-ink-2 hover:bg-surface'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="barber"
+                        value=""
+                        checked={barber === ''}
+                        onChange={() => setBarber('')}
+                        className="sr-only"
+                      />
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface border border-line text-[11px] font-bold text-ink-2 shrink-0">
+                        ?
+                      </span>
+                      Sin preferencia
+                    </label>
+
                     {barbers.map(b => (
-                      <option key={b.name} value={b.name}>
+                      <label
+                        key={b.id}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition-colors text-sm ${
+                          barber === b.name
+                            ? 'border-brand bg-[var(--color-brand-softer)] text-ink font-medium'
+                            : 'border-line bg-canvas text-ink-2 hover:bg-surface'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="barber"
+                          value={b.name}
+                          checked={barber === b.name}
+                          onChange={() => setBarber(b.name)}
+                          className="sr-only"
+                        />
+                        <BarberAvatar
+                          url={b.photoUrl}
+                          name={b.name}
+                          className="h-7 w-7 rounded-full overflow-hidden bg-surface border border-line shrink-0"
+                          fallbackClassName="text-[11px] font-bold text-ink-2"
+                        />
                         {b.name}
-                      </option>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
               )}
 
