@@ -23,6 +23,12 @@ import type { CalendarEvent, Barber } from './types';
 import { formatCents } from '@/lib/format';
 import { FEEDBACK_MS } from '@/lib/ui-timings'
 
+function addMinutesToTime(timeStr: string, mins: number): string {
+  const [h, m] = timeStr.split(':').map(Number);
+  const total = h * 60 + m + mins;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 interface Props {
   booking: CalendarEvent | null;
   onClose: () => void;
@@ -665,6 +671,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </p>
                 <p className="text-sm text-ink-2">
                   {booking.time}
+                  <span className="text-ink-3 mx-1.5">→</span>
+                  {addMinutesToTime(booking.time, booking.duration)}
                   <span className="text-ink-3 mx-1.5">·</span>
                   {booking.duration} min
                 </p>

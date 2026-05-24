@@ -33,6 +33,12 @@ interface Props {
 const INPUT_CLASS =
   'w-full px-3 py-2 text-sm rounded-lg bg-surface border border-line text-ink placeholder-ink-3 focus:outline-none focus:border-brand transition-colors';
 
+function addMinutesToTime(timeStr: string, mins: number): string {
+  const [h, m] = timeStr.split(':').map(Number);
+  const total = h * 60 + m + mins;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 const LABEL_CLASS = 'block text-[11px] font-bold uppercase tracking-widest text-ink-2 mb-1.5';
 
 export default function NewBookingPanel({
@@ -333,16 +339,36 @@ export default function NewBookingPanel({
                 />
               </div>
 
-              {/* Time */}
-              <div>
-                <label className={LABEL_CLASS}>Hora *</label>
-                <input
-                  type="time"
-                  required
-                  value={time}
-                  onChange={e => setTime(e.target.value)}
-                  className={INPUT_CLASS}
-                />
+              {/* Hora inicio / fin */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LABEL_CLASS}>Hora inicio *</label>
+                  <input
+                    type="time"
+                    required
+                    value={time}
+                    onChange={e => setTime(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLASS}>Hora fin</label>
+                  <input
+                    type="time"
+                    value={time ? addMinutesToTime(time, totalDuration) : ''}
+                    onChange={e => {
+                      if (!time || !e.target.value) return;
+                      const [sh, sm] = time.split(':').map(Number);
+                      const [eh, em] = e.target.value.split(':').map(Number);
+                      const diff = (eh * 60 + em) - (sh * 60 + sm);
+                      if (diff <= 0) return;
+                      const extrasDuration = totalDuration - (duration ?? 0);
+                      const newMain = Math.max(1, diff - extrasDuration);
+                      setDuration(newMain);
+                    }}
+                    className={INPUT_CLASS}
+                  />
+                </div>
               </div>
 
               {/* Duración/Precio del principal ya viven en el
