@@ -188,7 +188,7 @@ export default function ScheduleEditorModal({ barber, shopHours, onClose, onSave
         const d = days[day]
         if (!d.open) continue // breaks on a closed day are meaningless
         for (const br of d.breaks) {
-          if (!br.start || !br.end) continue // silently skip empty
+          if (!br.start && !br.end) continue // silently skip fully-empty orphan breaks
           breaks.push({
             weekday: HOURS_DAY_TO_WEEKDAY[day],
             startTime: br.start,
