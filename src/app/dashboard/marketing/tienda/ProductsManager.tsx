@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useRef, useState, useTransition } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
   Plus,
@@ -63,6 +63,9 @@ export default function ProductsManager({ initial }: Props) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [stockEditId, setStockEditId] = useState<string | null>(null)
+  const [stockEditValue, setStockEditValue] = useState('')
+  const stockInputRef = useRef<HTMLInputElement>(null)
   const confirm = useConfirm()
 
   const startCreate = () => {
@@ -198,6 +201,45 @@ export default function ProductsManager({ initial }: Props) {
     })
   }
 
+  const startStockEdit = (p: Product) => {
+    setStockEditId(p.id)
+    setStockEditValue(p.stockQuantity === null ? '' : String(p.stockQuantity))
+    // focus on next tick after render
+    setTimeout(() => stockInputRef.current?.select(), 0)
+  }
+
+  const commitStockEdit = (productId: string) => {
+    if (stockEditId !== productId) return
+    const raw = stockEditValue.trim()
+    let stockQuantity: number | null = null
+    if (raw !== '') {
+      const n = Number.parseInt(raw, 10)
+      if (!Number.isFinite(n) || n < 0) {
+        setStockEditId(null)
+        return
+      }
+      stockQuantity = n
+    }
+    setStockEditId(null)
+    startTransition(async () => {
+      try {
+        const r = await fetch(`/api/products/${productId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stockQuantity }),
+        })
+        const d = (await r.json().catch(() => ({}))) as { product?: Product }
+        if (r.ok && d.product) {
+          setItems((prev) =>
+            prev.map((x) => (x.id === productId ? { ...x, stockQuantity: d.product!.stockQuantity } : x))
+          )
+        }
+      } catch {
+        // silent — stock shows stale value until next load
+      }
+    })
+  }
+
   const isEditing = !!draft?.id
 
   return (
@@ -273,9 +315,33 @@ export default function ProductsManager({ initial }: Props) {
             </button>
             <div className="text-right shrink-0">
               <p className="font-semibold text-ink tabular-nums">{(p.priceCents / 100).toFixed(2)} €</p>
-              <p className="text-[10px] text-ink-3">
-                {p.stockQuantity === null ? 'Stock ilimitado' : `Stock: ${p.stockQuantity}`}
-              </p>
+              {stockEditId === p.id ? (
+                <input
+                  ref={stockInputRef}
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={stockEditValue}
+                  onChange={(e) => setStockEditValue(e.target.value)}
+                  onBlur={() => commitStockEdit(p.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.currentTarget.blur() }
+                    if (e.key === 'Escape') { setStockEditId(null) }
+                  }}
+                  placeholder="∞"
+                  className="w-16 text-[10px] text-right bg-canvas border border-brand rounded px-1 py-0.5 tabular-nums focus:outline-none focus:ring-1 focus:ring-brand"
+                  aria-label="Stock"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startStockEdit(p)}
+                  className="text-[10px] text-ink-3 hover:text-brand hover:underline transition-colors cursor-pointer"
+                  aria-label={`Editar stock de ${p.name}`}
+                >
+                  {p.stockQuantity === null ? 'Stock ∞' : `Stock: ${p.stockQuantity}`}
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
