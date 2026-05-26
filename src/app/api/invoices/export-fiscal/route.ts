@@ -6,11 +6,13 @@ import {
   requireClientAccess,
   accessErrorResponse,
 } from '@/lib/auth/require-client-access';
-import { parseFiscalPeriodKey } from '@/lib/fiscal/period';
 import { loadFiscalSummary, IRPF_B2B_DEFAULT_PCT } from '@/lib/fiscal/summary';
+import { resolvePeriodSelection, toLocalIso } from '@/lib/dashboard/period';
 
 // -----------------------------------------------------------------------------
-// GET /api/invoices/export-fiscal?period=YYYY-Q1|YYYY
+// GET /api/invoices/export-fiscal?period=day|week|month|year|range|lifetime
+//                              &date=YYYY-MM-DD   (day)
+//                              &start=YYYY-MM-DD&end=YYYY-MM-DD  (range)
 //
 // Exporta el resumen fiscal del periodo (IVA por tipo + IRPF B2C/B2B +
 // detalle factura a factura) en un CSV Excel-ES-friendly que el barbero
@@ -27,6 +29,10 @@ import { loadFiscalSummary, IRPF_B2B_DEFAULT_PCT } from '@/lib/fiscal/summary';
 //
 // Tenancy: vía `requireClientAccess`. Voided/rectified se excluyen — mismo
 // criterio que el cómputo del resumen.
+//
+// Periodo: misma convención que el resto de Informes (StatsPeriodTabs +
+// `resolvePeriodSelection`) — single source para que el CSV cuadre con lo
+// que el barbero ve en pantalla.
 // -----------------------------------------------------------------------------
 
 function formatEurosES(cents: number): string {
@@ -51,12 +57,44 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (!access.ok) return accessErrorResponse(access);
 
   const url = new URL(req.url);
-  const period = parseFiscalPeriodKey(url.searchParams.get('period'));
+  const now = new Date();
+  const selection = resolvePeriodSelection(
+    {
+      period: url.searchParams.get('period') ?? undefined,
+      date: url.searchParams.get('date') ?? undefined,
+      start: url.searchParams.get('start') ?? undefined,
+      end: url.searchParams.get('end') ?? undefined,
+    },
+    now,
+    'month',
+  );
+
+  // Fallback para `endExclusiveIso`: lifetime no tiene tope superior natural.
+  // Tope = mañana, igual que en `loadReportContext`, para que la query
+  // `< endIso` siga acotando arriba e incluya hoy completo.
+  const tomorrow = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+  );
+  const startIso = selection.periodStartIso ?? '0001-01-01';
+  const endExclusiveIso = selection.periodEndIso ?? toLocalIso(tomorrow);
+  const periodLabel = selection.periodLabel;
+
+  // Clave estable para el nombre del fichero: incluye el periodo + las
+  // fechas resueltas, para que el barbero pueda archivar varios CSV sin
+  // pisarlos. Sin caracteres ambiguos (`:` no funciona en Windows).
+  const periodKey =
+    selection.period === 'lifetime'
+      ? 'total'
+      : selection.period === 'range'
+        ? `${startIso}_${endExclusiveIso}`
+        : `${selection.period}-${startIso}`;
 
   const summary = await loadFiscalSummary(
     access.client.id,
-    period.startIso,
-    period.endExclusiveIso,
+    startIso,
+    endExclusiveIso,
   );
 
   // Detalle factura a factura (issued only).
@@ -66,8 +104,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     .where(
       and(
         eq(invoices.clientId, access.client.id),
-        gte(invoices.issueDate, period.startIso),
-        lt(invoices.issueDate, period.endExclusiveIso),
+        gte(invoices.issueDate, startIso),
+        lt(invoices.issueDate, endExclusiveIso),
         eq(invoices.status, 'issued'),
       ),
     )
@@ -76,9 +114,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   const lines: string[] = [];
 
   // ── Cabecera del documento.
-  lines.push(`Resumen fiscal · ${period.label}`);
+  lines.push(`Resumen fiscal · ${periodLabel}`);
   lines.push(`Cliente;${csvEscape(access.client.fiscalName ?? access.client.businessName)}`);
-  lines.push(`Período;${period.startIso} → ${period.endExclusiveIso} (exclusive)`);
+  lines.push(`Período;${startIso} → ${endExclusiveIso} (exclusive)`);
   lines.push('');
 
   // ── Bloque IVA.
@@ -173,7 +211,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="resumen-fiscal-${period.key}.csv"`,
+      'Content-Disposition': `attachment; filename="resumen-fiscal-${periodKey}.csv"`,
       'Cache-Control': 'no-store',
     },
   });

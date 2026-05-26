@@ -1,32 +1,35 @@
 export const dynamic = 'force-dynamic'
 
+import { Suspense } from 'react'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
-import { db } from '@/db'
-import { clients } from '@/db/schema'
-import { eq } from 'drizzle-orm'
-import { auth } from '@/lib/auth/server'
 import { Download, Receipt, ChevronRight, Info } from 'lucide-react'
 import AreaShell from '../../_components/AreaShell'
 import AreaContent from '../../_components/AreaContent'
 import StatStrip from '../../_components/StatStrip'
+import StatsPeriodTabs from '../../_components/StatsPeriodTabs'
 import EmptyState from '../../_components/EmptyState'
 import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
-import { parseFiscalPeriodKey } from '@/lib/fiscal/period'
 import { loadFiscalSummary } from '@/lib/fiscal/summary'
-import FiscalPeriodSelect from './FiscalPeriodSelect'
+import { loadReportContext } from '../_report-data'
 
 // -----------------------------------------------------------------------------
-// /dashboard/informes/fiscal — pestaña FISCAL del área Informes.
+// /dashboard/informes/fiscal — pestaña FISCAL (alias "Contabilidad" para el
+// barbero) del área Informes.
 //
-// Resumen IVA / IRPF por trimestre o año que el barbero entrega a su
-// gestoría para presentar el Modelo 303 (IVA trimestral) y el 130/390
-// (IRPF / resumen anual). Reusamos:
+// Resumen IVA / IRPF que el barbero entrega a su gestoría para presentar el
+// Modelo 303 (IVA trimestral) y el 130/390 (IRPF / resumen anual).
 //
+// Periodo: `StatsPeriodTabs` (día/semana/mes/año/rango/total) compartido con
+// las otras pestañas de Informes — el barbero filtra con la misma UI en
+// todas. El gestor habitualmente pide trimestres → seleccionar "Rango" con
+// 01-ene/31-mar etc., O usar "Año" para el resumen anual (Modelo 390).
+//
+// Reusamos:
 //   · admin-lock guard `informes` (mismo PIN que el resto del jefe).
 //   · invoices.ivaRate + subtotal/iva/total en cents — ningún schema nuevo.
-//   · Helpers puros `parseFiscalPeriodKey` + `loadFiscalSummary`.
+//   · Helper puro `loadFiscalSummary` (recibe startIso / endExclusiveIso).
+//   · `loadReportContext` para resolver tenant + periodo desde searchParams
+//     — single source con Ingresos / Citas / Clientes / Marketing.
 //
 // REGLAS FISCALES (ver `src/lib/fiscal/summary.ts`):
 //   · Solo se incluyen facturas con status='issued' (anuladas / rectificadas
@@ -37,10 +40,13 @@ import FiscalPeriodSelect from './FiscalPeriodSelect'
 // -----------------------------------------------------------------------------
 
 interface PageProps {
-  searchParams: Promise<{ period?: string }>
+  searchParams: Promise<{
+    period?: string
+    date?: string
+    start?: string
+    end?: string
+  }>
 }
-
-const BASE_PATH = '/dashboard/informes/fiscal'
 
 function formatEuros(cents: number): string {
   return (cents / 100).toFixed(2).replace('.', ',')
@@ -52,14 +58,8 @@ export default async function FiscalPage({ searchParams }: PageProps) {
   if (lockOverlay) return lockOverlay
 
   const params = await searchParams
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user?.email) redirect('/login')
-
-  const [client] = await db
-    .select()
-    .from(clients)
-    .where(eq(clients.email, session.user.email))
-  if (!client) redirect('/dashboard/setup')
+  const { client, periodLabel, periodStartIso, periodEndIso } =
+    await loadReportContext(params)
 
   // Empty state si la facturación no está activada — sin facturas no hay
   // resumen fiscal posible. Cambiar de pestaña no añade datos.
@@ -86,24 +86,46 @@ export default async function FiscalPage({ searchParams }: PageProps) {
     )
   }
 
-  const period = parseFiscalPeriodKey(params.period)
+  // `loadFiscalSummary` filtra por `issue_date >= startIso AND < endExclusiveIso`.
+  // Si periodStartIso es null (lifetime), pasamos `0001-01-01` para no
+  // restringir por abajo — `periodEndIso` ya viene normalizado.
   const summary = await loadFiscalSummary(
     client.id,
-    period.startIso,
-    period.endExclusiveIso,
+    periodStartIso ?? '0001-01-01',
+    periodEndIso,
   )
 
   const hasData = summary.ivaTotals.count > 0
 
+  // El export reusa el mismo set de params (period/date/start/end) que la
+  // página — single source con StatsPeriodTabs. Construimos la query.
+  const exportParams = new URLSearchParams()
+  if (params.period) exportParams.set('period', params.period)
+  if (params.date) exportParams.set('date', params.date)
+  if (params.start) exportParams.set('start', params.start)
+  if (params.end) exportParams.set('end', params.end)
+  const exportHref =
+    `/api/invoices/export-fiscal${exportParams.toString() ? `?${exportParams}` : ''}`
+
   return (
-    <AreaShell area="informes">
+    <AreaShell
+      area="informes"
+      action={
+        <Suspense>
+          {/* defaultPeriod="month" mantiene UI y server sincronizados:
+              `loadReportContext` resuelve a 'month' cuando no hay ?period=,
+              así que el chip "Mes" debe estar activo por defecto. */}
+          <StatsPeriodTabs defaultPeriod="month" />
+        </Suspense>
+      }
+    >
       <AreaContent scroll="region" maxWidth="6xl">
         <p
           className="mb-4 text-ink-2"
           style={{ fontSize: 'var(--text-meta)' }}
         >
           Resumen IVA y IRPF para tu gestoría ·{' '}
-          <span className="text-ink">{period.label}</span>
+          <span className="text-ink">{periodLabel}</span>
         </p>
 
         <StatStrip
@@ -127,11 +149,10 @@ export default async function FiscalPage({ searchParams }: PageProps) {
           ]}
         />
 
-        {/* Controles: selector + export. */}
-        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <FiscalPeriodSelect currentKey={period.key} basePath={BASE_PATH} />
+        {/* Export CSV — usa los mismos searchParams que la página. */}
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-end">
           <Link
-            href={`/api/invoices/export-fiscal?period=${period.key}`}
+            href={exportHref}
             className="btn-primary"
             prefetch={false}
             title="Descargar el resumen fiscal del periodo (CSV para tu gestor)"
@@ -145,7 +166,7 @@ export default async function FiscalPage({ searchParams }: PageProps) {
           <div className="mt-6">
             <EmptyState
               icon={Receipt}
-              title={`Sin facturas emitidas en ${period.label}`}
+              title={`Sin facturas emitidas en ${periodLabel}`}
               description="Cuando emitas el primer ticket o factura del periodo aparecerá aquí el desglose por tipo de IVA. Solo se incluyen documentos con factura emitida (los tickets antiguos sin VeriFactu no cuentan)."
             />
           </div>
@@ -158,7 +179,7 @@ export default async function FiscalPage({ searchParams }: PageProps) {
                 style={{ background: 'var(--table-head-bg)' }}
               >
                 <h2 className="text-[0.8125rem] font-semibold text-ink">
-                  Resumen IVA por tipo · {period.label}
+                  Resumen IVA por tipo · {periodLabel}
                 </h2>
                 <p className="mt-0.5 text-[0.75rem] text-ink-2">
                   Modelo 303 — IVA repercutido a ingresar.
@@ -236,7 +257,7 @@ export default async function FiscalPage({ searchParams }: PageProps) {
                 style={{ background: 'var(--table-head-bg)' }}
               >
                 <h2 className="text-[0.8125rem] font-semibold text-ink">
-                  Resumen IRPF · {period.label}
+                  Resumen IRPF · {periodLabel}
                 </h2>
                 <p className="mt-0.5 text-[0.75rem] text-ink-2">
                   Informativo. La retención IRPF la practica quien recibe la
