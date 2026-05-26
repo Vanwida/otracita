@@ -48,6 +48,23 @@ function clampPct(n: number): number {
   return Math.round(n)
 }
 
+/** F1 — Saneo común de la lista de tramos: filtra NaN/Infinity, clampa a
+ *  enteros ≥ 0 y ordena por threshold ascendente. Aislado para que
+ *  `selectTierBonus` y `selectNextTier` produzcan resultados consistentes
+ *  sobre la misma vista normalizada (mismo input → mismo orden de salida). */
+function normalizeTiers(tierBonuses: TierBonus[] | null): TierBonus[] {
+  if (!tierBonuses || tierBonuses.length === 0) return []
+  const clean: TierBonus[] = []
+  for (const t of tierBonuses) {
+    const threshold = Number.isFinite(t.thresholdCents) ? Math.max(0, Math.round(t.thresholdCents)) : NaN
+    const bonus = Number.isFinite(t.bonusCents) ? Math.max(0, Math.round(t.bonusCents)) : NaN
+    if (!Number.isFinite(threshold) || !Number.isFinite(bonus)) continue
+    clean.push({ thresholdCents: threshold, bonusCents: bonus })
+  }
+  clean.sort((a, b) => a.thresholdCents - b.thresholdCents)
+  return clean
+}
+
 /** F1 — Devuelve el tramo activado por una facturación dada, o null si no
  *  llega al primer threshold (o la lista está vacía). El tramo activado es
  *  el de MAYOR `thresholdCents` que sea ≤ facturado. Los tramos se ordenan
@@ -57,24 +74,35 @@ export function selectTierBonus(
   tierBonuses: TierBonus[] | null,
   facturadoCents: number,
 ): TierBonus | null {
-  if (!tierBonuses || tierBonuses.length === 0) return null
   if (!Number.isFinite(facturadoCents) || facturadoCents <= 0) return null
-  // Saneamos + ordenamos. Mantenemos solo entradas con threshold finito ≥ 0.
-  const clean: TierBonus[] = []
-  for (const t of tierBonuses) {
-    const threshold = Number.isFinite(t.thresholdCents) ? Math.max(0, Math.round(t.thresholdCents)) : NaN
-    const bonus = Number.isFinite(t.bonusCents) ? Math.max(0, Math.round(t.bonusCents)) : NaN
-    if (!Number.isFinite(threshold) || !Number.isFinite(bonus)) continue
-    clean.push({ thresholdCents: threshold, bonusCents: bonus })
-  }
+  const clean = normalizeTiers(tierBonuses)
   if (clean.length === 0) return null
-  clean.sort((a, b) => a.thresholdCents - b.thresholdCents)
   let active: TierBonus | null = null
   for (const t of clean) {
     if (facturadoCents >= t.thresholdCents) active = t
     else break
   }
   return active
+}
+
+/** F1 — Devuelve el SIGUIENTE tramo aún no alcanzado y cuánto falta para
+ *  cumplirlo, en cents. Sirve a la UI para mostrar motivación visible
+ *  ("te faltan 500 € para +250 €"). Si el barbero ya alcanzó el último
+ *  tramo, o la lista está vacía, devuelve null. */
+export function selectNextTier(
+  tierBonuses: TierBonus[] | null,
+  facturadoCents: number,
+): { tier: TierBonus; remainingCents: number } | null {
+  const clean = normalizeTiers(tierBonuses)
+  if (clean.length === 0) return null
+  const facturado = Number.isFinite(facturadoCents) ? Math.max(0, Math.round(facturadoCents)) : 0
+  for (const t of clean) {
+    if (facturado < t.thresholdCents) {
+      return { tier: t, remainingCents: t.thresholdCents - facturado }
+    }
+  }
+  // Ya alcanzó el último tramo — no hay siguiente.
+  return null
 }
 
 /** R-T3 — Normaliza el split cash/card de propinas en un raw, garantizando

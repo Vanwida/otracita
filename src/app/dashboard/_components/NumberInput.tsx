@@ -107,7 +107,15 @@ export default function NumberInput({
     setIsFocused(false)
     const parsed = parse(text, decimals)
     if (parsed === null) {
-      setText('')
+      // Al perder el foco con el campo vacío, devolvemos el texto al `value`
+      // del padre. Si el padre quiere de verdad un campo vacío, pasa
+      // `value=null` y el setText('') lo mantiene; si el padre ignoró el
+      // `null` (caso típico: "no me clearees el threshold, conserva el
+      // valor anterior"), el input vuelve a mostrar ese número en vez de
+      // quedarse en blanco — que Reni leía como "se queda en 0" (task #94).
+      // Sin esto, el contrato "value es number" no se respeta visualmente
+      // tras un blur con null.
+      setText(value === null ? '' : String(value))
       onValueChange(null)
       onBlur?.(null)
       return

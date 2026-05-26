@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeBarberPayroll, isProfileConfigured, selectTierBonus } from './compute.ts'
+import { computeBarberPayroll, isProfileConfigured, selectNextTier, selectTierBonus } from './compute.ts'
 import type { BarberMonthRaw, BarberSalaryProfile, TierBonus } from './types.ts'
 
 const ZERO_RAW: BarberMonthRaw = {
@@ -215,6 +215,98 @@ describe('selectTierBonus', () => {
       { thresholdCents: 500000, bonusCents: 25000 },
     ]
     assert.deepEqual(selectTierBonus(t, 600000), { thresholdCents: 500000, bonusCents: 25000 })
+  })
+})
+
+// ----------------------------------------------------------------------------
+// F1 — selectNextTier (helper para motivación visible: "te faltan X€")
+// ----------------------------------------------------------------------------
+
+describe('selectNextTier', () => {
+  const tiers: TierBonus[] = [
+    { thresholdCents: 400000, bonusCents: 10000 },   // 4.000 € → 100 €
+    { thresholdCents: 500000, bonusCents: 25000 },   // 5.000 € → 250 €
+    { thresholdCents: 600000, bonusCents: 35000 },   // 6.000 € → 350 €
+  ]
+
+  it('null/[] → null', () => {
+    assert.equal(selectNextTier(null, 500000), null)
+    assert.equal(selectNextTier([], 500000), null)
+  })
+
+  it('por debajo del primer threshold → next = primer tramo', () => {
+    const r = selectNextTier(tiers, 0)
+    assert.deepEqual(r, {
+      tier: { thresholdCents: 400000, bonusCents: 10000 },
+      remainingCents: 400000,
+    })
+  })
+
+  it('entre tramos devuelve el siguiente y cuánto falta', () => {
+    // 5.500 € facturados → siguiente = 6k, faltan 500 €.
+    const r = selectNextTier(tiers, 550000)
+    assert.deepEqual(r, {
+      tier: { thresholdCents: 600000, bonusCents: 35000 },
+      remainingCents: 50000,
+    })
+  })
+
+  it('justo en el último threshold → null (no hay siguiente)', () => {
+    assert.equal(selectNextTier(tiers, 600000), null)
+  })
+
+  it('por encima del último → null', () => {
+    assert.equal(selectNextTier(tiers, 999999), null)
+  })
+
+  it('exactamente en un threshold intermedio → next es el de arriba', () => {
+    // 5.000 € exactos → ya tiene el 5k, falta para llegar al 6k.
+    const r = selectNextTier(tiers, 500000)
+    assert.deepEqual(r, {
+      tier: { thresholdCents: 600000, bonusCents: 35000 },
+      remainingCents: 100000,
+    })
+  })
+
+  it('tramos desordenados se ordenan internamente', () => {
+    const desordenados: TierBonus[] = [
+      { thresholdCents: 600000, bonusCents: 35000 },
+      { thresholdCents: 400000, bonusCents: 10000 },
+      { thresholdCents: 500000, bonusCents: 25000 },
+    ]
+    const r = selectNextTier(desordenados, 450000)
+    assert.deepEqual(r, {
+      tier: { thresholdCents: 500000, bonusCents: 25000 },
+      remainingCents: 50000,
+    })
+  })
+
+  it('facturación negativa o NaN se trata como 0 → next = primer tramo', () => {
+    const r1 = selectNextTier(tiers, -100)
+    assert.deepEqual(r1, {
+      tier: { thresholdCents: 400000, bonusCents: 10000 },
+      remainingCents: 400000,
+    })
+    const r2 = selectNextTier(tiers, NaN)
+    assert.deepEqual(r2, {
+      tier: { thresholdCents: 400000, bonusCents: 10000 },
+      remainingCents: 400000,
+    })
+  })
+
+  it('entradas inválidas (NaN/Infinity) se filtran antes de elegir next', () => {
+    const t: TierBonus[] = [
+      { thresholdCents: NaN, bonusCents: 10000 },
+      { thresholdCents: 400000, bonusCents: 10000 },
+      { thresholdCents: 500000, bonusCents: NaN },
+      { thresholdCents: 600000, bonusCents: 35000 },
+    ]
+    // Tras filtrar quedan 4k y 6k. Con 450000 facturados, siguiente = 6k.
+    const r = selectNextTier(t, 450000)
+    assert.deepEqual(r, {
+      tier: { thresholdCents: 600000, bonusCents: 35000 },
+      remainingCents: 150000,
+    })
   })
 })
 

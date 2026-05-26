@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { Users, ChevronDown, ChevronUp, BadgeCheck, Loader2 } from 'lucide-react'
 import type { PayrollBreakdown, BarberSalaryProfile, BarberMonthRaw } from '@/lib/payroll/types'
 import { presetLabel } from '@/lib/payroll/presets'
+import { selectNextTier } from '@/lib/payroll/compute'
 import Modal from '../_components/Modal'
 import { pushUndoToast } from '../_components/UndoToast'
 
@@ -169,38 +170,69 @@ export default function Payroll({ month }: Props) {
               {open && (
                 <div className="px-5 pb-4 border-t border-line bg-overlay/20">
                   {/* F1 — Si usa "salaried_with_tier_bonus", banner con la
-                      facturación alcanzada y el tramo activo (o "no llegó"). */}
-                  {item.salaryType === 'salaried_with_tier_bonus' && (
-                    <div className="mt-3 mb-1 rounded-lg border border-line bg-canvas px-3 py-2.5">
-                      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Facturación del mes</p>
-                          <p className="text-base font-bold text-ink tabular-nums mt-0.5">
-                            {formatEuros(item.breakdown.facturadoCents)}
-                          </p>
-                          <p className="text-[11px] text-ink-3 mt-0.5">servicios + productos (sin propinas)</p>
+                      facturación alcanzada, el tramo activo (o "no llegó") y
+                      cuánto le falta al siguiente tramo (motivación visible).
+                      Si ya está en el último tramo, el indicador se omite. */}
+                  {item.salaryType === 'salaried_with_tier_bonus' && (() => {
+                    const next = selectNextTier(
+                      item.profile.tierBonuses,
+                      item.breakdown.facturadoCents,
+                    )
+                    return (
+                      <div className="mt-3 mb-1 rounded-lg border border-line bg-canvas px-3 py-2.5">
+                        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Facturación del mes</p>
+                            <p className="text-base font-bold text-ink tabular-nums mt-0.5">
+                              {formatEuros(item.breakdown.facturadoCents)}
+                            </p>
+                            <p className="text-[11px] text-ink-3 mt-0.5">servicios + productos (sin propinas)</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Tramo activado</p>
+                            {item.breakdown.tierBonus ? (
+                              <>
+                                <p className="text-base font-bold text-brand-strong tabular-nums mt-0.5">
+                                  +{formatEuros(item.breakdown.tierBonus.bonusCents)}
+                                </p>
+                                <p className="text-[11px] text-ink-3 mt-0.5">
+                                  desde {formatEuros(item.breakdown.tierBonus.thresholdCents)}
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-base font-bold text-ink-3 tabular-nums mt-0.5">—</p>
+                                <p className="text-[11px] text-ink-3 mt-0.5">no alcanzó ningún tramo</p>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">Tramo activado</p>
-                          {item.breakdown.tierBonus ? (
-                            <>
-                              <p className="text-base font-bold text-brand-strong tabular-nums mt-0.5">
-                                +{formatEuros(item.breakdown.tierBonus.bonusCents)}
-                              </p>
-                              <p className="text-[11px] text-ink-3 mt-0.5">
-                                desde {formatEuros(item.breakdown.tierBonus.thresholdCents)}
-                              </p>
-                            </>
-                          ) : (
-                            <>
-                              <p className="text-base font-bold text-ink-3 tabular-nums mt-0.5">—</p>
-                              <p className="text-[11px] text-ink-3 mt-0.5">no alcanzó ningún tramo</p>
-                            </>
-                          )}
-                        </div>
+
+                        {/* Motivación visible — solo si queda un tramo por
+                            alcanzar. Si ya está en el último, no mostramos
+                            nada (evita ruido). */}
+                        {next && (
+                          <div className="mt-2.5 pt-2.5 border-t border-line flex items-baseline justify-between gap-2 flex-wrap">
+                            <p className="text-[11px] text-ink-3">
+                              {item.breakdown.tierBonus ? 'Siguiente tramo' : 'Para activar el primer tramo'}
+                            </p>
+                            <p className="text-[12px] text-ink-2">
+                              le faltan{' '}
+                              <strong className="text-ink tabular-nums">
+                                {formatEuros(next.remainingCents)}
+                              </strong>{' '}
+                              para llegar a{' '}
+                              <span className="tabular-nums">{formatEuros(next.tier.thresholdCents)}</span>{' '}
+                              y cobrar{' '}
+                              <strong className="text-brand-strong tabular-nums">
+                                +{formatEuros(next.tier.bonusCents)}
+                              </strong>
+                            </p>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                   <dl className="divide-y divide-line text-sm">
                     <Row label="Base" value={item.breakdown.baseCents} />
                     <Row
