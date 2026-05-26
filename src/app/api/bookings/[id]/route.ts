@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { bookings, barbers, clients } from '@/db/schema'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, asc, eq, ne } from 'drizzle-orm'
 import { hasBookingOverlap, hhmmToMinutes } from '@/lib/bookings/duration'
 import {
   requireTenantActor,
@@ -15,6 +15,9 @@ import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { bookingTotalCents } from '@/lib/bookings/total'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 import { MANUAL_SOURCES, isManualSource } from '@/lib/attribution/source-manual'
+import { pickBarberForCustomer } from '@/lib/availability'
+import { loadShopOverridesForDate } from '@/lib/shop-day-overrides'
+import type { BarberConfig } from '@/lib/whatsapp/config'
 
 // -----------------------------------------------------------------------------
 // /api/bookings/[id] — PATCH para acciones del dashboard sobre una reserva.
@@ -47,8 +50,11 @@ import { MANUAL_SOURCES, isManualSource } from '@/lib/attribution/source-manual'
 //
 // Tenant-scoped: la reserva debe pertenecer al cliente autenticado.
 // Si se reasigna, comprueba que el nuevo barbero (si no es null) no tenga
-// otra reserva solapando en ese mismo horario. "Cualquiera" (null) no
-// bloquea: el resolver de disponibilidad elegirá barbero al vuelo.
+// otra reserva solapando en ese mismo horario. "Cualquiera" (barberId:null
+// en el body) NUNCA se persiste como null en la BD — el endpoint resuelve a
+// un barbero real al vuelo (igual que create.ts) usando pickBarberForCustomer,
+// con fallback al primer activo. Así se evita que la cita quede en la
+// swimlane "Sin asignar" de la agenda (estado roto reportado por Reni).
 // -----------------------------------------------------------------------------
 
 function parseMinutes(hhmm: string): number {
@@ -215,10 +221,58 @@ export async function PATCH(
   if ('barberId' in body) {
     const nextBarberId = body.barberId
     if (nextBarberId === null || nextBarberId === '') {
-      targetBarberId = null
-      targetBarberLabel = 'El profesional'
-      patch.barberId = null
-      patch.barber = null
+      // Reasignar a "cualquiera": NUNCA persistimos barberId=null — eso deja
+      // la cita en la swimlane "Sin asignar" de la agenda (estado roto). En
+      // su lugar resolvemos un barbero real al vuelo igual que create.ts.
+      // Pref: pickBarberForCustomer (last-barber del cliente → menos cargado
+      // → displayOrder). Fallback: primer activo por displayOrder (cuando
+      // no hay nadie libre por horario — el barbero ya conoce su agenda y
+      // está moviendo la cita; mejor asignar a alguien que dejarla rota).
+      const activeBarbersRows = await db
+        .select()
+        .from(barbers)
+        .where(and(eq(barbers.clientId, access.client.id), eq(barbers.active, true)))
+        .orderBy(asc(barbers.displayOrder), asc(barbers.name))
+      if (activeBarbersRows.length === 0) {
+        return Response.json(
+          { error: 'La barbería no tiene profesionales activos.' },
+          { status: 400 },
+        )
+      }
+      const activeBarberConfigs: BarberConfig[] = activeBarbersRows.map((b) => ({
+        id: b.id,
+        name: b.name,
+        hours: (b.hours as Record<string, string> | null) ?? null,
+        blockedDates: (b.blockedDates as string[]) ?? [],
+        displayOrder: b.displayOrder,
+      }))
+      // Necesitamos la fila completa de client para chatbotHours / blockedDates
+      // / serviceBufferMinutes. Solo cargamos cuando hace falta resolver.
+      const [clientRow] = await db
+        .select()
+        .from(clients)
+        .where(eq(clients.id, access.client.id))
+      const pickDate = targetDate
+      const pickTime = targetTime
+      const picked = clientRow
+        ? await pickBarberForCustomer({
+            clientId: access.client.id,
+            customerPhone: booking.customerPhone,
+            barbers: activeBarberConfigs,
+            date: pickDate,
+            time: pickTime,
+            duration: targetDuration,
+            shopHours: (clientRow.chatbotHours as Record<string, string> | null) ?? null,
+            shopDayOverrides: await loadShopOverridesForDate(access.client.id, pickDate),
+            shopBlockedDates: (clientRow.blockedDates as string[]) ?? [],
+            serviceBufferMinutes: clientRow.serviceBufferMinutes,
+          })
+        : null
+      const resolved = picked ?? activeBarberConfigs[0]
+      targetBarberId = resolved.id
+      targetBarberLabel = resolved.name
+      patch.barberId = resolved.id
+      patch.barber = resolved.name
     } else if (typeof nextBarberId === 'string') {
       // Verificar que pertenece al mismo cliente y está activo.
       const [newBarber] = await db
@@ -263,10 +317,11 @@ export async function PATCH(
   }
 
   // ── Re-validación de solape (destino) ────────────────────────────────
-  // Corre cuando se mueve hora/día y/o se reasigna a un barbero concreto,
-  // y SOLO si la reserva no se está cancelando en el mismo PATCH (una
-  // cita cancelada no puede chocar con nada). "Cualquiera" (barberId
-  // null) no se valida: el resolver de disponibilidad elegirá al vuelo.
+  // Corre cuando se mueve hora/día y/o se reasigna a un barbero, y SOLO si
+  // la reserva no se está cancelando en el mismo PATCH (una cita cancelada
+  // no puede chocar con nada). "Cualquiera" (barberId null en body) ya se
+  // resolvió arriba a un barbero concreto vía pickBarberForCustomer, así
+  // que el chequeo de solape también aplica al caso "cualquiera".
   const movedTime = 'date' in body || 'time' in body
   const resized = 'duration' in body
   const reassignedToConcrete = targetBarberId !== undefined && targetBarberId !== null
