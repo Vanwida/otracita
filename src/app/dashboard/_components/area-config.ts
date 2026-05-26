@@ -14,7 +14,7 @@
 //   Clientes    · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
 //   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
 //   Crecimiento · App · Recepcionista IA · Bot WhatsApp · Promos · Fidelidad · Reseñas · Tracking
-//   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing
+//   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing · Fiscal
 //   Ajustes     · Negocio · Pagos · Suscripción · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
@@ -154,6 +154,7 @@ export const AREAS: Area[] = [
       { seg: 'clientes', label: 'Clientes', href: '/dashboard/informes/clientes' },
       { seg: 'nominas', label: 'Nóminas', href: '/dashboard/informes/nominas' },
       { seg: 'marketing', label: 'Marketing', href: '/dashboard/informes/marketing' },
+      { seg: 'fiscal', label: 'Fiscal', href: '/dashboard/informes/fiscal' },
     ],
     prefixes: [
       '/dashboard/informes',

@@ -53,8 +53,8 @@ export const INGRESOS_RAIL: ReportRailItem[] = [
     href: '/dashboard/ventas/productos',
   },
   {
-    label: 'Informe fiscal',
-    href: '/dashboard/ventas/facturas',
+    label: 'Resumen fiscal (IVA/IRPF)',
+    href: '/dashboard/informes/fiscal',
   },
   {
     label: 'Ingresos por empleado',
