@@ -961,6 +961,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         sumupReaderConnected={sumupReaderConnected}
         barbers={barbers}
         services={services}
+        hours={hours}
         onMutated={() => refetch()}
       />
 

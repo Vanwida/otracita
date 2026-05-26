@@ -14,6 +14,8 @@ import { dispatchTracking } from '@/lib/tracking/dispatch';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
 import ClientProfile from '../clientes/[id]/ClientProfile';
 import type { ClientProfileData } from '@/lib/clients/profile';
+import { hoursForDate, parseMinutes } from '@/lib/availability-hours';
+import { useConfirm } from '../_components/ConfirmDialog';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
@@ -56,6 +58,11 @@ interface Props {
    *  precio" lo usa para el picker (FIX C: principal+extras = dropdown,
    *  no texto libre). Mismo shape que recibe NewBookingPanel. */
   services?: Array<{ name: string; duration: number; price: number }>;
+  /** Horario semanal de la tienda — el editor "Mover cita" lo usa para
+   *  avisar (y pedir confirmación al guardar, patrón #83) si la nueva
+   *  hora cae fuera del horario laboral del día. Null = sin horario
+   *  configurado → no validamos client-side. */
+  hours?: Record<string, string> | null;
   /** Se invoca tras CUALQUIER mutación exitosa dentro del panel (mover,
    *  editar servicio, no-show, cobrar, cerrar gratis, añadir producto,
    *  marcar origen, cancelar). El padre revalida la query SWR del
@@ -66,8 +73,9 @@ interface Props {
   onMutated?: () => void;
 }
 
-export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], onMutated }: Props) {
+export default function BookingDetailPanel({ booking, onClose, stripeConnectStatus, cashRegisterEnabled = false, cashSessionOpen = true, barbers = [], services = [], hours = null, onMutated }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +182,35 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
 
   async function submitMove() {
     if (!booking) return;
+    // Validación HH:MM (browser ya enforza con type=time, defensa extra
+    // para teclado manual / paste). Sin esto, un valor inválido provoca un
+    // 400 del server con copy poco amigable.
+    if (!/^\d{2}:\d{2}$/.test(moveTime)) {
+      setMoveError('La hora debe ir en formato HH:MM (00:00 a 23:59).');
+      return;
+    }
+    // Fuera de horario laboral → confirmación previa (patrón #83). PATCH
+    // server-side no valida horas; lo hacemos aquí para que Reni no mueva
+    // sin querer una cita a las 04:00 con un typo. Si el horario no está
+    // configurado (hoursForDate=null en día abierto o sin clave) saltamos
+    // el check — equivale a "tienda cerrada ese día"; reusar el mensaje
+    // sería confuso, mejor permitirlo silenciosamente (igual que create).
+    const dayHours = hoursForDate(moveDate, hours ?? null);
+    if (dayHours) {
+      const startMin = parseMinutes(moveTime);
+      const endMin = startMin + booking.duration;
+      const openMin = parseMinutes(dayHours.start);
+      const closeMin = parseMinutes(dayHours.end);
+      if (startMin < openMin || endMin > closeMin) {
+        const ok = await confirm({
+          title: 'Fuera del horario habitual',
+          message: `La cita quedaría ${moveTime}–${addMinutesToTime(moveTime, booking.duration)}, fuera del horario del día (${dayHours.start}–${dayHours.end}). ¿La mueves igualmente?`,
+          confirmLabel: 'Mover igual',
+          cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
+      }
+    }
     setMoving(true);
     setMoveError(null);
     try {
@@ -708,19 +745,65 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                           className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
                         />
                       </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label htmlFor="move-time" className="text-[11px] font-medium text-ink-2">
-                          Hora
-                        </label>
-                        <input
-                          id="move-time"
-                          type="time"
-                          step={300}
-                          value={moveTime}
-                          onChange={(e) => setMoveTime(e.target.value)}
-                          className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
-                        />
+                      {/* Hora inicio + Hora fin. Fin es read-only — se
+                          calcula sumando la duración total del booking
+                          (snapshot ya incluye servicios extra; ver
+                          src/lib/bookings/duration.ts). Reni teclea la
+                          hora directamente (HH:MM) y ve al instante a qué
+                          hora terminará. Pattern espejado de NewBookingPanel
+                          tras task #80. */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="move-time" className="text-[11px] font-medium text-ink-2">
+                            Hora inicio
+                          </label>
+                          <input
+                            id="move-time"
+                            type="time"
+                            value={moveTime}
+                            onChange={(e) => setMoveTime(e.target.value)}
+                            className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors tabular-nums"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="move-time-end" className="text-[11px] font-medium text-ink-2">
+                            Hora fin
+                          </label>
+                          <input
+                            id="move-time-end"
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            aria-label={`Hora fin calculada — duración ${booking.duration} min`}
+                            value={
+                              moveTime && /^\d{2}:\d{2}$/.test(moveTime)
+                                ? addMinutesToTime(moveTime, booking.duration)
+                                : '--:--'
+                            }
+                            className="bg-overlay/60 border border-line rounded-lg px-3 py-2 text-sm text-ink-2 outline-none tabular-nums cursor-default"
+                          />
+                        </div>
                       </div>
+                      {/* Aviso fuera de horario laboral del día. No bloquea:
+                          al guardar, useConfirm() pide OK explícito (patrón
+                          #83 "Crear igual"). Si no hay horario configurado
+                          o el día está cerrado, no mostramos nada (sin
+                          horario contra el que comparar). */}
+                      {(() => {
+                        if (!/^\d{2}:\d{2}$/.test(moveTime)) return null;
+                        const dayHours = hoursForDate(moveDate, hours ?? null);
+                        if (!dayHours) return null;
+                        const startMin = parseMinutes(moveTime);
+                        const endMin = startMin + booking.duration;
+                        const openMin = parseMinutes(dayHours.start);
+                        const closeMin = parseMinutes(dayHours.end);
+                        if (startMin >= openMin && endMin <= closeMin) return null;
+                        return (
+                          <p className="text-[11px] text-warning leading-relaxed">
+                            Fuera del horario del día ({dayHours.start}–{dayHours.end}). Al guardar, te pedirá confirmación.
+                          </p>
+                        );
+                      })()}
                       {barbers.length > 0 && (
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="move-barber" className="text-[11px] font-medium text-ink-2">
