@@ -17,6 +17,7 @@ import { computeAgendaWindow, toMinutes, PX_PER_MIN, SNAP_MIN } from './_agenda-
 import { computeOverlapLayout } from './_event-layout';
 import { useCurrentTime } from './_hooks/use-current-time';
 import { useDragAutoScroll } from './_hooks/use-drag-auto-scroll';
+import DragTimeTooltip from './DragTimeTooltip';
 
 // La VENTANA temporal (inicio/fin/alto/etiquetas) ya NO es fija — se deriva
 // de los datos del día visible en `_agenda-window` (fuente única, también
@@ -176,6 +177,13 @@ export default function DayGrid({
     | { kind: 'block'; block: CalendarBlock; grabOffsetPx: number; fullDay: boolean };
   const dragRef = useRef<DragPayload | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Tooltip live con la hora destino durante drag (task #81). El padre lo
+  // posiciona en coords ABSOLUTAS de viewport (clientX/clientY) — el
+  // componente lo pinta con position:fixed. Null cuando no hay drag activo
+  // o el cursor sale de cualquier columna válida (drop sobre fuera).
+  const [dragTooltip, setDragTooltip] = useState<
+    { x: number; y: number; label: string } | null
+  >(null);
 
   // Pointer fino (desktop). En touch / iPad con dedo el resize por bordes
   // es frágil — directiva explícita del producto (U1). matchMedia se
@@ -333,6 +341,39 @@ export default function DayGrid({
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+  };
+
+  // Calcula el rango horario destino (start/end snapped) según la posición
+  // del cursor dentro de una columna. Fuente única usada por:
+  //   · onDragOver  → alimenta el DragTimeTooltip en vivo (task #81)
+  //   · onDrop      → calcula los minutos finales para el PATCH
+  // Devuelve null si no hay payload de drag activo o el cursor cae fuera del
+  // rango utilizable de la columna. Para bloques de día completo no hay
+  // rango (devuelve null — el tooltip se oculta).
+  const computeDropPreview = (
+    e: { clientY: number; currentTarget: HTMLElement },
+  ): { startMin: number; endMin: number } | null => {
+    const drag = dragRef.current;
+    if (!drag) return null;
+    if (drag.kind === 'block' && drag.fullDay) return null;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const topPx = e.clientY - rect.top - drag.grabOffsetPx;
+    const rawMin = Math.round(topPx / PX_PER_MIN) + startMin;
+    const snapped = Math.round(rawMin / SNAP_MIN) * SNAP_MIN;
+    // Duración del bloque arrastrado — preservamos al moverlo. Para citas
+    // viene de `events`; para bloques parciales de start/end del bloque.
+    let durationMin = SNAP_MIN;
+    if (drag.kind === 'event') {
+      const ev = events.find((x) => x.id === drag.id);
+      if (ev) durationMin = ev.duration;
+    } else if (drag.block.startTime && drag.block.endTime) {
+      durationMin = toMinutes(drag.block.endTime) - toMinutes(drag.block.startTime);
+    }
+    const clampedStart = Math.max(
+      startMin,
+      Math.min(endMin - durationMin, snapped),
+    );
+    return { startMin: clampedStart, endMin: clampedStart + durationMin };
   };
 
   // Soltar una cita o un descanso/ausencia en una columna. Para citas
@@ -707,9 +748,26 @@ export default function DayGrid({
                     if (dragRef.current || draggingId) {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = 'move';
+                      // Tooltip live (#81): hora destino preview + posición
+                      // del cursor en viewport. Si el bloque es día-libre
+                      // completo, computeDropPreview devuelve null y el
+                      // tooltip se oculta (no hay rango que enseñar).
+                      const preview = computeDropPreview(e);
+                      if (preview) {
+                        setDragTooltip({
+                          x: e.clientX,
+                          y: e.clientY,
+                          label: `${minutesToHHMM(preview.startMin)} → ${minutesToHHMM(preview.endMin)}`,
+                        });
+                      } else {
+                        setDragTooltip(null);
+                      }
                     }
                   }}
-                  onDrop={e => handleColumnDrop(e, col.barber?.id ?? null)}
+                  onDrop={e => {
+                    setDragTooltip(null);
+                    handleColumnDrop(e, col.barber?.id ?? null);
+                  }}
                 >
                   {/* Fuera de horario — antes de abrir. Veil cálido + 1px
                       line-strong al filo (donde arranca el día activo) para
@@ -800,6 +858,7 @@ export default function DayGrid({
                           onDragEnd={() => {
                             dragRef.current = null;
                             setDraggingId(null);
+                            setDragTooltip(null);
                           }}
                           className={`absolute left-0 right-0 z-20 blocked-overlay ${
                             isBlockDraggable ? 'cursor-grab active:cursor-grabbing' : ''
@@ -961,6 +1020,7 @@ export default function DayGrid({
                         onDragEnd={() => {
                           dragRef.current = null;
                           setDraggingId(null);
+                          setDragTooltip(null);
                         }}
                         onClick={e => {
                           e.stopPropagation();
@@ -1145,6 +1205,15 @@ export default function DayGrid({
           })}
         </div>
       </div>
+      {/* Tooltip live durante drag (task #81). Fuera del scroll container
+          para usar viewport coords (position: fixed) — no se desplaza al
+          scrollear y nunca queda recortado por overflow del padre. */}
+      <DragTimeTooltip
+        position={
+          dragTooltip ? { x: dragTooltip.x, y: dragTooltip.y } : null
+        }
+        label={dragTooltip?.label ?? ''}
+      />
     </div>
   );
 }
