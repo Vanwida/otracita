@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import BonusesManager from '../../_components/BonusesManager'
+import NumberInput from '../../_components/NumberInput'
 
 // -----------------------------------------------------------------------------
 // ComisionesClient — las 3 piezas de la pestaña Comisiones.
@@ -653,12 +654,12 @@ function AddCompetitionForm({
           <span className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">
             Premio semanal (€)
           </span>
-          <input
-            type="number"
+          <NumberInput
+            value={reward}
+            onValueChange={(n) => setReward(n ?? 0)}
             min={0}
             step={5}
-            value={reward}
-            onChange={(e) => setReward(Number(e.target.value))}
+            decimals={2}
             className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
           />
         </label>
@@ -668,12 +669,12 @@ function AddCompetitionForm({
             <span className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">
               Racha (sem)
             </span>
-            <input
-              type="number"
+            <NumberInput
+              value={streakWeeks}
+              onValueChange={(n) => setStreakWeeks(n ?? 0)}
               min={1}
               step={1}
-              value={streakWeeks}
-              onChange={(e) => setStreakWeeks(Number(e.target.value))}
+              decimals={0}
               className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
             />
           </label>
@@ -681,12 +682,12 @@ function AddCompetitionForm({
             <span className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">
               Bono racha (€)
             </span>
-            <input
-              type="number"
+            <NumberInput
+              value={streakBonus}
+              onValueChange={(n) => setStreakBonus(n ?? 0)}
               min={0}
               step={5}
-              value={streakBonus}
-              onChange={(e) => setStreakBonus(Number(e.target.value))}
+              decimals={2}
               className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
             />
           </label>

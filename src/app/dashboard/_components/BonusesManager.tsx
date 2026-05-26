@@ -6,6 +6,7 @@ import { Plus, Trash2, Award, Loader2, Lock } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { useConfirm } from './ConfirmDialog'
+import NumberInput from './NumberInput'
 
 // -----------------------------------------------------------------------------
 // BonusesManager — configuración del catálogo de bonos del local.
@@ -180,16 +181,17 @@ function BonusRowItem({
 
       <label className="flex items-center gap-1 text-xs text-ink-2">
         objetivo
-        <input
-          type="number"
-          min={1}
-          step={bonus.unit === 'euros' ? 0.5 : 1}
+        <NumberInput
           value={target}
-          onChange={(e) => setTarget(Number(e.target.value))}
-          onBlur={() => {
-            const newTarget = bonus.unit === 'euros' ? Math.round(target * 100) : Math.round(target)
+          onValueChange={(n) => setTarget(n ?? 0)}
+          onBlur={(final) => {
+            const v = final ?? 0
+            const newTarget = bonus.unit === 'euros' ? Math.round(v * 100) : Math.round(v)
             if (newTarget !== bonus.target) patch({ target: newTarget })
           }}
+          min={1}
+          step={bonus.unit === 'euros' ? 0.5 : 1}
+          decimals={bonus.unit === 'euros' ? 2 : 0}
           className="w-20 bg-surface border border-line rounded px-2 py-1 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
         />
         {bonus.unit === 'euros' && <span className="text-ink-3">€</span>}
@@ -197,16 +199,17 @@ function BonusRowItem({
 
       <label className="flex items-center gap-1 text-xs text-ink-2">
         recompensa
-        <input
-          type="number"
-          min={0}
-          step={0.5}
+        <NumberInput
           value={rewardEuros}
-          onChange={(e) => setRewardEuros(Number(e.target.value))}
-          onBlur={() => {
-            const newCents = Math.round(rewardEuros * 100)
+          onValueChange={(n) => setRewardEuros(n ?? 0)}
+          onBlur={(final) => {
+            const v = final ?? 0
+            const newCents = Math.round(v * 100)
             if (newCents !== bonus.rewardCents) patch({ rewardCents: newCents })
           }}
+          min={0}
+          step={0.5}
+          decimals={2}
           className="w-20 bg-surface border border-line rounded px-2 py-1 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
         />
         <span className="text-ink-3">€</span>
@@ -320,24 +323,24 @@ function AddBonusForm({
           <span className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">
             Objetivo {unit === 'euros' ? '(€)' : ''}
           </span>
-          <input
-            type="number"
+          <NumberInput
+            value={target}
+            onValueChange={(n) => setTarget(n ?? 0)}
             min={1}
             step={unit === 'euros' ? 0.5 : 1}
-            value={target}
-            onChange={(e) => setTarget(Number(e.target.value))}
+            decimals={unit === 'euros' ? 2 : 0}
             className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
           />
         </label>
 
         <label className="block">
           <span className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">Recompensa (€)</span>
-          <input
-            type="number"
+          <NumberInput
+            value={reward}
+            onValueChange={(n) => setReward(n ?? 0)}
             min={0}
             step={0.5}
-            value={reward}
-            onChange={(e) => setReward(Number(e.target.value))}
+            decimals={2}
             className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
           />
         </label>

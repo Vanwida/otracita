@@ -5,6 +5,7 @@ import { Loader2, Coins, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { SALARY_PRESETS } from '@/lib/payroll/presets'
 import type { SalaryType, BarberSalaryProfile, TierBonus } from '@/lib/payroll/types'
+import NumberInput from './NumberInput'
 
 // -----------------------------------------------------------------------------
 // BarberSalaryEditor — panel inline en BarbersManager para configurar el
@@ -245,12 +246,12 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
                     <label className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">
                       Si factura (€)
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
+                      value={Number.isFinite(tier.thresholdEur) ? tier.thresholdEur : null}
+                      onValueChange={(n) => updateTier(i, { thresholdEur: n ?? 0 })}
                       min={0}
                       step={100}
-                      value={Number.isFinite(tier.thresholdEur) ? tier.thresholdEur : 0}
-                      onChange={(e) => updateTier(i, { thresholdEur: Number(e.target.value) })}
+                      decimals={2}
                       className="w-full bg-canvas border border-line rounded-lg px-2.5 py-1.5 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
                     />
                   </div>
@@ -258,12 +259,12 @@ export default function BarberSalaryEditor({ barberId, initial, onSaved }: Props
                     <label className="block text-[10px] uppercase tracking-widest text-ink-3 font-semibold mb-1">
                       Cobra bono (€)
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
+                      value={Number.isFinite(tier.bonusEur) ? tier.bonusEur : null}
+                      onValueChange={(n) => updateTier(i, { bonusEur: n ?? 0 })}
                       min={0}
                       step={10}
-                      value={Number.isFinite(tier.bonusEur) ? tier.bonusEur : 0}
-                      onChange={(e) => updateTier(i, { bonusEur: Number(e.target.value) })}
+                      decimals={2}
                       className="w-full bg-canvas border border-line rounded-lg px-2.5 py-1.5 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
                     />
                   </div>
@@ -325,13 +326,13 @@ function Field({
         {label}
       </span>
       <div className="flex items-center gap-2">
-        <input
-          type="number"
+        <NumberInput
+          value={Number.isFinite(value) ? value : null}
+          onValueChange={(n) => onChange(n ?? 0)}
           min={min}
           max={max}
           step={step}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => onChange(Number(e.target.value))}
+          decimals={2}
           className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink tabular-nums focus:border-brand focus:outline-none"
         />
         {suffix && <span className="text-sm text-ink-3 shrink-0">{suffix}</span>}
