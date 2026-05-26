@@ -425,7 +425,12 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
       area="informes"
       action={
         <Suspense>
-          <StatsPeriodTabs />
+          {/* defaultPeriod="month" mantiene UI y server sincronizados:
+              `loadReportContext` resuelve a 'month' cuando no hay ?period=,
+              así que el chip "Mes" debe estar activo por defecto. Sin esta
+              prop, el componente caería en su fallback histórico 'lifetime'
+              y la chip activa no coincidiría con los datos pintados. */}
+          <StatsPeriodTabs defaultPeriod="month" />
         </Suspense>
       }
     >
