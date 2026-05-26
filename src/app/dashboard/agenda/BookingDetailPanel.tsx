@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, FileWarning, Phone, Ban } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Phone, Ban, Banknote, Smartphone, Globe } from 'lucide-react';
 import { MANUAL_SOURCES, type ManualSource } from '@/lib/attribution/source-manual';
 import { getSourceMeta } from '@/lib/sources';
 import AddProductSaleModal from './AddProductSaleModal';
@@ -8,7 +8,10 @@ import SlideOver from '../_components/SlideOver';
 import Modal from '../_components/Modal';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
 import ChargeFlow from '../_components/ChargeFlow';
+import NumberInput from '../_components/NumberInput';
+import CustomerTypeahead from '../_components/CustomerTypeahead';
 import RectificativaModal from '../facturas/_components/RectificativaModal';
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/payments/methods';
 import { pushUndoToast } from '../_components/UndoToast';
 import { dispatchTracking } from '@/lib/tracking/dispatch';
 import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
@@ -248,10 +251,15 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   }
 
   // A3 — editar servicio/precio. Antes de completar = edición libre (modal
-  // propio). Después de completar = rectificativa (factura sellada nunca se
-  // muta). `editOpen` abre el modal pre-completion; `rectificativa` guarda la
-  // factura encontrada para abrir RectificativaModal post-completion.
+  // propio). Después de completar = depende de si hay factura:
+  //   · SIN factura emitida → editar sale libre (EditSaleModal): precio,
+  //     cliente, método, propina. Reescribe payments/tips/cash_movements.
+  //   · CON factura emitida → rectificativa (RectificativaModal). La factura
+  //     sellada nunca se muta; createRectificativa emite un doc nuevo que la
+  //     sustituye legalmente.
+  // El barbero ve UN solo botón "Editar venta"; aquí decidimos qué flow abrir.
   const [editOpen, setEditOpen] = useState(false);
+  const [editSaleOpen, setEditSaleOpen] = useState(false);
   const [rectInvoice, setRectInvoice] = useState<{
     id: string;
     number: string;
@@ -375,34 +383,58 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
     }
   }
 
-  // A3 post-completion: localiza la factura de la cita cerrada y abre el
-  // modal de rectificativa. Nunca toca la factura original (createRectificativa
-  // emite un documento nuevo que la sustituye legalmente y la sella en
-  // VeriFactu con su propia huella).
-  const openRectificativa = useCallback(async () => {
+  // A3 post-completion — un solo botón "Editar venta" que pregunta al
+  // backend qué flow corresponde:
+  //   1. GET /api/bookings/[id]/sale → devuelve `editable` + `lockReason`.
+  //   2. editable=true → abre EditSaleModal (rebuild de payments/tips/cash).
+  //   3. lockReason='invoice_locked' → carga factura y abre RectificativaModal.
+  //   4. lockReason='external_payment_locked' → mensaje (refund manual antes).
+  // Nunca tocamos un documento fiscal sellado.
+  const openEditSale = useCallback(async () => {
     if (!booking) return;
     setRectError(null);
     setRectLoading(true);
     try {
-      const res = await fetch(
-        `/api/invoices/by-booking?bookingId=${encodeURIComponent(booking.id)}`,
-      );
+      const res = await fetch(`/api/bookings/${booking.id}/sale`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setRectError(data.error || 'No se pudo cargar la factura.');
+        setRectError(data.error || 'No se pudo cargar la venta.');
         return;
       }
-      if (!data.invoice) {
+      if (data.editable) {
+        setEditSaleOpen(true);
+        return;
+      }
+      if (data.lockReason === 'invoice_locked') {
+        // Hay factura viva — usamos el flow histórico de rectificativa.
+        const r2 = await fetch(
+          `/api/invoices/by-booking?bookingId=${encodeURIComponent(booking.id)}`,
+        );
+        const inv = await r2.json().catch(() => ({}));
+        if (!r2.ok || !inv.invoice) {
+          setRectError(inv.error || 'No se pudo cargar la factura.');
+          return;
+        }
+        if (inv.invoice.status === 'rectified') {
+          setRectError('Esta factura ya tiene una rectificativa emitida.');
+          return;
+        }
+        setRectInvoice(inv.invoice);
+        return;
+      }
+      if (data.lockReason === 'external_payment_locked') {
         setRectError(
-          'Esta cita no tiene factura emitida (puede que la facturación no esté activa). No hay nada que rectificar.',
+          'Esta venta tiene un cobro real con Stripe o datáfono. Reembólsalo desde el detalle del pago antes de cambiarla.',
         );
         return;
       }
-      if (data.invoice.status === 'rectified') {
-        setRectError('Esta factura ya tiene una rectificativa emitida.');
+      if (data.lockReason === 'booksy_readonly') {
+        setRectError(
+          'Las citas importadas de Booksy son solo lectura. Edita el original en Booksy.',
+        );
         return;
       }
-      setRectInvoice(data.invoice);
+      setRectError('Esta venta no es editable en este momento.');
     } catch {
       setRectError('Error de red.');
     } finally {
@@ -1006,33 +1038,37 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                 </div>
               )}
 
-              {/* Cita ya completada — la factura está sellada en VeriFactu y
-                  NUNCA se muta. A3: "Editar venta" emite una rectificativa
-                  (createRectificativa) que la sustituye legalmente. */}
+              {/* Cita ya completada — el botón "Editar venta" decide el flow
+                  según el estado fiscal:
+                    · Sin factura emitida → EditSaleModal (precio, cliente,
+                      método, propina). Reescribe payments/tips/cash_movements
+                      sin tocar documentos fiscales.
+                    · Con factura emitida → RectificativaModal. La original
+                      no se muta (RD 1007/2023). */}
               {isCompleted && (
                 <div className="pt-2 border-t border-line space-y-2">
                   <div className="rounded-xl border border-success/30 bg-success/10 p-3 space-y-1">
                     <p className="text-sm font-semibold text-success inline-flex items-center gap-1.5">
-                      <CheckCircle2 className="h-4 w-4" /> Cita completada
+                      <CheckCircle2 className="h-4 w-4" /> Venta registrada
                     </p>
                     <p className="text-xs text-ink-2 leading-relaxed">
-                      La factura ya está emitida. Para corregir el importe o el
-                      servicio se emite una rectificativa — la original no se
-                      modifica.
+                      ¿Te has equivocado en algo? Puedes corregir precio,
+                      cliente, método de cobro o propina. Si ya hay factura
+                      emitida, se hará una rectificativa.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={openRectificativa}
+                    onClick={openEditSale}
                     disabled={rectLoading}
                     className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface hover:border-brand hover:text-brand px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors disabled:opacity-60"
                   >
                     {rectLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <FileWarning className="h-4 w-4" />
+                      <Pencil className="h-4 w-4" />
                     )}
-                    Editar venta (rectificativa)
+                    Editar venta
                   </button>
                   {rectError && (
                     <p className="text-xs text-danger leading-relaxed">{rectError}</p>
@@ -1221,8 +1257,24 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
         />
       )}
 
-      {/* A3 post-completion — rectificativa de la factura sellada. La
-          original NUNCA se muta; createRectificativa emite un documento
+      {/* A3 post-completion SIN factura — editor de venta libre. Reescribe
+          payments + tips + cash_movements. No toca documentos fiscales. */}
+      {booking && editSaleOpen && (
+        <EditSaleModal
+          booking={booking}
+          barbers={barbers}
+          stripeConnectActive={connectActive}
+          onClose={() => setEditSaleOpen(false)}
+          onSaved={() => {
+            setEditSaleOpen(false);
+            onMutated?.();
+            startTransition(() => router.refresh());
+          }}
+        />
+      )}
+
+      {/* A3 post-completion CON factura — rectificativa de la factura sellada.
+          La original NUNCA se muta; createRectificativa emite un documento
           nuevo que la sustituye y la sella en VeriFactu. RectificativaModal
           navega a la factura nueva al confirmar. */}
       {rectInvoice && (
@@ -1654,4 +1706,505 @@ function CancelBookingModal({
 
     </Modal>
   )
+}
+
+// -----------------------------------------------------------------------------
+// EditSaleModal — corrige una venta YA COBRADA sin factura emitida (task #86).
+//
+// Reni reportó 4 errores típicos al cobrar: precio mal puesto, cliente
+// equivocado, método de cobro incorrecto, propina mal cuadrada. Este modal
+// los cubre todos en un solo paso. VeriFactu prohíbe mutar facturas emitidas
+// → si hay invoice viva, el botón "Editar venta" abre RectificativaModal en
+// su lugar (lo decide el GET /api/bookings/[id]/sale).
+//
+// PATCH /api/bookings/[id]/sale aplica los cambios atómicos:
+//   · bookings (customerName/phone, service, price, paymentMethod)
+//   · payments (rebuild de la línea offline única — V1 no soporta split)
+//   · tips (upsert/delete + cash_movement tip_cash asociado)
+//   · cash_movements del booking (delete + reinsert en sesión abierta)
+//
+// V1 deliberadamente NO soporta split-payment editing (ChargeFlow ya cubre
+// ese caso al cobrar). Si la venta original era split, este modal la
+// convierte en línea única con el método elegido — el barbero ve un aviso.
+// -----------------------------------------------------------------------------
+
+interface SaleData {
+  editable: boolean;
+  lockReason: string | null;
+  booking: {
+    customerName: string | null;
+    customerPhone: string;
+    service: string;
+    price: number | null;
+    paymentMethod: string | null;
+    barberId: string | null;
+    barber: string | null;
+  };
+  payments: Array<{ id: string; method: string | null; amountCents: number; notes: string | null }>;
+  tip: {
+    id: string;
+    amountCents: number;
+    method: 'cash' | 'card' | string | null;
+    barberId: string | null;
+    barberName: string | null;
+  } | null;
+}
+
+function EditSaleModal({
+  booking,
+  barbers,
+  stripeConnectActive,
+  onClose,
+  onSaved,
+}: {
+  booking: CalendarEvent;
+  barbers: Barber[];
+  stripeConnectActive: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  // ── State ────────────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [sale, setSale] = useState<SaleData | null>(null);
+
+  // Form fields
+  const [customerName, setCustomerName] = useState<string>('');
+  const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
+  const [service, setService] = useState<string>('');
+  const [price, setPrice] = useState<number | null>(null);
+  // V1: método único — si la venta era split, mostramos aviso y el barbero
+  // elige uno. Selector con grid de métodos válidos.
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [tipEnabled, setTipEnabled] = useState(false);
+  // Propina en euros con 2 decimales para coherencia con la columna `price`
+  // del booking — internamente se manda en céntimos.
+  const [tipEuros, setTipEuros] = useState<number | null>(null);
+  const [tipMethod, setTipMethod] = useState<'cash' | 'card'>('cash');
+  const [tipBarberId, setTipBarberId] = useState<string>('');
+
+  const isSplit = (sale?.payments.length ?? 0) > 1;
+
+  // ── Precarga ─────────────────────────────────────────────────────────
+  // El estado inicial (loading=true, loadError=null) ya está en useState;
+  // el effect solo dispara el fetch y aplica resultado asíncronamente. Esto
+  // evita la regla react-hooks/set-state-in-effect (no setState SÍNCRONO).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bookings/${booking.id}/sale`);
+        const data = (await res.json().catch(() => ({}))) as SaleData & { error?: string };
+        if (cancelled) return;
+        if (!res.ok || !data.editable) {
+          setLoadError(data.error || 'Esta venta no es editable.');
+          setLoading(false);
+          return;
+        }
+        setSale(data);
+        setCustomerName(data.booking.customerName ?? '');
+        setCustomerPhone(data.booking.customerPhone);
+        setLinkedPhone(
+          data.booking.customerPhone && !data.booking.customerPhone.startsWith('pos-')
+            ? data.booking.customerPhone
+            : null,
+        );
+        setService(data.booking.service);
+        setPrice(data.booking.price ?? null);
+        // Método: usa el de la línea actual; si era split, fall back al token
+        // 'mixed' del booking → forzamos al barbero a elegir uno (default cash).
+        const firstMethod = data.payments[0]?.method;
+        if (firstMethod && (PAYMENT_METHODS as readonly string[]).includes(firstMethod)) {
+          setPaymentMethod(firstMethod as PaymentMethod);
+        } else {
+          setPaymentMethod('cash');
+        }
+        // Propina
+        if (data.tip && data.tip.amountCents > 0) {
+          setTipEnabled(true);
+          setTipEuros(Math.round(data.tip.amountCents) / 100);
+          setTipMethod(data.tip.method === 'card' ? 'card' : 'cash');
+          setTipBarberId(data.tip.barberId ?? data.booking.barberId ?? '');
+        } else {
+          setTipEnabled(false);
+          setTipEuros(null);
+          setTipMethod('cash');
+          setTipBarberId(data.booking.barberId ?? '');
+        }
+        setLoading(false);
+      } catch {
+        if (!cancelled) {
+          setLoadError('No se pudo cargar la venta.');
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [booking.id]);
+
+  // ── Métodos disponibles ──────────────────────────────────────────────
+  // Excluimos card_online de la edición — para cambiar a online el barbero
+  // debe reembolsar el cobro actual y volver a cobrar (ver endpoint).
+  const availableMethods: PaymentMethod[] = PAYMENT_METHODS.filter(
+    (m) => m !== 'card_online' || stripeConnectActive,
+  ).filter((m) => m !== 'card_online'); // V1: nunca card_online en edición
+
+  // ── Submit ───────────────────────────────────────────────────────────
+  const submit = async () => {
+    if (!service.trim()) {
+      setSubmitError('El servicio es obligatorio.');
+      return;
+    }
+    if (tipEnabled) {
+      if (!tipEuros || tipEuros <= 0) {
+        setSubmitError('La propina debe ser mayor que 0.');
+        return;
+      }
+      if (!tipBarberId) {
+        setSubmitError('Elige el barbero al que va la propina.');
+        return;
+      }
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      // Body — solo enviamos lo que cambió para no pisar campos por error
+      // (el endpoint sabe aplicar lo que viene).
+      const original = sale!.booking;
+      const body: Record<string, unknown> = {};
+      const trimmedName = customerName.trim();
+      if ((trimmedName || null) !== (original.customerName || null)) {
+        body.customerName = trimmedName || null;
+      }
+      if (customerPhone.trim() && customerPhone.trim() !== original.customerPhone) {
+        body.customerPhone = customerPhone.trim();
+      }
+      if (service.trim() !== original.service) {
+        body.service = service.trim();
+      }
+      if ((price ?? null) !== (original.price ?? null)) {
+        body.price = price;
+      }
+      if (paymentMethod !== original.paymentMethod) {
+        body.paymentMethod = paymentMethod;
+      }
+
+      // Tip: si estaba y se quitó → null; si se modifica o añade → objeto.
+      const hadTip = !!sale!.tip;
+      if (tipEnabled) {
+        body.tip = {
+          amountCents: Math.round((tipEuros ?? 0) * 100),
+          method: tipMethod,
+          barberId: tipBarberId,
+        };
+      } else if (hadTip) {
+        body.tip = null;
+      }
+
+      if (Object.keys(body).length === 0) {
+        setSubmitError('No has cambiado nada.');
+        setSubmitting(false);
+        return;
+      }
+
+      const res = await fetch(`/api/bookings/${booking.id}/sale`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSubmitError(data?.error || 'No se pudo guardar.');
+        setSubmitting(false);
+        return;
+      }
+      onSaved();
+    } catch {
+      setSubmitError('Error de red. Inténtalo otra vez.');
+      setSubmitting(false);
+    }
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Editar venta cobrada"
+      size="md"
+      zClass="z-[70]"
+      closeOnBackdrop={!submitting}
+      footer={
+        !loading && !loadError && (
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+            >
+              Volver
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-brand-ink transition-colors disabled:opacity-60"
+            >
+              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Guardar cambios
+            </button>
+          </div>
+        )
+      }
+    >
+      {/* Header propio (avatar Pencil + contexto de la cita). */}
+      <div className="p-5 border-b border-line flex items-start gap-3">
+        <div className="h-10 w-10 rounded-full bg-brand-softer flex items-center justify-center shrink-0">
+          <Pencil className="h-5 w-5 text-brand" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-ink">Editar venta</h3>
+          <p className="text-xs text-ink-2 mt-0.5">
+            {booking.date} {booking.time} · sin factura emitida — los cambios
+            no afectan a Hacienda.
+          </p>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-5 overflow-y-auto">
+        {loading && (
+          <div className="flex items-center justify-center py-10 text-ink-3">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        )}
+
+        {loadError && (
+          <p className="text-sm rounded-lg bg-danger/10 border border-danger/30 text-danger px-3 py-2">
+            {loadError}
+          </p>
+        )}
+
+        {!loading && !loadError && sale && (
+          <>
+            {isSplit && (
+              <p className="text-xs rounded-lg bg-warning/10 border border-warning/30 text-warning px-3 py-2">
+                La venta original se cobró fraccionada en {sale.payments.length}{' '}
+                tramos. Al guardar quedará registrada con un único método —
+                elige cuál.
+              </p>
+            )}
+
+            {/* Cliente */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                Cliente
+              </p>
+              <CustomerTypeahead
+                name={customerName}
+                onNameChange={setCustomerName}
+                linkedPhone={linkedPhone}
+                onLink={(c) => {
+                  setCustomerName(c.name);
+                  setCustomerPhone(c.phone);
+                  setLinkedPhone(c.phone);
+                }}
+                onUnlink={() => setLinkedPhone(null)}
+                ariaLabel="Cliente"
+                placeholder="Nombre del cliente"
+              />
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="edit-sale-phone" className="text-[11px] font-medium text-ink-2">
+                  Teléfono
+                </label>
+                <input
+                  id="edit-sale-phone"
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    if (linkedPhone && e.target.value.trim() !== linkedPhone) {
+                      setLinkedPhone(null);
+                    }
+                  }}
+                  disabled={submitting}
+                  className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Servicio + precio */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                Servicio y precio
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="edit-sale-service" className="text-[11px] font-medium text-ink-2">
+                  Servicio
+                </label>
+                <input
+                  id="edit-sale-service"
+                  type="text"
+                  value={service}
+                  onChange={(e) => setService(e.target.value)}
+                  disabled={submitting}
+                  className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="edit-sale-price" className="text-[11px] font-medium text-ink-2">
+                  Precio (€)
+                </label>
+                <NumberInput
+                  id="edit-sale-price"
+                  value={price}
+                  onValueChange={setPrice}
+                  min={0}
+                  decimals={0}
+                  placeholder="0"
+                  disabled={submitting}
+                  aria-label="Precio en euros"
+                  className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                />
+                <p className="text-[11px] text-ink-3">
+                  Bookings se guardan en euros enteros. El cuadre de caja se
+                  reajusta automáticamente.
+                </p>
+              </div>
+            </div>
+
+            {/* Método de pago */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                Método de cobro
+              </p>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Método de cobro">
+                {availableMethods.map((m) => {
+                  const Icon =
+                    m === 'cash'
+                      ? Banknote
+                      : m === 'card_physical'
+                        ? CreditCard
+                        : m === 'bizum'
+                          ? Smartphone
+                          : Globe;
+                  const isActive = paymentMethod === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      onClick={() => setPaymentMethod(m)}
+                      disabled={submitting}
+                      className={
+                        'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ' +
+                        (isActive
+                          ? 'bg-brand-softer border-brand text-ink'
+                          : 'bg-surface border-line text-ink-2 hover:border-brand hover:text-ink')
+                      }
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      {PAYMENT_METHOD_LABEL[m]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Propina */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={tipEnabled}
+                  onChange={(e) => setTipEnabled(e.target.checked)}
+                  disabled={submitting}
+                  className="h-4 w-4"
+                />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                  Propina {sale.tip ? '· ya registrada' : '· añadir'}
+                </span>
+              </label>
+              {tipEnabled && (
+                <div className="space-y-2 rounded-lg border border-line bg-overlay/40 p-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="edit-sale-tip-amount" className="text-[11px] font-medium text-ink-2">
+                      Importe (€)
+                    </label>
+                    <NumberInput
+                      id="edit-sale-tip-amount"
+                      value={tipEuros}
+                      onValueChange={setTipEuros}
+                      min={0}
+                      decimals={2}
+                      placeholder="0,00"
+                      disabled={submitting}
+                      aria-label="Propina en euros"
+                      className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Método de la propina">
+                    {(['cash', 'card'] as const).map((m) => {
+                      const isActive = tipMethod === m;
+                      const Icon = m === 'cash' ? Banknote : CreditCard;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          role="radio"
+                          aria-checked={isActive}
+                          onClick={() => setTipMethod(m)}
+                          disabled={submitting}
+                          className={
+                            'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ' +
+                            (isActive
+                              ? 'bg-brand-softer border-brand text-ink'
+                              : 'bg-surface border-line text-ink-2 hover:border-brand hover:text-ink')
+                          }
+                        >
+                          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                          {m === 'cash' ? 'Efectivo' : 'Tarjeta'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="edit-sale-tip-barber" className="text-[11px] font-medium text-ink-2">
+                      Barbero
+                    </label>
+                    <select
+                      id="edit-sale-tip-barber"
+                      value={tipBarberId}
+                      onChange={(e) => setTipBarberId(e.target.value)}
+                      disabled={submitting}
+                      className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                    >
+                      <option value="">— elige —</option>
+                      {barbers.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {submitError && (
+              <p className="text-sm rounded-lg bg-danger/10 border border-danger/30 text-danger px-3 py-2">
+                {submitError}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
+  );
 }
