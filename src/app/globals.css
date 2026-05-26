@@ -309,6 +309,37 @@
   border-radius: inherit;
 }
 
+/* ─── Selección de texto: warm, NO azul nativo del SO (task #85) ──────────
+ * Reni reportó "cuadro azul" al editar la hora de una cita: era el highlight
+ * de selección nativo del navegador (Chrome/Safari macOS = azul sistema) sobre
+ * los segmentos HH/MM del `<input type="time">`. La selección por defecto del
+ * SO contradice la paleta cálida del producto en CUALQUIER input/textarea
+ * editable. Override global con tokens del brand. Los `.drench-*` surfaces
+ * (landing) ya tienen su propia ::selection más arriba y siguen ganando por
+ * especificidad (clase > selector raíz). */
+::selection {
+  background-color: var(--color-brand-softer);
+  color: var(--color-ink);
+}
+
+/* Segmentos internos del `<input type="time">` / `[type="date"]` (WebKit) y
+ * Firefox. Al hacer focus en un segmento (HH, MM, AM/PM) el navegador lo
+ * resalta con el color de selección del SO — ese es el "cuadro azul" que ve
+ * Reni. Forzamos brand-softer + ink para que coincida con el resto de la UI.
+ * No afecta a la usabilidad: el segmento activo sigue siendo visible (cambio
+ * de fondo) pero ahora en warm en vez de azul Mac. */
+input::-webkit-datetime-edit-hour-field:focus,
+input::-webkit-datetime-edit-minute-field:focus,
+input::-webkit-datetime-edit-second-field:focus,
+input::-webkit-datetime-edit-ampm-field:focus,
+input::-webkit-datetime-edit-day-field:focus,
+input::-webkit-datetime-edit-month-field:focus,
+input::-webkit-datetime-edit-year-field:focus {
+  background-color: var(--color-brand-softer);
+  color: var(--color-ink);
+  outline: none;
+}
+
 html {
   scroll-behavior: smooth;
 }
