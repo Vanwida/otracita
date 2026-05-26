@@ -20,6 +20,7 @@ import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
 import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup';
 import { createBooking as createBookingDb } from '@/lib/bookings/create';
 import { MS_IN_MINUTE, BUSINESS_TIMEZONE } from '@/lib/time';
+import { onBookingCancelled } from '@/lib/waitlist/match';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -678,8 +679,22 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
       await trackAnalytics(config.id, 'bookingsCancelled');
       await incrementCustomerCancellations(config.id, msg.from);
 
-      // Check waitlist for this date
+      // Check waitlist for this date (legacy bot flow — entradas con
+      // time=null + barber TEXT que se apuntaron por el flow conversacional).
       await notifyWaitlist(config, bk.date, bk.time, bk.service || '', bk.barber || null, token);
+      // Lista de espera por slot específico (#88) — entradas con rango +
+      // barberId canónico. Fire-and-forget.
+      onBookingCancelled({
+        clientId: config.id,
+        bookingId: bk.id,
+        date: bk.date,
+        time: bk.time,
+        duration: bk.duration,
+        barberId: bk.barberId,
+        barber: bk.barber,
+        service: bk.service,
+        customerPhone: bk.customerPhone,
+      }).catch((err) => console.error('[engine/reminder_cancel] waitlist #88 failed:', err));
 
       const reminderCancelledMsg = lang === 'en'
         ? 'Your appointment has been cancelled. Would you like to book another?'
@@ -2104,8 +2119,21 @@ async function handleCancelConfirmation(
   await trackAnalytics(config.id, 'bookingsCancelled');
   await incrementCustomerCancellations(config.id, msg.from);
 
-  // Notify waitlist for freed slot
+  // Notify waitlist for freed slot (legacy bot flow).
   await notifyWaitlist(config, booking.date, booking.time, booking.service || '', booking.barber || null, token);
+  // Lista de espera por slot específico (#88) — fire-and-forget, nunca tira
+  // el flujo de cancelación.
+  onBookingCancelled({
+    clientId: config.id,
+    bookingId: booking.id,
+    date: booking.date,
+    time: booking.time,
+    duration: booking.duration,
+    barberId: booking.barberId,
+    barber: booking.barber,
+    service: booking.service,
+    customerPhone: booking.customerPhone,
+  }).catch((err) => console.error('[engine/cancel] waitlist #88 failed:', err));
 
   // Check if this was a change flow
   if (ctx.isChanging) {

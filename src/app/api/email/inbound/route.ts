@@ -11,6 +11,7 @@ import {
 } from '@/lib/booksy-email-llm';
 import { notifyAlex } from '@/lib/notify-alex';
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
+import { onBookingCancelled } from '@/lib/waitlist/match';
 
 interface PostmarkInboundPayload {
   To?: string;
@@ -138,7 +139,7 @@ async function applyBookingFromData(
 
   if (data.type === 'cancelled' && data.booksyBookingId) {
     const [existing] = await db
-      .select({ id: bookings.id })
+      .select()
       .from(bookings)
       .where(
         and(
@@ -154,6 +155,18 @@ async function applyBookingFromData(
       // Void any issued invoice so it stops counting toward stats/exports
       // and Alex is pinged to emit a rectificativa manually if needed.
       tryVoidInvoicesInBackground(existing.id);
+      // Lista de espera (#88) — fire-and-forget.
+      onBookingCancelled({
+        clientId,
+        bookingId: existing.id,
+        date: existing.date,
+        time: existing.time,
+        duration: existing.duration,
+        barberId: existing.barberId,
+        barber: existing.barber,
+        service: existing.service,
+        customerPhone: existing.customerPhone,
+      }).catch((err) => console.error('[email/inbound] waitlist match failed:', err));
       return existing.id;
     }
   }

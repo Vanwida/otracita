@@ -120,6 +120,13 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     service: string
     barber: string | null
   }>(null)
+  // Lista de espera (#88): cuando el día/barbero no tiene huecos, el cliente
+  // puede pulsar "avísame si se libera" → POST /api/public/waitlist. Estado
+  // local para feedback inmediato (sin recargar la página).
+  const [waitlistState, setWaitlistState] = useState<
+    'idle' | 'submitting' | 'on_list' | 'error'
+  >('idle')
+  const [waitlistError, setWaitlistError] = useState<string | null>(null)
 
   const formRef = useRef<HTMLDivElement>(null)
 
@@ -354,7 +361,61 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
     setEmail('')
     setError(null)
     setConfirmation(null)
+    setWaitlistState('idle')
+    setWaitlistError(null)
   }
+
+  // Lista de espera (#88) — el cliente pulsa "avísame si se libera" sobre un
+  // día sin huecos. Usamos como `time` una hora pivote (08:00) y como rango
+  // todo el día (00:00-23:59) para que cualquier cancelación matche. Cuando
+  // el dashboard del barbero quiera más granularidad (hora específica), la
+  // UI se ampliará — el endpoint ya acepta desiredTimeStart/End específicos.
+  const joinWaitlist = async () => {
+    if (!date) return
+    const trimmedName = name.trim()
+    const trimmedPhone = phone.trim()
+    if (!trimmedName || !trimmedPhone) {
+      setWaitlistError('Rellena tu nombre y teléfono para apuntarte')
+      setWaitlistState('error')
+      return
+    }
+    setWaitlistError(null)
+    setWaitlistState('submitting')
+    try {
+      const res = await fetch('/api/public/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          customerName: trimmedName,
+          customerPhone: trimmedPhone,
+          date,
+          time: '08:00',
+          desiredTimeStart: '00:00',
+          desiredTimeEnd: '23:59',
+          barberId,
+          service: service?.name ?? null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setWaitlistError(data.error || 'No se pudo apuntar a la lista de espera')
+        setWaitlistState('error')
+        return
+      }
+      setWaitlistState('on_list')
+    } catch {
+      setWaitlistError('Error de red')
+      setWaitlistState('error')
+    }
+  }
+
+  // Reset estado de waitlist cuando cambia día/barbero — para que el cliente
+  // pueda apuntarse a otro día si lo prueba después.
+  useEffect(() => {
+    setWaitlistState('idle')
+    setWaitlistError(null)
+  }, [date, barberId])
 
   const selectService = (s: Service) => {
     setService(s)
@@ -528,15 +589,81 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
           </div>
         ) : visibleSlots.length === 0 ? (
           <div
-            className="py-6 text-center rounded-2xl border border-dashed mb-6"
+            className="py-6 px-4 text-center rounded-2xl border border-dashed mb-6 space-y-3"
             style={{ borderColor: 'var(--theme-line)' }}
           >
             <p className="text-sm" style={{ color: 'var(--theme-ink-2)' }}>
               No hay huecos{barberId ? ' con este barbero' : ''} este día.
             </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--theme-ink-3)' }}>
-              Prueba otra fecha{barberId ? ' u otro barbero' : ''}.
+            <p className="text-xs" style={{ color: 'var(--theme-ink-3)' }}>
+              Prueba otra fecha{barberId ? ' u otro barbero' : ''}, o apúntate a la lista de espera.
             </p>
+            {waitlistState === 'on_list' ? (
+              <p
+                className="text-xs font-semibold inline-flex items-center gap-1.5 px-3 py-2 rounded-full"
+                style={{ background: 'var(--brand-soft)', color: 'var(--brand-strong)' }}
+              >
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                Te avisamos en cuanto se libere
+              </p>
+            ) : (
+              <>
+                {(!name.trim() || !phone.trim()) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md mx-auto">
+                    <input
+                      type="text"
+                      placeholder="Tu nombre"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="px-3 py-2 rounded-lg text-sm w-full"
+                      style={{
+                        background: 'var(--theme-surface)',
+                        border: '1px solid var(--theme-line)',
+                        color: 'var(--theme-ink)',
+                      }}
+                      autoComplete="name"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="+34 600 123 456"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="px-3 py-2 rounded-lg text-sm w-full"
+                      style={{
+                        background: 'var(--theme-surface)',
+                        border: '1px solid var(--theme-line)',
+                        color: 'var(--theme-ink)',
+                      }}
+                      autoComplete="tel"
+                    />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={joinWaitlist}
+                  disabled={waitlistState === 'submitting' || !name.trim() || !phone.trim()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'var(--brand)',
+                    color: 'var(--brand-ink)',
+                  }}
+                >
+                  {waitlistState === 'submitting' ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Apuntando…
+                    </>
+                  ) : (
+                    'Avísame si se libera'
+                  )}
+                </button>
+                {waitlistError && (
+                  <p className="text-xs" style={{ color: '#DC2626' }}>
+                    {waitlistError}
+                  </p>
+                )}
+              </>
+            )}
           </div>
         ) : (
           <div className="mb-6 space-y-5">

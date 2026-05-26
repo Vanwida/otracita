@@ -80,6 +80,7 @@ export const AREAS: Area[] = [
     // de pestañas del área solo añade Importar como hermano navegable.
     tabs: [
       { seg: null, label: 'Calendario', href: '/dashboard/agenda' },
+      { seg: 'lista-espera', label: 'Lista de espera', href: '/dashboard/agenda/lista-espera' },
       { seg: 'importar', label: 'Importar', href: '/dashboard/agenda/importar' },
     ],
     prefixes: ['/dashboard/agenda'],

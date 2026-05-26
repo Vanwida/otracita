@@ -14,6 +14,7 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp/sender'
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { bookingTotalCents } from '@/lib/bookings/total'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
+import { onBookingCancelled } from '@/lib/waitlist/match'
 import { MANUAL_SOURCES, isManualSource } from '@/lib/attribution/source-manual'
 import { pickBarberForCustomer } from '@/lib/availability'
 import { loadShopOverridesForDate } from '@/lib/shop-day-overrides'
@@ -429,6 +430,23 @@ export async function PATCH(
         createdByEmail: access.user.email,
       })
     }
+  }
+
+  // ── Waitlist (#88): notificar al primer en lista si aplica ─────────
+  // Fire-and-forget — nunca tira el flujo de cancelación. Solo aplica al
+  // transicionar a 'cancelled' (no a completed/no_show).
+  if (patch.status === 'cancelled' && updated) {
+    onBookingCancelled({
+      clientId: access.client.id,
+      bookingId: updated.id,
+      date: updated.date,
+      time: updated.time,
+      duration: updated.duration,
+      barberId: updated.barberId,
+      barber: updated.barber,
+      service: updated.service,
+      customerPhone: updated.customerPhone,
+    }).catch((err) => console.error('[bookings/PATCH] waitlist match failed:', err))
   }
 
   // ── Aviso opcional por WhatsApp (solo al cancelar) ──────────────────

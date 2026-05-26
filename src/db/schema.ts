@@ -763,17 +763,53 @@ export const bookingServices = pgTable('booking_services', {
 });
 
 // Waitlist (customers waiting for a slot to open)
+//
+// Tabla compartida entre dos flujos:
+//
+//  1. Bot WhatsApp legacy (`src/lib/whatsapp/engine.ts`) — un cliente que
+//     pregunta por un día sin huecos puede "apuntarse" → entra con
+//     `time=null` (cualquier hora ese día) y `barber` como TEXT libre.
+//     `notifyWaitlist` busca al siguiente cuando se cancela una cita.
+//
+//  2. Lista de espera por slot específico (#88) — un cliente en la PWA o el
+//     dashboard pulsa "avísame si se libera" sobre una hora concreta. Entra
+//     con `desiredTimeStart`/`desiredTimeEnd` (rango HH:MM), `barberId`
+//     canónico (uuid), `expiresAt` (auto-vence al pasar la fecha+hora).
+//     Al cancelarse cualquier cita, `onBookingCancelled`
+//     (src/lib/waitlist/match.ts) busca matches y usa
+//     `dispatchUserNotification` (push o WhatsApp, nunca ambos).
+//
+// Convivencia: ambos flujos comparten status/createdAt/notifiedAt. Las
+// columnas nuevas son nullable + aditivas → el bot legacy no se ve afectado.
 export const waitlist = pgTable('waitlist', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id').references(() => clients.id).notNull(),
   customerPhone: text('customer_phone').notNull(),
   customerName: text('customer_name'),
   date: text('date').notNull(), // YYYY-MM-DD
-  time: text('time'), // HH:MM — null means "any slot on that day"
+  // Bot legacy: HH:MM o null (cualquier hora ese día).
+  // Slot-específico (#88): HH:MM "ancla" deseada (normalmente == desiredTimeStart).
+  time: text('time'),
+  // Rango deseado en el flujo slot-específico (#88). null en bot legacy.
+  // Si están set, una cancelación cuya hora caiga dentro
+  // [desiredTimeStart, desiredTimeEnd) cuenta como match.
+  desiredTimeStart: text('desired_time_start'), // HH:MM
+  desiredTimeEnd: text('desired_time_end'),     // HH:MM
   service: text('service'),
+  // Bot legacy: nombre libre del barbero ("Reni") o null = cualquiera.
   barber: text('barber'),
-  status: text('status').notNull().default('waiting'), // waiting, notified, booked, expired
+  // Slot-específico (#88): referencia canónica. null = cualquier barbero.
+  barberId: uuid('barber_id'),
+  // 'waiting' | 'notified' | 'booked' | 'converted' | 'expired' | 'cancelled'
+  status: text('status').notNull().default('waiting'),
   notifiedAt: timestamp('notified_at'),
+  // Booking que la entrada terminó generando cuando el cliente aceptó el
+  // aviso. null hasta que se convierta. Útil para reporting.
+  convertedBookingId: uuid('converted_booking_id'),
+  // Auto-expire: pasada esta fecha+hora la entrada ya no tiene sentido.
+  // Default al crear (#88): fecha + 23:59 Madrid. Lo lee el job de limpieza
+  // y los matchers para no notificar a cosas caducas.
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
