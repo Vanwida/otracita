@@ -11,6 +11,7 @@ import {
   User,
   X,
 } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import SlideOver from '../../_components/SlideOver'
 import NumberInput from '../../_components/NumberInput'
@@ -116,7 +117,15 @@ export default function RegistrarConsumoSlideOver({
         ]) => {
           if (prodRes.products) setProducts(prodRes.products)
           else setError(prodRes.error ?? 'No se pudieron cargar productos')
-          if (barbRes.barbers) setBarbers(barbRes.barbers)
+          if (barbRes.barbers) {
+            setBarbers(barbRes.barbers)
+            // Pre-fill con el primer barbero para el caso típico "barbería de
+            // 1 sola persona" — evita el extra clic. Si hay varios, el dueño
+            // verá el primero seleccionado y elegirá si no es el correcto.
+            // No bloquea: el endpoint valida que el barberId pertenezca al
+            // tenant (task #89).
+            if (barbRes.barbers.length > 0) setBarberId(barbRes.barbers[0].id)
+          }
         },
       )
       .catch(() => setError('Error de red'))
@@ -131,8 +140,17 @@ export default function RegistrarConsumoSlideOver({
 
   const activeTab = KIND_TABS.find((t) => t.key === kind)!
 
+  // Consumo interno sin barbero: bloqueado por UX. El backend también lo
+  // rechaza (defensa en profundidad), pero capturarlo aquí da feedback
+  // inmediato sin ida-y-vuelta.
+  const internalMissingBarber = kind === 'internal' && !barberId
+
   const submit = async () => {
     if (!selected) return
+    if (internalMissingBarber) {
+      setError('Indica qué barbero usó el producto.')
+      return
+    }
     setError(null)
     setSubmitting(true)
     try {
@@ -344,29 +362,48 @@ export default function RegistrarConsumoSlideOver({
                     )}
                   </div>
 
-                  {/* Barbero atribuido — solo para consumo interno. La merma
-                      no se atribuye a nadie (es del local). */}
-                  {kind === 'internal' && barbers.length > 0 && (
+                  {/* Barbero atribuido — OBLIGATORIO para consumo interno
+                      (task #89: control de gasto + base de comisiones). La
+                      merma no se atribuye a nadie (es del local). */}
+                  {kind === 'internal' && (
                     <div>
                       <label
                         htmlFor="rc-barber"
                         className="text-xs font-semibold uppercase tracking-widest text-ink-3 mb-2 block"
                       >
-                        Atribuir a barbero (opcional)
+                        Barbero que lo usó
                       </label>
-                      <select
-                        id="rc-barber"
-                        value={barberId}
-                        onChange={(e) => setBarberId(e.target.value)}
-                        className="w-full bg-canvas border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
-                      >
-                        <option value="">Sin atribuir</option>
-                        {barbers.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
+                      {barbers.length === 0 ? (
+                        <p className="text-xs text-ink-3 rounded-lg border border-line bg-overlay/40 px-3 py-2">
+                          Aún no tienes barberos dados de alta. Añade al menos
+                          uno desde{' '}
+                          <Link
+                            href="/dashboard/equipo"
+                            className="text-brand hover:underline"
+                          >
+                            Equipo
+                          </Link>{' '}
+                          para registrar consumos internos.
+                        </p>
+                      ) : (
+                        <select
+                          id="rc-barber"
+                          value={barberId}
+                          onChange={(e) => setBarberId(e.target.value)}
+                          className="w-full bg-canvas border border-line rounded-lg px-3 py-2 text-sm focus:border-brand outline-none"
+                          required
+                        >
+                          {/* Sin opción "Sin atribuir" — la atribución es
+                              obligatoria. Si el dueño es solo él, el primero
+                              de la lista queda preseleccionado en el
+                              useEffect de carga. */}
+                          {barbers.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   )}
 
@@ -426,7 +463,12 @@ export default function RegistrarConsumoSlideOver({
               <button
                 type="button"
                 onClick={submit}
-                disabled={!selected || stockExceeded || submitting}
+                disabled={
+                  !selected ||
+                  stockExceeded ||
+                  submitting ||
+                  internalMissingBarber
+                }
                 className="btn-primary btn-sm"
               >
                 {submitting ? (

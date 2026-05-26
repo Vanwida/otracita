@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { bookings, products, productSales } from '@/db/schema'
+import { barbers, bookings, products, productSales } from '@/db/schema'
 import { and, eq, sql } from 'drizzle-orm'
 import {
   requireTenantActor,
@@ -110,6 +110,22 @@ export async function POST(req: Request) {
   let barberId = typeof body.barberId === 'string' && body.barberId.length > 0 ? body.barberId : null
   let customerPhone = typeof body.customerPhone === 'string' && body.customerPhone.length > 0 ? body.customerPhone : null
 
+  // Multi-tenancy del barberId (#89): si viene en el body, debe pertenecer
+  // al client autenticado. Sin esta validación un admin podría inyectar
+  // un barberId de otro tenant y la atribución de gasto se cruzaría.
+  // (`requireTenantActor` ya restringe a barber-role que el barberId sea
+  // el suyo en líneas 142-148, pero el caso admin / owner sin barber-role
+  // queda abierto sin esta verificación explícita.)
+  if (barberId) {
+    const [b] = await db
+      .select({ id: barbers.id })
+      .from(barbers)
+      .where(and(eq(barbers.id, barberId), eq(barbers.clientId, client.id)))
+    if (!b) {
+      return Response.json({ error: 'Barbero no válido para este negocio.' }, { status: 400 })
+    }
+  }
+
   // Verificar que el producto pertenece al cliente y está activo.
   const [product] = await db
     .select()
@@ -146,6 +162,17 @@ export async function POST(req: Request) {
     } else if (!barberId) {
       barberId = access.barberId
     }
+  }
+
+  // Consumo interno (#89): el barbero atribuido es obligatorio porque el
+  // sentido del registro es "quién gastó" — sin barberId no hay control de
+  // gasto ni base para futuras comisiones. La merma (`damage`) sigue sin
+  // exigirlo: es un gasto del local, no de un barbero.
+  if (consumptionKind === 'internal' && !barberId) {
+    return Response.json(
+      { error: 'Indica qué barbero usó el producto.' },
+      { status: 400 },
+    )
   }
 
   // Stock atómico: si el producto trackea stock, decrementar con condición.

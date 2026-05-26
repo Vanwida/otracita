@@ -1176,7 +1176,14 @@ export const products = pgTable('products', {
 // pasaba por la tienda y se llevó algo, sin cita).
 //
 // `barberId` nullable: ideal asignar quién vendió (atribución), pero
-// admitimos null por flexibilidad.
+// admitimos null por flexibilidad. Para `consumptionKind = 'internal'` el
+// endpoint POST exige `barberId` (control de gasto + comisiones futuras,
+// task #89) — la merma (`damage`) sigue admitiendo null porque es del
+// local, no de un barbero concreto.
+//
+// FK real a `barbers.id` (#89) con `onDelete: 'set null'`: si un barbero
+// se borra duro (raro — el flow es soft-delete vía `active=false`), la
+// histórica de consumos no se pierde, simplemente queda "Sin asignar".
 //
 // `unitPriceCents` snapshot del precio en el momento de la venta — si el
 // barbero cambia el precio del producto después, el histórico no se ve
@@ -1186,7 +1193,7 @@ export const productSales = pgTable('product_sales', {
   clientId: uuid('client_id').notNull().references(() => clients.id),
   productId: uuid('product_id').notNull().references(() => products.id),
   bookingId: uuid('booking_id').references(() => bookings.id),
-  barberId: uuid('barber_id'),                                             // FK lógica a barbers.id; nullable
+  barberId: uuid('barber_id').references(() => barbers.id, { onDelete: 'set null' }),
   quantity: integer('quantity').notNull(),
   unitPriceCents: integer('unit_price_cents').notNull(),                   // snapshot
   totalCents: integer('total_cents').notNull(),                            // = unitPriceCents * quantity (sanity check)

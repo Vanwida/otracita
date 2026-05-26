@@ -3,12 +3,13 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { clients, products } from '@/db/schema'
-import { and, asc, eq } from 'drizzle-orm'
+import { barbers, clients, products, productSales } from '@/db/schema'
+import { and, asc, eq, gte, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import AreaContent from '../../_components/AreaContent'
 import ProductsManager from '../../marketing/tienda/ProductsManager'
 import RegistrarConsumoButton from './RegistrarConsumoButton'
+import BarberConsumptionSummary from './BarberConsumptionSummary'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ventas/productos — pestaña PRODUCTOS del área Ventas.
@@ -39,6 +40,62 @@ export default async function VentasProductosPage() {
     .where(and(eq(products.clientId, client.id), eq(products.active, true)))
     .orderBy(asc(products.displayOrder), asc(products.createdAt))
 
+  // Task #89 — consumo interno por barbero del MES en curso. Agrupamos por
+  // barberId (NULL → "Sin asignar" para registros pre-existentes). El coste
+  // estimado usa `cost_price_cents` si está configurado, si no `price_cents`
+  // (mismo fallback conservador que el motor de P&L — ver schema productos).
+  const monthStart = new Date()
+  monthStart.setUTCDate(1)
+  monthStart.setUTCHours(0, 0, 0, 0)
+  const consumptionRows = await db
+    .select({
+      barberId: productSales.barberId,
+      barberName: barbers.name,
+      qty: sql<number>`COALESCE(SUM(${productSales.quantity}), 0)::int`,
+      costCents: sql<number>`
+        COALESCE(
+          SUM(${productSales.quantity} * COALESCE(${products.costPriceCents}, ${products.priceCents})),
+          0
+        )::bigint
+      `,
+    })
+    .from(productSales)
+    .innerJoin(products, eq(products.id, productSales.productId))
+    .leftJoin(barbers, eq(barbers.id, productSales.barberId))
+    .where(
+      and(
+        eq(productSales.clientId, client.id),
+        eq(productSales.consumptionKind, 'internal'),
+        gte(productSales.soldAt, monthStart),
+      ),
+    )
+    .groupBy(productSales.barberId, barbers.name)
+
+  // Total de unidades para detectar el caso "sin datos" sin un count aparte.
+  const totalUnits = consumptionRows.reduce((acc, r) => acc + Number(r.qty), 0)
+
+  // También listamos qué porcentaje aporta cada uno — útil para el control de
+  // gasto (detectar el outlier que despilfarra). Si total=0, deja % en null.
+  const summary = consumptionRows
+    .map((r) => ({
+      barberId: r.barberId,
+      barberName: r.barberName,
+      qty: Number(r.qty),
+      costCents: Number(r.costCents),
+      pct: totalUnits > 0 ? Number(r.qty) / totalUnits : null,
+    }))
+    // Orden desc por qty: el que más gasta primero (señal de "mira a éste").
+    // Tie-break por nombre asc para estabilidad visual entre renders.
+    .sort((a, b) => {
+      if (b.qty !== a.qty) return b.qty - a.qty
+      return (a.barberName ?? 'zzz').localeCompare(b.barberName ?? 'zzz')
+    })
+
+  // Filas con barberId IS NULL (legacy del FK lógico) cuentan también, pero
+  // se etiquetan "Sin asignar" en el componente para no falsear la lectura.
+  // Con onDelete: 'set null', un futuro borrado-duro de barber también
+  // caería en "Sin asignar" — edge raro (el flow es soft-delete via active).
+
   return (
     <AreaContent scroll="region" maxWidth="5xl">
       {/* Toolbar superior: copy explicativo + acción "Registrar consumo".
@@ -57,6 +114,8 @@ export default async function VentasProductosPage() {
         </p>
         <RegistrarConsumoButton />
       </div>
+
+      <BarberConsumptionSummary rows={summary} />
 
       <ProductsManager
         initial={initialProducts.map((p) => ({
