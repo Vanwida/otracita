@@ -209,6 +209,9 @@ export async function loadVentasData(
         cardTerminalExpectedCents: cashSessions.cardTerminalExpectedCents,
         cardDescuadreCents: cashSessions.cardDescuadreCents,
         closingSnapshot: cashSessions.closingSnapshot,
+        openingCarriedFromSessionId: cashSessions.openingCarriedFromSessionId,
+        openingCarriedCents: cashSessions.openingCarriedCents,
+        openingManualAdjustmentReason: cashSessions.openingManualAdjustmentReason,
       })
       .from(cashSessions)
       .where(
@@ -235,6 +238,12 @@ export async function loadVentasData(
       // matchea la versión esperada, la UI cae al desglose básico (no peta).
       closingSnapshot:
         (r.closingSnapshot as ClosedRegister['closingSnapshot']) ?? null,
+      // Carryover info (task #91). Si la migración 0057 aún no se aplicó en
+      // este entorno, drizzle devuelve undefined → mapeamos a null y la UI
+      // cae al render previo (sin info de carryover) sin petar.
+      openingCarriedFromSessionId: r.openingCarriedFromSessionId ?? null,
+      openingCarriedCents: r.openingCarriedCents ?? null,
+      openingManualAdjustmentReason: r.openingManualAdjustmentReason ?? null,
     }))
   }
 

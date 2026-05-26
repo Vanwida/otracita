@@ -1,13 +1,17 @@
 import { db } from '@/db'
 import { cashSessions, bookings, productSales } from '@/db/schema'
-import { sql } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 // -----------------------------------------------------------------------------
 // POST /api/cash/open — abre una nueva sesión de caja para el cliente.
 //
-// Body: { openingCents: number (>= 0) }
+// Body: {
+//   openingCents: number (>= 0),
+//   carriedFromSessionId?: string | null,      // sesión de la que arrastra (task #91)
+//   manualAdjustmentReason?: string | null,    // motivo si difiere del carryover
+// }
 //
 // Reglas:
 //   · El cliente debe tener `cashRegisterEnabled = true`.
@@ -15,6 +19,22 @@ import { BUSINESS_TIMEZONE } from '@/lib/time';
 //     `cash_sessions_one_open_per_client` ya lo garantiza a nivel DB; aquí
 //     devolvemos un 409 amistoso si choca.
 //   · `opening_cents` puede ser 0 (algunos locales no dejan cambio).
+//
+// Carryover (task #91):
+//   Si el barbero acepta la sugerencia "saldo arrastrado del cierre de ayer",
+//   pasamos `carriedFromSessionId` apuntando a esa sesión cerrada. El server
+//   resuelve `closing_cents_counted` de esa sesión y lo persiste como
+//   `opening_carried_cents` (snapshot del valor SUGERIDO, aunque el barbero
+//   abra con otro distinto — sirve para auditar después).
+//
+//   Si NO pasa `carriedFromSessionId` el server intenta resolver automáticamente
+//   la última sesión cerrada del cliente — defensivo para clientes antiguos
+//   del frontend que no envíen el campo. Igualmente snapshotea el valor
+//   sugerido.
+//
+//   `manualAdjustmentReason` es texto libre opcional capturado por la UI
+//   cuando el barbero modifica el valor sugerido (sacó cash del cajón por
+//   la noche, ajustó por arqueo, etc.).
 //
 // Backfill automático de movimientos del día:
 //   Cuando el barbero abre caja a media mañana (no nada más empezar),
@@ -32,6 +52,8 @@ import { BUSINESS_TIMEZONE } from '@/lib/time';
 
 interface Body {
   openingCents?: unknown
+  carriedFromSessionId?: unknown
+  manualAdjustmentReason?: unknown
 }
 
 export async function POST(req: Request) {
@@ -64,6 +86,75 @@ export async function POST(req: Request) {
     )
   }
 
+  // Carryover: resolver la sesión que arrastra (task #91). Si el frontend
+  // mandó `carriedFromSessionId`, validamos que existe y pertenece al
+  // mismo client (multi-tenancy). Si no la manda, intentamos resolver la
+  // última cerrada para snapshotear el valor sugerido — defensa para
+  // clientes antiguos del frontend.
+  const carriedFromSessionIdRaw =
+    typeof body.carriedFromSessionId === 'string' && body.carriedFromSessionId.trim() !== ''
+      ? body.carriedFromSessionId.trim()
+      : null
+
+  let carriedFromSessionId: string | null = null
+  let carriedCents: number | null = null
+
+  if (carriedFromSessionIdRaw) {
+    const [prev] = await db
+      .select({
+        id: cashSessions.id,
+        clientId: cashSessions.clientId,
+        closedAt: cashSessions.closedAt,
+        closingCentsCounted: cashSessions.closingCentsCounted,
+      })
+      .from(cashSessions)
+      .where(eq(cashSessions.id, carriedFromSessionIdRaw))
+      .limit(1)
+
+    // Tenant guard + estado válido. Si el id no existe o no es del client
+    // o no está cerrada, ignoramos silenciosamente — el frontend pudo
+    // estar viendo una sugerencia desfasada y no queremos bloquear la
+    // apertura por eso. Caemos al fallback automático debajo.
+    if (
+      prev &&
+      prev.clientId === client.id &&
+      prev.closedAt !== null &&
+      prev.closingCentsCounted !== null
+    ) {
+      carriedFromSessionId = prev.id
+      carriedCents = prev.closingCentsCounted
+    }
+  }
+
+  // Fallback: si no se mandó `carriedFromSessionId` (o no validó), buscamos
+  // la última cerrada del client para AL MENOS snapshotear el valor sugerido
+  // en `opening_carried_cents`. NO seteamos `opening_carried_from_session_id`
+  // en este caso porque la UI no marcó explícitamente la intención del
+  // barbero de aceptar el carryover (puede haber elegido manual sin verlo).
+  if (carriedCents === null) {
+    const [autoLast] = await db
+      .select({
+        closingCentsCounted: cashSessions.closingCentsCounted,
+      })
+      .from(cashSessions)
+      .where(
+        and(
+          eq(cashSessions.clientId, client.id),
+          isNotNull(cashSessions.closedAt),
+        ),
+      )
+      .orderBy(desc(cashSessions.closedAt))
+      .limit(1)
+    if (autoLast && autoLast.closingCentsCounted !== null) {
+      carriedCents = autoLast.closingCentsCounted
+    }
+  }
+
+  const manualAdjustmentReason =
+    typeof body.manualAdjustmentReason === 'string' && body.manualAdjustmentReason.trim() !== ''
+      ? body.manualAdjustmentReason.trim().slice(0, 500)
+      : null
+
   try {
     const [session] = await db
       .insert(cashSessions)
@@ -71,6 +162,9 @@ export async function POST(req: Request) {
         clientId: client.id,
         openingCents,
         openedByEmail: user.email,
+        openingCarriedFromSessionId: carriedFromSessionId,
+        openingCarriedCents: carriedCents,
+        openingManualAdjustmentReason: manualAdjustmentReason,
       })
       .returning()
 

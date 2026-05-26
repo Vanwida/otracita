@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 
@@ -1312,6 +1312,28 @@ export const cashSessions = pgTable('cash_sessions', {
   openingCents: integer('opening_cents').notNull(),
   openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow().notNull(),
   openedByEmail: text('opened_by_email').notNull(),
+
+  // -----------------------------------------------------------------------
+  // Carryover (task #91): el saldo de cierre del día anterior se convierte
+  // automáticamente en la apertura del día siguiente (carryover físico de
+  // efectivo). Al abrir caja, la UI sugiere el `closingCentsCounted` de la
+  // última sesión cerrada del cliente; el barbero puede aceptarlo
+  // (`openingCarriedFromSessionId` apunta a esa sesión) o modificarlo (en
+  // ese caso `openingManualAdjustmentReason` captura el motivo opcional —
+  // saqué efectivo del cajón por la noche, arqueo manual, etc.).
+  //
+  // `openingCarriedCents` snapshotea el valor SUGERIDO en el momento de
+  // la apertura, aunque el barbero introduzca otro distinto. Sirve para
+  // auditar discrepancias después.
+  //
+  // Los tres campos son NULL en sesiones abiertas antes de esta migración
+  // (legacy) y en la PRIMERA sesión del cliente (no había cierre previo
+  // del que arrastrar).
+  // -----------------------------------------------------------------------
+  openingCarriedFromSessionId: uuid('opening_carried_from_session_id')
+    .references((): AnyPgColumn => cashSessions.id, { onDelete: 'set null' }),
+  openingCarriedCents: integer('opening_carried_cents'),
+  openingManualAdjustmentReason: text('opening_manual_adjustment_reason'),
 
   // Cierre — null mientras la sesión sigue abierta
   closedAt: timestamp('closed_at', { withTimezone: true }),

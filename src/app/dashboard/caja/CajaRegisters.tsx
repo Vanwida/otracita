@@ -61,6 +61,15 @@ interface SessionState {
   openingCents: number
   openedAt: string
   openedByEmail: string
+  /** Sesión cerrada cuya saldo se arrastró como apertura (task #91). Null
+   *  en la primera sesión del cliente o cuando el barbero abrió manual sin
+   *  aceptar la sugerencia. */
+  openingCarriedFromSessionId: string | null
+  /** Snapshot del valor SUGERIDO de carryover al abrir (independiente de
+   *  lo que el barbero realmente metió en openingCents — para auditoría). */
+  openingCarriedCents: number | null
+  /** Motivo libre cuando el barbero modificó el carryover sugerido. */
+  openingManualAdjustmentReason: string | null
 }
 
 interface MovementRow {
@@ -99,6 +108,10 @@ export interface ClosedRegister {
   /** Snapshot completo del desglose tal cual lo vio el barbero al cerrar.
    *  Null en sesiones cerradas antes de la migración 0046 (legacy). */
   closingSnapshot: CashClosingSnapshot | null
+  /** Carryover info (task #91) — null en sesiones pre-migración 0057. */
+  openingCarriedFromSessionId: string | null
+  openingCarriedCents: number | null
+  openingManualAdjustmentReason: string | null
 }
 
 interface Props {
@@ -435,6 +448,17 @@ function OpenRegisterPanel({
         <>
           Abierta a las {format(parseISO(session.openedAt), 'HH:mm', { locale: es })} ·
           apertura {euros(session.openingCents)}
+          {session.openingCarriedFromSessionId && (
+            <span className="text-ink-2"> · arrastrada del cierre anterior</span>
+          )}
+          {!session.openingCarriedFromSessionId &&
+            session.openingCarriedCents !== null &&
+            session.openingCarriedCents !== session.openingCents && (
+              <span className="text-ink-2">
+                {' '}
+                · ajuste manual (sugerido {euros(session.openingCarriedCents)})
+              </span>
+            )}
         </>
       }
       headerAside={<StatusBadge variant="open" />}
@@ -672,6 +696,27 @@ function ClosedRegisterPanel({ register: r }: { register: ClosedRegister }) {
         <>
           {format(parseISO(r.openedAt), "d MMM yyyy", { locale: es })} ·
           cerrada a las {format(parseISO(r.closedAt), 'HH:mm', { locale: es })}
+          {r.openingCarriedFromSessionId && (
+            <span className="text-ink-2">
+              {' '}
+              · apertura arrastrada ({euros(r.openingCents)})
+            </span>
+          )}
+          {!r.openingCarriedFromSessionId &&
+            r.openingCarriedCents !== null &&
+            r.openingCarriedCents !== r.openingCents && (
+              <span className="text-ink-2">
+                {' '}
+                · apertura con ajuste manual (sugerido{' '}
+                {euros(r.openingCarriedCents)})
+              </span>
+            )}
+          {r.openingManualAdjustmentReason && (
+            <span className="text-ink-2">
+              {' '}
+              · motivo: {r.openingManualAdjustmentReason}
+            </span>
+          )}
         </>
       }
       headerAside={<StatusBadge variant="closed" />}
@@ -829,6 +874,19 @@ function ModalShell({
   )
 }
 
+/** Respuesta de GET /api/cash/last-closing — sugerencia de carryover. */
+interface CarryoverSuggestion {
+  sessionId: string
+  closedAt: string
+  closingCents: number
+}
+
+/** Umbral relativo a partir del cual avisamos al barbero de discrepancia
+ *  contra el carryover sugerido. 20% es un equilibrio: deja pasar ajustes
+ *  pequeños del cajón pero detecta cuando se introduce un valor MUY distinto
+ *  (típico foot-gun: meter el opening del día anterior + ventas por error). */
+const CARRYOVER_WARN_THRESHOLD = 0.20
+
 function OpenCashModal({
   open,
   onClose,
@@ -838,14 +896,78 @@ function OpenCashModal({
   onClose: () => void
   onOpened: () => void
 }) {
-  const [openingEur, setOpeningEur] = useState('50')
+  const [carryover, setCarryover] = useState<CarryoverSuggestion | null>(null)
+  const [loadingCarryover, setLoadingCarryover] = useState(false)
+  const [openingEur, setOpeningEur] = useState('')
+  const [adjustmentReason, setAdjustmentReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Al abrir el modal: fetch del último cierre para pre-llenar el input.
+  // Si no hay cierre previo (primera apertura) el input arranca vacío y
+  // mostramos copy de "Primera apertura".
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoadingCarryover(true)
+    setError(null)
+    setAdjustmentReason('')
+    void (async () => {
+      try {
+        const res = await fetch('/api/cash/last-closing', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!cancelled) {
+            setCarryover(null)
+            setOpeningEur('')
+          }
+          return
+        }
+        const json = (await res.json()) as { carryover: CarryoverSuggestion | null }
+        if (cancelled) return
+        if (json.carryover) {
+          setCarryover(json.carryover)
+          setOpeningEur((json.carryover.closingCents / 100).toFixed(2))
+        } else {
+          setCarryover(null)
+          setOpeningEur('')
+        }
+      } catch {
+        if (!cancelled) {
+          setCarryover(null)
+          setOpeningEur('')
+        }
+      } finally {
+        if (!cancelled) setLoadingCarryover(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  const openingNum = Number(openingEur)
+  const openingCents = Number.isFinite(openingNum) ? Math.round(openingNum * 100) : null
+
+  // Detecta si el barbero modificó la sugerencia de carryover. Si carryover
+  // es null (primera apertura) no aplica.
+  const matchesCarryover =
+    carryover !== null && openingCents !== null && openingCents === carryover.closingCents
+
+  // Warning de discrepancia: solo si hay carryover Y el valor introducido
+  // difiere en >20% del sugerido. Evita falsos positivos en cifras muy
+  // pequeñas (de 0€ a 10€ es 100% relativo pero solo 10€ — sigue siendo
+  // útil avisar para que el barbero confirme).
+  const diffWarn = useMemo(() => {
+    if (!carryover || openingCents === null) return false
+    if (openingCents === carryover.closingCents) return false
+    const base = Math.max(carryover.closingCents, 1)
+    const rel = Math.abs(openingCents - carryover.closingCents) / base
+    return rel > CARRYOVER_WARN_THRESHOLD
+  }, [carryover, openingCents])
+
   async function submit() {
     setError(null)
-    const opening = Number(openingEur)
-    if (!Number.isFinite(opening) || opening < 0 || opening > 10000) {
+    if (openingCents === null || openingCents < 0 || openingCents > 1_000_000) {
       setError('Importe inválido (0 – 10.000 €)')
       return
     }
@@ -854,7 +976,19 @@ function OpenCashModal({
       const res = await fetch('/api/cash/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ openingCents: Math.round(opening * 100) }),
+        body: JSON.stringify({
+          openingCents,
+          // Sólo enlazamos a la sesión arrastrada si el barbero ACEPTÓ
+          // la sugerencia (mismo valor). Si la modificó, no creamos el
+          // vínculo formal — el server snapshoteará `openingCarriedCents`
+          // igualmente desde la última cerrada para auditoría.
+          carriedFromSessionId:
+            carryover && matchesCarryover ? carryover.sessionId : null,
+          manualAdjustmentReason:
+            carryover && !matchesCarryover && adjustmentReason.trim() !== ''
+              ? adjustmentReason.trim()
+              : null,
+        }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -883,9 +1017,40 @@ function OpenCashModal({
 
   return (
     <ModalShell open={open} onClose={onClose} title="Abrir caja del día">
-      <p className="text-[0.8125rem] text-ink-2 mb-3 leading-relaxed">
-        Cuánto dinero hay en el cajón al empezar (cambio inicial).
-      </p>
+      {/* Carryover info — banner con el saldo arrastrado del último cierre.
+          Si no hay carryover (primera apertura) mostramos copy distinto. */}
+      <div className="mb-3">
+        {loadingCarryover ? (
+          <div className="rounded-control border border-line bg-overlay/40 px-3 py-2.5 flex items-center gap-2 text-xs text-ink-2">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            Buscando cierre anterior…
+          </div>
+        ) : carryover ? (
+          <div className="rounded-control border border-brand/30 bg-brand-softer/40 px-3 py-2.5">
+            <p className="text-[0.6875rem] uppercase tracking-[0.08em] font-semibold text-ink-2 mb-0.5">
+              Saldo arrastrado
+            </p>
+            <p className="text-[0.8125rem] text-ink leading-relaxed">
+              <span className="font-bold tabular-nums">
+                {euros(carryover.closingCents)}
+              </span>{' '}
+              del cierre del{' '}
+              {format(parseISO(carryover.closedAt), "d 'de' MMMM", { locale: es })}
+              .
+            </p>
+            <p className="text-[0.6875rem] text-ink-2 mt-1 leading-relaxed">
+              Lo que quedó físicamente en el cajón. Modifica si retiraste o
+              añadiste efectivo desde entonces.
+            </p>
+          </div>
+        ) : (
+          <p className="text-[0.8125rem] text-ink-2 leading-relaxed">
+            Primera apertura. Cuánto dinero hay en el cajón al empezar
+            (cambio inicial).
+          </p>
+        )}
+      </div>
+
       <label
         htmlFor="caja-opening"
         className="text-xs font-medium text-ink-2"
@@ -903,11 +1068,44 @@ function OpenCashModal({
         autoFocus
         className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors tabular-nums"
       />
+
+      {/* Warning de discrepancia grande contra el carryover. */}
+      {diffWarn && carryover && (
+        <p className="text-xs text-warning mt-2 leading-relaxed">
+          Esperábamos {euros(carryover.closingCents)} del cierre anterior.
+          Confirma que ese es el efectivo real en el cajón antes de continuar.
+        </p>
+      )}
+
+      {/* Motivo libre cuando el barbero modificó el carryover sugerido.
+          Solo aparece si HAY carryover y el valor no coincide — evita
+          ruido en primera apertura. */}
+      {carryover && !matchesCarryover && openingCents !== null && (
+        <div className="mt-3">
+          <label
+            htmlFor="caja-adjustment-reason"
+            className="text-xs font-medium text-ink-2"
+          >
+            Motivo del ajuste{' '}
+            <span className="text-ink-2">(opcional)</span>
+          </label>
+          <input
+            id="caja-adjustment-reason"
+            type="text"
+            value={adjustmentReason}
+            onChange={(e) => setAdjustmentReason(e.target.value)}
+            maxLength={500}
+            placeholder="Retiré 50€ al banco, ajuste por arqueo…"
+            className="mt-1 w-full bg-overlay border border-line rounded-lg px-3 py-2.5 text-base text-ink focus:border-brand outline-none transition-colors placeholder:text-ink-2"
+          />
+        </div>
+      )}
+
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
       <button
         type="button"
         onClick={submit}
-        disabled={submitting}
+        disabled={submitting || loadingCarryover}
         className="btn-primary mt-4 w-full"
       >
         {submitting ? (
