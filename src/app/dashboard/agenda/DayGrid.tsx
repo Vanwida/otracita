@@ -307,11 +307,22 @@ export default function DayGrid({
       };
       resizingRef.current = next;
       setResizing(next);
+      // Tooltip live durante resize (task #95) — reusa DragTimeTooltip.
+      // Muestra rango HH:MM → HH:MM + duración en minutos. Posición en
+      // viewport coords (igual que en drag&drop). Mismo componente, misma
+      // shape de estado: cero código duplicado.
+      const durationMin = nextEnd - nextStart;
+      setDragTooltip({
+        x: ev.clientX,
+        y: ev.clientY,
+        label: `${minutesToHHMM(nextStart)} → ${minutesToHHMM(nextEnd)} · ${durationMin} min`,
+      });
     };
 
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      setDragTooltip(null);
       // Marcar ANTES de limpiar state para que el `click` sintético que
       // el browser dispara justo después del mouseup encuentre el flag
       // levantado en `handleColumnClick` y aborte. queueMicrotask lo baja
@@ -977,6 +988,10 @@ export default function DayGrid({
                     const showBarber = shouldShowField(height, 'barber');
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
+                    // Cita ya cerrada por el barbero — el resize/move no
+                    // tiene sentido (ya pasó, ya cobró). Se edita por el
+                    // modal si hace falta corregir un histórico (task #95).
+                    const isCompleted = event.status === 'completed';
                     // #33 — Color del bloque = color del SERVICIO (no del
                     // estado). El estado vive en un badge separado (commit 3).
                     const colorToken = resolveBookingColorToken(event, services);
@@ -984,12 +999,22 @@ export default function DayGrid({
                       appointmentBlockClasses(colorToken, event.status);
                     const badge = statusCornerBadge(event.status);
 
-                    const isDraggable = !isBooksy && !isCancelled;
+                    const isDraggable = !isBooksy && !isCancelled && !isCompleted;
                     const isDragging = draggingId === event.id;
-                    // Mismo guard que el drag&drop: las citas legacy de Booksy
-                    // y las canceladas no se resizean. Sólo en desktop
-                    // (pointerFine).
-                    const isResizable = pointerFine && !isBooksy && !isCancelled;
+                    // Mismo guard que el drag&drop: las citas legacy de Booksy,
+                    // las canceladas y las ya cerradas no se resizean. Sólo
+                    // en desktop (pointerFine).
+                    const isResizable = pointerFine && !isBooksy && !isCancelled && !isCompleted;
+                    // Durante un resize en vivo, si el nuevo END cae fuera del
+                    // horario laborable (tienda hoy), señalamos visualmente el
+                    // bloque con un ring warning (task #95). NO bloquea el
+                    // guardado — el endpoint permite fuera-de-horario igual
+                    // que en #83. Sólo informativo durante el drag.
+                    const liveOutOfHours = !!(
+                      liveResize &&
+                      businessHours &&
+                      (evStartMin < businessHours.open || evEndMin > businessHours.close)
+                    );
 
                     // Layout de carril: si la cita se solapa con otras en
                     // esta columna, va a anchura 1/N. 2px de aire entre
@@ -1030,6 +1055,10 @@ export default function DayGrid({
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
                           draggingId && !isDragging ? 'pointer-events-none' : ''
+                        } ${
+                          liveOutOfHours
+                            ? 'ring-2 ring-warning ring-offset-1 ring-offset-canvas'
+                            : ''
                         }`}
                         style={{
                           top,
@@ -1161,11 +1190,15 @@ export default function DayGrid({
                           );
                         })()}
 
-                        {/* Resize handles (U1) — bordes invisibles, 6px,
-                            cursor ns-resize. Desktop only (pointerFine).
-                            Top edge: cambia hora de inicio + duración.
-                            Bottom edge: solo duración. mouseDown.preventDefault
-                            evita que dispare el drag&drop nativo del bloque. */}
+                        {/* Resize handles (task #95) — bordes con cursor
+                            ns-resize. Desktop only (pointerFine). Top edge:
+                            cambia hora de inicio + duración. Bottom edge: solo
+                            duración. mouseDown.preventDefault evita que
+                            dispare el drag&drop nativo del bloque.
+                            Divider sutil tipo Google Calendar: 2px en el
+                            centro del handle, visible al hover. Mejora la
+                            descubribilidad sin ensuciar el bloque cuando el
+                            cursor está en otra parte. */}
                         {isResizable && (
                           <>
                             <div
@@ -1177,10 +1210,12 @@ export default function DayGrid({
                                   'top',
                                 )
                               }
-                              className="absolute left-0 right-0 top-0 cursor-ns-resize"
+                              className="group absolute left-0 right-0 top-0 cursor-ns-resize"
                               style={{ height: RESIZE_HANDLE_PX }}
                               aria-hidden="true"
-                            />
+                            >
+                              <div className="absolute left-1/2 -translate-x-1/2 top-0 h-[2px] w-8 rounded-full bg-current opacity-0 group-hover:opacity-50 transition-opacity" />
+                            </div>
                             <div
                               role="presentation"
                               onMouseDown={(e) =>
@@ -1190,10 +1225,12 @@ export default function DayGrid({
                                   'bottom',
                                 )
                               }
-                              className="absolute left-0 right-0 bottom-0 cursor-ns-resize"
+                              className="group absolute left-0 right-0 bottom-0 cursor-ns-resize"
                               style={{ height: RESIZE_HANDLE_PX }}
                               aria-hidden="true"
-                            />
+                            >
+                              <div className="absolute left-1/2 -translate-x-1/2 bottom-0 h-[2px] w-8 rounded-full bg-current opacity-0 group-hover:opacity-50 transition-opacity" />
+                            </div>
                           </>
                         )}
                       </div>
