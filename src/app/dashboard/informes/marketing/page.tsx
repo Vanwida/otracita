@@ -21,6 +21,7 @@ import {
   sumSourceBreakdown,
 } from '@/lib/marketing/sources-breakdown'
 import { parseIsoDate } from '@/lib/dashboard/period'
+import { computeTrend } from '../../_components/KpiCard'
 import Link from 'next/link'
 
 // -----------------------------------------------------------------------------
@@ -84,8 +85,13 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
   if (lockOverlay) return lockOverlay
 
   const params = await searchParams
-  const { client, periodLabel, periodStartIso, periodEndIso } =
-    await loadReportContext(params)
+  const {
+    client,
+    periodLabel,
+    periodStartIso,
+    periodEndIso,
+    previousPeriod,
+  } = await loadReportContext(params)
 
   const dateLo = periodStartIso ?? '0001-01-01'
 
@@ -319,6 +325,70 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
   const newClientsTop = newClientsBreakdown.slice(0, 8)
   const newClientsMaxCount = Math.max(1, ...newClientsTop.map((r) => r.count))
 
+  // ── Comparativa vs periodo anterior — solo para los KPIs que enseñamos
+  //    en la tira superior (promos enviadas, conversión promo, reseñas).
+  //    `previousPeriod` es null en lifetime / rango inválido → los KPIs
+  //    salen sin pill de tendencia (computeTrend(_, null) → 'none').
+  //    Patrón espejo de ventas/_data.ts → mismo `computeTrend` y misma
+  //    convención de "una query agregada por bloque" para no multiplicar
+  //    round-trips DB.
+  let prevPromosSent: number | null = null
+  let prevPromosBooked: number | null = null
+  let prevReviewTotal: number | null = null
+
+  if (previousPeriod) {
+    const [prevPromoRow] =
+      (await db
+        .execute(sql`
+      SELECT
+        COUNT(*)::int AS sent,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM bookings bk
+            WHERE bk.client_id = ${client.id}
+              AND bk.customer_phone = pp.customer_phone
+              AND bk.created_at >= pp.created_at
+              AND bk.created_at < pp.created_at + (${PROMO_ATTRIB_DAYS} || ' days')::interval
+          )
+        )::int AS booked
+      FROM ${promoPushes} pp
+      WHERE pp.client_id = ${client.id}
+        AND pp.created_at >= ${previousPeriod.startIso}::date
+        AND pp.created_at < ${previousPeriod.endIso}::date
+    `)
+        .then(
+          (r) =>
+            (
+              r as unknown as {
+                rows: { sent: number; booked: number }[]
+              }
+            ).rows,
+        )) ?? []
+    prevPromosSent = Number(prevPromoRow?.sent ?? 0)
+    prevPromosBooked = Number(prevPromoRow?.booked ?? 0)
+
+    const [prevReviewCountRow] =
+      (await db
+        .execute(sql`
+      SELECT COUNT(*)::int AS total
+      FROM ${ratings}
+      WHERE client_id = ${client.id}
+        AND created_at >= ${previousPeriod.startIso}::date
+        AND created_at < ${previousPeriod.endIso}::date
+    `)
+        .then(
+          (r) =>
+            (r as unknown as { rows: { total: number }[] }).rows,
+        )) ?? []
+    prevReviewTotal = Number(prevReviewCountRow?.total ?? 0)
+  }
+
+  // Conversión de promo del periodo previo (para comparar % vs %).
+  const prevPromoConvPct =
+    prevPromosSent !== null && prevPromosSent > 0 && prevPromosBooked !== null
+      ? Math.round((prevPromosBooked / prevPromosSent) * 100)
+      : null
+
   const hasData =
     promosSent > 0 ||
     reviewTotal > 0 ||
@@ -331,6 +401,7 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
       value: promosSent.toLocaleString('es-ES'),
       icon: Send,
       hint: promosSent > 0 ? 'Avisos de hueco enviados' : undefined,
+      trend: computeTrend(promosSent, prevPromosSent),
     },
     {
       label: 'Trajeron reserva',
@@ -340,12 +411,17 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
         promosSent > 0
           ? `${promosBooked} de ${promosSent} reservaron`
           : 'Sin promos en el periodo',
+      trend:
+        promosSent > 0
+          ? computeTrend(promoConvPct, prevPromoConvPct)
+          : undefined,
     },
     {
       label: 'Reseñas',
       value: reviewTotal.toLocaleString('es-ES'),
       icon: MessageSquare,
       hint: reviewTotal > 0 ? `${viaWhatsapp} bot · ${viaPwa} app` : undefined,
+      trend: computeTrend(reviewTotal, prevReviewTotal),
     },
     {
       label: 'Nota media',
@@ -413,7 +489,12 @@ export default async function InformesMarketingPage({ searchParams }: PageProps)
       area="informes"
       action={
         <Suspense>
-          <StatsPeriodTabs />
+          {/* defaultPeriod="month" mantiene UI y server sincronizados:
+              `loadReportContext` resuelve a 'month' cuando no hay ?period=,
+              así que el chip "Mes" debe estar activo por defecto. Sin esta
+              prop, el componente caería en su fallback histórico 'lifetime'
+              y la chip activa no coincidiría con los datos pintados. */}
+          <StatsPeriodTabs defaultPeriod="month" />
         </Suspense>
       }
     >

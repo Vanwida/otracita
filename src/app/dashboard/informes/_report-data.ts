@@ -9,6 +9,8 @@ import { auth } from '@/lib/auth/server'
 import {
   type Period,
   type PeriodSelectionInput,
+  type PreviousPeriod,
+  getPreviousPeriod,
   resolvePeriodSelection,
   toLocalIso,
 } from '@/lib/dashboard/period'
@@ -39,6 +41,13 @@ export interface ReportContext {
   /** YYYY-MM-DD exclusive. Si null (lifetime puro o range incompleto),
    *  fallback a "mañana" para que las queries `< periodEndIso` no rompan. */
   periodEndIso: string
+  /**
+   * Periodo previo comparable (mismo tamaño/posición, inmediatamente antes).
+   * `null` para `lifetime` o rango inválido — no hay "anterior" definido.
+   * Los reports lo usan para calcular deltas % vs el periodo previo y
+   * mostrar tendencia en `StatStrip`.
+   */
+  previousPeriod: PreviousPeriod | null
 }
 
 export async function loadReportContext(
@@ -67,11 +76,23 @@ export async function loadReportContext(
   )
   const periodEndIso = selection.periodEndIso ?? toLocalIso(tomorrow)
 
+  const previousPeriod = getPreviousPeriod(
+    selection.period,
+    selection.periodStart,
+    now,
+    {
+      date: selection.date,
+      start: selection.rangeStart,
+      end: selection.rangeEnd,
+    },
+  )
+
   return {
     client,
     period: selection.period,
     periodLabel: selection.periodLabel,
     periodStartIso: selection.periodStartIso,
     periodEndIso,
+    previousPeriod,
   }
 }

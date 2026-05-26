@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Calendar, ChevronDown, Check } from 'lucide-react'
-import { PERIOD_OPTIONS, parseIsoDate, toLocalIso } from '@/lib/dashboard/period'
+import { PERIOD_OPTIONS, parseIsoDate, toLocalIso, type Period } from '@/lib/dashboard/period'
 
 // -----------------------------------------------------------------------------
 // StatsPeriodTabs — selector de periodo del dashboard (Informes, Equipo,
@@ -63,11 +63,24 @@ function formatDayLabel(dateIso: string | null, today: string): string {
   }).format(dt)
 }
 
-export default function StatsPeriodTabs() {
+interface StatsPeriodTabsProps {
+  /**
+   * Periodo activo cuando la URL no trae `?period=`. Debe COINCIDIR con el
+   * fallback que use el resolver server-side (ej. `loadReportContext` /
+   * `resolvePeriodSelection`) para que la chip resaltada y los datos
+   * pintados estén sincronizados.
+   *
+   * Default 'lifetime' por compatibilidad histórica (callers antiguos no
+   * pasaban esta prop y mostraban "Total" como activo).
+   */
+  defaultPeriod?: Period
+}
+
+export default function StatsPeriodTabs({ defaultPeriod = 'lifetime' }: StatsPeriodTabsProps = {}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const current = searchParams.get('period') ?? 'lifetime'
+  const current = searchParams.get('period') ?? defaultPeriod
   const currentDate = searchParams.get('date')
   const currentStart = searchParams.get('start')
   const currentEnd = searchParams.get('end')
