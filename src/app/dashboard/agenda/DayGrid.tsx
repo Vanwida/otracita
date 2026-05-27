@@ -181,8 +181,21 @@ export default function DayGrid({
   // posiciona en coords ABSOLUTAS de viewport (clientX/clientY) — el
   // componente lo pinta con position:fixed. Null cuando no hay drag activo
   // o el cursor sale de cualquier columna válida (drop sobre fuera).
+  //
+  // `previewStartMin`/`previewEndMin` se setean SOLO durante drag de UNA
+  // cita (no resize, no block): los usamos para actualizar la hora de la
+  // PRIMERA LÍNEA del bloque arrastrado en vivo (task #101). Estado único
+  // — no añadimos otro paralelo que cause re-renders extra. Durante resize
+  // el override vive en `resizing`; este campo queda undefined.
   const [dragTooltip, setDragTooltip] = useState<
-    { x: number; y: number; label: string } | null
+    {
+      x: number;
+      y: number;
+      label: string;
+      previewId?: string;
+      previewStartMin?: number;
+      previewEndMin?: number;
+    } | null
   >(null);
 
   // Pointer fino (desktop). En touch / iPad con dedo el resize por bordes
@@ -765,10 +778,20 @@ export default function DayGrid({
                       // tooltip se oculta (no hay rango que enseñar).
                       const preview = computeDropPreview(e);
                       if (preview) {
+                        // Si lo que se arrastra es una CITA, propagamos
+                        // start/end al state para que el bloque arrastrado
+                        // muestre la hora destino en su primera línea
+                        // (task #101). Para bloques (descansos) no aplica:
+                        // su primera línea no muestra rango horario.
+                        const drag = dragRef.current;
+                        const isEventDrag = drag?.kind === 'event';
                         setDragTooltip({
                           x: e.clientX,
                           y: e.clientY,
                           label: `${minutesToHHMM(preview.startMin)} → ${minutesToHHMM(preview.endMin)}`,
+                          previewId: isEventDrag ? drag.id : undefined,
+                          previewStartMin: isEventDrag ? preview.startMin : undefined,
+                          previewEndMin: isEventDrag ? preview.endMin : undefined,
                         });
                       } else {
                         setDragTooltip(null);
@@ -974,6 +997,39 @@ export default function DayGrid({
                       resizing && resizing.kind === 'event' && resizing.id === event.id
                         ? resizing
                         : null;
+                    // Override en vivo durante un DRAG de esta cita (task #101).
+                    // HTML5 native drag deja el bloque ORIGINAL en sitio con
+                    // opacity-40 (la ghost image la pinta el browser, no la
+                    // controlamos). Lo que sí controlamos: la PRIMERA LÍNEA
+                    // del bloque, que actualizamos al preview destino para
+                    // que el barbero vea la hora nueva en vivo dentro del
+                    // bloque (no sólo en el tooltip flotante). El tope y la
+                    // posición del bloque siguen siendo los originales — sólo
+                    // cambia el texto de la hora. Si quisiéramos mover el
+                    // bloque entero, habría que reescribir a pointer drag
+                    // custom (out of scope).
+                    const liveDrag =
+                      dragTooltip?.previewId === event.id &&
+                      dragTooltip.previewStartMin !== undefined &&
+                      dragTooltip.previewEndMin !== undefined
+                        ? {
+                            startMin: dragTooltip.previewStartMin,
+                            endMin: dragTooltip.previewEndMin,
+                          }
+                        : null;
+                    const liveLabelStart = liveResize
+                      ? liveResize.startMin
+                      : liveDrag
+                        ? liveDrag.startMin
+                        : baseStartMin;
+                    const liveLabelEnd = liveResize
+                      ? liveResize.endMin
+                      : liveDrag
+                        ? liveDrag.endMin
+                        : baseEndMin;
+                    // Para top/height del bloque seguimos usando el estado de
+                    // RESIZE (no el de drag): durante drag el bloque queda en
+                    // su posición original. Sólo el resize cambia geometría.
                     const evStartMin = liveResize ? liveResize.startMin : baseStartMin;
                     const evEndMin = liveResize ? liveResize.endMin : baseEndMin;
                     const durationMin = evEndMin - evStartMin;
@@ -1071,11 +1127,12 @@ export default function DayGrid({
                           // van por className y dejan estos campos undefined.
                           ...blockColorStyle,
                         }}
-                        // Tooltip nativo incluye hora — antes el rango
-                        // horario vivía en la primera línea del bloque y
-                        // ahora ya no, así que lo preservamos aquí para
-                        // hover/screen reader sin ensuciar el contenido.
-                        title={`${liveResize ? minutesToHHMM(evStartMin) : event.time}–${minutesToHHMM(evEndMin)} · ${event.title}`}
+                        // Tooltip nativo incluye hora — refleja resize Y
+                        // drag en vivo. La hora también está en la primera
+                        // línea visible del bloque (task #101); el title
+                        // queda como redundancia para screen readers / hover
+                        // largo (alguna info extra que no cabe en pantalla).
+                        title={`${minutesToHHMM(liveLabelStart)}–${minutesToHHMM(liveLabelEnd)} · ${event.title}`}
                       >
                         {/* Estado de la cita — badge en esquina sup-der
                             (#33). Ícono solo, sobre disco semitransparente
@@ -1099,44 +1156,96 @@ export default function DayGrid({
                           )}
                         </div>
 
-                        {/* Cliente — LÍNEA 1, siempre. El horario del
-                            bloque NO va en el contenido: la posición
-                            vertical + la altura YA lo comunican (el
-                            gutter de horas a la izquierda). Esto libera
-                            la primera línea para lo importante: a quién
-                            atiendes. ♥ inline cuando el cliente pidió
-                            EXPLÍCITAMENTE a este barbero. Fallback
-                            "Cliente sin nombre" text-ink-2 si no hay
-                            ni nombre ni teléfono — antes el bloque
-                            corto mostraba el teléfono crudo en bold,
-                            que parecía un sello de inventario. */}
+                        {/* Hora + Cliente. Task #101 — Reni mira la agenda
+                            todo el día y necesita la HORA de cada cita en
+                            la primera línea, sin abrir el detalle (estándar
+                            Booksy). La hora se actualiza en vivo durante
+                            resize (liveResize) y durante drag (liveDrag)
+                            usando los mismos minutos que pinta el tooltip
+                            flotante #81 — un único helper de formato
+                            (`minutesToHHMM`), cero duplicación. Fallback
+                            "Cliente sin nombre" text-ink-2 si no hay ni
+                            nombre ni teléfono — antes el bloque corto
+                            mostraba el teléfono crudo en bold, que parecía
+                            un sello de inventario.
+
+                            Bloques cortos (< 45px de altura, ej. 15-20min):
+                            no hay espacio vertical para dos líneas. Layout
+                            inline: "HH:MM · Nombre" en la misma línea, con
+                            la hora primero. Preferimos truncar el NOMBRE
+                            antes que ocultar la HORA — la hora es la señal
+                            crítica que Reni necesita. */}
                         {(() => {
                           const displayName =
                             event.customerName?.trim() ||
                             event.customerPhone?.trim() ||
                             null;
-                          return (
-                            <p
-                              className={`font-semibold truncate leading-tight pr-6 ${
-                                displayName ? '' : 'text-ink-2'
-                              }`}
-                              style={{ fontSize: '0.8125rem' }}
-                              // a11y: la hora aún se anuncia vía title
-                              // del wrapper + lectura de la cabecera de
-                              // columna. El nombre ya no va precedido de
-                              // "10:00 – ..." que ensuciaba el screen
-                              // reader.
-                            >
-                              {displayName ?? 'Cliente sin nombre'}
-                              {event.barberRequested && !isBooksy && (
-                                <Heart
-                                  className="ml-1 inline-block h-3 w-3 align-text-bottom text-danger fill-danger"
-                                  aria-label="Cliente solicitó este barbero"
+                          const startLabel = minutesToHHMM(liveLabelStart);
+                          const endLabel = minutesToHHMM(liveLabelEnd);
+                          const isShortBlock = height < 45;
+                          if (isShortBlock) {
+                            // Layout 1-línea: "HH:MM · Nombre" — la hora
+                            // entera "HH:MM - HH:MM" no cabe en 15-20min,
+                            // así que sólo mostramos el INICIO. El fin se
+                            // sigue leyendo del título nativo y de la
+                            // posición vertical (el bloque acaba donde la
+                            // rejilla marca esa hora).
+                            return (
+                              <p
+                                className="flex items-center gap-1.5 leading-tight pr-6 min-w-0"
+                                style={{ fontSize: '0.75rem' }}
+                              >
+                                <span className="tabular-nums font-bold opacity-90 shrink-0">
+                                  {startLabel}
+                                </span>
+                                <span
+                                  className={`font-semibold truncate ${
+                                    displayName ? '' : 'opacity-70'
+                                  }`}
                                 >
-                                  <title>Cliente solicitó este barbero</title>
-                                </Heart>
-                              )}
-                            </p>
+                                  {displayName ?? 'Cliente sin nombre'}
+                                </span>
+                                {event.barberRequested && !isBooksy && (
+                                  <Heart
+                                    className="inline-block h-3 w-3 shrink-0 text-danger fill-danger"
+                                    aria-label="Cliente solicitó este barbero"
+                                  >
+                                    <title>Cliente solicitó este barbero</title>
+                                  </Heart>
+                                )}
+                              </p>
+                            );
+                          }
+                          // Bloques normales/largos: hora en su línea propia
+                          // (rango completo, estilo meta) + nombre debajo.
+                          return (
+                            <>
+                              <p
+                                className="leading-tight tabular-nums font-semibold uppercase opacity-75 pr-6 truncate"
+                                style={{
+                                  fontSize: '0.625rem',
+                                  letterSpacing: '0.04em',
+                                }}
+                              >
+                                {startLabel} – {endLabel}
+                              </p>
+                              <p
+                                className={`font-semibold truncate leading-tight pr-6 mt-0.5 ${
+                                  displayName ? '' : 'opacity-70'
+                                }`}
+                                style={{ fontSize: '0.8125rem' }}
+                              >
+                                {displayName ?? 'Cliente sin nombre'}
+                                {event.barberRequested && !isBooksy && (
+                                  <Heart
+                                    className="ml-1 inline-block h-3 w-3 align-text-bottom text-danger fill-danger"
+                                    aria-label="Cliente solicitó este barbero"
+                                  >
+                                    <title>Cliente solicitó este barbero</title>
+                                  </Heart>
+                                )}
+                              </p>
+                            </>
                           );
                         })()}
 

@@ -306,15 +306,20 @@ export function appointmentChipClasses(
 }
 
 /** Umbrales (px) de altura del bloque para decidir qué campos caben en
- *  jerarquía nombre → servicio → barbero. Calibrados a PX_PER_MIN=2:
- *   · < 60px  (= 15-25min)  → solo nombre del cliente
- *   · 60-90px (= 30-44min)  → + servicio
- *   · ≥ 90px  (= 45min+)    → + barbero / duración
+ *  jerarquía hora → nombre → servicio → barbero/duración. Calibrados a
+ *  PX_PER_MIN=2, tras añadir la línea de HORA siempre visible (task #101):
+ *   · < 45px  (= 5-20min)   → hora + nombre INLINE en 1 línea
+ *   · 45-74px (= 22-36min)  → hora (línea) + nombre (línea)
+ *   · 75-104px (= 37-51min) → + servicio
+ *   · ≥ 105px (= 52min+)    → + barbero / duración
  *  Se basa en altura REAL del bloque (incluye padding interno), no en
- *  duration — así un resize en vivo recalcula la densidad sin escalas. */
+ *  duration — así un resize en vivo recalcula la densidad sin escalas.
+ *  Antes de #101 los umbrales eran 60/90 (sin línea de hora). La línea
+ *  meta de hora ocupa ≈14px (font + line-height), por lo que subimos
+ *  cada umbral en proporción para que el contenido no se solape. */
 const FIELD_HEIGHT_PX = {
-  service: 60,
-  barber: 90,
+  service: 75,
+  barber: 105,
 } as const;
 
 /** Decide si un campo cabe en el bloque dado su altura en px. El nombre
