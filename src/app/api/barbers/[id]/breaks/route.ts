@@ -126,20 +126,26 @@ export async function PUT(
     });
   }
 
-  // Replace the whole set atomically.
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(barberBreaks)
-      .where(
-        and(
-          eq(barberBreaks.clientId, access.client.id),
-          eq(barberBreaks.barberId, id),
-        ),
-      );
-    if (clean.length > 0) {
-      await tx.insert(barberBreaks).values(clean);
-    }
-  });
+  // Replace the whole set: DELETE-then-INSERT secuencial. El driver
+  // neon-http NO soporta `db.transaction` (lanza "No transactions support
+  // in neon-http driver" en runtime, lo que provocaba 500 ⇒ el cliente
+  // mostraba "Se guardó el horario pero los descansos no" — task #100,
+  // feedback Reni 2026-05-26). Mismo trade-off que `record-tip.ts` /
+  // `customers/import.ts`: si el INSERT falla tras el DELETE el barbero
+  // queda sin descansos, pero el caller (ScheduleEditorModal) reintenta
+  // el PUT completo, por lo que la inconsistencia se recupera con un
+  // segundo guardado.
+  await db
+    .delete(barberBreaks)
+    .where(
+      and(
+        eq(barberBreaks.clientId, access.client.id),
+        eq(barberBreaks.barberId, id),
+      ),
+    );
+  if (clean.length > 0) {
+    await db.insert(barberBreaks).values(clean);
+  }
 
   const rows = await db
     .select()
