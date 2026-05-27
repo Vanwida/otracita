@@ -91,26 +91,25 @@ export async function PUT(
     names.push(name);
   }
 
-  // Reemplaza el set completo de forma atómica (igual que /breaks).
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(barberServices)
-      .where(
-        and(
-          eq(barberServices.clientId, access.client.id),
-          eq(barberServices.barberId, id),
-        ),
-      );
-    if (names.length > 0) {
-      await tx.insert(barberServices).values(
-        names.map((serviceName) => ({
-          clientId: access.client.id,
-          barberId: id,
-          serviceName,
-        })),
-      );
-    }
-  });
+  // Reemplaza el set completo (DELETE + INSERT secuencial — neon-http no
+  // soporta transactions, mismo patrón que /breaks tras #100).
+  await db
+    .delete(barberServices)
+    .where(
+      and(
+        eq(barberServices.clientId, access.client.id),
+        eq(barberServices.barberId, id),
+      ),
+    );
+  if (names.length > 0) {
+    await db.insert(barberServices).values(
+      names.map((serviceName) => ({
+        clientId: access.client.id,
+        barberId: id,
+        serviceName,
+      })),
+    );
+  }
 
   const rows = await db
     .select()
