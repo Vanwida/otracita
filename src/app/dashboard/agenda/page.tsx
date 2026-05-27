@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import { Suspense } from 'react';
 import { auth } from '@/lib/auth/server';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -51,18 +52,25 @@ export default async function CalendarPage() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
       <div className="min-h-0 flex-1">
-        <CalendarView
-          services={services}
-          barbers={barbers}
-          blockedDates={blockedDates}
-          hours={hours}
-          stripeConnectStatus={client.stripeConnectStatus}
-          promosEnabled={client.promosEnabled}
-          cashRegisterEnabled={client.cashRegisterEnabled}
-          sumupReaderConnected={
-            !!client.sumupAccessToken && !!client.sumupMerchantCode && !!client.sumupReaderId
-          }
-        />
+        {/* CalendarView lee `?barber=<id>` con useSearchParams (task #102 —
+            filtro "Ver solo a X"). Next 16 exige envolver consumidores de
+            useSearchParams en un boundary Suspense para no romper el SSG
+            del shell. Fallback = nada visible: el shell ya pinta el chrome,
+            la agenda hidratará en el cliente. */}
+        <Suspense fallback={null}>
+          <CalendarView
+            services={services}
+            barbers={barbers}
+            blockedDates={blockedDates}
+            hours={hours}
+            stripeConnectStatus={client.stripeConnectStatus}
+            promosEnabled={client.promosEnabled}
+            cashRegisterEnabled={client.cashRegisterEnabled}
+            sumupReaderConnected={
+              !!client.sumupAccessToken && !!client.sumupMerchantCode && !!client.sumupReaderId
+            }
+          />
+        </Suspense>
       </div>
     </div>
   );

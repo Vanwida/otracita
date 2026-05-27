@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import { Suspense } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { and, asc, eq } from 'drizzle-orm';
@@ -77,22 +78,26 @@ export default async function YoAgendaPage() {
 
   return (
     <div className="flex h-[calc(100dvh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col -mx-4 -mt-4">
-      <CalendarView
-        services={services}
-        barbers={barberRows}
-        blockedDates={blockedDates}
-        hours={hours}
-        stripeConnectStatus={client.stripeConnectStatus}
-        promosEnabled={client.promosEnabled}
-        cashRegisterEnabled={client.cashRegisterEnabled}
-        sumupReaderConnected={
-          !!client.sumupAccessToken &&
-          !!client.sumupMerchantCode &&
-          !!client.sumupReaderId
-        }
-        mobileMode={true}
-        barberFilterId={barber.id}
-      />
+      {/* CalendarView usa useSearchParams (task #102) — necesita Suspense
+          boundary en Next 16 aunque aquí el filtro URL no aplique. */}
+      <Suspense fallback={null}>
+        <CalendarView
+          services={services}
+          barbers={barberRows}
+          blockedDates={blockedDates}
+          hours={hours}
+          stripeConnectStatus={client.stripeConnectStatus}
+          promosEnabled={client.promosEnabled}
+          cashRegisterEnabled={client.cashRegisterEnabled}
+          sumupReaderConnected={
+            !!client.sumupAccessToken &&
+            !!client.sumupMerchantCode &&
+            !!client.sumupReaderId
+          }
+          mobileMode={true}
+          barberFilterId={barber.id}
+        />
+      </Suspense>
     </div>
   );
 }

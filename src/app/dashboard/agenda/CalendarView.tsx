@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import useSWR from 'swr';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   startOfWeek,
   endOfWeek,
@@ -17,7 +18,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose, Focus } from 'lucide-react';
 import { isMobileViewport } from '@/lib/responsive';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
@@ -92,6 +93,64 @@ interface Props {
 
 export default function CalendarView({ services, barbers, blockedDates, hours, stripeConnectStatus, promosEnabled, cashRegisterEnabled = false, sumupReaderConnected = false, mobileMode = false, barberFilterId = null }: Props) {
   const confirm = useConfirm();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Task #102 — filtro "Ver solo a [Nombre]". El URL param `?barber=<uuid>`
+  // restringe la agenda a la columna de UN barbero (mismo concepto que la
+  // prop `barberFilterId` forzada en /yo/agenda, pero aquí controlado por
+  // el usuario admin desde el BarberActionMenu — con chip de quita-filtro
+  // en el toolbar). Validamos que el uuid corresponde a un barbero del
+  // tenant; si no, lo ignoramos silenciosamente (no error visible). El
+  // multi-tenancy real ya lo refuerza el endpoint /api/dashboard/calendar.
+  const rawUrlBarber = searchParams?.get('barber') ?? null;
+  const urlBarberFilterId = useMemo(() => {
+    if (!rawUrlBarber) return null;
+    return barbers.some((b) => b.id === rawUrlBarber) ? rawUrlBarber : null;
+  }, [rawUrlBarber, barbers]);
+  // En /yo/agenda `barberFilterId` está forzado por el server: tiene
+  // prioridad y el URL param se ignora (el barbero no debería poder
+  // "saltarse" su propio scope desde la URL — además el endpoint lo
+  // refuerza). En el admin admin (`barberFilterId === null`) solo manda
+  // el URL param.
+  const effectiveBarberFilterId = barberFilterId ?? urlBarberFilterId;
+  const filteredBarber = useMemo(
+    () =>
+      effectiveBarberFilterId
+        ? barbers.find((b) => b.id === effectiveBarberFilterId) ?? null
+        : null,
+    [effectiveBarberFilterId, barbers],
+  );
+  /**
+   * Equipo VISIBLE para las grids cuando hay filtro activo. Antes la
+   * vista Semana usaba `mobileMode && barberFilterId` para colapsar a una
+   * sola swimlane; ahora unificamos: si hay `effectiveBarberFilterId` y
+   * el barbero existe, devolvemos sólo ese; si no, todo el equipo. DayGrid
+   * usa exactamente esta misma lista — la columna del barbero filtrado se
+   * pinta aunque no tenga citas hoy (no se oculta, el dueño quiere ver
+   * "su día aunque vacío").
+   */
+  const visibleBarbers = useMemo(
+    () => (filteredBarber ? [filteredBarber] : barbers),
+    [filteredBarber, barbers],
+  );
+
+  /**
+   * Actualiza la query string conservando el resto de params. push (no
+   * replace) para que back ↔ deshacer el filtro funcione natural.
+   */
+  const setBarberUrlParam = useCallback(
+    (next: string | null) => {
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+      if (next) params.set('barber', next);
+      else params.delete('barber');
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
   const [isPromosOpen, setIsPromosOpen] = useState(false);
   const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
   // En modo móvil del barbero forzamos 'day' (no hay toggle visible). El
@@ -187,12 +246,14 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     // `barberId` (id canónico) tiene prioridad sobre `barber` (nombre)
     // server-side. `/yo/agenda` lo manda con el id del barbero
     // autenticado; el endpoint además fuerza el filtro si el actor no
-    // tiene `edit_others_bookings` (defensa en profundidad).
-    const barberIdQuery = barberFilterId
-      ? `&barberId=${encodeURIComponent(barberFilterId)}`
+    // tiene `edit_others_bookings` (defensa en profundidad). El URL param
+    // `?barber=<uuid>` del admin (task #102) usa la MISMA query — flow
+    // único, ya validado por el endpoint.
+    const barberIdQuery = effectiveBarberFilterId
+      ? `&barberId=${encodeURIComponent(effectiveBarberFilterId)}`
       : '';
     return `/api/dashboard/calendar?start=${start}&end=${end}&barber=${selectedBarber}${barberIdQuery}`;
-  }, [currentDay, viewMode, selectedBarber, barberFilterId]);
+  }, [currentDay, viewMode, selectedBarber, effectiveBarberFilterId]);
 
   const {
     data: payload = EMPTY_PAYLOAD,
@@ -713,7 +774,33 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         {/* El filtro de barbero ya NO vive aquí: el control PRIMARIo de
             "quién" son las columnas paralelas (vista día). Aislar a uno
             solo es secundario y vive en el rail izquierdo ("Empleados y
-            recursos"), igual que en Booksy (screenshot 09.39.31). */}
+            recursos"), igual que en Booksy (screenshot 09.39.31).
+
+            Excepción task #102: cuando el usuario activa "Ver solo a X"
+            desde el BarberActionMenu, mostramos un chip en el header con
+            × para quitar el filtro sin volver a abrir el menú — sin esto
+            el usuario olvida que filtró y se confunde de por qué no ve
+            a los demás. NO se muestra cuando el filtro lo fuerza el
+            server (`barberFilterId` en /yo/agenda): ahí el barbero está
+            siempre acotado a su propio scope y el chip sería ruido. */}
+        {urlBarberFilterId && filteredBarber && !barberFilterId && (
+          <span
+            className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-brand-softer text-brand-strong text-xs font-medium border border-brand/30"
+            role="status"
+            aria-live="polite"
+          >
+            <Focus className="h-3 w-3" aria-hidden="true" />
+            <span className="truncate max-w-[8rem]">Solo {filteredBarber.name}</span>
+            <button
+              type="button"
+              onClick={() => setBarberUrlParam(null)}
+              className="inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-brand/15 text-brand-strong/80 hover:text-brand-strong transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
+              aria-label={`Quitar filtro de ${filteredBarber.name}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        )}
 
         {/* Promos + import + new booking — Importar y Promos son admin-only
             (operación de tienda, no del barbero); ocultos en mobileMode. */}
@@ -745,7 +832,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
         {!mobileMode && (
           <button
             onClick={() => {
-              setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: barberFilterId ?? null });
+              setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: effectiveBarberFilterId });
               setSelectedBookingId(null);
               setIsNewBookingOpen(true);
             }}
@@ -840,7 +927,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               date={currentDay}
               events={events}
               blocks={blocks}
-              barbers={barbers}
+              barbers={visibleBarbers}
               services={services}
               blockedDates={blockedDates}
               hours={hours}
@@ -892,15 +979,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             <WeekGrid
               weekStart={startOfWeek(currentDay, { weekStartsOn: 1 })}
               events={events}
-              barbers={
-                // En `mobileMode + barberFilterId` la vista Semana muestra
-                // sólo la swimlane del barbero (es la matriz 1×7 que cabe
-                // bien en pantallas estrechas). En admin/desktop pasamos
-                // todo el equipo y la matriz es N×7.
-                mobileMode && barberFilterId
-                  ? barbers.filter((b) => b.id === barberFilterId)
-                  : barbers
-              }
+              barbers={visibleBarbers}
               services={services}
               blockedDates={blockedDates}
               onEventClick={handleEventClick}
@@ -1026,13 +1105,20 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       )}
 
       {/* Menú de acciones del barbero (fix #2) — clic en su cabecera de
-          columna. Reusa AbsenceModal/BlockModal y los eventos ya cargados. */}
+          columna. Reusa AbsenceModal/BlockModal y los eventos ya cargados.
+          Task #102 — pasa `isFiltered` + `onToggleFilter` para mostrar el
+          toggle "Ver solo a X" / "Ver toda la agenda" como primera fila.
+          En /yo/agenda (barberFilterId server-forzado) NO pasamos el
+          callback: el barbero está acotado a su scope, el toggle no
+          aplicaría. */}
       <BarberActionMenu
         barber={barberMenu}
         events={events}
         dateStr={format(currentDay, 'yyyy-MM-dd')}
         onClose={() => setBarberMenu(null)}
         onChanged={() => refetch()}
+        isFiltered={!!barberMenu && effectiveBarberFilterId === barberMenu.id}
+        onToggleFilter={barberFilterId ? undefined : setBarberUrlParam}
       />
 
       {/* New booking panel */}
@@ -1061,7 +1147,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
             setNewBookingSlot({
               date: format(currentDay, 'yyyy-MM-dd'),
               time: format(new Date(), 'HH:mm'),
-              barberId: barberFilterId ?? null,
+              barberId: effectiveBarberFilterId,
             });
             setSelectedBookingId(null);
             setIsNewBookingOpen(true);

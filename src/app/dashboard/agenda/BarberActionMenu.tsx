@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   Wallet,
   ChevronRight,
+  Focus,
 } from 'lucide-react';
 import AbsenceModal from '../equipo/turnos/AbsenceModal';
 import BlockModal from '../equipo/turnos/BlockModal';
@@ -45,6 +46,13 @@ interface Props {
   onClose: () => void;
   /** Tras crear ausencia/bloqueo, el padre revalida la agenda. */
   onChanged: () => void;
+  /** Task #102 — true cuando la agenda ya está filtrada a ESTE barbero
+   *  (URL param `?barber=<id>`). Invierte el toggle: "Ver toda la agenda"
+   *  en vez de "Ver solo a X". */
+  isFiltered?: boolean;
+  /** Task #102 — toggle del filtro. Recibe el id si se activa, o null si
+   *  se quita. CalendarView empuja el cambio al URL y cierra el menú. */
+  onToggleFilter?: (next: string | null) => void;
 }
 
 function toMinutes(hhmm: string): number {
@@ -58,6 +66,8 @@ export default function BarberActionMenu({
   dateStr,
   onClose,
   onChanged,
+  isFiltered = false,
+  onToggleFilter,
 }: Props) {
   const [absenceOpen, setAbsenceOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
@@ -175,6 +185,42 @@ export default function BarberActionMenu({
               )}
 
               <ul className="divide-y divide-line">
+                {/* Task #102 — "Ver solo a [Nombre]" / "Ver toda la agenda".
+                    Primera acción del sheet (foco/visual = decisión más
+                    inmediata: filtrar antes que editar horario). El padre
+                    (CalendarView) sincroniza con el URL param `?barber=<id>`
+                    via push (no replace) para que back funcione. Sólo se
+                    renderiza si el padre nos pasó `onToggleFilter` — en
+                    /yo/agenda el barbero ya está acotado a su scope y este
+                    toggle no aplicaría. */}
+                {onToggleFilter && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onToggleFilter(isFiltered ? null : barber.id);
+                        onClose();
+                      }}
+                      className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-overlay transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+                    >
+                      <span className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-overlay text-brand shrink-0">
+                        <Focus className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-ink">
+                          {isFiltered
+                            ? 'Ver toda la agenda'
+                            : `Ver solo a ${barber.name}`}
+                        </span>
+                        <span className="block text-xs text-ink-2 truncate">
+                          {isFiltered
+                            ? 'Quita el filtro'
+                            : 'Solo su columna en la agenda'}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                )}
                 <li>
                   <Link
                     href="/dashboard/equipo/turnos"
