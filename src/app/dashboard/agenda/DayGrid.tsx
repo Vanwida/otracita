@@ -1060,10 +1060,12 @@ export default function DayGrid({
                     const isUltraShort = height < ULTRA_SHORT_HEIGHT_PX;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
-                    // Cita ya cerrada por el barbero — el resize/move no
-                    // tiene sentido (ya pasó, ya cobró). Se edita por el
-                    // modal si hace falta corregir un histórico (task #95).
-                    const isCompleted = event.status === 'completed';
+                    // Citas completed SÍ se pueden mover/resize: el barbero
+                    // corrige el histórico (cita mal apuntada, ajusta hora
+                    // real). El endpoint PATCH /api/bookings/[id] no bloquea
+                    // por status — el cambio es solo de date/time/duration
+                    // y la factura emitida (si existe) sigue sellada con su
+                    // propia fecha de emisión (VeriFactu OK).
                     // #33 — Color del bloque = color del SERVICIO (no del
                     // estado). El estado vive en un badge separado (commit 3).
                     const colorToken = resolveBookingColorToken(event, services);
@@ -1071,12 +1073,13 @@ export default function DayGrid({
                       appointmentBlockClasses(colorToken, event.status);
                     const badge = statusCornerBadge(event.status);
 
-                    const isDraggable = !isBooksy && !isCancelled && !isCompleted;
+                    const isDraggable = !isBooksy && !isCancelled;
                     const isDragging = draggingId === event.id;
-                    // Mismo guard que el drag&drop: las citas legacy de Booksy,
-                    // las canceladas y las ya cerradas no se resizean. Sólo
-                    // en desktop (pointerFine).
-                    const isResizable = pointerFine && !isBooksy && !isCancelled && !isCompleted;
+                    // Mismo guard que el drag&drop: las citas legacy de Booksy
+                    // y las canceladas no se resizean. Las completed sí: el
+                    // barbero ajusta hora real / corrige histórico. Sólo en
+                    // desktop (pointerFine).
+                    const isResizable = pointerFine && !isBooksy && !isCancelled;
                     // Durante un resize en vivo, si el nuevo END cae fuera del
                     // horario laborable (tienda hoy), señalamos visualmente el
                     // bloque con un ring warning (task #95). NO bloquea el
