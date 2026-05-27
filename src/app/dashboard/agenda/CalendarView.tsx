@@ -862,43 +862,6 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           />
         )}
 
-        {/* Chip del filtro activo. Reflejo redundante del estado del
-            control multi-select para que, una vez cerrado el popover, el
-            usuario siga viendo que está filtrado y pueda quitarlo de un
-            tap sin reabrir. Variantes:
-              · 0 seleccionados o todos → no chip (URL limpia)
-              · 1 seleccionado          → "Solo [Nombre]"
-              · subset (>1, < total)    → "N barberos"
-            El × resetea a "todos" (URL sin `?barbers`).
-            Oculto en /yo/agenda (barberFilterId): el barbero está
-            siempre acotado a su scope y el chip sería ruido. */}
-        {!barberFilterId && selectedBarberIds.length > 0 && (() => {
-          const sel = barbers.filter((b) => selectedBarberIds.includes(b.id));
-          if (sel.length === 0) return null;
-          const label =
-            sel.length === 1
-              ? `Solo ${sel[0].name}`
-              : `${sel.length} barberos`;
-          return (
-            <span
-              className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-brand-softer text-brand-strong text-xs font-medium border border-brand/30"
-              role="status"
-              aria-live="polite"
-            >
-              <Users className="h-3 w-3" aria-hidden="true" />
-              <span className="truncate max-w-[10rem]">{label}</span>
-              <button
-                type="button"
-                onClick={() => setVisibleBarberIds([])}
-                className="inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-brand/15 text-brand-strong/80 hover:text-brand-strong transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
-                aria-label="Quitar filtro de barberos"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          );
-        })()}
-
         {/* Promos + import + new booking — Importar y Promos son admin-only
             (operación de tienda, no del barbero); ocultos en mobileMode. */}
         {!mobileMode && promosEnabled && (
