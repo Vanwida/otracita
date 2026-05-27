@@ -1207,13 +1207,13 @@ export default function DayGrid({
                               : (displayName ?? '');
                             return (
                               <p className="flex items-center gap-1.5 leading-snug pr-6 min-w-0 text-[12px]">
-                                <span className="tabular-nums text-ink-2 shrink-0">
+                                <span className="tabular-nums shrink-0 opacity-75">
                                   {startLabel}
                                 </span>
                                 {tail && (
                                   <>
-                                    <span className="text-ink-3 shrink-0" aria-hidden="true">·</span>
-                                    <span className="font-medium text-ink truncate">
+                                    <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
+                                    <span className="font-medium truncate">
                                       {tail}
                                     </span>
                                   </>
@@ -1227,25 +1227,25 @@ export default function DayGrid({
                           // separador "·" se omite (no cuelga suelto).
                           return (
                             <>
-                              <p className="leading-snug tabular-nums pr-6 truncate text-[12px] text-ink-2">
+                              <p className="leading-snug tabular-nums pr-6 truncate text-[12px] opacity-75">
                                 {startLabel} – {endLabel}
                               </p>
                               <div className="flex items-center gap-1.5 leading-snug pr-6 min-w-0 mt-1 text-[14px]">
                                 {hasService && (
-                                  <span className="font-medium text-ink truncate min-w-0">
+                                  <span className="font-medium truncate min-w-0">
                                     {service}
                                   </span>
                                 )}
                                 {hasService && displayName && (
-                                  <span className="text-ink-3 shrink-0" aria-hidden="true">·</span>
+                                  <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
                                 )}
                                 {displayName && (
-                                  <span className="text-ink-2 truncate min-w-0">
+                                  <span className="truncate min-w-0 opacity-80">
                                     {displayName}
                                   </span>
                                 )}
                                 {!displayName && !hasService && (
-                                  <span className="text-ink-2 truncate opacity-70 min-w-0">
+                                  <span className="truncate min-w-0 opacity-60">
                                     Cliente sin nombre
                                   </span>
                                 )}
@@ -1268,7 +1268,7 @@ export default function DayGrid({
                             como meta-línea sobria (12px ink-3, sin separador).
                             Ultra-corto la omite — no caben 3 líneas. */}
                         {!col.barber && !isUltraShort && event.barber && (
-                          <p className="leading-snug truncate pr-6 mt-1 text-[12px] text-ink-3">
+                          <p className="leading-snug truncate pr-6 mt-1 text-[12px] opacity-60">
                             {event.barber}
                           </p>
                         )}
