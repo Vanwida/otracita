@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Banknote,
-  Check,
   CreditCard,
   Globe,
   Loader2,
@@ -15,6 +14,7 @@ import {
 import Modal from './Modal'
 import SplitPaymentBuilder from './SplitPaymentBuilder'
 import InlineTipPrompt from './InlineTipPrompt'
+import ChargedReceiptStep from './ChargedReceiptStep'
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
@@ -25,7 +25,6 @@ import type {
   ChargeSuccessResponse,
 } from '@/lib/payments/charge-contract'
 import { formatCents } from '@/lib/format'
-import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 // -----------------------------------------------------------------------------
 // ChargeFlow — modal state-machine para el cobro unificado de una cita.
@@ -37,7 +36,10 @@ import { FEEDBACK_MS } from '@/lib/ui-timings'
 //   2. split-builder  → cuando elige fraccionado, sub-componente
 //   3. wait-online    → si el cobro incluye `card_online`, QR + poll
 //   4. tip-prompt     → "¿propina?" tras cerrar el cobro
-//   5. success        → splash 2s con check + total + tip resuelto
+//   5. success        → pantalla "Cobrado" (ChargedReceiptStep, task #103):
+//                       check + total + recibo plegable + acciones de envío;
+//                       se cierra sólo cuando el barbero pulsa "Volver al
+//                       calendario", NO con timeout.
 //   6. error          → mensaje + "Volver"
 //
 // El endpoint canónico `POST /api/bookings/:id/charge` recibe N tramos y
@@ -243,16 +245,15 @@ export default function ChargeFlow({
   }, [step, totalCents])
 
   // -------------------------------------------------------------------------
-  // Tras tip resuelto → splash 2s → onCharged + onClose.
+  // Tras tip resuelto → step `success` se queda visible. Ya NO se auto-cierra
+  // en 2s — la pantalla "Cobrado" (ChargedReceiptStep) es la confirmación
+  // canónica (task #103). El usuario decide cuándo volver con "Volver al
+  // calendario", que llama a `dismissSuccess` abajo.
   // -------------------------------------------------------------------------
-  useEffect(() => {
-    if (step.kind !== 'success') return
-    const t = setTimeout(() => {
-      onCharged()
-      onClose()
-    }, FEEDBACK_MS.copied)
-    return () => clearTimeout(t)
-  }, [step, onCharged, onClose])
+  const dismissSuccess = useCallback(() => {
+    onCharged()
+    onClose()
+  }, [onCharged, onClose])
 
   // -------------------------------------------------------------------------
   // "Cerrar sin cobrar" — para citas cortesía / gratis: marca completed sin
@@ -360,7 +361,12 @@ export default function ChargeFlow({
       )}
 
       {step.kind === 'success' && (
-        <SuccessStep totalCents={step.totalCents} tipCents={step.tipCents} />
+        <ChargedReceiptStep
+          bookingId={booking.id}
+          totalCents={step.totalCents}
+          tipCents={step.tipCents}
+          onDismiss={dismissSuccess}
+        />
       )}
 
       {step.kind === 'error' && (
@@ -556,33 +562,6 @@ function WaitOnlineStep({
           Cancelar
         </button>
       </div>
-    </div>
-  )
-}
-
-function SuccessStep({
-  totalCents,
-  tipCents,
-}: {
-  totalCents: number
-  tipCents: number | null
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center px-5 py-10 gap-3 text-center">
-      <div className="h-16 w-16 rounded-full bg-success/15 flex items-center justify-center">
-        <Check className="h-8 w-8 text-success" aria-hidden="true" />
-      </div>
-      <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
-        Cobrado
-      </p>
-      <p className="text-3xl font-bold text-ink tabular-nums leading-none">
-        {formatCents(totalCents)}
-      </p>
-      {tipCents !== null && tipCents > 0 && (
-        <p className="text-sm font-medium text-brand tabular-nums">
-          + propina {formatCents(tipCents)}
-        </p>
-      )}
     </div>
   )
 }
