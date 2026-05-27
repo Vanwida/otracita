@@ -305,33 +305,6 @@ export function appointmentChipClasses(
   return appointmentBlockClasses(value, status);
 }
 
-/** Umbrales (px) de altura del bloque para decidir qué campos caben en
- *  jerarquía hora → nombre → servicio → barbero. Calibrados a PX_PER_MIN=2,
- *  tras task #104 (tipografía adaptativa + eliminación de "X min" redundante):
- *   · < 45px  (short, 5-20min)   → hora + nombre INLINE en 1 línea
- *   · 45-89px (medium, 22-44min) → hora (línea) + nombre (línea) + servicio
- *   · 90-179px (large, 45-89min) → + nombre barbero (solo si col=Sin asignar)
- *   · ≥ 180px (xl, ≥90min)       → mismas líneas pero fuentes más grandes
- *  Se basa en altura REAL del bloque (incluye padding interno), no en
- *  duration — así un resize en vivo recalcula la densidad sin escalas.
- *  Pre-#104 los umbrales eran 75/105 con "X min" redundante; #104 elimina
- *  la duración explícita (la lee del rango HH:MM-HH:MM) y baja el threshold
- *  de servicio para que aparezca antes (las nuevas fuentes son más grandes
- *  pero hay 3 líneas no 4, así que cabe igual). */
-const FIELD_HEIGHT_PX = {
-  service: 45,
-  barber: 90,
-} as const;
-
-/** Decide si un campo cabe en el bloque dado su altura en px. El nombre
- *  del cliente SIEMPRE cabe (línea 1 no condicional). */
-export function shouldShowField(
-  blockHeightPx: number,
-  field: 'service' | 'barber',
-): boolean {
-  return blockHeightPx >= FIELD_HEIGHT_PX[field];
-}
-
 /** Badge de estado para la esquina sup-der del bloque. Iconos distintos a
  *  los de `statusBadge` (que vive en la leyenda lateral): aquí priorizamos
  *  glifos cortos y reconocibles a tamaño chico (16-20px). */

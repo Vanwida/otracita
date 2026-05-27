@@ -8,7 +8,6 @@ import { barberColorVar, paymentBadge } from './types';
 import {
   appointmentBlockClasses,
   resolveBookingColorToken,
-  shouldShowField,
   statusCornerBadge,
 } from './_appointment-color';
 import { hoursForDate } from '@/lib/availability-hours';
@@ -110,31 +109,12 @@ function minutesToHHMM(min: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** Tier tipográfico según altura del bloque (task #104). Reni opera el iPad
- *  a 1-2m: a >120cm de distancia 13px se vuelve ilegible. Escalamos hora /
- *  nombre / servicio en 4 tiers para que cada bloque use el espacio vertical
- *  que tiene. Clases pre-definidas (no `style={{ fontSize }}`) para que el
- *  resize/drag en vivo no cause flicker — Tailwind las precompila en build.
- *
- *  Mapeo:
- *   short  <45px  → inline 12px ("HH:MM · Nombre")
- *   medium 45-89  → hora 13px regular | nombre 16px semibold | servicio 13px
- *   large  90-179 → hora 14px regular | nombre 18px semibold | servicio 14px
- *   xl     ≥180   → hora 15px regular | nombre 20px semibold | servicio 15px
- */
-type BlockTier = 'short' | 'medium' | 'large' | 'xl';
-function getBlockTier(heightPx: number): BlockTier {
-  if (heightPx < 45) return 'short';
-  if (heightPx < 90) return 'medium';
-  if (heightPx < 180) return 'large';
-  return 'xl';
-}
-const TIER_CLASSES: Record<BlockTier, { time: string; name: string; service: string; barber: string }> = {
-  short:  { time: 'text-[12px]', name: 'text-[12px]', service: 'text-[12px]', barber: 'text-[12px]' },
-  medium: { time: 'text-[13px]', name: 'text-[16px]', service: 'text-[13px]', barber: 'text-[13px]' },
-  large:  { time: 'text-[14px]', name: 'text-[18px]', service: 'text-[14px]', barber: 'text-[14px]' },
-  xl:     { time: 'text-[15px]', name: 'text-[20px]', service: 'text-[15px]', barber: 'text-[15px]' },
-};
+/** Umbral para layout ultra-corto. Por debajo de 35px no caben 2 líneas con
+ *  el padding `py-2`: colapsamos a una sola línea inline "HH:MM · Servicio".
+ *  El cliente se omite (servicio > cliente en jerarquía: el barbero conoce
+ *  a sus clientes, lo que varía y requiere preparación es el SERVICIO).
+ *  Task #105 — reemplaza los 4 tiers adaptativos de #104 (sobre-ingeniería). */
+const ULTRA_SHORT_HEIGHT_PX = 35;
 
 // El color de la cita = color del BARBERO (consistente Día/Semana/Mes); el
 // ESTADO se comunica con tratamiento + ícono + etiqueta, NO con otro tono.
@@ -1061,19 +1041,23 @@ export default function DayGrid({
                     const durationMin = evEndMin - evStartMin;
                     const top = (evStartMin - startMin) * PX_PER_MIN;
                     const height = Math.max(durationMin * PX_PER_MIN, 40);
-                    // Jerarquía (#29/#32/#33 + task #104 tipografía adaptativa):
-                    // nombre cliente primero. Servicio si el bloque pasa de
-                    // ~45px; barbero (solo cuando col=Sin asignar) si pasa de
-                    // ~90px. Helper único basado en altura px real — resize
-                    // en vivo recalcula densidad sin tocar nada aquí.
+                    // Jerarquía (task #105 — definitiva):
+                    //   Hora → Servicio → Cliente. En ese orden.
+                    //   El barbero conoce a sus clientes (repetitivos en
+                    //   barbería de barrio); lo que VARÍA y requiere
+                    //   preparación distinta es el SERVICIO (corte simple
+                    //   vs corte+ritual: 25min vs 65min, herramientas y
+                    //   productos distintos). Booksy lo tiene así.
                     //
-                    // `tier` mapea la altura a tamaños tipográficos (4 tiers):
-                    // Reni mira el iPad a 1-2m y el tier `large`/`xl` hace que
-                    // el nombre del cliente se lea de un vistazo (18-20px).
-                    const showService = shouldShowField(height, 'service');
-                    const showBarber = shouldShowField(height, 'barber');
-                    const tier = getBlockTier(height);
-                    const tierCls = TIER_CLASSES[tier];
+                    // Fuentes FIJAS (no más tiers). Bloques grandes respiran
+                    // con MÁS padding vertical, no con fuentes más grandes:
+                    //   · hora     12px tabular ink-2
+                    //   · servicio 14px medium ink (énfasis, titular)
+                    //   · cliente  14px regular ink-2 (info secundaria)
+                    //   · sep `·`  ink-3
+                    // Ultra-corto (<35px): inline "HH:MM · Servicio" (cliente
+                    // se omite, no cabe).
+                    const isUltraShort = height < ULTRA_SHORT_HEIGHT_PX;
                     const isBooksy = event.source === 'booksy';
                     const isCancelled = event.status === 'cancelled';
                     // Cita ya cerrada por el barbero — el resize/move no
@@ -1139,7 +1123,7 @@ export default function DayGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
-                        className={`absolute z-20 flex flex-col rounded-md p-2 overflow-hidden shadow-sm transition-transform duration-150 hover:-translate-y-0.5 ${blockClass} ${
+                        className={`absolute z-20 flex flex-col rounded-md px-2.5 py-2 overflow-hidden shadow-sm transition-transform duration-150 hover:-translate-y-0.5 ${blockClass} ${
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${treatment} ${isDragging ? 'opacity-40' : ''} ${
                           draggingId && !isDragging ? 'pointer-events-none' : ''
@@ -1188,26 +1172,22 @@ export default function DayGrid({
                           )}
                         </div>
 
-                        {/* Hora + Cliente. Task #101 — Reni mira la agenda
-                            todo el día y necesita la HORA de cada cita en
-                            la primera línea, sin abrir el detalle. La hora
-                            se actualiza en vivo durante resize (liveResize)
-                            y durante drag (liveDrag) usando los mismos
-                            minutos que pinta el tooltip flotante #81 — un
-                            único helper de formato (`minutesToHHMM`), cero
-                            duplicación.
+                        {/* Bloque de cita — layout DEFINITIVO (task #105).
+                            Jerarquía: Hora → Servicio → Cliente. El servicio
+                            es el TITULAR (lo que varía entre citas y requiere
+                            preparación); el cliente es info secundaria (el
+                            barbero los conoce). Booksy-aligned.
 
-                            Task #104 — Tipografía adaptativa por altura del
-                            bloque (4 tiers: short/medium/large/xl). La hora
-                            deja de ser "meta" (sin uppercase, sin tracking,
-                            sin opacity-75): es un DATO crítico, no un label.
-                            Mantiene tabular-nums para alineación numérica.
+                            Layout normal (≥35px):
+                              línea 1: HH:MM – HH:MM           (12px, ink-2)
+                              línea 2: Servicio · Cliente       (14px, mixto)
 
-                            Bloques cortos (< 45px): layout inline
-                            "HH:MM · Nombre" — no caben dos líneas. La hora
-                            FIN se infiere por la posición vertical del bloque
-                            en la rejilla. Preferimos truncar nombre antes que
-                            ocultar la hora — la hora es la señal crítica. */}
+                            Layout ultra-corto (<35px):
+                              inline:  HH:MM · Servicio         (12px, una línea)
+
+                            Hora en vivo durante drag (#101) y resize (#95)
+                            via liveLabelStart/End — el bloque arrastrado
+                            muestra la hora destino sin esperar al servidor. */}
                         {(() => {
                           const displayName =
                             event.customerName?.trim() ||
@@ -1215,21 +1195,60 @@ export default function DayGrid({
                             null;
                           const startLabel = minutesToHHMM(liveLabelStart);
                           const endLabel = minutesToHHMM(liveLabelEnd);
-                          if (tier === 'short') {
+                          const service = event.service?.trim() || '';
+                          const hasService = service.length > 0;
+
+                          if (isUltraShort) {
+                            // Ultra-corto: "HH:MM · Servicio" inline. Cliente
+                            // se omite (no cabe). Si no hay servicio (caso
+                            // extremo) cae a "HH:MM · Cliente".
+                            const tail = hasService
+                              ? service
+                              : (displayName ?? '');
                             return (
-                              <p
-                                className={`flex items-center gap-1.5 leading-tight pr-6 min-w-0 ${tierCls.time}`}
-                              >
-                                <span className="tabular-nums font-bold opacity-90 shrink-0">
+                              <p className="flex items-center gap-1.5 leading-snug pr-6 min-w-0 text-[12px]">
+                                <span className="tabular-nums text-ink-2 shrink-0">
                                   {startLabel}
                                 </span>
-                                <span
-                                  className={`font-semibold truncate ${
-                                    displayName ? '' : 'opacity-70'
-                                  }`}
-                                >
-                                  {displayName ?? 'Cliente sin nombre'}
-                                </span>
+                                {tail && (
+                                  <>
+                                    <span className="text-ink-3 shrink-0" aria-hidden="true">·</span>
+                                    <span className="font-medium text-ink truncate">
+                                      {tail}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                            );
+                          }
+
+                          // Layout normal: hora arriba 12px + "Servicio · Cliente"
+                          // debajo 14px. Si falta servicio o cliente, el
+                          // separador "·" se omite (no cuelga suelto).
+                          return (
+                            <>
+                              <p className="leading-snug tabular-nums pr-6 truncate text-[12px] text-ink-2">
+                                {startLabel} – {endLabel}
+                              </p>
+                              <div className="flex items-center gap-1.5 leading-snug pr-6 min-w-0 mt-1 text-[14px]">
+                                {hasService && (
+                                  <span className="font-medium text-ink truncate min-w-0">
+                                    {service}
+                                  </span>
+                                )}
+                                {hasService && displayName && (
+                                  <span className="text-ink-3 shrink-0" aria-hidden="true">·</span>
+                                )}
+                                {displayName && (
+                                  <span className="text-ink-2 truncate min-w-0">
+                                    {displayName}
+                                  </span>
+                                )}
+                                {!displayName && !hasService && (
+                                  <span className="text-ink-2 truncate opacity-70 min-w-0">
+                                    Cliente sin nombre
+                                  </span>
+                                )}
                                 {event.barberRequested && !isBooksy && (
                                   <Heart
                                     className="inline-block h-3 w-3 shrink-0 text-danger fill-danger"
@@ -1238,64 +1257,19 @@ export default function DayGrid({
                                     <title>Cliente solicitó este barbero</title>
                                   </Heart>
                                 )}
-                              </p>
-                            );
-                          }
-                          // Bloques medium/large/xl: hora en su línea propia
-                          // (rango completo, regular weight, tabular) +
-                          // nombre debajo en semibold escalado por tier.
-                          return (
-                            <>
-                              <p
-                                className={`leading-tight tabular-nums pr-6 truncate ${tierCls.time}`}
-                              >
-                                {startLabel} – {endLabel}
-                              </p>
-                              <p
-                                className={`font-semibold truncate leading-tight pr-6 mt-0.5 ${tierCls.name} ${
-                                  displayName ? '' : 'opacity-70'
-                                }`}
-                              >
-                                {displayName ?? 'Cliente sin nombre'}
-                                {event.barberRequested && !isBooksy && (
-                                  <Heart
-                                    className="ml-1 inline-block h-3 w-3 align-text-bottom text-danger fill-danger"
-                                    aria-label="Cliente solicitó este barbero"
-                                  >
-                                    <title>Cliente solicitó este barbero</title>
-                                  </Heart>
-                                )}
-                              </p>
+                              </div>
                             </>
                           );
                         })()}
 
-                        {/* Servicio — LÍNEA 2 (bloques medium+). Tamaño del
-                            tier (13/14/15px) en text-ink-2 (vía opacity-80
-                            sobre warm-near-white o tinta del token). Si la
-                            cita tiene múltiples servicios separados por
-                            coma/+, se trunca con la indicación "+N". */}
-                        {showService && tier !== 'short' && (
-                          <p
-                            className={`leading-tight truncate opacity-80 mt-0.5 ${tierCls.service}`}
-                          >
-                            {event.service}
-                          </p>
-                        )}
-
-                        {/* Nombre del barbero — LÍNEA 3 (bloques large+).
-                            SOLO cuando la columna NO es la del barbero
-                            (columna "Sin asignar" con cita que tiene barber
-                            asignado pero no matchea). La duración "X min" se
-                            ELIMINÓ en task #104 — era redundante con el rango
-                            HH:MM-HH:MM de la línea 1 y robaba aire vertical
-                            al bloque. Si la columna ya identifica al barbero
-                            (caso normal), esta línea no aparece. */}
-                        {showBarber && !col.barber && (
-                          <p
-                            className={`leading-tight truncate opacity-70 mt-0.5 ${tierCls.barber}`}
-                          >
-                            {event.barber ?? 'Sin asignar'}
+                        {/* "Sin asignar" — si la columna NO es la del barbero
+                            (cita huérfana en la columna fallback) y la cita
+                            sí trae nombre de barbero pedido, lo mostramos
+                            como meta-línea sobria (12px ink-3, sin separador).
+                            Ultra-corto la omite — no caben 3 líneas. */}
+                        {!col.barber && !isUltraShort && event.barber && (
+                          <p className="leading-snug truncate pr-6 mt-1 text-[12px] text-ink-3">
+                            {event.barber}
                           </p>
                         )}
 
