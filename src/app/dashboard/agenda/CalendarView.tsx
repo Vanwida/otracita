@@ -18,7 +18,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import { isMobileViewport } from '@/lib/responsive';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
