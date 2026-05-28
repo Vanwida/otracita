@@ -186,7 +186,17 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
   );
 
   const [isPromosOpen, setIsPromosOpen] = useState(false);
-  const [currentDay, setCurrentDay] = useState<Date>(() => new Date());
+  // Día inicial: si la URL trae `?date=YYYY-MM-DD` (deep-link desde la vista
+  // de Actividad de Informes → "ver en agenda"), arrancamos ahí; si no, hoy.
+  // Solo se lee en el primer render (estado interno a partir de entonces).
+  const [currentDay, setCurrentDay] = useState<Date>(() => {
+    const raw = searchParams?.get('date');
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const d = parseISO(raw);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
   // En modo móvil del barbero forzamos 'day' (no hay toggle visible). El
   // estado existe igual para compartir lógica con el dashboard admin.
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -324,6 +334,13 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
   // No aplica cuando hay 0 (todos) o 1 (el endpoint ya filtró) seleccionados,
   // ni cuando `barberFilterId` server-forzado controla la vista.
   const events = useMemo(() => {
+    // #108 — ocultar las CANCELADAS del grid. El hueco que dejan queda libre
+    // (disponible visualmente para una nueva reserva). El dato NO se borra:
+    // persiste en DB y aparece en el log de Actividad (#107). No-show NO se
+    // oculta — mantiene su tratamiento morado + emoji. Filtramos aquí (único
+    // consumidor del payload del grid) y NO en /api/dashboard/calendar, que
+    // sigue siendo genérico (stats/otros usos pueden necesitar las canceladas).
+    const visible = payload.events.filter((e) => e.status !== 'cancelled');
     if (
       !barberFilterId &&
       selectedBarberIds.length > 1 &&
@@ -334,11 +351,11 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
       // hay un subset filtrado — el barbero filtra para enfocarse en su
       // equipo, no quiere ver las huérfanas. Si la spec cambia, hacerlo
       // configurable.
-      return payload.events.filter(
+      return visible.filter(
         (e) => e.barberId !== null && allow.has(e.barberId),
       );
     }
-    return payload.events;
+    return visible;
   }, [payload.events, selectedBarberIds, barberFilterId, barbers.length]);
 
   const blocks = useMemo(() => {
