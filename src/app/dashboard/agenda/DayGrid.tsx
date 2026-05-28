@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Lock, ChevronDown, Heart } from 'lucide-react';
+import { Lock, ChevronDown, Heart, ChevronsUp, ChevronsDown, Clock } from 'lucide-react';
 import type { CalendarEvent, CalendarBlock, Barber } from './types';
 import { barberColorVar, paymentBadge } from './types';
 import {
@@ -92,6 +92,12 @@ interface Props {
     block: CalendarBlock,
     next: { date: string; startTime: string | null; endTime: string | null; barberId: string },
   ) => void;
+  /**
+   * Móvil: muestra controles flotantes de navegación vertical rápida
+   * (inicio · ahora · fin) sobre el scroll de la agenda (task #110). En
+   * desktop la rueda del ratón ya es cómoda — no se pintan. Default false.
+   */
+  mobileMode?: boolean;
 }
 
 /** Mínimo de duración tras resize. Coincide con el snap del cliente y el
@@ -166,6 +172,7 @@ export default function DayGrid({
   onEventResize,
   onBlockResize,
   onBlockMove,
+  mobileMode = false,
 }: Props) {
   // Reloj vivo — refresca cada 60s para que la línea "ahora" avance sin
   // recargar (bug Reni 2026-05-22). Hook canónico compartido con WeekGrid.
@@ -563,6 +570,49 @@ export default function DayGrid({
       ? (currentTimeMin - startMin) * PX_PER_MIN
       : null;
 
+  // ── Navegación vertical rápida en móvil (task #110) ───────────────────────
+  // Reni: "facilitar subir/bajar para ir rápido a los extremos". La agenda
+  // día es un scroll largo; estos controles flotantes saltan al inicio, a
+  // "ahora" (si es hoy y cae en ventana) o al fin del día sin arrastrar el
+  // dedo. Reusa el MISMO contenedor de scroll (`scrollRef`) y la MISMA
+  // fórmula de centrado que el auto-scroll inicial — cero lógica nueva de
+  // posicionamiento.
+  const nowInWindow =
+    isToday && currentTimeMin >= startMin && currentTimeMin <= endMin;
+
+  const scrollToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  const scrollToNow = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Misma fórmula que el auto-scroll inicial: ~100px sobre "ahora".
+    const target = Math.max(0, (currentTimeMin - startMin) * PX_PER_MIN - 100);
+    el.scrollTo({ top: target, behavior: 'smooth' });
+  }, [currentTimeMin, startMin]);
+
+  // ¿Hace falta scrollear? Si el contenido cabe en el viewport, los
+  // controles sobran (Reni: "se oculta si no hay scroll necesario"). Lo
+  // medimos tras montar y al cambiar la ventana/altura — y por si el
+  // contenedor redimensiona (rotación, teclado iOS), un ResizeObserver.
+  const [canScroll, setCanScroll] = useState(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setCanScroll(el.scrollHeight - el.clientHeight > 8);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [totalHeight]);
+
   // Columns: one per configured barber, plus a fallback "Sin asignar" for
   // any booking whose `barber` name doesn't match a configured barber (null,
   // empty, legacy "Sin preferencia" strings, or a barber who has been renamed
@@ -625,7 +675,7 @@ export default function DayGrid({
   };
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-surface">
+    <div className="relative flex flex-1 overflow-hidden bg-surface">
       {/* Single scroll container so the time gutter and the column bodies
           scroll TOGETHER vertically (otherwise events drift visually from
           their hour labels). The gutter is position:sticky on the left so
@@ -1358,6 +1408,46 @@ export default function DayGrid({
         }
         label={dragTooltip?.label ?? ''}
       />
+
+      {/* Navegación vertical rápida — solo móvil (task #110). Stack discreto
+          abajo-IZQUIERDA para no chocar con el FAB "Nueva cita" (abajo-dcha).
+          Se oculta entero si el contenido cabe sin scroll. El botón "ahora"
+          solo aparece si es hoy y la hora actual cae en la ventana visible.
+          Tap targets 44px. `bottom` deja hueco al BottomNav del shell
+          (72px + safe-area), alineado con el FAB de "Nueva cita". */}
+      {mobileMode && canScroll && (
+        <div
+          className="absolute left-4 z-30 flex flex-col gap-2"
+          style={{ bottom: 'calc(72px + env(safe-area-inset-bottom) + 16px)' }}
+        >
+          <button
+            type="button"
+            onClick={scrollToTop}
+            aria-label="Ir al inicio del día"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-surface border border-line text-ink-2 shadow-md transition-transform active:scale-95 hover:text-ink"
+          >
+            <ChevronsUp className="h-5 w-5" aria-hidden="true" />
+          </button>
+          {nowInWindow && (
+            <button
+              type="button"
+              onClick={scrollToNow}
+              aria-label="Ir a la hora actual"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-surface border border-line text-time-now shadow-md transition-transform active:scale-95"
+            >
+              <Clock className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            aria-label="Ir al final del día"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-surface border border-line text-ink-2 shadow-md transition-transform active:scale-95 hover:text-ink"
+          >
+            <ChevronsDown className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1051,6 +1051,7 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
               onEventResize={handleEventResize}
               onBlockResize={handleBlockResize}
               onBlockMove={handleBlockMove}
+              mobileMode={mobileMode}
             />
           ) : viewMode === 'week' ? (
             <WeekGrid
