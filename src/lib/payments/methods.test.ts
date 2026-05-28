@@ -4,6 +4,7 @@ import {
   PAYMENT_METHODS,
   isPaymentMethod,
   CASH_MOVEMENT_METHOD_FROM_PAYMENT,
+  coarseCashMovementMethod,
   PAYMENT_METHOD_IS_INSTANT,
   MIXED_METHOD_TOKEN,
 } from './methods.ts';
@@ -57,6 +58,42 @@ test('CASH_MOVEMENT_METHOD_FROM_PAYMENT — mapeo concreto (regresión)', () => 
   // del cuadre histórico antes del deploy.
   assert.equal(CASH_MOVEMENT_METHOD_FROM_PAYMENT.bizum, 'card');
   assert.equal(CASH_MOVEMENT_METHOD_FROM_PAYMENT.card_online, 'online');
+});
+
+// -----------------------------------------------------------------------------
+// coarseCashMovementMethod — mapeo desde el string crudo de DB (incluye mixed +
+// legacy). Usado por el backfill SQL de apertura de caja. Regresión del bug
+// task #91: el backfill insertaba `bookings.payment_method` EN CRUDO en
+// `cash_movements.method`, violando el CHECK 'cash'|'card'|'online' cuando el
+// valor era card_physical | bizum | mixed → 500 al abrir caja.
+// -----------------------------------------------------------------------------
+test('coarseCashMovementMethod: todos los PaymentMethod caen en cash|card|online', () => {
+  for (const m of PAYMENT_METHODS) {
+    const mapped = coarseCashMovementMethod(m);
+    assert.ok(
+      mapped === 'cash' || mapped === 'card' || mapped === 'online',
+      `${m} debería mapear a cash|card|online, no a ${mapped}`,
+    );
+    // Debe coincidir con la tabla tipada para no divergir.
+    assert.equal(mapped, CASH_MOVEMENT_METHOD_FROM_PAYMENT[m]);
+  }
+});
+
+test('coarseCashMovementMethod: card_physical | bizum | mixed → card (caso que rompía la apertura)', () => {
+  assert.equal(coarseCashMovementMethod('card_physical'), 'card');
+  assert.equal(coarseCashMovementMethod('bizum'), 'card');
+  assert.equal(coarseCashMovementMethod('mixed'), 'card');
+});
+
+test('coarseCashMovementMethod: legacy y default seguros (nunca viola el CHECK)', () => {
+  assert.equal(coarseCashMovementMethod('cash'), 'cash');
+  assert.equal(coarseCashMovementMethod('card'), 'card'); // legacy
+  assert.equal(coarseCashMovementMethod('online'), 'online'); // legacy
+  assert.equal(coarseCashMovementMethod('card_online'), 'online');
+  // Cualquier valor inesperado → 'card', jamás un valor fuera del dominio.
+  assert.equal(coarseCashMovementMethod('algo_raro'), 'card');
+  assert.equal(coarseCashMovementMethod(null), 'card');
+  assert.equal(coarseCashMovementMethod(undefined), 'card');
 });
 
 test('PAYMENT_METHOD_IS_INSTANT — solo card_online no es instant', () => {

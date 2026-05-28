@@ -214,7 +214,22 @@ async function backfillTodayMovements(
       ${clientId}::uuid,
       ${sessionId}::uuid,
       'booking',
-      b.payment_method,
+      -- bookings.payment_method usa el dominio granular de la épica Reni
+      -- (cash | card_physical | bizum | card_online | mixed + legacy
+      -- card/online). cash_movements.method solo admite el dominio coarse
+      -- (cash | card | online) por el CHECK cash_movements_method_valid.
+      -- Insertarlo en crudo reventaba la apertura de caja (500) en cuanto
+      -- había un booking card_physical / bizum / mixed (task #91 bug).
+      -- Este CASE replica coarseCashMovementMethod() de
+      -- src/lib/payments/methods.ts (única fuente de verdad); el flow en
+      -- vivo de /charge usa el helper JS, el backfill lo replica en SQL al
+      -- ser INSERT crudo. Mantener ambos sincronizados.
+      CASE b.payment_method
+        WHEN 'cash' THEN 'cash'
+        WHEN 'online' THEN 'online'
+        WHEN 'card_online' THEN 'online'
+        ELSE 'card'  -- card | card_physical | bizum | mixed | otros → card
+      END,
       -- Principal (bookings.price) + servicios EXTRA (R7, booking_services.
       -- price_euros). Ambos en EUROS (foot-gun) → sumar en euros y ×100 una
       -- sola vez, idéntico a bookingTotalCents. Cita simple ⇒ subquery 0.

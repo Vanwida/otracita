@@ -75,6 +75,27 @@ export const CASH_MOVEMENT_METHOD_FROM_PAYMENT: Record<PaymentMethod, CashMoveme
   card_online: 'online',
 };
 
+// Mapeo coarse desde CUALQUIER valor crudo de `bookings.payment_method`
+// (incluye `mixed` y los legacy `card`/`online`) al dominio de
+// `cash_movements.method`. Usado por flujos que parten del string crudo de
+// DB en vez del PaymentMethod tipado — p.ej. el backfill SQL al abrir caja,
+// que inserta cash_movements desde bookings completados antes de la apertura.
+//
+//   cash                              → 'cash'
+//   online | card_online              → 'online'
+//   card | card_physical | bizum |
+//     mixed | (cualquier otro/NULL)   → 'card'
+//
+// El `default → card` es deliberado: cualquier valor inesperado nunca debe
+// violar el CHECK `cash_movements_method_valid` ('cash'|'card'|'online') y
+// reventar la apertura de caja. Mantener sincronizado con el CASE SQL del
+// backfill en src/app/api/cash/open/route.ts.
+export function coarseCashMovementMethod(raw: string | null | undefined): CashMovementMethod {
+  if (raw === 'cash') return 'cash';
+  if (raw === 'online' || raw === 'card_online') return 'online';
+  return 'card';
+}
+
 // Lucide icon name (string para que el componente que lo consuma haga el
 // import sin que este módulo arrastre react-icons al server bundle).
 export const PAYMENT_METHOD_ICON: Record<PaymentMethod, string> = {
