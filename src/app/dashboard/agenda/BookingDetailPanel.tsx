@@ -4,6 +4,7 @@ import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, Calend
 import { MANUAL_SOURCES, type ManualSource } from '@/lib/attribution/source-manual';
 import { getSourceMeta } from '@/lib/sources';
 import AddProductSaleModal from './AddProductSaleModal';
+import BookingActivityTimeline from './BookingActivityTimeline';
 import SlideOver from '../_components/SlideOver';
 import Modal from '../_components/Modal';
 import ServiceLinePicker from '../_components/ServiceLinePicker';
@@ -1162,6 +1163,12 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                   `card_online`. El reembolso queda fuera de scope V1 del
                   ChargeFlow; si hace falta, el barbero entra en /dashboard/caja
                   para ver el pago y reembolsarlo desde allí. */}
+
+              {/* Actividad (task #107) — timeline de todo lo que le ha pasado a
+                  la cita (creada, movida, cancelada, no-show, cobrada…). Sitio
+                  donde la cancelada y demás transiciones quedan visibles ahora
+                  que el grid las oculta (#108). */}
+              <BookingActivityTimeline bookingId={booking.id} />
             </div>
 
             {/* Footer fijo con el TOTAL (Booksy 09.58.37: barra inferior
