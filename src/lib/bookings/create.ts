@@ -11,6 +11,7 @@ import {
   type BookingServiceLine,
 } from '@/lib/bookings/duration';
 import { canonicalPhone } from '@/lib/phone';
+import { logBookingEvent, createdEventActor } from '@/lib/bookings/events';
 import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
@@ -510,6 +511,34 @@ export async function createBooking(
       importedIcalUid: importedIcalUid ?? null,
     })
     .returning();
+
+  // --- Log de evento 'created' (task #107) ----------------------------------
+  // Fuente única del log de actividad. El actor se deriva del `source` (bot,
+  // voice, web/pwa, dashboard, import) vía createdEventActor. Best-effort: si
+  // el log falla NO tumba la reserva (la cita ya está creada arriba).
+  {
+    const { actor, actorLabel } = createdEventActor(source, {
+      customerName: created.customerName,
+      barberName: resolved.name,
+    });
+    const dateLabel = created.date.split('-').reverse().join('/'); // DD/MM/YYYY
+    await logBookingEvent({
+      clientId: client.id,
+      bookingId: created.id,
+      type: 'created',
+      actor,
+      actorLabel,
+      summary: `Cita creada · ${created.service} con ${resolved.name} · ${dateLabel} ${created.time}`,
+      metadata: {
+        service: created.service,
+        barberId: resolved.id,
+        barberName: resolved.name,
+        date: created.date,
+        time: created.time,
+        source,
+      },
+    });
+  }
 
   // --- Servicios extra (R7) -------------------------------------------------
   // Solo cuando el caller los envió (dashboard). Aditivo: el principal ya

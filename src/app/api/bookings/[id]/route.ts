@@ -18,6 +18,7 @@ import { onBookingCancelled } from '@/lib/waitlist/match'
 import { MANUAL_SOURCES, isManualSource } from '@/lib/attribution/source-manual'
 import { pickBarberForCustomer } from '@/lib/availability'
 import { loadShopOverridesForDate } from '@/lib/shop-day-overrides'
+import { logBookingEvent, type BookingEventActor } from '@/lib/bookings/events'
 import type { BarberConfig } from '@/lib/whatsapp/config'
 
 // -----------------------------------------------------------------------------
@@ -394,6 +395,73 @@ export async function PATCH(
 
   await db.update(bookings).set(patch).where(eq(bookings.id, id))
   const [updated] = await db.select().from(bookings).where(eq(bookings.id, id))
+
+  // ── Log de eventos (task #107) ────────────────────────────────────────
+  // Best-effort vía logBookingEvent (try/catch interno, nunca propaga). El
+  // actor es admin/barber según la sesión; actorLabel = email del operador.
+  // Comparamos los valores ANTES (booking) con el patch para decidir qué
+  // eventos emitir. Un PATCH puede combinar varios cambios → varios eventos.
+  {
+    const eventActor: BookingEventActor = access.isAdmin ? 'admin' : 'barber'
+    const actorLabel = access.user.email
+    const base = { clientId: access.client.id, bookingId: id, actor: eventActor, actorLabel }
+
+    // status: cancelled / completed.
+    if (patch.status === 'cancelled') {
+      await logBookingEvent({
+        ...base,
+        type: 'cancelled',
+        summary: `Cancelada por ${access.isAdmin ? 'la tienda' : 'el barbero'}`,
+        metadata: { date: booking.date, time: booking.time },
+      })
+    } else if (patch.status === 'completed') {
+      await logBookingEvent({
+        ...base,
+        type: 'completed',
+        summary: `Cita marcada como completada${patch.paymentMethod ? ` · cobro ${String(patch.paymentMethod)}` : ''}`,
+        metadata: patch.paymentMethod ? { method: patch.paymentMethod } : null,
+      })
+    }
+
+    // moved: cambio de día/hora y/o de barbero. Solo si NO se canceló (una
+    // cancelación en el mismo PATCH ya cuenta el evento relevante).
+    if (patch.status !== 'cancelled') {
+      const dateChanged = 'date' in body && booking.date !== targetDate
+      const timeChanged = 'time' in body && booking.time !== targetTime
+      const barberChanged =
+        targetBarberId !== undefined && targetBarberId !== booking.barberId
+      if (dateChanged || timeChanged || barberChanged) {
+        const parts: string[] = []
+        if (timeChanged) parts.push(`de ${booking.time} a ${targetTime}`)
+        if (dateChanged) parts.push(`del ${booking.date} al ${targetDate}`)
+        if (barberChanged)
+          parts.push(`a ${targetBarberLabel} (antes ${booking.barber ?? 'sin asignar'})`)
+        await logBookingEvent({
+          ...base,
+          type: 'moved',
+          summary: `Cita movida ${parts.join(', ')}`,
+          metadata: {
+            fromDate: booking.date,
+            toDate: targetDate,
+            fromTime: booking.time,
+            toTime: targetTime,
+            fromBarber: booking.barber,
+            toBarber: barberChanged ? targetBarberLabel : booking.barber,
+          },
+        })
+      }
+
+      // resized: cambio de duración.
+      if ('duration' in body && booking.duration !== targetDuration) {
+        await logBookingEvent({
+          ...base,
+          type: 'resized',
+          summary: `Duración cambiada de ${booking.duration} a ${targetDuration} min`,
+          metadata: { fromDuration: booking.duration, toDuration: targetDuration },
+        })
+      }
+    }
+  }
 
   // ── Facturación VeriFactu: NUNCA automática ──────────────────────────
   // Decisión de producto: cerrar la cita registra la venta para gestión

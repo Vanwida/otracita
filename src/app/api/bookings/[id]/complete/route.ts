@@ -14,6 +14,7 @@ import {
 import { bookingTotalCents } from '@/lib/bookings/total';
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
 import { recordTipSequential } from '@/lib/payments/record-tip';
+import { logBookingEvent, type BookingEventActor } from '@/lib/bookings/events';
 
 // -----------------------------------------------------------------------------
 // POST /api/bookings/[id]/complete (admin O barber-role) — cierre simple
@@ -204,6 +205,28 @@ export async function POST(
         console.error('[bookings/complete] cash movement failed', err);
       }
     })();
+  }
+
+  // 4b. Log de eventos: charged + completed (task #107). Best-effort.
+  {
+    const eventActor: BookingEventActor = isAdmin ? 'admin' : 'barber';
+    const base = {
+      clientId: client.id,
+      bookingId,
+      actor: eventActor,
+      actorLabel: user.email,
+    };
+    await logBookingEvent({
+      ...base,
+      type: 'charged',
+      summary: `Cobro registrado · ${(totalCents / 100).toFixed(2)} € (${method})`,
+      metadata: { amountCents: totalCents, methods: [method], tipCents: tipCents || null },
+    });
+    await logBookingEvent({
+      ...base,
+      type: 'completed',
+      summary: 'Cita completada al cobrar',
+    });
   }
 
   // 5. Followup (rating + tip request al cliente).

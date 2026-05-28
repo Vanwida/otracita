@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { getAppSession } from '@/lib/app-auth/session'
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing'
 import { onBookingCancelled } from '@/lib/waitlist/match'
+import { logBookingEvent } from '@/lib/bookings/events'
 
 // -----------------------------------------------------------------------------
 // POST /api/app/bookings/[id]/cancel
@@ -39,6 +40,18 @@ export async function POST(
     .where(and(eq(bookings.id, id), eq(bookings.customerPhone, session.phone)))
 
   tryVoidInvoicesInBackground(id)
+
+  // Log de evento (task #107). Actor = el propio cliente desde la PWA.
+  // Best-effort: nunca tumba la cancelación.
+  await logBookingEvent({
+    clientId: existing.clientId,
+    bookingId: existing.id,
+    type: 'cancelled',
+    actor: 'customer',
+    actorLabel: existing.customerName?.trim() || null,
+    summary: 'Cancelada por el cliente',
+    metadata: { date: existing.date, time: existing.time },
+  })
 
   // Waitlist (#88): si alguien estaba esperando este slot, le avisamos.
   // Fire-and-forget — nunca tira la cancelación.

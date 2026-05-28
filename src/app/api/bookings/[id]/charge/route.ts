@@ -30,6 +30,7 @@ import {
   StripeCheckoutError,
 } from '@/lib/payments/stripe-checkout';
 import { recordTipSequential } from '@/lib/payments/record-tip';
+import { logBookingEvent, type BookingEventActor } from '@/lib/bookings/events';
 import { isNull } from 'drizzle-orm';
 
 // -----------------------------------------------------------------------------
@@ -264,6 +265,39 @@ export async function POST(
   }
 
   const result = { bookingCompleted, tipRecorded };
+
+  // ── Log de eventos: charged (+ completed si cerró offline) (task #107) ─
+  // Best-effort. El tramo `card_online` NO cierra aquí (lo hace el webhook
+  // checkout.session.completed) → en ese caso no emitimos 'completed' (queda
+  // para el webhook); sí registramos el intento de cobro como 'charged'.
+  {
+    const eventActor: BookingEventActor = access.isAdmin ? 'admin' : 'barber';
+    const base = {
+      clientId: client.id,
+      bookingId,
+      actor: eventActor,
+      actorLabel: user.email,
+    };
+    const methods = body.payments.map((p) => p.method).join(' + ');
+    await logBookingEvent({
+      ...base,
+      type: 'charged',
+      summary: `Cobro registrado · ${(bookingTotal / 100).toFixed(2)} € (${methods})${onlineLine ? ' · pendiente online' : ''}`,
+      metadata: {
+        amountCents: bookingTotal,
+        methods: body.payments.map((p) => p.method),
+        tipCents: body.tip?.amountCents ?? null,
+        completed: result.bookingCompleted,
+      },
+    });
+    if (result.bookingCompleted) {
+      await logBookingEvent({
+        ...base,
+        type: 'completed',
+        summary: 'Cita completada al cobrar',
+      });
+    }
+  }
 
   // ── Cash movements para los tramos offline (fire-and-forget) ─────────
   // Uno por tramo offline (1 booking → N rows en cash_movements si split).

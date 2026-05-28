@@ -9,6 +9,7 @@ import {
 } from '@/lib/auth/require-tenant-actor'
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing'
 import { chargeNoShowFee, type NoShowFeeOutcome } from '@/lib/stripe/no-show-fee'
+import { logBookingEvent, type BookingEventActor } from '@/lib/bookings/events'
 
 export async function POST(req: NextRequest) {
   const access = await requireTenantActor(req)
@@ -41,6 +42,20 @@ export async function POST(req: NextRequest) {
   await db.update(bookings)
     .set({ status: 'no_show' })
     .where(eq(bookings.id, bookingId))
+
+  // Log de evento (task #107). Best-effort.
+  {
+    const eventActor: BookingEventActor = isAdmin ? 'admin' : 'barber'
+    await logBookingEvent({
+      clientId: booking.clientId,
+      bookingId: booking.id,
+      type: 'no_show',
+      actor: eventActor,
+      actorLabel: access.user.email,
+      summary: 'Marcada como no presentado',
+      metadata: { date: booking.date, time: booking.time },
+    })
+  }
 
   // Void any issued invoice linked to this booking — a no-show means the
   // customer never paid, so the document must be annulled (legally this

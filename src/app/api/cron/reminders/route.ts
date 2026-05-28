@@ -8,6 +8,7 @@ import { dispatchUserNotification } from '@/lib/notifications/dispatch';
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
 import { MS_IN_DAY, BUSINESS_TIMEZONE } from '@/lib/time';
 import { publicAccountPath } from '@/lib/site';
+import { logBookingEvent } from '@/lib/bookings/events';
 
 type Lang = 'es' | 'en';
 
@@ -104,6 +105,17 @@ export async function GET(request: Request) {
         .set({ reminderSent: true })
         .where(eq(bookings.id, booking.id));
 
+      // Log de evento (task #107). Actor = sistema (lo dispara el cron).
+      await logBookingEvent({
+        clientId: client.id,
+        bookingId: booking.id,
+        type: 'reminder_sent',
+        actor: 'system',
+        actorLabel: 'Recordatorio automático',
+        summary: 'Recordatorio de cita enviado (24h antes)',
+        metadata: { date: booking.date, time: booking.time },
+      });
+
       sent++;
     } catch (error) {
       console.error(`Reminder failed for booking ${booking.id}:`, error);
@@ -162,6 +174,17 @@ export async function GET(request: Request) {
         .set({ status: 'completed' })
         .where(eq(bookings.id, row.id));
       completedCount++;
+
+      // Log de evento (task #107): cierre automático por red de seguridad.
+      // Actor = sistema; deja claro en el timeline que NO lo cerró un humano.
+      await logBookingEvent({
+        clientId: row.clientId,
+        bookingId: row.id,
+        type: 'completed',
+        actor: 'system',
+        actorLabel: 'Cierre automático',
+        summary: `Completada automáticamente (sin cerrar tras ${SAFETY_NET_DAYS} días)`,
+      });
 
       // Decrement that customer's noShows counter (min 0).
       const upd = await db
