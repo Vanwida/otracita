@@ -14,7 +14,7 @@
 //   Clientes    · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
 //   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
 //   Crecimiento · App · Recepcionista IA · Bot WhatsApp · Promos · Fidelidad · Reseñas · Tracking
-//   Informes    · Panel · Ingresos · Citas · Clientes · Nóminas · Marketing · Fiscal
+//   Informes    · Panel · Actividad · Ingresos · Citas · Clientes · Nóminas · Marketing · Fiscal
 //   Ajustes     · Negocio · Pagos · Suscripción · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
@@ -149,6 +149,7 @@ export const AREAS: Area[] = [
     subtitle: 'Tu negocio en números: P&L, ingresos, citas y clientes.',
     tabs: [
       { seg: null, label: 'Panel', href: '/dashboard/informes' },
+      { seg: 'actividad', label: 'Actividad', href: '/dashboard/informes/actividad' },
       { seg: 'ingresos', label: 'Ingresos', href: '/dashboard/informes/ingresos' },
       { seg: 'citas', label: 'Citas', href: '/dashboard/informes/citas' },
       { seg: 'clientes', label: 'Clientes', href: '/dashboard/informes/clientes' },
