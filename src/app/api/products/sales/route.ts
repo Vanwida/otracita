@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { barbers, bookings, products, productSales } from '@/db/schema'
+import { barbers, bookings, invoices, products, productSales } from '@/db/schema'
 import { and, eq, sql } from 'drizzle-orm'
 import {
   requireTenantActor,
@@ -49,6 +49,12 @@ interface Body {
   barberId?: unknown
   customerPhone?: unknown
   consumptionKind?: unknown
+  /**
+   * Override del precio unitario en céntimos (task #111). El editor de venta
+   * cobrada deja al barbero corregir el importe del producto que vendió (p.ej.
+   * un descuento aplicado a mano). Si no viene, se usa el precio del catálogo.
+   */
+  unitPriceCents?: unknown
 }
 
 const VALID_METHODS = ['cash', 'card', 'online']
@@ -76,6 +82,21 @@ export async function POST(req: Request) {
   const quantity = typeof body.quantity === 'number' ? body.quantity : Number.parseInt(String(body.quantity ?? ''), 10)
   if (!Number.isFinite(quantity) || quantity < 1 || quantity > 99) {
     return Response.json({ error: 'Cantidad inválida (1-99)' }, { status: 400 })
+  }
+
+  // Override de precio unitario (task #111). Solo lo aceptamos para ventas a
+  // cliente (no para consumo interno / merma — esos no tienen precio de venta).
+  // Rango: 0..100k € en céntimos. null/ausente = precio del catálogo.
+  let unitPriceOverrideCents: number | null = null
+  if (body.unitPriceCents !== undefined && body.unitPriceCents !== null) {
+    const raw =
+      typeof body.unitPriceCents === 'number'
+        ? body.unitPriceCents
+        : Number.parseInt(String(body.unitPriceCents), 10)
+    if (!Number.isFinite(raw) || raw < 0 || raw > 100_000_00) {
+      return Response.json({ error: 'Precio inválido.' }, { status: 400 })
+    }
+    unitPriceOverrideCents = Math.round(raw)
   }
 
   // consumptionKind: whitelist. Si viene, la venta no mueve dinero (sin
@@ -149,6 +170,35 @@ export async function POST(req: Request) {
     }
     if (!barberId && booking.barberId) barberId = booking.barberId
     if (!customerPhone && booking.customerPhone) customerPhone = booking.customerPhone
+
+    // VeriFactu (task #111): a una venta YA COBRADA solo se le pueden añadir
+    // productos mientras NO exista factura emitida — igual tratamiento que el
+    // editor de venta #86 da al resto de campos. Si hay invoice issued/rectified
+    // la corrección exige una rectificativa, no un INSERT silencioso.
+    //
+    // Durante `confirmed` no hay documento fiscal todavía, así que el flujo de
+    // venta normal (corte en curso) no se ve afectado: este guard solo aplica a
+    // bookings ya `completed`. Defense-in-depth — la UI ya solo abre el flujo de
+    // "añadir producto a venta cerrada" cuando el GET /sale devolvió editable.
+    if (booking.status === 'completed') {
+      const invoiceRows = await db
+        .select({ status: invoices.status })
+        .from(invoices)
+        .where(and(eq(invoices.bookingId, bookingId), eq(invoices.clientId, client.id)))
+      const hasLiveInvoice = invoiceRows.some(
+        (r) => r.status === 'issued' || r.status === 'rectified',
+      )
+      if (hasLiveInvoice) {
+        return Response.json(
+          {
+            error:
+              'Esta venta tiene factura emitida. Para añadir productos emite una rectificativa.',
+            code: 'invoice_locked',
+          },
+          { status: 409 },
+        )
+      }
+    }
   }
 
   // Si NO hay bookingId Y el actor es barber-role sin barberId del body,
@@ -194,7 +244,12 @@ export async function POST(req: Request) {
     }
   }
 
-  const unitPriceCents = product.priceCents
+  // Override solo para ventas a cliente. En consumo interno / merma el precio
+  // de venta no aplica (el P&L usa cost_price), así que ignoramos el override.
+  const unitPriceCents =
+    unitPriceOverrideCents !== null && !consumptionKind
+      ? unitPriceOverrideCents
+      : product.priceCents
   const totalCents = unitPriceCents * quantity
 
   const [sale] = await db

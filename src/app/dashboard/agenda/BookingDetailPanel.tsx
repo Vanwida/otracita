@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Phone, Ban, Banknote, Smartphone, Globe } from 'lucide-react';
+import { X, Copy, Check, CheckCircle2, UserX, Undo2, CreditCard, Loader2, CalendarX2, MessageCircle, ShoppingBag, Pencil, Plus, Phone, Ban, Banknote, Smartphone, Globe, Trash2 } from 'lucide-react';
 import { MANUAL_SOURCES, type ManualSource } from '@/lib/attribution/source-manual';
 import { getSourceMeta } from '@/lib/sources';
 import AddProductSaleModal from './AddProductSaleModal';
@@ -22,6 +22,7 @@ import { hoursForDate, parseMinutes } from '@/lib/availability-hours';
 import { useConfirm } from '../_components/ConfirmDialog';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { paymentBadge } from './types';
@@ -1277,6 +1278,11 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             onMutated?.();
             startTransition(() => router.refresh());
           }}
+          onMutated={() => {
+            // Añadir/quitar producto: revalida la agenda sin cerrar el editor.
+            onMutated?.();
+            startTransition(() => router.refresh());
+          }}
         />
       )}
 
@@ -1735,6 +1741,20 @@ function CancelBookingModal({
 // convierte en línea única con el método elegido — el barbero ve un aviso.
 // -----------------------------------------------------------------------------
 
+interface SaleProductLine {
+  id: string;
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
+  paymentMethod: string;
+  barberId: string | null;
+  /** Ya facturada → no se puede quitar sin rectificativa. */
+  invoiced: boolean;
+}
+
 interface SaleData {
   editable: boolean;
   lockReason: string | null;
@@ -1755,7 +1775,27 @@ interface SaleData {
     barberId: string | null;
     barberName: string | null;
   } | null;
+  productSales: SaleProductLine[];
 }
+
+// Catálogo ligero para el selector de "añadir producto" dentro del editor.
+interface CatalogProduct {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  priceCents: number;
+  stockQuantity: number | null;
+}
+
+// Métodos de pago de producto (distintos del enum de cobro de cita — el
+// endpoint /api/products/sales solo acepta estos tres).
+const PRODUCT_SALE_METHODS = ['cash', 'card', 'online'] as const;
+type ProductSaleMethod = (typeof PRODUCT_SALE_METHODS)[number];
+const PRODUCT_SALE_METHOD_LABEL: Record<ProductSaleMethod, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  online: 'Online',
+};
 
 function EditSaleModal({
   booking,
@@ -1763,12 +1803,16 @@ function EditSaleModal({
   stripeConnectActive,
   onClose,
   onSaved,
+  onMutated,
 }: {
   booking: CalendarEvent;
   barbers: Barber[];
   stripeConnectActive: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** Revalida la agenda del padre SIN cerrar el modal — para que añadir o
+   *  quitar un producto refresque la lista sin perder el contexto del editor. */
+  onMutated?: () => void;
 }) {
   // ── State ────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -1793,66 +1837,111 @@ function EditSaleModal({
   const [tipMethod, setTipMethod] = useState<'cash' | 'card'>('cash');
   const [tipBarberId, setTipBarberId] = useState<string>('');
 
+  // ── Productos vendidos (task #111) ─────────────────────────────────────
+  // Catálogo para el selector + estado del sub-flujo "añadir producto".
+  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [addingProduct, setAddingProduct] = useState(false); // sub-form abierto
+  const [productSubmitting, setProductSubmitting] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
+  // Campos del sub-form (prefill al abrir: precio del producto, barbero de la
+  // cita, método efectivo).
+  const [newProductId, setNewProductId] = useState<string>('');
+  const [newQty, setNewQty] = useState<number>(1);
+  const [newPriceEuros, setNewPriceEuros] = useState<number | null>(null);
+  const [newBarberId, setNewBarberId] = useState<string>('');
+  const [newMethod, setNewMethod] = useState<ProductSaleMethod>('cash');
+
   const isSplit = (sale?.payments.length ?? 0) > 1;
 
-  // ── Precarga ─────────────────────────────────────────────────────────
-  // El estado inicial (loading=true, loadError=null) ya está en useState;
-  // el effect solo dispara el fetch y aplica resultado asíncronamente. Esto
-  // evita la regla react-hooks/set-state-in-effect (no setState SÍNCRONO).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  // ── Precarga (recargable) ──────────────────────────────────────────────
+  // Reutilizable: tras añadir/quitar un producto refrescamos la venta sin
+  // cerrar el modal. `firstLoad` resetea los campos del formulario solo la
+  // primera vez (un refresh por producto NO debe pisar lo que el barbero esté
+  // editando en cliente/precio/método/propina).
+  const loadSale = useCallback(
+    async (firstLoad: boolean) => {
       try {
         const res = await fetch(`/api/bookings/${booking.id}/sale`);
         const data = (await res.json().catch(() => ({}))) as SaleData & { error?: string };
-        if (cancelled) return;
         if (!res.ok || !data.editable) {
           setLoadError(data.error || 'Esta venta no es editable.');
           setLoading(false);
           return;
         }
         setSale(data);
-        setCustomerName(data.booking.customerName ?? '');
-        setCustomerPhone(data.booking.customerPhone);
-        setLinkedPhone(
-          data.booking.customerPhone && !data.booking.customerPhone.startsWith('pos-')
-            ? data.booking.customerPhone
-            : null,
-        );
-        setService(data.booking.service);
-        setPrice(data.booking.price ?? null);
-        // Método: usa el de la línea actual; si era split, fall back al token
-        // 'mixed' del booking → forzamos al barbero a elegir uno (default cash).
-        const firstMethod = data.payments[0]?.method;
-        if (firstMethod && (PAYMENT_METHODS as readonly string[]).includes(firstMethod)) {
-          setPaymentMethod(firstMethod as PaymentMethod);
-        } else {
-          setPaymentMethod('cash');
-        }
-        // Propina
-        if (data.tip && data.tip.amountCents > 0) {
-          setTipEnabled(true);
-          setTipEuros(Math.round(data.tip.amountCents) / 100);
-          setTipMethod(data.tip.method === 'card' ? 'card' : 'cash');
-          setTipBarberId(data.tip.barberId ?? data.booking.barberId ?? '');
-        } else {
-          setTipEnabled(false);
-          setTipEuros(null);
-          setTipMethod('cash');
-          setTipBarberId(data.booking.barberId ?? '');
+        if (firstLoad) {
+          setCustomerName(data.booking.customerName ?? '');
+          setCustomerPhone(data.booking.customerPhone);
+          setLinkedPhone(
+            data.booking.customerPhone && !data.booking.customerPhone.startsWith('pos-')
+              ? data.booking.customerPhone
+              : null,
+          );
+          setService(data.booking.service);
+          setPrice(data.booking.price ?? null);
+          const firstMethod = data.payments[0]?.method;
+          if (firstMethod && (PAYMENT_METHODS as readonly string[]).includes(firstMethod)) {
+            setPaymentMethod(firstMethod as PaymentMethod);
+          } else {
+            setPaymentMethod('cash');
+          }
+          if (data.tip && data.tip.amountCents > 0) {
+            setTipEnabled(true);
+            setTipEuros(Math.round(data.tip.amountCents) / 100);
+            setTipMethod(data.tip.method === 'card' ? 'card' : 'cash');
+            setTipBarberId(data.tip.barberId ?? data.booking.barberId ?? '');
+          } else {
+            setTipEnabled(false);
+            setTipEuros(null);
+            setTipMethod('cash');
+            setTipBarberId(data.booking.barberId ?? '');
+          }
         }
         setLoading(false);
       } catch {
-        if (!cancelled) {
-          setLoadError('No se pudo cargar la venta.');
-          setLoading(false);
+        setLoadError('No se pudo cargar la venta.');
+        setLoading(false);
+      }
+    },
+    [booking.id],
+  );
+
+  // El estado inicial (loading=true) ya está en useState; el effect solo
+  // dispara el fetch (evita setState síncrono → regla react-hooks).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (cancelled) return;
+      await loadSale(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSale]);
+
+  // Catálogo de productos — carga perezosa al abrir el sub-form la 1ª vez.
+  useEffect(() => {
+    if (!addingProduct || catalogLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/products');
+        const d = (await r.json().catch(() => ({}))) as { products?: CatalogProduct[] };
+        if (!cancelled && Array.isArray(d.products)) {
+          setCatalog(d.products);
         }
+      } catch {
+        /* silencioso — el selector queda vacío y el barbero ve "sin productos" */
+      } finally {
+        if (!cancelled) setCatalogLoaded(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [booking.id]);
+  }, [addingProduct, catalogLoaded]);
 
   // ── Métodos disponibles ──────────────────────────────────────────────
   // Excluimos card_online de la edición — para cambiar a online el barbero
@@ -1860,6 +1949,98 @@ function EditSaleModal({
   const availableMethods: PaymentMethod[] = PAYMENT_METHODS.filter(
     (m) => m !== 'card_online' || stripeConnectActive,
   ).filter((m) => m !== 'card_online'); // V1: nunca card_online en edición
+
+  // ── Productos: abrir / añadir / quitar ─────────────────────────────────
+  const selectedCatalogProduct = catalog.find((p) => p.id === newProductId) ?? null;
+  const newQtyExceedsStock =
+    selectedCatalogProduct != null &&
+    selectedCatalogProduct.stockQuantity !== null &&
+    newQty > selectedCatalogProduct.stockQuantity;
+
+  // Abre el sub-form con prefill: barbero de la cita por defecto.
+  const openAddProduct = () => {
+    setProductError(null);
+    setNewProductId('');
+    setNewQty(1);
+    setNewPriceEuros(null);
+    setNewBarberId(sale?.booking.barberId ?? '');
+    setNewMethod('cash');
+    setAddingProduct(true);
+  };
+
+  // Al elegir producto en el selector, prefill del precio (€) al del catálogo.
+  const pickProduct = (id: string) => {
+    setNewProductId(id);
+    const p = catalog.find((x) => x.id === id);
+    setNewPriceEuros(p ? Math.round(p.priceCents) / 100 : null);
+  };
+
+  const addProduct = async () => {
+    if (!selectedCatalogProduct) {
+      setProductError('Elige un producto.');
+      return;
+    }
+    if (newQty < 1) {
+      setProductError('La cantidad debe ser al menos 1.');
+      return;
+    }
+    if (newPriceEuros === null || newPriceEuros < 0) {
+      setProductError('Indica un precio válido.');
+      return;
+    }
+    setProductSubmitting(true);
+    setProductError(null);
+    try {
+      const r = await fetch('/api/products/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: selectedCatalogProduct.id,
+          quantity: newQty,
+          paymentMethod: newMethod,
+          bookingId: booking.id,
+          // barberId opcional — si vacío, el endpoint cae al barbero de la cita.
+          barberId: newBarberId || undefined,
+          unitPriceCents: Math.round((newPriceEuros ?? 0) * 100),
+        }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) {
+        setProductError(d.error || 'No se pudo añadir el producto.');
+        setProductSubmitting(false);
+        return;
+      }
+      // Recarga la venta (refresca la lista de productos) sin pisar el resto
+      // del formulario, cierra el sub-form y avisa al padre para revalidar.
+      await loadSale(false);
+      setAddingProduct(false);
+      onMutated?.();
+    } catch {
+      setProductError('Error de red.');
+    } finally {
+      setProductSubmitting(false);
+    }
+  };
+
+  const removeProduct = async (saleLineId: string) => {
+    setProductError(null);
+    setRemovingId(saleLineId);
+    try {
+      const r = await fetch(`/api/products/sales/${saleLineId}`, { method: 'DELETE' });
+      const d = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) {
+        setProductError(d.error || 'No se pudo quitar el producto.');
+        setRemovingId(null);
+        return;
+      }
+      await loadSale(false);
+      onMutated?.();
+    } catch {
+      setProductError('Error de red.');
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   // ── Submit ───────────────────────────────────────────────────────────
   const submit = async () => {
@@ -2201,6 +2382,261 @@ function EditSaleModal({
                     </select>
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Productos vendidos (task #111) — añadir el producto que el
+                barbero vendió y olvidó registrar, o quitar uno metido por
+                error. Cada operación es inmediata (POST/DELETE) e independiente
+                de "Guardar cambios": al añadir se descuenta stock y se recalcula
+                el cuadre; al quitar se devuelve. Sin factura emitida (este modal
+                solo se abre cuando la venta es editable), así que no afecta a
+                Hacienda. */}
+            <div className="space-y-2 border-t border-line pt-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-ink-2">
+                Productos vendidos
+              </p>
+
+              {sale.productSales.length === 0 && !addingProduct && (
+                <p className="text-xs text-ink-3">
+                  No hay productos en esta venta.
+                </p>
+              )}
+
+              {sale.productSales.length > 0 && (
+                <ul className="space-y-1.5">
+                  {sale.productSales.map((line) => (
+                    <li
+                      key={line.id}
+                      className="flex items-center gap-3 rounded-lg border border-line bg-overlay/40 px-3 py-2"
+                    >
+                      <div className="h-8 w-8 rounded-md bg-surface border border-line shrink-0 overflow-hidden flex items-center justify-center">
+                        {line.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={line.imageUrl} alt={line.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <ShoppingBag className="h-3.5 w-3.5 text-ink-3" aria-hidden="true" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-ink truncate">
+                          {line.name}
+                          {line.quantity > 1 && (
+                            <span className="text-ink-3 font-normal"> · ×{line.quantity}</span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-ink-3 tabular-nums">
+                          {formatCents(line.totalCents)} · {PRODUCT_SALE_METHOD_LABEL[(line.paymentMethod as ProductSaleMethod)] ?? line.paymentMethod}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeProduct(line.id)}
+                        disabled={line.invoiced || removingId !== null || submitting}
+                        title={
+                          line.invoiced
+                            ? 'Ya facturado — usa una rectificativa'
+                            : 'Quitar producto'
+                        }
+                        aria-label={`Quitar ${line.name}`}
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-ink-3 hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+                      >
+                        {removingId === line.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Sub-form "añadir producto" */}
+              {addingProduct ? (
+                <div className="space-y-3 rounded-lg border border-line bg-overlay/40 p-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="edit-sale-add-product" className="text-[11px] font-medium text-ink-2">
+                      Producto
+                    </label>
+                    {!catalogLoaded ? (
+                      <div className="flex justify-center py-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-ink-3" aria-hidden="true" />
+                      </div>
+                    ) : catalog.length === 0 ? (
+                      <p className="text-xs text-ink-3">
+                        No tienes productos dados de alta.{' '}
+                        <Link href="/dashboard/ventas/productos" className="text-brand hover:underline">
+                          Añádelos aquí
+                        </Link>
+                        .
+                      </p>
+                    ) : (
+                      <select
+                        id="edit-sale-add-product"
+                        value={newProductId}
+                        onChange={(e) => pickProduct(e.target.value)}
+                        disabled={productSubmitting}
+                        className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                      >
+                        <option value="">— elige —</option>
+                        {catalog.map((p) => {
+                          const out = p.stockQuantity !== null && p.stockQuantity === 0;
+                          return (
+                            <option key={p.id} value={p.id} disabled={out}>
+                              {p.name}
+                              {out
+                                ? ' · agotado'
+                                : p.stockQuantity !== null
+                                  ? ` · ${p.stockQuantity} uds`
+                                  : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                  </div>
+
+                  {selectedCatalogProduct && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="edit-sale-add-qty" className="text-[11px] font-medium text-ink-2">
+                            Cantidad
+                          </label>
+                          <NumberInput
+                            id="edit-sale-add-qty"
+                            value={newQty}
+                            onValueChange={(n) => {
+                              if (n !== null) setNewQty(Math.max(1, Math.min(99, n)));
+                            }}
+                            min={1}
+                            max={99}
+                            decimals={0}
+                            aria-label="Cantidad"
+                            disabled={productSubmitting}
+                            className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors tabular-nums"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="edit-sale-add-price" className="text-[11px] font-medium text-ink-2">
+                            Precio unitario (€)
+                          </label>
+                          <NumberInput
+                            id="edit-sale-add-price"
+                            value={newPriceEuros}
+                            onValueChange={setNewPriceEuros}
+                            min={0}
+                            decimals={2}
+                            placeholder="0,00"
+                            aria-label="Precio unitario en euros"
+                            disabled={productSubmitting}
+                            className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors tabular-nums"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="edit-sale-add-barber" className="text-[11px] font-medium text-ink-2">
+                          Barbero
+                        </label>
+                        <select
+                          id="edit-sale-add-barber"
+                          value={newBarberId}
+                          onChange={(e) => setNewBarberId(e.target.value)}
+                          disabled={productSubmitting}
+                          className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
+                        >
+                          <option value="">Barbero de la cita</option>
+                          {barbers.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-medium text-ink-2">Método de cobro</p>
+                        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Método de cobro del producto">
+                          {PRODUCT_SALE_METHODS.map((m) => {
+                            const isActive = newMethod === m;
+                            return (
+                              <button
+                                key={m}
+                                type="button"
+                                role="radio"
+                                aria-checked={isActive}
+                                onClick={() => setNewMethod(m)}
+                                disabled={productSubmitting}
+                                className={
+                                  'rounded-lg border px-2 py-2 text-xs font-medium transition-colors ' +
+                                  (isActive
+                                    ? 'bg-brand-softer border-brand text-ink'
+                                    : 'bg-surface border-line text-ink-2 hover:border-brand hover:text-ink')
+                                }
+                              >
+                                {PRODUCT_SALE_METHOD_LABEL[m]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {newQtyExceedsStock && (
+                        <p className="text-[11px] text-warning">
+                          Solo quedan {selectedCatalogProduct.stockQuantity} unidades.
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                  {productError && (
+                    <p className="text-xs rounded-lg bg-danger/10 border border-danger/30 text-danger px-3 py-2">
+                      {productError}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddingProduct(false);
+                        setProductError(null);
+                      }}
+                      disabled={productSubmitting}
+                      className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-60"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addProduct}
+                      disabled={!selectedCatalogProduct || newQtyExceedsStock || productSubmitting}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-strong px-3 py-2 text-xs font-semibold text-brand-ink transition-colors disabled:opacity-60"
+                    >
+                      {productSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                      Añadir producto
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openAddProduct}
+                  disabled={submitting || removingId !== null}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-line hover:border-brand hover:text-brand px-3 py-2 text-xs font-semibold text-ink-2 transition-colors disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Añadir producto
+                </button>
+              )}
+
+              {/* Error de producto fuera del sub-form (p.ej. fallo al quitar). */}
+              {productError && !addingProduct && (
+                <p className="text-xs rounded-lg bg-danger/10 border border-danger/30 text-danger px-3 py-2">
+                  {productError}
+                </p>
               )}
             </div>
 

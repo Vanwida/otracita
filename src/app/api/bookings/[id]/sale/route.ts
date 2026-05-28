@@ -8,6 +8,8 @@ import {
   invoices,
   cashMovements,
   cashSessions,
+  productSales,
+  products,
 } from '@/db/schema';
 import {
   requireTenantActor,
@@ -638,6 +640,32 @@ export async function GET(
       p.status === 'succeeded' && !p.stripeChargeId && !p.sumupTransactionId,
   );
 
+  // Productos vendidos en esta cita (task #111). Excluimos consumos internos /
+  // merma (consumptionKind != null): no son ventas a cliente y se gestionan en
+  // Productos. Join con el catálogo para el nombre/imagen actuales.
+  const productSaleRows = await db
+    .select({
+      id: productSales.id,
+      productId: productSales.productId,
+      name: products.name,
+      imageUrl: products.imageUrl,
+      quantity: productSales.quantity,
+      unitPriceCents: productSales.unitPriceCents,
+      totalCents: productSales.totalCents,
+      paymentMethod: productSales.paymentMethod,
+      barberId: productSales.barberId,
+      invoicedAt: productSales.invoicedAt,
+    })
+    .from(productSales)
+    .leftJoin(products, eq(products.id, productSales.productId))
+    .where(
+      and(
+        eq(productSales.bookingId, bookingId),
+        eq(productSales.clientId, client.id),
+        isNull(productSales.consumptionKind),
+      ),
+    );
+
   return Response.json({
     editable,
     lockReason,
@@ -669,5 +697,19 @@ export async function GET(
           barberName: currentTip.barberName,
         }
       : null,
+    productSales: productSaleRows.map((p) => ({
+      id: p.id,
+      productId: p.productId,
+      name: p.name ?? 'Producto',
+      imageUrl: p.imageUrl,
+      quantity: p.quantity,
+      unitPriceCents: p.unitPriceCents,
+      totalCents: p.totalCents,
+      paymentMethod: p.paymentMethod,
+      barberId: p.barberId,
+      // Una venta ya facturada no se puede quitar sin rectificativa — la UI lo
+      // refleja deshabilitando el botón de borrar.
+      invoiced: p.invoicedAt != null,
+    })),
   });
 }
