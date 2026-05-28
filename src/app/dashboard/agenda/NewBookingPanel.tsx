@@ -235,8 +235,15 @@ export default function NewBookingPanel({
 
   return (
     <SlideOver open={isOpen} onClose={onClose} title="Nueva cita">
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Form — chasis flex-col: el CONTENIDO scrollea y el CTA queda
+                anclado al fondo (footer sticky). En móvil el form es largo y
+                antes el barbero tenía que bajar hasta el final para confirmar
+                (task #109). Ahora "Crear cita" está siempre visible. */}
+            <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0">
+              {/* Área scrolleable — todo el formulario menos el footer. El
+                  `pb-4` separa el último campo del borde del footer; el footer
+                  sólido lo tapa al hacer scroll hasta abajo sin solaparse. */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* Cliente — typeahead compartido con el TPV. Si se adjunta
                   un cliente conocido, fijamos su teléfono y la reserva
                   enlaza con su ficha (historial / fidelidad / no-show). Si
@@ -439,23 +446,32 @@ export default function NewBookingPanel({
               {/* Duración/Precio del principal ya viven en el
                   ServiceLinePicker de arriba (FIX C) — sin campos sueltos
                   duplicados. */}
+              </div>
 
-              {/* Error */}
-              {error && (
-                <p className="text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
-                  {error}
-                </p>
-              )}
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink text-sm font-semibold transition-colors"
+              {/* Footer sticky — CTA siempre visible mientras se rellena el
+                  form (task #109). Fondo sólido + borde/sombra superior para
+                  separarlo del contenido que scrollea por detrás. Safe-area
+                  iOS para no quedar bajo la barra del sistema en PWA. El error
+                  vive aquí, junto al CTA, para que se vea al intentar enviar
+                  sin tener que volver a scrollear. */}
+              <div
+                className="shrink-0 border-t border-line bg-surface px-5 py-4 space-y-3 shadow-[0_-4px_12px_-6px_var(--color-scrim-light)]"
+                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {loading ? 'Creando...' : 'Crear cita'}
-              </button>
+                {error && (
+                  <p className="text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
+                    {error}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full min-h-[48px] flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-brand hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed text-brand-ink text-sm font-semibold transition-colors"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {loading ? 'Creando...' : 'Crear cita'}
+                </button>
+              </div>
             </form>
     </SlideOver>
   );
