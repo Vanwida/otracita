@@ -543,13 +543,50 @@ body {
 .typing-dot-2 { animation-delay: 0.18s; }
 .typing-dot-3 { animation-delay: 0.36s; }
 
+/* Confirmación de reserva (PWA pública). Anillo de progreso que se rellena
+ * dando sensación de "proceso detrás", luego el check entra con un pop sutil
+ * y el texto sube con fade. El relleno usa stroke-dashoffset sobre un círculo
+ * SVG; la circunferencia exacta (--ring-circ) la inyecta el componente para
+ * que el offset de inicio sea el perímetro completo (anillo vacío). */
+@keyframes ring-fill {
+  from { stroke-dashoffset: var(--ring-circ); }
+  to   { stroke-dashoffset: 0; }
+}
+.animate-ring-fill {
+  animation: ring-fill 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes check-pop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-check-pop {
+  animation: check-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes confirm-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-confirm-fade-up {
+  opacity: 0;
+  animation: confirm-fade-up 0.5s ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee,
   .animate-gentle-rise,
   .pulse-dot,
-  .typing-dot {
+  .typing-dot,
+  .animate-ring-fill,
+  .animate-check-pop,
+  .animate-confirm-fade-up {
     animation: none;
   }
+  /* Sin animación: el anillo queda lleno y el texto visible al instante. */
+  .animate-ring-fill { stroke-dashoffset: 0; }
+  .animate-confirm-fade-up { opacity: 1; transform: none; }
 }
 
 /* Drench utility: aplica palette completo al fold (background + text + border

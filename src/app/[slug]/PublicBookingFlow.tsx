@@ -76,6 +76,19 @@ function formatDayLabel(iso: string): { day: string; weekday: string; month: str
   return { day, weekday, month, isToday }
 }
 
+// Fecha legible para la pantalla de confirmación: "jueves, 28 de mayo".
+// Capitalizamos el primer carácter (toLocaleDateString devuelve minúscula).
+function formatLongDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  const full = d.toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  })
+  return full.charAt(0).toUpperCase() + full.slice(1)
+}
+
 export default function PublicBookingFlow({ slug, services, barbers }: Props) {
   // ── Servicios destacados vs todos ───────────────────────────────────────
   // El barbero marca hasta 3 como featured desde el dashboard. Si no marca
@@ -446,39 +459,18 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
   }
 
   // ── Success state ────────────────────────────────────────────────────────
+  // El backend YA confirmó la reserva cuando montamos esto (completeBooking
+  // setea `confirmation` solo tras res.ok). El anillo que se rellena es el
+  // "proceso final" visual — nunca mostramos confirmado antes del OK real.
   if (confirmation) {
     return (
-      <section className="mx-auto max-w-3xl px-4 mt-8">
-        <div
-          className="rounded-3xl p-8 text-center"
-          style={{ background: 'var(--theme-surface)', border: '1px solid var(--theme-line)' }}
-        >
-          <div
-            className="mx-auto mb-4 h-16 w-16 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-          >
-            <Check className="h-8 w-8" strokeWidth={3} />
-          </div>
-          <h3 className="font-display text-2xl font-bold" style={{ color: 'var(--theme-ink)' }}>
-            ¡Cita reservada!
-          </h3>
-          <p className="text-sm mt-2" style={{ color: 'var(--theme-ink-2)' }}>
-            Te esperamos el <strong>{confirmation.date}</strong> a las <strong>{confirmation.time}</strong>
-            {confirmation.barber ? ` con ${confirmation.barber}` : ''}.
-          </p>
-          <p className="text-xs mt-2" style={{ color: 'var(--theme-ink-3)' }}>
-            Recibirás recordatorio por WhatsApp el día antes.
-          </p>
-          <button
-            type="button"
-            onClick={reset}
-            className="mt-6 text-sm underline"
-            style={{ color: 'var(--theme-ink-2)' }}
-          >
-            Hacer otra reserva
-          </button>
-        </div>
-      </section>
+      <BookingConfirmation
+        date={confirmation.date}
+        time={confirmation.time}
+        service={confirmation.service}
+        barber={confirmation.barber}
+        onReset={reset}
+      />
     )
   }
 
@@ -854,6 +846,156 @@ export default function PublicBookingFlow({ slug, services, barbers }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-componentes
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Diámetro del anillo (px) y geometría SVG. El stroke se dibuja sobre un
+// círculo cuyo radio deja sitio al grosor; la circunferencia se inyecta como
+// var CSS (--ring-circ) para que el keyframe ring-fill arranque vacío.
+const RING_SIZE = 112
+const RING_STROKE = 8
+const RING_R = (RING_SIZE - RING_STROKE) / 2
+const RING_CIRC = 2 * Math.PI * RING_R
+// El check entra cuando el anillo termina de rellenarse (~750ms). Damos un
+// pelín de margen para que el pop solape el final del relleno.
+const RING_FILL_MS = 750
+
+function BookingConfirmation({
+  date,
+  time,
+  service,
+  barber,
+  onReset,
+}: {
+  date: string
+  time: string
+  service: string
+  barber: string | null
+  onReset: () => void
+}) {
+  // Fases: 'filling' (anillo rellenándose) → 'done' (check + texto).
+  // Con prefers-reduced-motion arrancamos ya en 'done' (sin relleno) usando
+  // el inicializador lazy de useState — así evitamos un setState síncrono en
+  // el effect. Esta pantalla solo se monta tras la interacción del cliente
+  // (nunca en SSR real), así que matchMedia está disponible al inicializar.
+  const [phase, setPhase] = useState<'filling' | 'done'>(() => {
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    return prefersReduced ? 'done' : 'filling'
+  })
+
+  useEffect(() => {
+    // Solo programamos el paso a 'done' si arrancamos rellenando. En
+    // reduced-motion ya estamos en 'done' desde el inicializador.
+    if (phase !== 'filling') return
+    const t = window.setTimeout(() => setPhase('done'), RING_FILL_MS)
+    return () => window.clearTimeout(t)
+    // Solo al montar: el timer dispara el cambio de fase una vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const ringDone = phase === 'done'
+
+  return (
+    <section className="mx-auto max-w-3xl px-4 mt-8">
+      <div
+        className="rounded-3xl p-8 text-center"
+        style={{ background: 'var(--theme-surface)', border: '1px solid var(--theme-line)' }}
+        role="status"
+        aria-live="polite"
+      >
+        {/* Anillo de progreso + check. Verde de éxito (--color-success): es el
+            microestado universal de "confirmado", no superficie de marca del
+            barbero, así que no rompe el white-label. */}
+        <div
+          className="relative mx-auto mb-5"
+          style={{ width: RING_SIZE, height: RING_SIZE }}
+        >
+          <svg
+            width={RING_SIZE}
+            height={RING_SIZE}
+            viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+            className="-rotate-90"
+            aria-hidden="true"
+          >
+            {/* Track tenue del anillo. */}
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_R}
+              fill="none"
+              stroke="var(--color-success-surface)"
+              strokeWidth={RING_STROKE}
+            />
+            {/* Progreso que se rellena. */}
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_R}
+              fill="none"
+              stroke="var(--color-success)"
+              strokeWidth={RING_STROKE}
+              strokeLinecap="round"
+              className="animate-ring-fill"
+              style={{
+                strokeDasharray: RING_CIRC,
+                // Fallback inicial = vacío; el keyframe lo lleva a 0.
+                strokeDashoffset: RING_CIRC,
+                ['--ring-circ' as string]: String(RING_CIRC),
+              }}
+            />
+          </svg>
+          {/* Check: aparece con pop sutil cuando el anillo está lleno. */}
+          {ringDone && (
+            <span
+              className="absolute inset-0 flex items-center justify-center animate-check-pop"
+              style={{ color: 'var(--color-success)' }}
+            >
+              <Check className="h-12 w-12" strokeWidth={3} />
+            </span>
+          )}
+        </div>
+
+        {ringDone && (
+          <div className="animate-confirm-fade-up">
+            <h3 className="font-display text-3xl font-bold" style={{ color: 'var(--theme-ink)' }}>
+              ¡Confirmado!
+            </h3>
+            <p
+              className="font-brand-num text-xl font-semibold mt-3"
+              style={{ color: 'var(--theme-ink)' }}
+            >
+              {formatLongDate(date)}
+            </p>
+            <p
+              className="font-brand-num text-3xl font-bold mt-1 tabular-nums"
+              style={{ color: 'var(--color-success)' }}
+            >
+              {time}
+            </p>
+            <p className="text-sm mt-3" style={{ color: 'var(--theme-ink-2)' }}>
+              {service}
+              {barber ? ` · con ${barber}` : ''}
+            </p>
+            <p className="text-sm mt-4" style={{ color: 'var(--theme-ink-2)' }}>
+              Te esperamos.
+            </p>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--theme-ink-3)' }}>
+              Recibirás recordatorio por WhatsApp el día antes.
+            </p>
+            <button
+              type="button"
+              onClick={onReset}
+              className="mt-6 text-sm underline"
+              style={{ color: 'var(--theme-ink-2)' }}
+            >
+              Hacer otra reserva
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
 
 function SlotBand({
   title,
