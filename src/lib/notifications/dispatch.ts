@@ -23,6 +23,16 @@ export type DispatchChannel = 'push' | 'whatsapp' | 'none'
 export interface DispatchResult {
   channel: DispatchChannel
   pushSent?: number
+  /**
+   * Solo presente cuando `channel === 'whatsapp'`. `true` si el fallback de
+   * WhatsApp reportó éxito (devolvió `true` o `undefined`/void por
+   * back-compat), `false` si devolvió `false` (Meta rechazó el envío).
+   *
+   * El caller puede usarlo para NO marcar un evento como "enviado" cuando
+   * Meta rechazó el mensaje (p.ej. ventana de 24h cerrada). Ver el cron de
+   * recordatorios: marcar `reminderSent` solo si esto no es `false`.
+   */
+  whatsappOk?: boolean
 }
 
 /**
@@ -67,7 +77,13 @@ export async function dispatchUserNotification(opts: {
   phone: string
   clientId: string
   push: PushPayload
-  whatsappFallback?: () => Promise<void>
+  /**
+   * Devuelve `true`/`false` para señalar si el envío por WhatsApp tuvo éxito.
+   * Por back-compat, devolver `void`/`undefined` se interpreta como éxito
+   * (el caller no distingue, comportamiento previo). Lanzar sigue
+   * propagándose al caller (p.ej. waitlist usa el throw como señal).
+   */
+  whatsappFallback?: () => Promise<boolean | void>
 }): Promise<DispatchResult> {
   const has = await hasActivePushSubscription(opts.phone, opts.clientId)
 
@@ -79,8 +95,10 @@ export async function dispatchUserNotification(opts: {
   }
 
   if (opts.whatsappFallback) {
-    await opts.whatsappFallback()
-    return { channel: 'whatsapp' }
+    const sendResult = await opts.whatsappFallback()
+    // `undefined`/void → éxito asumido (back-compat). `false` → Meta rechazó.
+    const whatsappOk = sendResult !== false
+    return { channel: 'whatsapp', whatsappOk }
   }
 
   return { channel: 'none' }

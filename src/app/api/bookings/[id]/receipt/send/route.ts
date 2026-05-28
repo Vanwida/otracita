@@ -178,9 +178,18 @@ export async function POST(
       )
     }
     try {
-      await sendWhatsAppMessage(phoneNumberId, phone.trim(), textBody, token)
+      const r = await sendWhatsAppMessage(phoneNumberId, phone.trim(), textBody, token)
+      // sendWhatsAppMessage ya no lanza en fallo de red — señala vía `.error`.
+      // Comprobamos para no devolver ok:true cuando Meta rechazó el recibo.
+      if (r?.error) {
+        console.error('[receipt/send] WhatsApp send failed', r.error)
+        return Response.json(
+          { error: 'No se pudo enviar el WhatsApp. Inténtalo otra vez.' },
+          { status: 502 },
+        )
+      }
     } catch (err) {
-      console.error('[receipt/send] WhatsApp send failed', err)
+      console.error('[receipt/send] WhatsApp send threw', err)
       return Response.json(
         { error: 'No se pudo enviar el WhatsApp. Inténtalo otra vez.' },
         { status: 502 },

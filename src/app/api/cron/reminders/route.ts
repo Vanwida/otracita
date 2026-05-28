@@ -76,7 +76,7 @@ export async function GET(request: Request) {
       // otherwise. Avoids paying for a template + vibrating the phone twice.
       // The WhatsApp message keeps the interactive Confirm/Cancel buttons
       // because that's the canonical reply path the engine listens to.
-      await dispatchUserNotification({
+      const dispatch = await dispatchUserNotification({
         phone: booking.customerPhone,
         clientId: client.id,
         push: {
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
           data: { bookingId: booking.id, kind: 'reminder_24h' },
         },
         whatsappFallback: async () => {
-          await sendWhatsAppButtons(
+          const r = await sendWhatsAppButtons(
             phoneNumberId,
             booking.customerPhone,
             messageBody,
@@ -97,10 +97,32 @@ export async function GET(request: Request) {
             ],
             token,
           );
+          // Meta rechaza freeform fuera de la ventana de 24h (error 131047).
+          // Señalamos el fallo para NO marcar el recordatorio como enviado.
+          if (r?.error) {
+            console.warn(`[cron/reminders] Meta rechazó recordatorio booking ${booking.id}:`, r.error);
+            return false;
+          }
+          return true;
         },
       });
 
-      // Mark as reminded — regardless of channel.
+      // Solo marcamos `reminderSent` si el envío llegó al cliente:
+      //   · push entregado (channel='push' ⇒ pushSent > 0 garantizado por dispatch)
+      //   · whatsapp aceptado por Meta (whatsappOk !== false)
+      // Si Meta rechazó (ventana 24h cerrada), NO marcamos → el cron
+      // reintentará en la siguiente pasada y el fallo queda visible en logs,
+      // en vez de un recordatorio fantasma + posible no-show.
+      const delivered =
+        dispatch.channel === 'push' ||
+        (dispatch.channel === 'whatsapp' && dispatch.whatsappOk !== false);
+
+      if (!delivered) {
+        console.warn(`[cron/reminders] no se entregó recordatorio booking ${booking.id} (channel=${dispatch.channel}); reintentará`);
+        continue;
+      }
+
+      // Mark as reminded — only once delivery succeeded.
       await db.update(bookings)
         .set({ reminderSent: true })
         .where(eq(bookings.id, booking.id));

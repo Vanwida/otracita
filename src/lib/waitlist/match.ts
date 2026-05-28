@@ -292,12 +292,17 @@ async function notifyEntry(
             const body =
               `${name}¡se ha liberado un hueco en ${businessName}!\n\n` +
               `${serviceLabel}${barberLabel}\n${dateLabel} a las ${offeredTime}${reserveLine}`
-            await sendWhatsAppMessage(
+            const r = await sendWhatsAppMessage(
               client.whatsappPhoneNumberId!,
               entry.customerPhone,
               body,
               client.whatsappAccessToken!,
             )
+            // Meta rechazó (o fallo de red): tratamos como ventana no
+            // disponible → marcador pendiente, no como notificado en falso.
+            if (r?.error) {
+              throw new Error('whatsapp_send_failed')
+            }
           }
         : undefined,
   }).catch((err) => {
