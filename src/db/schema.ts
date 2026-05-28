@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, index, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 
@@ -761,6 +761,57 @@ export const bookingServices = pgTable('booking_services', {
   displayOrder: integer('display_order').default(0).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// -----------------------------------------------------------------------------
+// booking_events — log inmutable de TODO lo que le pasa a una cita (task #107).
+//
+// Append-only. Cada transición de una cita (creada, movida, cancelada,
+// no-show, completada, cobrada, recordatorio enviado…) inserta una fila
+// aquí. Es la herramienta permanente de Reni para responder "¿qué pasó con
+// esa cita?" — sobre todo ahora que las canceladas se ocultan del grid de la
+// agenda (#108): el dato no se pierde, vive aquí.
+//
+// `clientId` SIEMPRE del session (multi-tenancy, nunca del body). `bookingId`
+// referencia la cita (sin onDelete cascade: las citas no se borran, se
+// cancelan; el evento debe sobrevivir aunque algún día se purgue la cita).
+// `actor`/`actorLabel`: QUIÉN lo hizo (cliente, barbero, admin, bot, sistema)
+// + nombre legible. `summary`: texto humano corto en castellano para pintar
+// directo en el timeline. `metadata`: antes/después opcional (fromTime/toTime,
+// amountCents, …) para detalle sin parsear el summary.
+//
+// El INSERT vive en `logBookingEvent` (src/lib/bookings/events.ts) — fuente
+// única, secuencial (neon-http no soporta transactions), envuelto en try/catch
+// para que un fallo de log NUNCA aborte la operación principal (un cobro o una
+// reserva no se caen porque el log falle).
+// -----------------------------------------------------------------------------
+export const bookingEvents = pgTable('booking_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id),
+  bookingId: uuid('booking_id').notNull().references(() => bookings.id),
+  // 'created' | 'confirmed' | 'moved' | 'resized' | 'cancelled' | 'no_show'
+  // | 'completed' | 'charged' | 'reminder_sent'
+  type: text('type').notNull(),
+  // 'customer' | 'barber' | 'admin' | 'bot' | 'system'
+  actor: text('actor').notNull(),
+  // Nombre legible del actor si aplica ("Reni", "Bot WhatsApp", nombre del
+  // cliente). null = actor anónimo / sistema sin nombre.
+  actorLabel: text('actor_label'),
+  // Texto humano corto en castellano: "Cita movida de 15:00 a 16:30".
+  summary: text('summary').notNull(),
+  // Antes/después opcional: { fromTime, toTime, fromBarber, toBarber,
+  // amountCents, method, ... }. null cuando el summary ya lo dice todo.
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Timeline de UNA cita (orden cronológico).
+  byBooking: index('booking_events_client_booking_created_idx').on(
+    table.clientId, table.bookingId, table.createdAt,
+  ),
+  // Vista global de actividad del tenant (orden desc por fecha).
+  byClient: index('booking_events_client_created_idx').on(
+    table.clientId, table.createdAt,
+  ),
+}));
 
 // Waitlist (customers waiting for a slot to open)
 //
