@@ -205,6 +205,11 @@ export async function POST(request: Request) {
         duration: it.durationMinutes ?? undefined,
         price: it.priceEuros ?? null,
         source: 'import',
+        // Importación masiva (capturas Vision) → silenciar push. Sin esto,
+        // cada cliente con la PWA recibiría "Cita confirmada" por cada cita
+        // reimportada, spam el día de la migración. Coherente con el import
+        // iCal (imports/bookings/route.ts también pasa silent: true).
+        silent: true,
       })
 
       if (result.success) {
