@@ -188,6 +188,83 @@ export function isUpgrade(from: Tier, to: Tier): boolean {
   return TIER_RANK[to] > TIER_RANK[from];
 }
 
+// -----------------------------------------------------------------------------
+// Sincronización webhook Stripe → fila `clients`.
+//
+// Lógica PURA (sin db, sin Stripe SDK) que decide qué campos de `clients`
+// actualizar cuando llega un `customer.subscription.{created,updated}`. La
+// usa `handleSubscriptionChange` en el webhook; vivir aquí la hace testeable
+// sin mockear Stripe/Neon y la mantiene como single source of truth de la
+// regla tier↔estado.
+// -----------------------------------------------------------------------------
+
+/** Estados de subscription Stripe que provocan downgrade inmediato a Solo.
+ *  `past_due` NO está aquí: es periodo de gracia, Stripe sigue reintentando. */
+const DOWNGRADE_SUB_STATUSES = new Set<string>([
+  'paused',
+  'unpaid',
+  'incomplete_expired',
+  'canceled',
+]);
+
+/** Estados activos: el cliente disfruta del tier de la subscription. */
+const ACTIVE_SUB_STATUSES = new Set<string>(['trialing', 'active']);
+
+/** Update derivado a aplicar sobre la fila `clients`. Solo incluye las claves
+ *  que cambian; campos ausentes = no se tocan. */
+export interface ClientSubscriptionSync {
+  trialEndsAt: Date | null;
+  status?: 'active' | 'cancelled';
+  tier?: Tier;
+  billingInterval?: null;
+}
+
+/**
+ * Decide cómo sincronizar la fila `clients` ante un cambio de subscription.
+ *
+ * @param subStatus    `subscription.status` que mandó Stripe.
+ * @param subTier      `subscriptions.tier` ya persistido (lo escribe checkout
+ *                     desde metadata). Es la fuente canónica del tier.
+ * @param clientStatus estado ACTUAL del cliente (para re-activar si venía de
+ *                     cancelled).
+ * @param trialEndsAt  fin de trial derivado de `subscription.trial_end`.
+ */
+export function resolveSubscriptionSync(
+  subStatus: string,
+  subTier: string | null,
+  clientStatus: string | null,
+  trialEndsAt: Date | null,
+): ClientSubscriptionSync {
+  // Downgrade: pierde tier Pro/Estudio, vuelve a Solo y queda cancelled.
+  if (DOWNGRADE_SUB_STATUSES.has(subStatus)) {
+    return {
+      status: 'cancelled',
+      tier: 'solo',
+      billingInterval: null,
+      trialEndsAt: null,
+    };
+  }
+
+  // Activo (trialing/active): persistimos SIEMPRE el tier de la subscription
+  // en clients.tier — esto cierra el bug G4 (cliente creado antes del
+  // checkout cuyo INSERT idempotente no tocó clients.tier). Si veníamos de
+  // cancelled, además re-activamos.
+  if (ACTIVE_SUB_STATUSES.has(subStatus)) {
+    const sync: ClientSubscriptionSync = { trialEndsAt };
+    if (subTier === 'pro' || subTier === 'estudio' || subTier === 'solo') {
+      sync.tier = subTier;
+    }
+    if (clientStatus === 'cancelled') {
+      sync.status = 'active';
+    }
+    return sync;
+  }
+
+  // past_due / incomplete / cualquier otro: periodo de gracia. Mantenemos
+  // tier y status; solo sincronizamos trialEndsAt.
+  return { trialEndsAt };
+}
+
 /** Precios de referencia. Mantener sincronizado con PRODUCT.md y con los
  *  precios reales en Stripe. Anual ofrece descuento agresivo para empujar
  *  cashflow upfront (importante en arranque sin marca consolidada).

@@ -24,6 +24,7 @@ import {
 import type Stripe from 'stripe';
 import type { ConnectStatus } from '@/lib/payments';
 import { SITE_URLS } from '@/lib/site';
+import { resolveSubscriptionSync } from '@/lib/billing/tier';
 
 const ADMIN_URL = SITE_URLS.admin();
 
@@ -203,8 +204,13 @@ export async function POST(request: Request) {
 //   · status ∈ {paused, unpaid, incomplete_expired, canceled} → clients.tier=solo
 //     y clients.status=cancelled. Pierde features Pro/Estudio inmediatamente.
 //     (past_due NO downgrades — es periodo de gracia, Stripe seguirá reintentando.)
-//   · status ∈ {trialing, active} → si veníamos de cancelled lo re-activamos.
-//     Mantiene el tier ya configurado por checkout.session.completed.
+//   · status ∈ {trialing, active} → persistimos el tier que ya trae la row de
+//     `subscriptions` (la escribe checkout.session.completed desde metadata) en
+//     clients.tier. Esto cubre el flujo "tenant creado primero, luego
+//     suscripción" (G4): cuando el cliente ya existía antes del checkout, su
+//     INSERT idempotente NO actualizó clients.tier, así que sin esto el tier
+//     se quedaría en 'solo' y el barbero perdería features Pro al expirar el
+//     trial. Si veníamos de cancelled, además re-activamos status='active'.
 // -----------------------------------------------------------------------------
 async function handleSubscriptionChange(
   subscription: Stripe.Subscription,
@@ -225,52 +231,19 @@ async function handleSubscriptionChange(
     .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
   if (!sub) return; // checkout.session.completed aún no ha creado la row
 
-  const DOWNGRADE_STATUSES = new Set<Stripe.Subscription.Status>([
-    'paused',
-    'unpaid',
-    'incomplete_expired',
-    'canceled',
-  ]);
-  const ACTIVE_STATUSES = new Set<Stripe.Subscription.Status>(['trialing', 'active']);
+  // Necesitamos el estado actual del cliente para decidir si re-activar
+  // (cancelled → active). El tier vigente lo deriva la regla pura desde
+  // `sub.tier` (fuente canónica escrita por el checkout).
+  const [c] = await db.select().from(clients).where(eq(clients.id, sub.clientId));
 
-  if (DOWNGRADE_STATUSES.has(subscription.status)) {
-    await db
-      .update(clients)
-      .set({
-        status: 'cancelled',
-        tier: 'solo',
-        billingInterval: null,
-        trialEndsAt: null,
-      })
-      .where(eq(clients.id, sub.clientId));
-    return;
-  }
+  const sync = resolveSubscriptionSync(
+    subscription.status,
+    sub.tier,
+    c?.status ?? null,
+    trialEnd,
+  );
 
-  if (ACTIVE_STATUSES.has(subscription.status)) {
-    // Re-activación o sync normal. Mantenemos el tier que el sub ya tiene
-    // configurado (Pro/Estudio según el checkout); el status del cliente
-    // vuelve a 'active' si estaba en cancelled.
-    const updates: {
-      trialEndsAt: Date | null;
-      status?: 'active';
-      tier?: 'solo' | 'pro' | 'estudio';
-    } = { trialEndsAt: trialEnd };
-    const [c] = await db.select().from(clients).where(eq(clients.id, sub.clientId));
-    if (c?.status === 'cancelled') {
-      updates.status = 'active';
-      if (sub.tier === 'pro' || sub.tier === 'estudio') {
-        updates.tier = sub.tier;
-      }
-    }
-    await db.update(clients).set(updates).where(eq(clients.id, sub.clientId));
-    return;
-  }
-
-  // past_due / incomplete: mantenemos tier; solo sync de trialEndsAt.
-  await db
-    .update(clients)
-    .set({ trialEndsAt: trialEnd })
-    .where(eq(clients.id, sub.clientId));
+  await db.update(clients).set(sync).where(eq(clients.id, sub.clientId));
 }
 
 // -----------------------------------------------------------------------------
