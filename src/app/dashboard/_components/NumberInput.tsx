@@ -1,6 +1,7 @@
 'use client'
 
 import { useId, useState } from 'react'
+import { formatDecimalInput, parseDecimalInput } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
 // NumberInput — input numérico compartido que SÍ se puede dejar vacío (R11).
@@ -42,18 +43,6 @@ interface Props {
   onBlur?: (final: number | null) => void
 }
 
-/** "" / "-" / "." en mitad de la escritura → null, sin romper el input. */
-function parse(raw: string, decimals: number): number | null {
-  const trimmed = raw.trim()
-  if (trimmed === '') return null
-  const normalized = trimmed.replace(',', '.')
-  const n = Number(normalized)
-  if (!Number.isFinite(n)) return null
-  if (decimals === 0) return Math.trunc(n)
-  const factor = 10 ** decimals
-  return Math.round(n * factor) / factor
-}
-
 function clamp(n: number, min?: number, max?: number): number {
   let out = n
   if (typeof min === 'number' && out < min) out = min
@@ -78,8 +67,9 @@ export default function NumberInput({
 }: Props) {
   const fallbackId = useId()
   const inputId = id ?? fallbackId
-  // Estado interno = string libre. Permite "" mientras el usuario edita.
-  const [text, setText] = useState(value === null ? '' : String(value))
+  // Estado interno = string libre. Permite "" mientras el usuario edita y
+  // muestra coma decimal es-ES (12,50), no el punto de `String(12.5)`.
+  const [text, setText] = useState(value === null ? '' : formatDecimalInput(value, decimals))
   // Evita pisar lo que el usuario está escribiendo cuando el padre re-renderiza
   // con el mismo valor numérico (p.ej. tras un onValueChange controlado).
   const [isFocused, setIsFocused] = useState(false)
@@ -88,10 +78,21 @@ export default function NumberInput({
   // servicio) y el usuario no está editando, derivamos el texto durante el
   // render. Patrón oficial "adjusting state when a prop changes" de
   // react.dev — prev-prop en state, sin efecto ni ref, sin cascada.
+  //
+  // CLAVE (task #112): comparamos contra el número que YA representa el texto
+  // actual, no contra el `prevValue` crudo. Estos callers son controlados
+  // (`onValueChange={(n) => onChange({...})}`), así que mientras el usuario
+  // teclea "12," → emitimos 12 → el padre re-renderiza con value=12. Si el
+  // foco no estuviese registrado por una décima (orden de eventos del teclado
+  // decimal de iOS), el viejo `setText(String(value))` colapsaba la coma y
+  // bloqueaba la escritura de decimales en móvil. Comparando por valor
+  // parseado, un re-render con el mismo número NO toca el texto del usuario.
   const [prevValue, setPrevValue] = useState(value)
-  if (prevValue !== value && !isFocused) {
+  if (prevValue !== value) {
     setPrevValue(value)
-    setText(value === null ? '' : String(value))
+    if (!isFocused && parseDecimalInput(text, decimals) !== value) {
+      setText(value === null ? '' : formatDecimalInput(value, decimals))
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,12 +101,12 @@ export default function NumberInput({
     // Emitimos en vivo el valor parseado (null si vacío) para que el padre
     // siempre tenga el estado correcto — sin forzar 0 ni clamp aún (clamp se
     // aplica en blur para no pelear con el usuario mientras teclea).
-    onValueChange(parse(raw, decimals))
+    onValueChange(parseDecimalInput(raw, decimals))
   }
 
   const handleBlur = () => {
     setIsFocused(false)
-    const parsed = parse(text, decimals)
+    const parsed = parseDecimalInput(text, decimals)
     if (parsed === null) {
       // Al perder el foco con el campo vacío, devolvemos el texto al `value`
       // del padre. Si el padre quiere de verdad un campo vacío, pasa
@@ -115,13 +116,13 @@ export default function NumberInput({
       // quedarse en blanco — que Reni leía como "se queda en 0" (task #94).
       // Sin esto, el contrato "value es number" no se respeta visualmente
       // tras un blur con null.
-      setText(value === null ? '' : String(value))
+      setText(value === null ? '' : formatDecimalInput(value, decimals))
       onValueChange(null)
       onBlur?.(null)
       return
     }
     const finalValue = clamp(parsed, min, max)
-    setText(String(finalValue))
+    setText(formatDecimalInput(finalValue, decimals))
     onValueChange(finalValue)
     onBlur?.(finalValue)
   }
