@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transición Reni — Booksy → otracita</title>
+<style>
+  :root {
+    --canvas: #faf6f0;
+    --surface: #ffffff;
+    --ink: #2a1d14;
+    --ink-2: #6b5b4d;
+    --ink-3: #9a8a7b;
+    --brand: #c9653c;
+    --brand-strong: #a84e2b;
+    --brand-softer: #f4e3d4;
+    --line: #ece2d6;
+    --line-strong: #d9cab9;
+    --success: #5a7d5a;
+    --success-soft: #e6efe6;
+    --warn: #b8862f;
+    --warn-soft: #f6ecd6;
+    --danger: #b3503e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    padding: 32px 16px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  header.top { margin-bottom: 8px; }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--brand-strong);
+  }
+  h1 { font-size: 34px; font-weight: 600; line-height: 1.1; margin: 6px 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); font-size: 15px; }
+  .progress-bar {
+    margin: 22px 0 8px; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden;
+  }
+  .progress-fill { height: 100%; background: var(--brand); width: 0%; transition: width .3s ease; }
+  .progress-label { font-size: 13px; color: var(--ink-2); margin-bottom: 28px; font-variant-numeric: tabular-nums; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 28px; }
+  .btn {
+    font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2);
+    cursor: pointer; transition: all .15s;
+  }
+  .btn:hover { border-color: var(--brand); color: var(--brand-strong); }
+  section.block {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    padding: 22px 22px 8px; margin-bottom: 18px;
+  }
+  .block-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .block-head h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+  .pill {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .pill.reni { background: var(--brand-softer); color: var(--brand-strong); }
+  .pill.alex { background: #e4ddf0; color: #5b4a8a; }
+  .pill.dev { background: #dfeaf2; color: #3d6480; }
+  .pill.watch { background: var(--warn-soft); color: var(--warn); }
+  .block-note { font-size: 13px; color: var(--ink-3); margin: 2px 0 14px; }
+  .item {
+    display: flex; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line);
+    align-items: flex-start;
+  }
+  .item:first-of-type { border-top: none; }
+  .item input[type=checkbox] {
+    appearance: none; -webkit-appearance: none; min-width: 22px; height: 22px; margin-top: 1px;
+    border: 2px solid var(--line-strong); border-radius: 7px; background: var(--surface);
+    cursor: pointer; position: relative; transition: all .15s;
+  }
+  .item input[type=checkbox]:checked { background: var(--success); border-color: var(--success); }
+  .item input[type=checkbox]:checked::after {
+    content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px;
+    border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
+  }
+  .item-body { flex: 1; min-width: 0; }
+  .item-label { font-size: 15px; cursor: pointer; }
+  .item.done .item-label { color: var(--ink-3); text-decoration: line-through; }
+  .item-detail { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+  .item-detail strong { color: var(--ink); font-weight: 600; }
+  .crit { color: var(--danger); font-weight: 600; }
+  textarea.note {
+    width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--ink);
+    background: var(--canvas); resize: vertical; min-height: 0; height: 34px; transition: height .12s;
+  }
+  textarea.note:focus { outline: 2px solid var(--brand); outline-offset: 1px; height: 70px; background: var(--surface); }
+  textarea.note::placeholder { color: var(--ink-3); }
+  .order-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; color: var(--brand-strong);
+    background: var(--brand-softer); border-radius: 5px; padding: 1px 6px; margin-right: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  footer.foot { text-align: center; color: var(--ink-3); font-size: 12px; margin-top: 30px; }
+  .saved-flash {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--ink); color: var(--canvas); font-size: 13px; font-weight: 600;
+    padding: 9px 18px; border-radius: 999px; opacity: 0; transition: all .25s; pointer-events: none;
+  }
+  .saved-flash.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Plan de lanzamiento · primer cliente real</div>
+    <h1>Transición Reni — Booksy → otracita</h1>
+    <p class="sub">Private Studio · Carrer de Muntaner 172, Barcelona. Objetivo: Reni monta su barbería <strong>él solo en vivo</strong> (eso valida el producto). Marca cada paso y apunta lo que pase.</p>
+  </header>
+
+  <div class="progress-bar"><div class="progress-fill" id="pfill"></div></div>
+  <div class="progress-label" id="plabel">0 de 0 completados</div>
+
+  <div class="toolbar">
+    <button class="btn" onclick="window.print()">Imprimir / PDF</button>
+    <button class="btn" onclick="resetAll()">Reiniciar checks</button>
+  </div>
+
+  <!-- =============== PRE-DOMINGO: RENI =============== -->
+  <section class="block">
+    <div class="block-head"><h2>Antes del domingo — Reni</h2><span class="pill reni">Reni</span></div>
+    <p class="block-note">Hacerlo HOY, no el domingo. El KYC de Stripe puede tardar en verificarse.</p>
+    <div data-item="reni-stripe">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Stripe Connect — completar onboarding (KYC + IBAN + ToS)</label>
+          <div class="item-detail">Sin esto solo cobra <strong>offline</strong> (efectivo / bizum / datáfono manual), que funciona perfecto. Online (link/QR) necesita esto verificado.</div>
+        </div>
+      </div>
+    </div>
+    <div data-item="reni-csv">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Exportar de Booksy: CSV de clientes (cartera completa)</label>
+          <div class="item-detail">Solo el teléfono es obligatorio. Si Booksy da .xlsx → guardar como CSV.</div>
+        </div>
+      </div>
+    </div>
+    <div data-item="reni-citas">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Exportar de Booksy: citas futuras (.ics o capturas de pantalla)</label>
+          <div class="item-detail">Probar HOY si Booksy deja exportar .ics con citas futuras. Si no → capturas de la agenda (import por visión). <span class="crit">Si no se migran, los clientes con cita reservada se quedan fuera.</span></div>
+        </div>
+      </div>
+    </div>
+    <div data-item="reni-apagar">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Apagar recordatorios / automatizaciones de Booksy</label>
+          <div class="item-detail">Si no, el cliente recibe aviso doble (Booksy + otracita).</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============== PRE-DOMINGO: DEV/ALEX =============== -->
+  <section class="block">
+    <div class="block-head"><h2>Antes del domingo — Alex / dev</h2><span class="pill dev">Dev</span></div>
+    <div data-item="dev-g4">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Bug G4: persistir tier Pro tras el trial</label>
+          <div class="item-detail">Sin el fix, Reni perdería Pro el día 14 aunque pague (bug silencioso del webhook Stripe). <strong>En proceso.</strong></div>
+        </div>
+      </div>
+    </div>
+    <div data-item="dev-slug">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Liberar el slug <strong>private-studio</strong> del tenant de prueba</label>
+          <div class="item-detail">Lo ocupa una cuenta de test. Para que Reni use otracita.es/private-studio hay que liberarlo antes.</div>
+        </div>
+      </div>
+    </div>
+    <div data-item="dev-factura">
+      <div class="item">
+        <input type="checkbox">
+        <div class="item-body">
+          <label class="item-label">Decisión: facturación VeriFactu OFF el domingo</label>
+          <div class="item-detail">AEAT no recibe nada todavía (M4 sin construir). Operar con recibos de cortesía. Cobrar funciona; la factura fiscal entra cuando M4 esté listo.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============== DOMINGO: RENI SOLO =============== -->
+  <section class="block">
+    <div class="block-head"><h2>Domingo — Reni monta su barbería SOLO</h2><span class="pill reni">Reni · la prueba</span></div>
+    <p class="block-note">Este es el camino self-service real. Si algo se atasca aquí, ese es el hallazgo que buscamos. Apunta cualquier fricción en las notas.</p>
+    <div data-item="dom-signup">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">1</span>Signup en otracita.es con su email (email/Google)</label>
+      </div></div>
+    </div>
+    <div data-item="dom-wizard">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">2</span>Completar el onboarding wizard</label>
+      </div></div>
+    </div>
+    <div data-item="dom-pro">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">3</span>Activar Pro (trial 14d) en "mi plan"</label>
+        <div class="item-detail"><span class="crit">ORDEN CRÍTICO:</span> esto va ANTES de añadir a Johan (el 2º barbero exige Pro).</div>
+      </div></div>
+    </div>
+    <div data-item="dom-johan">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">4</span>Añadir el segundo barbero + fotos</label>
+      </div></div>
+    </div>
+    <div data-item="dom-servicios">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">5</span>Cargar los servicios (precio / duración / color)</label>
+      </div></div>
+    </div>
+    <div data-item="dom-horarios">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">6</span>Configurar horarios (tienda + por barbero)</label>
+      </div></div>
+    </div>
+    <div data-item="dom-branding">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">7</span>Branding: slug, logo, color + activar la PWA pública</label>
+      </div></div>
+    </div>
+    <div data-item="dom-stripe">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">8</span>Conectar Stripe (KYC desde el dashboard)</label>
+      </div></div>
+    </div>
+    <div data-item="dom-import-cli">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">9</span>Importar clientes (CSV)</label>
+      </div></div>
+    </div>
+    <div data-item="dom-import-citas">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">10</span>Importar citas futuras (.ics / capturas) — corregir nombre de servicio en el preview</label>
+        <div class="item-detail">Si el nombre del servicio no coincide con uno suyo, sale a 30 min sin precio. Corregirlo en el preview.</div>
+      </div></div>
+    </div>
+    <div data-item="dom-caja">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><span class="order-tag">11</span>Abrir caja → cobrar 1ª cita → cerrar caja</label>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- =============== DOMINGO: ALEX A MANO =============== -->
+  <section class="block">
+    <div class="block-head"><h2>Domingo — Alex toca a mano</h2><span class="pill alex">Alex</span></div>
+    <p class="block-note">Lo único que hoy no es self-service. Las dos cosas van juntas, en el mismo momento.</p>
+    <div data-item="alex-whatsapp">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label">Activar bot WhatsApp: alta en Meta + setear el número en /admin/clients</label>
+        <div class="item-detail">El alta en Meta puede tardar. Mientras, la PWA cubre las reservas. El form que ve Reni manda solicitud, no activa.</div>
+      </div></div>
+    </div>
+    <div data-item="alex-availability">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label"><code>use_db_availability = true</code> (mismo momento que el bot)</label>
+        <div class="item-detail">Sin esto, bot + PWA pueden doble-bookear (el bot miraría Google Calendar en vez de la DB).</div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- =============== VIGILAR EN VIVO =============== -->
+  <section class="block">
+    <div class="block-head"><h2>Vigilar en vivo el domingo</h2><span class="pill watch">Watch</span></div>
+    <p class="block-note">No bloquean, pero hay que tenerlos a la vista. Apunta si pasan.</p>
+    <div data-item="watch-recordatorios">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label">Recordatorios WhatsApp: solo llegan a clientes que escribieron en las últimas 24h</label>
+        <div class="item-detail">No hay plantilla de Meta aprobada aún → los proactivos fuera de ventana se rechazan (ya no se marcan como enviados, tras el fix). Riesgo de no-shows si los clientes no han escrito.</div>
+      </div></div>
+    </div>
+    <div data-item="watch-dispo">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label">Disponibilidad correcta: respeta horarios + descansos + citas migradas</label>
+      </div></div>
+    </div>
+    <div data-item="watch-caja">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label">Cobros offline cuadran en el cierre de caja</label>
+      </div></div>
+    </div>
+    <div data-item="watch-alex-wa">
+      <div class="item"><input type="checkbox"><div class="item-body">
+        <label class="item-label">Alex escribe al bot por la mañana (abre ventana 24h para recibir alertas de error)</label>
+      </div></div>
+    </div>
+  </section>
+
+  <footer class="foot">otracita · plan de transición · se guarda solo en este navegador</footer>
+</div>
+
+<div class="saved-flash" id="flash">Guardado</div>
+
+<script>
+  const KEY = "otracita-transicion-reni-v1";
+  let flashTimer;
+  function load() {
+    let data = {};
+    try { data = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e){}
+    document.querySelectorAll("[data-item]").forEach(group => {
+      const id = group.getAttribute("data-item");
+      const cb = group.querySelector("input[type=checkbox]");
+      const itemDiv = group.querySelector(".item");
+      const saved = data[id] || {};
+      if (saved.checked) { cb.checked = true; itemDiv.classList.add("done"); }
+      // build note textarea
+      const ta = document.createElement("textarea");
+      ta.className = "note";
+      ta.placeholder = "Nota… (qué pasó, fricción, lo que sea)";
+      ta.value = saved.note || "";
+      group.querySelector(".item-body").appendChild(ta);
+      cb.addEventListener("change", () => {
+        itemDiv.classList.toggle("done", cb.checked);
+        save(); updateProgress();
+      });
+      ta.addEventListener("input", () => { clearTimeout(ta._t); ta._t = setTimeout(save, 400); });
+    });
+    updateProgress();
+  }
+  function save() {
+    const data = {};
+    document.querySelectorAll("[data-item]").forEach(group => {
+      const id = group.getAttribute("data-item");
+      data[id] = {
+        checked: group.querySelector("input[type=checkbox]").checked,
+        note: group.querySelector("textarea.note").value
+      };
+    });
+    localStorage.setItem(KEY, JSON.stringify(data));
+    const f = document.getElementById("flash");
+    f.classList.add("show");
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => f.classList.remove("show"), 1100);
+  }
+  function updateProgress() {
+    const all = document.querySelectorAll("[data-item] input[type=checkbox]");
+    const done = document.querySelectorAll("[data-item] input[type=checkbox]:checked");
+    const pct = all.length ? Math.round(done.length / all.length * 100) : 0;
+    document.getElementById("pfill").style.width = pct + "%";
+    document.getElementById("plabel").textContent = done.length + " de " + all.length + " completados · " + pct + "%";
+  }
+  function resetAll() {
+    if (!confirm("¿Desmarcar todos los checks? (las notas se mantienen)")) return;
+    document.querySelectorAll("[data-item] input[type=checkbox]").forEach(cb => {
+      cb.checked = false; cb.closest(".item").classList.remove("done");
+    });
+    save(); updateProgress();
+  }
+  load();
+</script>
+</body>
+</html>
