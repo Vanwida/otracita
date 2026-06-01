@@ -151,6 +151,7 @@ export const AREAS: Area[] = [
       { seg: null, label: 'Panel', href: '/dashboard/informes' },
       { seg: 'actividad', label: 'Actividad', href: '/dashboard/informes/actividad' },
       { seg: 'ingresos', label: 'Ingresos', href: '/dashboard/informes/ingresos' },
+      { seg: 'gastos', label: 'Gastos', href: '/dashboard/informes/gastos' },
       { seg: 'citas', label: 'Citas', href: '/dashboard/informes/citas' },
       { seg: 'clientes', label: 'Clientes', href: '/dashboard/informes/clientes' },
       { seg: 'nominas', label: 'Nóminas', href: '/dashboard/informes/nominas' },

@@ -1041,6 +1041,13 @@ export default function FinanzasClient({
                 <span className="text-xs font-semibold text-ink-2 uppercase tracking-[0.1em]">Total gastos</span>
                 <span className="tabular-nums text-sm font-bold text-ink">{formatCents(summary.totalGastosCents)}</span>
               </div>
+
+              <Link
+                href="/dashboard/informes/gastos"
+                className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-brand transition-colors px-4 py-2.5 w-full border-t border-line"
+              >
+                Ver todos los gastos · filtrar por periodo →
+              </Link>
             </CollapsibleBlock>
 
             {/* Retiros del mes */}

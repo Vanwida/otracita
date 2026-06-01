@@ -67,6 +67,26 @@ export const INGRESOS_RAIL: ReportRailItem[] = [
   },
 ]
 
+// ── GASTOS ───────────────────────────────────────────────────────────────────
+// Vista de gastos por periodo (read-only). Enlaza a los destinos reales más
+// próximos: el resumen fiscal (donde el gasto deducible importa), el catálogo
+// de ventas por producto y los ingresos del mismo periodo (arrastra `?period=`).
+export const GASTOS_RAIL: ReportRailItem[] = [
+  {
+    label: 'Resumen fiscal (IVA/IRPF)',
+    href: '/dashboard/informes/fiscal',
+  },
+  {
+    label: 'Ventas por producto',
+    href: '/dashboard/ventas/productos',
+  },
+  {
+    label: 'Ingresos del periodo',
+    href: '/dashboard/informes/ingresos',
+    carryPeriod: true,
+  },
+]
+
 // ── CLIENTES ─────────────────────────────────────────────────────────────────
 // Booksy 09.50.00: Lista de clientes · Clientes nuevos · Clientes
 // habituales · Clientes poco frecuentes · Inasistencias y cancelaciones.
