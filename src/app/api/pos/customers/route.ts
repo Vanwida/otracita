@@ -44,6 +44,7 @@ export async function GET(req: Request) {
     .select({
       name: customers.name,
       phone: customers.phone,
+      reputation: customers.reputation,
     })
     .from(customers)
     .where(
@@ -63,6 +64,7 @@ export async function GET(req: Request) {
     customers: rows.map((r) => ({
       name: r.name ?? '',
       phone: r.phone,
+      reputation: r.reputation ?? 'good',
     })),
   })
 }

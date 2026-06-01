@@ -20,6 +20,8 @@ import CustomerNotesEditor from './CustomerNotesEditor'
 import CustomerEmailEditor from './CustomerEmailEditor'
 import CustomerRgpdActions from './CustomerRgpdActions'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
+import BlockCustomerButton from '@/app/dashboard/_components/BlockCustomerButton'
+import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
 import type {
   ClientProfileData,
   ClientProfileBooking,
@@ -127,6 +129,13 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
                 Si no hay firstSource, SourceChip devuelve null (no pintamos
                 "Sin fuente" — mejor vacío que ruido). */}
             <SourceChip source={customer.firstSource} size="xs" />
+            {/* Bloqueo manual (pedido por Reni). Un cliente bloqueado no puede
+                auto-reservar por bot/PWA; el barbero sí puede agendarlo a mano. */}
+            {customer.reputation === 'blocked' ? (
+              <UnblockCustomerButton customerId={customer.id} />
+            ) : (
+              <BlockCustomerButton customerId={customer.id} />
+            )}
           </div>
         </div>
       </div>

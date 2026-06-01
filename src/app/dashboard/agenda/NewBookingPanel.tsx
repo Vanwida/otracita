@@ -59,6 +59,9 @@ export default function NewBookingPanel({
   // Si está enlazado, la reserva entra en SU ficha (historial / fidelidad
   // / no-show) en vez de crear un cliente huérfano. null = walk-in.
   const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
+  // Reputation del cliente enlazado — para avisar si está bloqueado. Solo es
+  // un aviso: el barbero SÍ puede agendarlo a mano (source 'dashboard' exento).
+  const [linkedReputation, setLinkedReputation] = useState<string | null>(null);
   const [service, setService] = useState(services[0]?.name || '');
   const [barber, setBarber] = useState('');
   const [date, setDate] = useState(initialDate);
@@ -258,8 +261,12 @@ export default function NewBookingPanel({
                     setCustomerName(c.name || c.phone);
                     setCustomerPhone(c.phone);
                     setLinkedPhone(c.phone);
+                    setLinkedReputation(c.reputation ?? 'good');
                   }}
-                  onUnlink={() => setLinkedPhone(null)}
+                  onUnlink={() => {
+                    setLinkedPhone(null);
+                    setLinkedReputation(null);
+                  }}
                   placeholder="Nombre o teléfono del cliente"
                   ariaLabel="Buscar cliente conocido o escribir uno nuevo"
                 />
@@ -461,6 +468,14 @@ export default function NewBookingPanel({
                 {error && (
                   <p className="text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
                     {error}
+                  </p>
+                )}
+                {/* Cliente bloqueado: solo un aviso. El barbero puede agendarlo
+                    igualmente a mano (el bloqueo solo frena la auto-reserva). */}
+                {linkedReputation === 'blocked' && (
+                  <p className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
+                    Este cliente está bloqueado. No puede reservar solo (bot/web),
+                    pero puedes agendarlo tú a mano.
                   </p>
                 )}
                 <button

@@ -178,9 +178,11 @@ export async function POST(req: Request) {
     const status =
       result.error === 'overlap'
         ? 409
-        : result.error === 'lead_time' || result.error === 'horizon' || result.error === 'no_barber_available'
-          ? 422
-          : 400
+        : result.error === 'customer_blocked'
+          ? 403
+          : result.error === 'lead_time' || result.error === 'horizon' || result.error === 'no_barber_available'
+            ? 422
+            : 400
     // `errorCode` deja a la UI distinguir "rehaz el paso de tarjeta" de un
     // error de validación normal sin parsear el mensaje.
     return Response.json(

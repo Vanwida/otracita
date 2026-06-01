@@ -12,6 +12,7 @@ import {
 } from '@/lib/bookings/duration';
 import { canonicalPhone } from '@/lib/phone';
 import { logBookingEvent, createdEventActor } from '@/lib/bookings/events';
+import { isSelfServiceSource } from '@/lib/bookings/source';
 import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
@@ -130,7 +131,8 @@ export type CreateBookingError =
   | 'lead_time'
   | 'horizon'
   | 'no_barber_available'
-  | 'card_required';
+  | 'card_required'
+  | 'customer_blocked';
 
 export type CreateBookingResult =
   | { success: true; booking: BookingRow }
@@ -266,6 +268,31 @@ export async function createBooking(
   }
   if (!time || !TIME_RE.test(time)) {
     return { success: false, error: 'validation', message: 'Invalid time format (HH:MM)' };
+  }
+
+  // --- Cliente bloqueado (solo canales self-service) ------------------------
+  // Un cliente con reputation='blocked' (bloqueo manual del barbero o por
+  // acumulación de no-shows) no puede AUTO-reservar por bot/PWA/voz. El
+  // barbero SÍ puede agendarlo a mano (source 'dashboard'/'import'): esos
+  // casos ni siquiera consultan aquí, y la UI de "Nueva cita" ya le avisa.
+  if (isSelfServiceSource(source)) {
+    const [blockedCustomer] = await db
+      .select({ reputation: customers.reputation })
+      .from(customers)
+      .where(
+        and(
+          eq(customers.clientId, client.id),
+          eq(customers.phone, canonicalCustomerPhone),
+        ),
+      )
+      .limit(1);
+    if (blockedCustomer?.reputation === 'blocked') {
+      return {
+        success: false,
+        error: 'customer_blocked',
+        message: 'No es posible reservar online. Contacta directamente con la barbería.',
+      };
+    }
   }
 
   // Derive duration/price from service config when caller didn't provide them.

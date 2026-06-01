@@ -25,8 +25,10 @@ interface Props {
   onNameChange: (name: string) => void;
   /** Teléfono del cliente conocido adjuntado, o null si es walk-in. */
   linkedPhone: string | null;
-  /** Se llama al elegir una coincidencia: el padre fija nombre + teléfono. */
-  onLink: (customer: { name: string; phone: string }) => void;
+  /** Se llama al elegir una coincidencia: el padre fija nombre + teléfono.
+   *  `reputation` es opcional — quien no lo necesite (TPV) lo ignora; "Nueva
+   *  cita" lo usa para avisar si el cliente está bloqueado. */
+  onLink: (customer: { name: string; phone: string; reputation?: string }) => void;
   /** Se llama cuando el usuario edita el nombre teniendo un enlace activo
    *  (suelta el enlace) o pulsa la X (limpia todo). */
   onUnlink: () => void;
@@ -47,7 +49,7 @@ export default function CustomerTypeahead({
   ariaLabel = 'Buscar o escribir cliente',
   className = '',
 }: Props) {
-  const [matches, setMatches] = useState<{ name: string; phone: string }[]>([]);
+  const [matches, setMatches] = useState<{ name: string; phone: string; reputation?: string }[]>([]);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -68,7 +70,7 @@ export default function CustomerTypeahead({
         signal: ctrl.signal,
       })
         .then((r) => r.json())
-        .then((d: { customers?: { name: string; phone: string }[] }) => {
+        .then((d: { customers?: { name: string; phone: string; reputation?: string }[] }) => {
           setMatches(d.customers ?? []);
           setOpen(true);
         })
