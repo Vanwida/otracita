@@ -129,13 +129,16 @@ export async function GET(request: Request) {
       }
 
       // Insert; idempotente gracias al UNIQUE parcial en (booking_id) WHERE reason='booking_completed'.
-      // Usamos raw SQL para ON CONFLICT DO NOTHING (Drizzle onConflict con índice parcial es frágil).
+      // INFERENCIA POR ÍNDICE (columna + predicado), NO `ON CONFLICT ON CONSTRAINT`:
+      // el objeto en DB es un UNIQUE INDEX parcial, no una constraint nombrada,
+      // así que `ON CONSTRAINT <nombre>` lanzaba "constraint does not exist" en
+      // cada insert (silenciado por el catch → 0 sellos otorgados nunca).
       const result = await db.execute(sql`
         INSERT INTO loyalty_ledger
           (client_id, customer_id, booking_id, delta, reason, note, reward_snapshot, created_by)
         VALUES
           (${client.id}, ${customerId}, ${booking.id}, ${delta}, 'booking_completed', NULL, NULL, 'system_cron')
-        ON CONFLICT ON CONSTRAINT loyalty_ledger_booking_completed_uniq DO NOTHING
+        ON CONFLICT (booking_id) WHERE reason = 'booking_completed' DO NOTHING
         RETURNING id
       `)
 
