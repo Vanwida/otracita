@@ -1021,7 +1021,7 @@ export default function FinanzasClient({
                   <div className="px-4 pt-3 pb-1 border-t border-line">
                     <p className="text-xs text-ink-3 font-medium uppercase tracking-wider">Nóminas del equipo</p>
                   </div>
-                  <a
+                  <Link
                     href="/dashboard/informes/nominas"
                     className="flex items-center gap-3 px-4 py-2.5 border-b border-line hover:bg-overlay/30 transition-colors group"
                   >
@@ -1032,7 +1032,7 @@ export default function FinanzasClient({
                     <span className="tabular-nums text-sm font-semibold text-ink shrink-0">
                       {formatCents(summary.nominasCents)}
                     </span>
-                  </a>
+                  </Link>
                 </>
               )}
 

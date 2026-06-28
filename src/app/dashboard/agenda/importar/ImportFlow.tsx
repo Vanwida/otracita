@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Upload, Loader2, Check, Trash2, AlertCircle, ChevronRight } from 'lucide-react'
 import NumberInput from '../../_components/NumberInput'
 
@@ -434,12 +435,12 @@ export default function ImportFlow() {
         </div>
 
         <div className="flex items-center justify-end gap-3">
-          <a
+          <Link
             href="/dashboard/agenda"
             className="text-sm text-ink-2 hover:text-ink underline underline-offset-2"
           >
             Ver agenda
-          </a>
+          </Link>
           <button
             type="button"
             onClick={reset}

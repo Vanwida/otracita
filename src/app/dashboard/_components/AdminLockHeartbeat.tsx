@@ -29,11 +29,17 @@ const CHECK_INTERVAL_MS = 30 * 1000 // chequear cada 30s
 
 export default function AdminLockHeartbeat() {
   const router = useRouter()
-  const lastActivityRef = React.useRef<number>(Date.now())
+  // Init a 0 (constante pura): `Date.now()` en el cuerpo del render es impuro
+  // (react-hooks/purity). El timestamp real de arranque se marca dentro del
+  // effect, que corre justo tras montar — `check()` solo lee esta ref desde el
+  // setInterval del effect, así que nunca la ve en 0.
+  const lastActivityRef = React.useRef<number>(0)
   const hiddenSinceRef = React.useRef<number | null>(null)
   const lockedRef = React.useRef(false)
 
   React.useEffect(() => {
+    lastActivityRef.current = Date.now()
+
     function markActive() {
       lastActivityRef.current = Date.now()
       // Si volvió actividad tras un lock previo, permitimos reincidir

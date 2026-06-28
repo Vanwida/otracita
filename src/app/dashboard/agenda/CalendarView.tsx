@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import useSWR from 'swr';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -893,13 +894,13 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           </button>
         )}
         {!mobileMode && (
-          <a
+          <Link
             href="/dashboard/agenda/importar"
             className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
             title="Importar reservas desde Booksy / agenda externa"
           >
             Importar
-          </a>
+          </Link>
         )}
         {/* "Nueva cita": botón normal en admin; en mobileMode el botón
             se renderiza FUERA de la barra (FAB flotante abajo a la derecha,

@@ -6,6 +6,7 @@ import {
   Info,
   ChevronDown,
 } from 'lucide-react'
+import Link from 'next/link'
 import VerifactuBadge from './VerifactuBadge'
 import FormGrid from '@/app/dashboard/_components/FormGrid'
 
@@ -211,12 +212,12 @@ export default function VerifactuHelpPanel() {
         <FileText className="h-3 w-3 shrink-0" />
         <span>
           otracita actúa como Sistema Informático de Facturación (SIF) conforme al{' '}
-          <a
+          <Link
             href="/legal/verifactu"
             className="underline hover:text-ink-2"
           >
             Real Decreto 1007/2023 y la Orden HAC/1177/2024
-          </a>
+          </Link>
           . Tu facturación es legal, trazable y auditable.
         </span>
       </div>

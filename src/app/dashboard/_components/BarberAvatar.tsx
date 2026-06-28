@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 /**
  * Retrato del barbero con fallback a iniciales cuando la imagen falla
@@ -24,10 +24,14 @@ export default function BarberAvatar({
   alt?: string
 }) {
   const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
+  // Reset del fallback cuando cambia la URL — patrón oficial de React de
+  // "ajustar estado al cambiar props" durante el render, en vez de un effect
+  // con setState (que dispara render-en-cascada → react-hooks/set-state-in-effect).
+  const [prevUrl, setPrevUrl] = useState(url)
+  if (url !== prevUrl) {
+    setPrevUrl(url)
     setFailed(false)
-  }, [url])
+  }
 
   const initials = name.slice(0, 1).toUpperCase()
   const showImg = url && !failed

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Loader2, ShoppingBag, Plus, Minus, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import Modal from '../_components/Modal'
@@ -170,9 +171,9 @@ export default function AddProductSaleModal({
               ) : products.length === 0 ? (
                 <p className="text-sm text-ink-3 text-center py-4">
                   No tienes productos dados de alta. Añádelos en{' '}
-                  <a href="/dashboard/ventas/productos" className="text-brand hover:underline">
+                  <Link href="/dashboard/ventas/productos" className="text-brand hover:underline">
                     Ventas → Productos
-                  </a>
+                  </Link>
                   .
                 </p>
               ) : (

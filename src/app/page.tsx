@@ -935,13 +935,13 @@ function VeriFactuSection() {
               <FactCheck>Libro de Facturas Emitidas, Modelo 303</FactCheck>
               <FactCheck>Incluido también en el plan gratuito</FactCheck>
             </ul>
-            <a
+            <Link
               href="/legal/verifactu"
               className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[var(--color-brand-strong)] underline decoration-[var(--color-brand)]/40 underline-offset-4 transition-colors hover:text-[var(--color-brand)]"
             >
               Leer la Declaración Responsable
               <span aria-hidden="true">→</span>
-            </a>
+            </Link>
           </div>
         </div>
       </div>
