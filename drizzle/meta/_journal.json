@@ -162,6 +162,20 @@
       "when": 1779472014994,
       "tag": "0044_product_sales_consumption_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1785689624897,
+      "tag": "0059_google_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1785691007084,
+      "tag": "0060_google_business_location_title",
+      "breakpoints": true
     }
   ]
 }
