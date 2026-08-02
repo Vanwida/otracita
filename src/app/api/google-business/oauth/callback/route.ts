@@ -1,9 +1,14 @@
 import { cookies } from 'next/headers'
 import { db } from '@/db'
-import { clients } from '@/db/schema'
+import { clients, googleReviews } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { exchangeCodeForTokens } from '@/lib/google-business/oauth'
-import { listAccounts, listLocations, resolveLocationSelection } from '@/lib/google-business/client'
+import {
+  listAccounts,
+  listLocations,
+  resolveLocationSelection,
+  hasLocationChanged,
+} from '@/lib/google-business/client'
 import { siteUrl } from '@/lib/site'
 
 // -----------------------------------------------------------------------------
@@ -114,6 +119,21 @@ export async function GET(req: Request) {
     jar.delete(CLIENT_COOKIE)
 
     return failRedirect('multiple-locations')
+  }
+
+  // Purga por cambio de ficha — misma regla que `locations/select`, aquí por
+  // la otra puerta: reconectar con una cuenta de Google distinta entra por
+  // este camino (una sola location) y no por el selector. Sin esto, las
+  // reseñas de la ficha anterior se quedarían mezcladas y las que siguieran
+  // 'pending' se intentarían publicar contra la ficha nueva hasta morir como
+  // 'failed'. Reconectar la MISMA ficha no purga: conserva el histórico.
+  const [previous] = await db
+    .select({ locationPath: clients.googleBusinessLocationPath })
+    .from(clients)
+    .where(eq(clients.id, clientId))
+
+  if (previous && hasLocationChanged(previous.locationPath, selection.location.name)) {
+    await db.delete(googleReviews).where(eq(googleReviews.clientId, clientId))
   }
 
   // Persistir en clients — único caso de auto-conexión completa.

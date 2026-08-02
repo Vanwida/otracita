@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { clients } from '@/db/schema'
+import { clients, googleReviews } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireClientAccess, accessErrorResponse } from '@/lib/auth/require-client-access'
 import { requireFeature } from '@/lib/billing/tier'
@@ -24,9 +24,24 @@ export async function POST(req: Request) {
       googleBusinessRefreshToken: null,
       googleBusinessTokenExpiresAt: null,
       googleBusinessLocationPath: null,
+      googleBusinessLocationTitle: null,
       googleBusinessConnectedAt: null,
     })
     .where(eq(clients.id, access.client.id))
+
+  // Las filas de `google_reviews` pertenecen a la ficha que estaba conectada,
+  // así que desconectar las borra. Dos motivos:
+  //   1. Para el barbero, "desconectar" significa quitar esto de en medio —
+  //      dejarle un listado de reseñas de Google sobre las que ya no puede
+  //      actuar es confuso.
+  //   2. Sin esto, desconectar y reconectar con OTRA cuenta de Google dejaría
+  //      el histórico de la ficha anterior mezclado con el nuevo, y las filas
+  //      'pending' viejas se intentarían publicar contra la ficha nueva hasta
+  //      morir como 'failed'.
+  // Si reconecta la misma ficha, todo se reconstruye solo en el siguiente
+  // sync: Google conserva las reseñas y las que ya tengan respuesta se
+  // detectan como respondidas.
+  await db.delete(googleReviews).where(eq(googleReviews.clientId, access.client.id))
 
   return Response.json({ ok: true })
 }
