@@ -3,14 +3,18 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { clients, ratings } from '@/db/schema'
+import { clients, ratings, googleReviews } from '@/db/schema'
 import { desc, eq, sql } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
-import { Star, MessageSquare, MessageCircle, Smartphone } from 'lucide-react'
+import { Star, MessageSquare, MessageCircle, Smartphone, Sparkles } from 'lucide-react'
 import AreaShell from '@/app/dashboard/_components/AreaShell'
 import AreaContent from '@/app/dashboard/_components/AreaContent'
 import StatStrip from '@/app/dashboard/_components/StatStrip'
 import RatingsToggle from '../../resenas/RatingsToggle'
+import GoogleReviewsSection from './GoogleReviewsSection'
+import { hasFeature, upgradeMessage } from '@/lib/billing/tier'
+import { isGoogleBusinessConnected } from '@/lib/google-business/sync'
+import { MAX_REPLY_LENGTH } from '@/lib/google-business/reply'
 
 // -----------------------------------------------------------------------------
 // /dashboard/marketing/resenas — pestaña RESEÑAS del área Marketing.
@@ -75,7 +79,7 @@ export default async function MarketingResenasPage() {
     .where(eq(clients.email, session.user.email))
   if (!client) redirect('/dashboard/setup')
 
-  const [statsRow, list] = await Promise.all([
+  const [statsRow, list, googleReviewsList] = await Promise.all([
     db
       .select({
         total: sql<number>`count(*)`,
@@ -95,7 +99,35 @@ export default async function MarketingResenasPage() {
       .where(eq(ratings.clientId, client.id))
       .orderBy(desc(ratings.createdAt))
       .limit(100),
+    db
+      .select()
+      .from(googleReviews)
+      .where(eq(googleReviews.clientId, client.id))
+      .orderBy(desc(googleReviews.reviewCreatedAt))
+      .limit(100),
   ])
+
+  const hasGoogleReviewsAccess = hasFeature(client, 'googleReviews')
+  const googleUpgrade = upgradeMessage('googleReviews')
+  const googleConnected = isGoogleBusinessConnected(client)
+  // Tokens de Google guardados (callback OAuth exitoso) pero sin location
+  // elegida — cuenta con varias fichas de empresa (ver callback/route.ts,
+  // rama `selection.kind === 'multiple'`). isGoogleBusinessConnected exige
+  // locationPath no-nulo, así que este caso queda fuera de `googleConnected`
+  // a propósito; se resuelve con el picker (GoogleLocationList).
+  const needsGoogleLocationPick =
+    Boolean(client.googleBusinessAccessToken && client.googleBusinessRefreshToken) &&
+    !client.googleBusinessLocationPath
+  const googleReviewItems = googleReviewsList.map((r) => ({
+    id: r.id,
+    reviewerName: r.reviewerName,
+    starRating: r.starRating,
+    comment: r.comment,
+    createdAtLabel: formatDate(r.reviewCreatedAt),
+    replyText: r.replyText,
+    replyStatus: r.replyStatus,
+    replyPublishedAtLabel: r.replyPublishedAt ? formatDate(r.replyPublishedAt) : null,
+  }))
 
   const total = Number(statsRow?.total ?? 0)
   const avg = total > 0 ? Number(statsRow?.avg ?? 0) : 0
@@ -265,6 +297,30 @@ export default async function MarketingResenasPage() {
             </div>
           </>
         )}
+
+        <div className="mb-4 mt-8 flex items-center gap-2 border-t border-line pt-8">
+          <Sparkles className="h-4 w-4 text-brand" />
+          <h2 className="text-base font-semibold text-ink">Reseñas de Google</h2>
+        </div>
+        <p className="mb-4 text-ink-2" style={{ fontSize: 'var(--text-meta)' }}>
+          Respuestas automáticas con IA a las reseñas de tu ficha de Google
+          Business Profile — separadas de las valoraciones internas de
+          arriba.
+        </p>
+        <GoogleReviewsSection
+          hasFeatureAccess={hasGoogleReviewsAccess}
+          upgradeTitle={googleUpgrade.title}
+          upgradeBody={googleUpgrade.body}
+          connected={googleConnected}
+          needsLocationPick={needsGoogleLocationPick}
+          locationPath={client.googleBusinessLocationPath}
+          connectedAtLabel={
+            client.googleBusinessConnectedAt ? formatDate(client.googleBusinessConnectedAt) : null
+          }
+          autoReplyEnabled={client.googleReviewsAutoReply}
+          reviews={googleReviewItems}
+          maxReplyLength={MAX_REPLY_LENGTH}
+        />
       </AreaContent>
     </AreaShell>
   )
