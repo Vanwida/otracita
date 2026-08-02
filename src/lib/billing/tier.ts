@@ -45,6 +45,8 @@ export const FEATURE_MIN_TIER = {
   loyaltyAdvanced: 'pro',
   promosContextuales: 'pro',
   walkInsAvanzados: 'pro',
+  // Pro+: auto-respuesta IA a reseñas de Google Business Profile.
+  googleReviews: 'pro',
 
   // Estudio (99€): IA voz + subdominio + onboarding 1:1.
   recepcionistaIA: 'estudio',
@@ -142,6 +144,7 @@ export function upgradeMessage(feature: Feature): {
     loyaltyAdvanced: 'la fidelidad avanzada',
     promosContextuales: 'las promos contextuales',
     walkInsAvanzados: 'los walk-ins avanzados',
+    googleReviews: 'la auto-respuesta a reseñas de Google',
     recepcionistaIA: 'la recepcionista de IA',
     subdominioPropio: 'tu subdominio propio',
     onboarding1a1: 'el onboarding 1:1',
