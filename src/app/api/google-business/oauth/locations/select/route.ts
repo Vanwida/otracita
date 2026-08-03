@@ -35,9 +35,11 @@ import { handleGoogleBusinessRevoked } from '@/lib/google-business/revoke'
 //
 // LIMPIEZA AL CAMBIAR DE LOCATION: si el path elegido es distinto del que
 // ya tenía el tenant (`hasLocationChanged`), se borran TODAS sus filas de
-// `google_reviews` antes de guardar el nuevo path — ver el comentario junto
-// al `db.delete` más abajo para el razonamiento completo. Re-seleccionar la
-// MISMA location (mismo path) es un no-op: no se toca `google_reviews`.
+// `google_reviews` Y se resetea `googleBusinessConnectedAt` antes de guardar
+// el nuevo path — ver los comentarios junto al `db.delete` y al `db.update`
+// más abajo para el razonamiento completo de cada uno. Re-seleccionar la
+// MISMA location (mismo path) es un no-op TOTAL: no se toca `google_reviews`
+// ni `clients` — ni siquiera se reescribe `connectedAt` con el mismo valor.
 //
 // Response 200: { ok: true, locationPath: string, title: string }
 // -----------------------------------------------------------------------------
@@ -111,11 +113,28 @@ export async function POST(req: Request) {
 
   const chosen = accountLocations.find((l) => l.name === locationPath)!
 
-  // Si el barbero está CAMBIANDO de location (no re-confirmando la misma),
-  // las filas de `google_reviews` que ya teníamos pertenecen a la ficha
-  // ANTERIOR — hay que purgarlas antes de escribir el path nuevo, no
-  // dejarlas convivir con él. Dos motivos, el segundo más grave que el
-  // primero:
+  // Re-seleccionar la MISMA location (mismo path que ya tenía el tenant) es
+  // un no-op TOTAL: cero escritura, ni de `google_reviews` ni de `clients`.
+  // No es solo "no borres reseñas" — tampoco se puede tocar `connectedAt`.
+  //
+  // Bug real que esto evita: `googleBusinessConnectedAt` es el corte que usa
+  // `isReviewEligibleForAutoReply` (client.ts) para decidir qué reseñas son
+  // candidatas a auto-respuesta. Si se reescribiera aquí en cada
+  // re-confirmación, el corte saltaría hacia delante cada vez — cualquier
+  // reseña llegada entre la conexión original y este momento que AÚN no se
+  // hubiera sincronizado entraría como 'skipped' en vez de 'pending' la
+  // próxima vez que corra el sync. El barbero perdería auto-respuestas
+  // legítimas para esa ventana sin ninguna pista de por qué. Por eso: sin
+  // cambio de path, se devuelve éxito y no se escribe nada.
+  if (!hasLocationChanged(client.googleBusinessLocationPath, locationPath)) {
+    return Response.json({ ok: true, locationPath, title: chosen.title ?? locationPath })
+  }
+
+  // A partir de aquí es un cambio de location REAL (path distinto al que ya
+  // tenía el tenant). Las filas de `google_reviews` que ya teníamos
+  // pertenecen a la ficha ANTERIOR — hay que purgarlas antes de escribir el
+  // path nuevo, no dejarlas convivir con él. Dos motivos, el segundo más
+  // grave que el primero:
   //   1. Cosmético: el panel mezclaría reseñas de un negocio que ya no
   //      gestionamos con las de la ficha actual.
   //   2. Funcional: cualquier fila que siguiera en `replyStatus='pending'`
@@ -132,33 +151,18 @@ export async function POST(req: Request) {
   // nunca "ahora gestiono las dos a la vez". Las filas se reconstruyen
   // solas desde la ficha nueva en el siguiente sync — no hay nada que
   // conservar.
-  //
-  // Re-seleccionar la MISMA location (mismo path que ya tenía) es un
-  // no-op: hasLocationChanged devuelve false y no se toca `google_reviews`.
-  const locationChanged = hasLocationChanged(client.googleBusinessLocationPath, locationPath)
-  if (locationChanged) {
-    await db.delete(googleReviews).where(eq(googleReviews.clientId, client.id))
-  }
+  await db.delete(googleReviews).where(eq(googleReviews.clientId, client.id))
 
-  // `connectedAt` es el corte que decide qué reseñas son histórico (nunca
-  // se auto-responden) y cuáles entran al pipeline — ver
-  // `isReviewEligibleForAutoReply`. Por eso NO se puede reescribir a ciegas:
-  //   · Cambio real de ficha → sí se reinicia. El histórico de la ficha
-  //     nueva es legítimamente anterior a que la conectáramos.
-  //   · Re-selección de la MISMA ficha → NO se toca. Moverlo hacia adelante
-  //     convertiría en 'skipped' cualquier reseña llegada desde la conexión
-  //     original que aún no se hubiera sincronizado: el barbero perdería las
-  //     respuestas automáticas de esa ventana sin enterarse nunca.
-  //   · Sin fecha previa (estado imposible hoy, defensivo) → se fija, o el
-  //     sync trataría todo como histórico para siempre.
-  const shouldResetCutoff = locationChanged || client.googleBusinessConnectedAt === null
-
+  // `connectedAt` SOLO se resetea aquí, en la rama de cambio real — es
+  // correcto que el histórico de la ficha nueva cuente como "anterior a la
+  // conexión" (ver isReviewEligibleForAutoReply): para ESTA location es,
+  // literalmente, la primera vez que conectamos.
   await db
     .update(clients)
     .set({
       googleBusinessLocationPath: locationPath,
       googleBusinessLocationTitle: chosen.title ?? null,
-      ...(shouldResetCutoff ? { googleBusinessConnectedAt: new Date() } : {}),
+      googleBusinessConnectedAt: new Date(),
     })
     .where(eq(clients.id, client.id))
 
