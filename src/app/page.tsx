@@ -1694,7 +1694,7 @@ function Faq() {
     },
     {
       q: "¿Cómo es el flujo natural? ¿Por dónde empiezo?",
-      a: "Empiezas en Solo (gratis, sin tarjeta) para ver la app por dentro. Cuando le veas el sitio, pasas a Pro 14 días gratis y activas el bot de WhatsApp y SumUp. Cuando ya estás cómodo en Pro y quieres dejar de coger el teléfono, te toca Estudio — la recepcionista IA sigue en pruebas y te avisamos en cuanto empiece a coger llamadas. Cero presión, cero saltos: cada paso encaja con lo que necesites en ese momento.",
+      a: "Empiezas en Solo (gratis, sin tarjeta) para ver la app por dentro. Cuando le veas el sitio, pasas a Pro 14 días gratis, pides el alta del bot de WhatsApp (el papeleo con Meta lo hacemos nosotros y te avisamos cuando esté) y conectas SumUp. Cuando ya estás cómodo en Pro y quieres dejar de coger el teléfono, te toca Estudio — la recepcionista IA sigue en pruebas y te avisamos en cuanto empiece a coger llamadas. Cero presión, cero saltos: cada paso encaja con lo que necesites en ese momento.",
     },
     {
       q: "¿Soporta otracita varias barberías o más de un local?",
