@@ -21,7 +21,7 @@ import {
 // Body:
 //   {
 //     rows: Array<{ name?, phone, email?, notas? }>,
-//     source: 'csv'   // V1 sólo csv. V2: 'booksy' | 'treatwell' | 'fresha'.
+//     source: 'csv' | 'xlsx'   // sólo para telemetría/validación de shape.
 //   }
 //
 // Response (200):
@@ -66,8 +66,11 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
-  if (body.source !== 'csv') {
-    return Response.json({ error: 'Source no soportado. Usa "csv".' }, { status: 400 })
+  // 'csv'  → parseado en el navegador con papaparse.
+  // 'xlsx'  → parseado en /api/customers/import/parse (Excel de Booksy,
+  //           descifrado en servidor). Las filas llegan aquí ya limpias.
+  if (body.source !== 'csv' && body.source !== 'xlsx') {
+    return Response.json({ error: 'Source no soportado. Usa "csv" o "xlsx".' }, { status: 400 })
   }
 
   if (!Array.isArray(body.rows)) {
