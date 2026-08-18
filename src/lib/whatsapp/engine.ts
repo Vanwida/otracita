@@ -7,6 +7,7 @@ import { hasFeature } from '@/lib/billing/tier';
 import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
 import { isAffirmativeReply, isCancelYes, isChangeYes, isEscapeCommand } from './confirm-intent';
+import { bookingFailureReply, type BookingFailure } from './booking-failure';
 import {
   getAvailableSlots,
   createBooking,
@@ -1552,7 +1553,6 @@ async function handleDateSelection(
   }
 
   const ctx = getContext(conversation);
-  const duration = ctx.serviceDuration || 30;
 
   // If this was triggered from an explicit waitlist flow, skip slot checking and just add to waitlist
   if (ctx.isWaitlistFlow) {
@@ -1580,6 +1580,30 @@ async function handleDateSelection(
     await trackAnalytics(config.id, 'messagesReplied');
     return;
   }
+
+  await sendSlotPickerForDate(conversation, config, selectedDate, token, msg, lang);
+}
+
+/**
+ * Consulta disponibilidad para `date` y manda la lista de huecos (o los
+ * botones de lista de espera si no hay ninguno). Extraído de
+ * `handleDateSelection` porque `handleConfirmation` necesita exactamente lo
+ * mismo cuando la reserva falla: "ese hueco ya no está, aquí tienes los que
+ * quedan". Ver L-09.
+ *
+ * Deja la conversación en `choosing_slot` solo cuando devuelve `'slots'`; el
+ * resto de estados los decide quien llama.
+ */
+async function sendSlotPickerForDate(
+  conversation: ConversationRow,
+  config: BarbershopConfig,
+  selectedDate: string,
+  token: string,
+  msg: IncomingMessage,
+  lang: Lang = 'es'
+): Promise<'slots' | 'none' | 'error'> {
+  const ctx = getContext(conversation);
+  const duration = ctx.serviceDuration || 30;
 
   // Determine business hours for the selected date
   const bh = getBusinessHoursForDate(selectedDate, config.hours);
@@ -1627,7 +1651,7 @@ async function handleDateSelection(
         context: { ...ctxWait, waitlistDate: selectedDate },
       });
       await trackAnalytics(config.id, 'messagesReplied');
-      return;
+      return 'none';
     }
 
     const slotsHeader = lang === 'en'
@@ -1637,9 +1661,11 @@ async function handleDateSelection(
 
     await updateConversation(conversation.id, {
       step: 'choosing_slot',
+      selectedSlot: null,
       context: { ...ctx, selectedDate: selectedDate } satisfies ConversationContext,
     });
     await trackAnalytics(config.id, 'messagesReplied');
+    return 'slots';
   } catch (error) {
     console.error('Error fetching calendar slots:', error);
     const calErrMsg = lang === 'en'
@@ -1647,6 +1673,7 @@ async function handleDateSelection(
       : 'Ha habido un error consultando la disponibilidad. Intenta de nuevo en unos minutos.';
     await sendWhatsAppMessage(msg.phoneNumberId, msg.from, calErrMsg, token);
     await trackAnalytics(config.id, 'messagesReplied');
+    return 'error';
   }
 }
 
@@ -1762,159 +1789,192 @@ async function handleConfirmation(
   // y creaba la reserva. Ver `confirm-intent.ts`.
   const isYes = isAffirmativeReply(text);
 
-  if (isYes) {
-    const ctx = getContext(conversation);
-    const slot = conversation.selectedSlot; // "2026-04-02_17:00"
-
-    // If we have a valid slot, create the booking via DB or GCal path
-    if (slot) {
-      const [date, time] = slot.split('_');
-
-      if (date && time) {
-        const serviceName = conversation.selectedService || 'Servicio';
-        const barber = ctx.selectedBarber;
-        const custName = ctx.customerName || msg.from;
-        let bookingSuccess = false;
-
-        if (config.useDbAvailability) {
-          // DB path — funnel through the shared createBooking helper so that
-          // "sin preferencia" (ctx.selectedBarberId == null) resolves to a
-          // real barber_id via pickBarberForCustomer, lead-time / horizon /
-          // buffer standards are enforced, and auto-invoicing fires. We
-          // fetch the client row once here; the alternative (threading it
-          // through every handler) would bloat the engine more.
-          try {
-            const [clientRow] = await db.select().from(clients).where(eq(clients.id, config.id));
-            if (!clientRow) throw new Error('client row vanished');
-            const result = await createBookingDb({
-              client: clientRow,
-              customerName: custName,
-              customerPhone: msg.from,
-              service: serviceName,
-              barberId: ctx.selectedBarberId ?? null,
-              date,
-              time,
-              duration: ctx.serviceDuration || 30,
-              price: ctx.servicePrice ?? null,
-              source: 'bot',
-            });
-            bookingSuccess = result.success;
-            if (!result.success) {
-              console.warn(`[engine] createBooking failed (${result.error}): ${result.message}`);
-            }
-          } catch (err) {
-            console.error('Error saving booking to DB:', err);
-          }
-        } else if (config.googleCalendarId) {
-          // GCal path: original behavior (createBooking + db insert)
-          const result = await createBooking(
-            config.googleCalendarId,
-            date,
-            time,
-            serviceName,
-            ctx.serviceDuration || 30,
-            custName,
-            `${custName} (${msg.from})`,
-            barber
-          );
-
-          if (result.success) {
-            // GCal legacy path still writes the DB row directly (it also
-            // owns the GCal event id). Make sure the barber name we persist
-            // matches a real row in `barbers` — otherwise the agenda view
-            // groups by unmatched names and renders them invisible. We only
-            // accept the name if it's in the active staff; otherwise fall
-            // back to the first barber in display order so the row is at
-            // least visible somewhere.
-            let persistedBarberId: string | null = null;
-            let persistedBarberName: string | null = null;
-            if (ctx.selectedBarberId) {
-              const match = config.barbers.find((b) => b.id === ctx.selectedBarberId);
-              if (match) {
-                persistedBarberId = match.id;
-                persistedBarberName = match.name;
-              }
-            }
-            if (!persistedBarberId && config.barbers.length > 0) {
-              const fallback = config.barbers[0];
-              persistedBarberId = fallback.id;
-              persistedBarberName = fallback.name;
-            }
-
-            try {
-              await db.insert(bookings).values({
-                clientId: config.id,
-                customerPhone: msg.from,
-                customerName: ctx.customerName || null,
-                service: serviceName,
-                barberId: persistedBarberId,
-                barber: persistedBarberName,
-                date,
-                time,
-                duration: ctx.serviceDuration || 30,
-                price: ctx.servicePrice || null,
-                status: 'confirmed',
-                googleEventId: result.eventId || null,
-                source: 'bot',
-              });
-            } catch (err) {
-              console.error('Error saving booking to DB:', err);
-            }
-            bookingSuccess = true;
-          } else {
-            console.error('Booking creation failed:', result.error);
-            const bookErrMsg = lang === 'en'
-              ? 'There was an error creating your booking. Please try again or contact us directly.'
-              : 'Ha habido un error al crear la reserva. Por favor, intenta de nuevo o contacta directamente con nosotros.';
-            await sendWhatsAppMessage(msg.phoneNumberId, msg.from, bookErrMsg, token);
-          }
-        }
-
-        if (bookingSuccess) {
-          // DB path (createBookingDb) already upserted the customer + bumped
-          // totalBookings. Only the legacy GCal path needs the explicit bump.
-          if (!config.useDbAvailability) {
-            await incrementCustomerBookings(config.id, msg.from);
-          }
-          await trackAnalytics(config.id, 'bookingsMade');
-
-          const noPreferenceLabel = T[lang].noPreference;
-          const barberConfirm = barber && barber !== noPreferenceLabel ? `\n💈 ${barber}` : '';
-          const confirmedMsg = lang === 'en'
-            ? `✅ ${ctx.customerName ? `${ctx.customerName}, your` : 'Your'} booking is confirmed!\n\n📋 ${serviceName}${barberConfirm}\n📅 ${formatDateSpanish(date)} at ${time}${config.address ? `\n📍 ${config.address}` : ''}\n\nSee you soon! 💈`
-            : `✅ ${ctx.customerName ? `${ctx.customerName}, tu` : 'Tu'} cita esta confirmada!\n\n📋 ${serviceName}${barberConfirm}\n📅 ${formatDateSpanish(date)} a las ${time}${config.address ? `\n📍 ${config.address}` : ''}\n\n¡Te esperamos! 💈`;
-          await sendWhatsAppButtons(
-            msg.phoneNumberId,
-            msg.from,
-            confirmedMsg,
-            [
-              { id: 'action_cancel', title: lang === 'en' ? 'Cancel/Change' : 'Cancelar/Cambiar' },
-              { id: 'action_book', title: lang === 'en' ? 'Another booking' : 'Otra reserva' },
-              { id: 'action_done', title: lang === 'en' ? 'Done, thanks' : 'Listo, gracias' },
-            ],
-            token
-          );
-        }
-      } else {
-        // Malformed slot — fallback
-        const fallbackConfirmMsg = lang === 'en'
-          ? `Your appointment has been booked! See you at ${config.businessName}.${config.address ? `\n\nAddress: ${config.address}` : ''}`
-          : `Tu cita ha sido reservada! Te esperamos en ${config.businessName}.${config.address ? `\n\nDireccion: ${config.address}` : ''}`;
-        await sendWhatsAppMessage(msg.phoneNumberId, msg.from, fallbackConfirmMsg, token);
-      }
-    } else {
-      // No slot — basic confirmation
-      const basicConfirmMsg = lang === 'en'
-        ? `Your appointment has been booked! See you at ${config.businessName}.${config.address ? `\n\nAddress: ${config.address}` : ''}`
-        : `Tu cita ha sido reservada! Te esperamos en ${config.businessName}.${config.address ? `\n\nDireccion: ${config.address}` : ''}`;
-      await sendWhatsAppMessage(msg.phoneNumberId, msg.from, basicConfirmMsg, token);
-    }
-  } else {
+  if (!isYes) {
     const notConfirmedMsg = lang === 'en'
       ? "No problem. Let me know if you need anything else."
       : 'Vale, no hay problema. Si necesitas algo mas, escribeme.';
     await sendWhatsAppMessage(msg.phoneNumberId, msg.from, notConfirmedMsg, token);
+    await updateConversation(conversation.id, {
+      step: 'idle',
+      selectedService: null,
+      selectedSlot: null,
+      context: null,
+    });
+    await trackAnalytics(config.id, 'messagesReplied');
+    return;
   }
+
+  const ctx = getContext(conversation);
+  const slot = conversation.selectedSlot; // "2026-04-02_17:00"
+  const [date, time] = (slot || '').split('_');
+
+  // Sin hueco no hay cita. Aquí se mandaba "Tu cita ha sido reservada" sin
+  // fila en la BD: el cliente se plantaba en la barbería un día que nadie le
+  // esperaba. Ahora se dice la verdad y se vuelve a elegir día. Ver L-09.
+  if (!date || !time) {
+    console.error('[engine] confirming sin hueco válido', { conversationId: conversation.id, slot });
+    const lostSlotMsg = lang === 'en'
+      ? "Sorry, I've lost the slot you picked, so nothing is booked. Let's choose the day again."
+      : 'Perdona, he perdido el hueco que habías elegido, así que no hay nada reservado. Elegimos el día otra vez.';
+    await sendWhatsAppMessage(msg.phoneNumberId, msg.from, lostSlotMsg, token);
+    await sendDatePicker(msg, config, token, lang);
+    await updateConversation(conversation.id, { step: 'choosing_date', selectedSlot: null });
+    await trackAnalytics(config.id, 'messagesReplied');
+    return;
+  }
+
+  const serviceName = conversation.selectedService || 'Servicio';
+  const barber = ctx.selectedBarber;
+  const custName = ctx.customerName || msg.from;
+  let bookingSuccess = false;
+  // Rellenado solo por el camino BD: es el único que devuelve un motivo
+  // accionable ("ya hay una reserva en ese horario", lead time, horizonte…).
+  let failure: BookingFailure | null = null;
+
+  if (config.useDbAvailability) {
+    // DB path — funnel through the shared createBooking helper so that
+    // "sin preferencia" (ctx.selectedBarberId == null) resolves to a
+    // real barber_id via pickBarberForCustomer, lead-time / horizon /
+    // buffer standards are enforced, and auto-invoicing fires. We
+    // fetch the client row once here; the alternative (threading it
+    // through every handler) would bloat the engine more.
+    try {
+      const [clientRow] = await db.select().from(clients).where(eq(clients.id, config.id));
+      if (!clientRow) throw new Error('client row vanished');
+      const result = await createBookingDb({
+        client: clientRow,
+        customerName: custName,
+        customerPhone: msg.from,
+        service: serviceName,
+        barberId: ctx.selectedBarberId ?? null,
+        date,
+        time,
+        duration: ctx.serviceDuration || 30,
+        price: ctx.servicePrice ?? null,
+        source: 'bot',
+      });
+      bookingSuccess = result.success;
+      if (!result.success) {
+        console.warn(`[engine] createBooking failed (${result.error}): ${result.message}`);
+        failure = { error: result.error, message: result.message };
+      }
+    } catch (err) {
+      console.error('Error saving booking to DB:', err);
+    }
+  } else if (config.googleCalendarId) {
+    // GCal path: original behavior (createBooking + db insert)
+    const result = await createBooking(
+      config.googleCalendarId,
+      date,
+      time,
+      serviceName,
+      ctx.serviceDuration || 30,
+      custName,
+      `${custName} (${msg.from})`,
+      barber
+    );
+
+    if (result.success) {
+      // GCal legacy path still writes the DB row directly (it also
+      // owns the GCal event id). Make sure the barber name we persist
+      // matches a real row in `barbers` — otherwise the agenda view
+      // groups by unmatched names and renders them invisible. We only
+      // accept the name if it's in the active staff; otherwise fall
+      // back to the first barber in display order so the row is at
+      // least visible somewhere.
+      let persistedBarberId: string | null = null;
+      let persistedBarberName: string | null = null;
+      if (ctx.selectedBarberId) {
+        const match = config.barbers.find((b) => b.id === ctx.selectedBarberId);
+        if (match) {
+          persistedBarberId = match.id;
+          persistedBarberName = match.name;
+        }
+      }
+      if (!persistedBarberId && config.barbers.length > 0) {
+        const fallback = config.barbers[0];
+        persistedBarberId = fallback.id;
+        persistedBarberName = fallback.name;
+      }
+
+      try {
+        await db.insert(bookings).values({
+          clientId: config.id,
+          customerPhone: msg.from,
+          customerName: ctx.customerName || null,
+          service: serviceName,
+          barberId: persistedBarberId,
+          barber: persistedBarberName,
+          date,
+          time,
+          duration: ctx.serviceDuration || 30,
+          price: ctx.servicePrice || null,
+          status: 'confirmed',
+          googleEventId: result.eventId || null,
+          source: 'bot',
+        });
+      } catch (err) {
+        console.error('Error saving booking to DB:', err);
+      }
+      bookingSuccess = true;
+    } else {
+      console.error('Booking creation failed:', result.error);
+    }
+  } else {
+    console.error('[engine] confirming sin calendario ni disponibilidad BD', { clientId: config.id });
+  }
+
+  // Reserva NO creada: se dice por qué y se vuelve al selector de huecos
+  // cuando otro hueco puede funcionar. Nunca se contesta con silencio ni
+  // con una confirmación de consolación. Ver L-09.
+  if (!bookingSuccess) {
+    const { message: failureMsg, action } = bookingFailureReply(failure, lang);
+    await sendWhatsAppMessage(msg.phoneNumberId, msg.from, failureMsg, token);
+    await trackAnalytics(config.id, 'messagesReplied');
+
+    if (action === 'retry_slots') {
+      const outcome = await sendSlotPickerForDate(conversation, config, date, token, msg, lang);
+      if (outcome === 'slots') return; // ya deja la conversación en `choosing_slot`
+      if (outcome === 'error') await sendDatePicker(msg, config, token, lang);
+      // Sin huecos ese día (ya tiene los botones de lista de espera) o fallo
+      // consultando: se sale de `confirming` para que un "sí" suelto no
+      // vuelva a disparar esta misma reserva.
+      await updateConversation(conversation.id, { step: 'choosing_date', selectedSlot: null });
+      return;
+    }
+
+    await updateConversation(conversation.id, {
+      step: 'idle',
+      selectedService: null,
+      selectedSlot: null,
+      context: null,
+    });
+    return;
+  }
+
+  // DB path (createBookingDb) already upserted the customer + bumped
+  // totalBookings. Only the legacy GCal path needs the explicit bump.
+  if (!config.useDbAvailability) {
+    await incrementCustomerBookings(config.id, msg.from);
+  }
+  await trackAnalytics(config.id, 'bookingsMade');
+
+  const noPreferenceLabel = T[lang].noPreference;
+  const barberConfirm = barber && barber !== noPreferenceLabel ? `\n💈 ${barber}` : '';
+  const confirmedMsg = lang === 'en'
+    ? `✅ ${ctx.customerName ? `${ctx.customerName}, your` : 'Your'} booking is confirmed!\n\n📋 ${serviceName}${barberConfirm}\n📅 ${formatDateSpanish(date)} at ${time}${config.address ? `\n📍 ${config.address}` : ''}\n\nSee you soon! 💈`
+    : `✅ ${ctx.customerName ? `${ctx.customerName}, tu` : 'Tu'} cita esta confirmada!\n\n📋 ${serviceName}${barberConfirm}\n📅 ${formatDateSpanish(date)} a las ${time}${config.address ? `\n📍 ${config.address}` : ''}\n\n¡Te esperamos! 💈`;
+  await sendWhatsAppButtons(
+    msg.phoneNumberId,
+    msg.from,
+    confirmedMsg,
+    [
+      { id: 'action_cancel', title: lang === 'en' ? 'Cancel/Change' : 'Cancelar/Cambiar' },
+      { id: 'action_book', title: lang === 'en' ? 'Another booking' : 'Otra reserva' },
+      { id: 'action_done', title: lang === 'en' ? 'Done, thanks' : 'Listo, gracias' },
+    ],
+    token
+  );
 
   await updateConversation(conversation.id, {
     step: 'idle',
