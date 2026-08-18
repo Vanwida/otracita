@@ -6,6 +6,7 @@ import { getClientByPhoneNumberId, type BarbershopConfig, type ServiceConfig } f
 import { hasFeature } from '@/lib/billing/tier';
 import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
+import { isAffirmativeReply } from './confirm-intent';
 import {
   getAvailableSlots,
   createBooking,
@@ -1751,8 +1752,9 @@ async function handleConfirmation(
   msg: IncomingMessage,
   lang: Lang = 'es'
 ): Promise<void> {
-  const lower = text.toLowerCase();
-  const isYes = lower.includes('si') || lower.includes('yes') || text === 'confirm_yes';
+  // Lista cerrada, no `includes('si')`: "lo siento, no puedo" contiene "si"
+  // y creaba la reserva. Ver `confirm-intent.ts`.
+  const isYes = isAffirmativeReply(text);
 
   if (isYes) {
     const ctx = getContext(conversation);
