@@ -123,10 +123,20 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
         const err = await tokenRes.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${tokenRes.status}`);
       }
-      const { signedUrl, voiceId } = (await tokenRes.json()) as {
-        signedUrl: string;
+      const { provider, signedUrl, voiceId } = (await tokenRes.json()) as {
+        provider?: string;
+        signedUrl?: string;
         voiceId?: string | null;
       };
+
+      // El backend habla Grok por defecto (VOICE_PROVIDER). Esta pantalla
+      // sigue montada sobre el SDK de ElevenLabs, así que sólo sabe arrancar
+      // el plan B. Falla claro en vez de abrir una sesión sin signedUrl.
+      if (provider !== 'elevenlabs' || !signedUrl) {
+        throw new Error(
+          `La prueba en navegador todavía usa ElevenLabs; el backend responde "${provider ?? 'desconocido'}". Pon VOICE_PROVIDER=elevenlabs para probar aquí.`,
+        );
+      }
 
       // 3. SDK: arranca sesión. A partir de aquí los callbacks de useConversation
       //    gestionan transcript / audio / errores. Si el backend mandó voiceId,

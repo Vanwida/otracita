@@ -5,21 +5,33 @@ import { requireFeature } from '@/lib/billing/tier';
 // -----------------------------------------------------------------------------
 // GET /api/voice/token
 //
-// Devuelve un signed URL corto-vivo para conectar al Conversational AI Agent
-// de ElevenLabs (recepcionista IA). El cliente usa esta URL para abrir la
-// conexión WebSocket directamente desde el navegador, sin exponer la API key.
+// Devuelve la credencial corto-viva que el navegador necesita para abrir la
+// sesión de voz con la recepcionista IA, sin exponer ninguna API key nuestra.
 //
-// Migrado de Grok Realtime → ElevenLabs Conversational AI el 2026-05-01:
-//   - Voz castellana nativa real (vs. acento inglés-traducido en Grok)
-//   - SDK abstrae WebSocket / PCM / VAD / playback (vs. 700 LOC manuales)
-//   - Pricing similar ($0.05/min Grok vs $0.08/min ElevenLabs Standard)
+// Provider switch: VOICE_PROVIDER.
+//   - 'grok' (DEFAULT, decisión ago-2026): client secret efímero de xAI
+//     Realtime. Es el camino vivo — ElevenLabs se descartó por coste.
+//   - 'elevenlabs': signed URL del Conversational AI Agent. Se mantiene
+//     entero como plan B; se activa poniendo VOICE_PROVIDER=elevenlabs.
 //
-// Provider switch: VOICE_PROVIDER env var. Por defecto 'elevenlabs'. Si se
-// pone 'grok' caemos al flujo legacy (no soportado tras este refactor; queda
-// como tombstone para rollback rápido si fuera necesario).
+// El default vive AQUÍ, en código: sin la env var el endpoint habla Grok.
 // -----------------------------------------------------------------------------
 
-const ELEVENLABS_API = 'https://api.elevenlabs.io/v1/convai/conversation/get_signed_url';
+const VOICE_PROVIDERS = ['grok', 'elevenlabs'] as const;
+type VoiceProvider = (typeof VOICE_PROVIDERS)[number];
+
+const DEFAULT_VOICE_PROVIDER: VoiceProvider = 'grok';
+
+const XAI_CLIENT_SECRETS_API = 'https://api.x.ai/v1/realtime/client_secrets';
+/** Vida del client secret de xAI. Una sesión de prueba nunca dura más. */
+const XAI_CLIENT_SECRET_TTL_SECONDS = 3600;
+
+const ELEVENLABS_SIGNED_URL_API =
+  'https://api.elevenlabs.io/v1/convai/conversation/get_signed_url';
+
+function isVoiceProvider(value: string): value is VoiceProvider {
+  return (VOICE_PROVIDERS as readonly string[]).includes(value);
+}
 
 export async function GET(req: NextRequest) {
   const access = await requireClientAccess(req);
@@ -27,20 +39,81 @@ export async function GET(req: NextRequest) {
   const gate = requireFeature(access.client, 'recepcionistaIA');
   if (gate) return gate;
 
-  const provider = process.env.VOICE_PROVIDER ?? 'elevenlabs';
-  if (provider !== 'elevenlabs') {
-    return NextResponse.json(
-      { error: `Voice provider "${provider}" no soportado. Usa 'elevenlabs'.` },
-      { status: 500 },
-    );
+  const configured = process.env.VOICE_PROVIDER?.trim();
+  let provider: VoiceProvider = DEFAULT_VOICE_PROVIDER;
+  if (configured) {
+    if (!isVoiceProvider(configured)) {
+      return NextResponse.json(
+        {
+          error: `VOICE_PROVIDER "${configured}" no reconocido. Valores: ${VOICE_PROVIDERS.join(' | ')}.`,
+        },
+        { status: 500 },
+      );
+    }
+    provider = configured;
   }
 
+  return provider === 'elevenlabs' ? elevenLabsToken() : grokToken();
+}
+
+// -----------------------------------------------------------------------------
+// Grok (xAI Realtime) — camino por defecto.
+//
+// Pedimos un client secret efímero con nuestra XAI_API_KEY; el navegador lo
+// usa como subprotocolo al abrir wss://api.x.ai/v1/realtime.
+// -----------------------------------------------------------------------------
+async function grokToken() {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: 'XAI_API_KEY no configurada' }, { status: 500 });
+  }
+
+  try {
+    const res = await fetch(XAI_CLIENT_SECRETS_API, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        expires_after: { seconds: XAI_CLIENT_SECRET_TTL_SECONDS },
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('[voice/token] xAI client secret error:', res.status, text);
+      return NextResponse.json(
+        { error: 'No se pudo generar el client secret de voz' },
+        { status: 502 },
+      );
+    }
+
+    const data = (await res.json()) as { value?: string; expires_at?: string };
+    if (!data.value) {
+      console.error('[voice/token] Respuesta inesperada de xAI:', data);
+      return NextResponse.json({ error: 'Respuesta inválida de xAI' }, { status: 502 });
+    }
+
+    return NextResponse.json({
+      provider: 'grok',
+      token: data.value,
+      expiresAt: data.expires_at ?? null,
+    });
+  } catch (err) {
+    console.error('[voice/token] error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// -----------------------------------------------------------------------------
+// ElevenLabs — plan B. No borrar: si Grok se cae o sube de precio, se vuelve
+// aquí con una env var, sin desplegar código.
+// -----------------------------------------------------------------------------
+async function elevenLabsToken() {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'ELEVENLABS_API_KEY no configurada' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'ELEVENLABS_API_KEY no configurada' }, { status: 500 });
   }
 
   // Por defecto cogemos el agent global de otracita. Más adelante (Phase 2)
@@ -55,7 +128,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const url = `${ELEVENLABS_API}?agent_id=${encodeURIComponent(agentId)}`;
+    const url = `${ELEVENLABS_SIGNED_URL_API}?agent_id=${encodeURIComponent(agentId)}`;
     const res = await fetch(url, {
       method: 'GET',
       headers: {
