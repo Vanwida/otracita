@@ -5,8 +5,8 @@ import { headers } from 'next/headers'
 import { auth } from '@/lib/auth/server'
 import { hasFeature } from '@/lib/billing/tier'
 import { db } from '@/db'
-import { clients } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { barbers as barbersTable, clients } from '@/db/schema'
+import { and, asc, eq } from 'drizzle-orm'
 import { Mic } from 'lucide-react'
 import AreaShell from '../../_components/AreaShell'
 import UpgradeRequired from '../../_components/UpgradeRequired'
@@ -15,8 +15,8 @@ import VoiceTest from '../../voice-test/VoiceTest'
 // -----------------------------------------------------------------------------
 // /dashboard/ajustes/recepcionista — pestaña RECEPCIONISTA IA del área
 // Ajustes. Contrato de IA. Contenido movido 1:1 desde /dashboard/voice-test
-// (mismo gate recepcionistaIA, mismas queries client/chatbotServices/
-// booksyServices, mismo VoiceTest). /dashboard/voice-test → redirect aquí.
+// (mismo gate recepcionistaIA, mismas queries client/chatbotServices,
+// mismo VoiceTest). /dashboard/voice-test → redirect aquí.
 //
 // Nota: el voice bot es browser-test only hoy (puente Twilio es otro todo,
 // ver CLAUDE.md) — esto no cambia, solo se reubica la ruta.
@@ -27,12 +27,6 @@ interface ServiceConfig {
   name: string
   duration: number
   price?: number
-}
-
-interface BooksyService {
-  name?: string
-  barber?: string
-  staff?: string
 }
 
 interface BusinessHours {
@@ -62,19 +56,21 @@ export default async function AjustesRecepcionistaPage() {
   }
 
   const services = (client.chatbotServices as ServiceConfig[]) || []
-  const booksyServices = (client.booksyServices as BooksyService[]) || []
   const hours = (client.chatbotHours as BusinessHours) || {
     start: '09:00',
     end: '20:00',
   }
 
-  const barbers = [
-    ...new Set(
-      booksyServices
-        .map((s) => s.barber || s.staff || null)
-        .filter((b): b is string => typeof b === 'string' && b.length > 0),
-    ),
-  ]
+  // Equipo activo: canonical `barbers` table (CLAUDE.md regla 4). NUNCA
+  // client.booksyServices — ese jsonb está congelado y en un tenant nuevo
+  // viene vacío, así que la recepcionista no sabía nombrar a nadie. Mismo
+  // orden que el bot y la agenda: displayOrder, luego nombre.
+  const barberRows = await db
+    .select({ name: barbersTable.name })
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
+    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name))
+  const barbers = barberRows.map((b) => b.name)
 
   return (
     <AreaShell area="marketing">
