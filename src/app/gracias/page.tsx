@@ -44,8 +44,11 @@ function GraciasContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  // Sin `session_id` no hay nada que reclamar: /api/auth/create-account
+  // exige una sesión de checkout completada, así que el form sólo se pinta
+  // cuando venimos de Stripe. (Antes había un `?demo=true` que abría el form
+  // sin pago — L-06.)
   const sessionId = searchParams.get('session_id');
-  const isDemo = searchParams.get('demo') === 'true';
 
   const [email, setEmail] = useState('');
   const [plan, setPlan] = useState('');
@@ -88,7 +91,7 @@ function GraciasContent() {
       const res = await fetch('/api/auth/create-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, sessionId: sessionId || undefined }),
+        body: JSON.stringify({ email, password, sessionId }),
       });
 
       const data = await res.json();
@@ -111,14 +114,8 @@ function GraciasContent() {
     }
   };
 
-  // Demo mode — show same account creation flow but with editable email
-  if (isDemo && !sessionId) {
-    const demoPlan = searchParams.get('plan') || 'chatbot';
-    if (!plan) setPlan(demoPlan);
-  }
-
   // ── Estado: cuenta recién creada ────────────────────────────────────────
-  if ((sessionId || isDemo) && accountCreated) {
+  if (sessionId && accountCreated) {
     return (
       <ThankYouShell>
         <div className="mx-auto w-full max-w-lg">
@@ -138,7 +135,7 @@ function GraciasContent() {
   }
 
   // ── Estado: formulario de crear cuenta ──────────────────────────────────
-  if (sessionId || isDemo) {
+  if (sessionId) {
     return (
       <ThankYouShell>
         <div className="mx-auto w-full max-w-md">
@@ -248,7 +245,7 @@ function GraciasContent() {
     );
   }
 
-  // ── Vista genérica (sin session_id ni demo) — raro, mensaje neutro ─────
+  // ── Vista genérica (sin session_id) — raro, mensaje neutro ─────────────
   return (
     <ThankYouShell>
       <CheckIcon />
