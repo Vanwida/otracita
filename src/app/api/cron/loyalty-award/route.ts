@@ -180,12 +180,27 @@ export async function GET(request: Request) {
     )
   }
 
-  return Response.json({
-    dryRun: DRY_RUN,
-    candidateCount: candidates.length,
-    awarded,
-    skipped,
-    errors,
-    inspected: DRY_RUN ? inspected : undefined,
-  })
+  // Un insert que falla NO puede devolver 200. Ese fue exactamente el modo de
+  // fallo de este cron: el ON CONFLICT reventaba con 42P10 en cada iteración,
+  // el catch lo convertía en `errors++` y el endpoint respondía 200 con
+  // awarded=0. Vercel lo veía verde y nadie se enteró durante meses. Seguimos
+  // procesando el resto del lote (un booking roto no debe bloquear a los
+  // demás), pero el status refleja que hubo fallos.
+  if (errors > 0) {
+    console.error(
+      `[cron/loyalty-award] ${errors} de ${candidates.length} candidato(s) fallaron — awarded=${awarded}`,
+    )
+  }
+
+  return Response.json(
+    {
+      dryRun: DRY_RUN,
+      candidateCount: candidates.length,
+      awarded,
+      skipped,
+      errors,
+      inspected: DRY_RUN ? inspected : undefined,
+    },
+    { status: errors > 0 ? 500 : 200 },
+  )
 }
