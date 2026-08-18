@@ -10,11 +10,12 @@
 // consumen esta misma lista — cero duplicación.
 //
 //   Agenda      · Día · Semana · Importar
-//   Ventas      · Resumen · Cobros · Cierre de caja · Propinas · Facturas · Productos
+//   Ventas      · Nueva venta · Caja · Facturas · Productos
 //   Clientes    · Lista · Atribución        (+ detalle [id]: Info·Citas·Notas)
 //   Equipo      · Empleados · Turnos · Comisiones · Bonos · Competición
 //   Crecimiento · App · Recepcionista IA · Bot WhatsApp · Promos · Fidelidad · Reseñas · Tracking
-//   Informes    · Panel · Actividad · Ingresos · Citas · Clientes · Nóminas · Marketing · Fiscal
+//   Informes    · Panel · Actividad · Ingresos · Transacciones · Gastos · Citas
+//                 · Clientes · Nóminas · Propinas · Marketing · Fiscal
 //   Ajustes     · Negocio · Pagos · Suscripción · Ayuda
 //
 // `/dashboard` → redirige a Agenda (sin "home" en nav). `setup` y `admin`
@@ -90,21 +91,26 @@ export const AREAS: Area[] = [
     label: 'Ventas',
     icon: ShoppingCart,
     href: '/dashboard/ventas',
-    subtitle: 'Cobra, mira lo vendido y cuadra caja.',
-    // Los 4 PRIMEROS son el set Booksy literal ("Nueva venta · Transacciones
-    // · Cierre de caja · Facturas") para que un barbero que viene de Booksy
-    // encuentre lo de siempre en el mismo orden. Nueva venta es la ruta
-    // ÍNDICE (seg:null) → al entrar en Ventas cae directo en el TPV, igual
-    // que Booksy. Resumen/Cobros/Propinas/Productos quedan como secundarias
-    // detrás (siguen existiendo, no se pierde nada).
+    subtitle: 'Cobra lo que no viene de una cita y cuadra el día.',
+    // U-13 — CUATRO pestañas, no ocho. Ventas llegó a tener 8 y cuatro
+    // hablaban del mismo dinero (Resumen, Cobros, Transacciones, Propinas):
+    // el barbero del día 1 abría Ventas y no sabía dónde cobrar. Regla de
+    // corte: aquí SOLO vive lo que el barbero HACE con dinero (cobrar,
+    // cuadrar, facturar, gestionar stock). Todo lo que solo se MIRA es un
+    // informe y vive en Informes.
+    //
+    //   → Transacciones y Propinas se movieron a Informes (rutas nuevas,
+    //     las viejas redirigen).
+    //   → Resumen y Cobros salen del nav pero siguen vivos: Resumen se
+    //     alcanza desde Caja ("ver otro día") y Cobros desde Informes →
+    //     Fiscal y desde Ajustes → Pagos.
+    //
+    // Nueva venta es la ruta ÍNDICE (seg:null) → al entrar en Ventas caes
+    // directo en el TPV, igual que Booksy.
     tabs: [
       { seg: null, label: 'Nueva venta', href: '/dashboard/ventas' },
-      { seg: 'transacciones', label: 'Transacciones', href: '/dashboard/ventas/transacciones' },
-      { seg: 'caja', label: 'Cierre de caja', href: '/dashboard/ventas/caja' },
+      { seg: 'caja', label: 'Caja', href: '/dashboard/ventas/caja' },
       { seg: 'facturas', label: 'Facturas', href: '/dashboard/ventas/facturas' },
-      { seg: 'resumen', label: 'Resumen', href: '/dashboard/ventas/resumen' },
-      { seg: 'cobros', label: 'Cobros', href: '/dashboard/ventas/cobros' },
-      { seg: 'propinas', label: 'Propinas', href: '/dashboard/ventas/propinas' },
       { seg: 'productos', label: 'Productos', href: '/dashboard/ventas/productos' },
     ],
     prefixes: [
@@ -151,10 +157,14 @@ export const AREAS: Area[] = [
       { seg: null, label: 'Panel', href: '/dashboard/informes' },
       { seg: 'actividad', label: 'Actividad', href: '/dashboard/informes/actividad' },
       { seg: 'ingresos', label: 'Ingresos', href: '/dashboard/informes/ingresos' },
+      // Transacciones y Propinas llegaron desde Ventas (U-13): son dinero que
+      // se MIRA, no que se cobra. Ver el comentario del área 'ventas'.
+      { seg: 'transacciones', label: 'Transacciones', href: '/dashboard/informes/transacciones' },
       { seg: 'gastos', label: 'Gastos', href: '/dashboard/informes/gastos' },
       { seg: 'citas', label: 'Citas', href: '/dashboard/informes/citas' },
       { seg: 'clientes', label: 'Clientes', href: '/dashboard/informes/clientes' },
       { seg: 'nominas', label: 'Nóminas', href: '/dashboard/informes/nominas' },
+      { seg: 'propinas', label: 'Propinas', href: '/dashboard/informes/propinas' },
       { seg: 'marketing', label: 'Marketing', href: '/dashboard/informes/marketing' },
       { seg: 'fiscal', label: 'Fiscal', href: '/dashboard/informes/fiscal' },
     ],
@@ -271,6 +281,7 @@ export function isAreaTabActive(tab: AreaTab, segment: string | null): boolean {
  *   /dashboard/ajustes/recepcionista     → Crecimiento > Recepcionista IA
  *   /dashboard/mi-plan                   → Ajustes > Suscripción
  *   /dashboard/ventas/productos          → Ventas > Productos
+ *   /dashboard/informes/propinas         → Informes > Propinas
  *   /dashboard/informes/nominas          → Informes > Nóminas
  *   /dashboard/informes                  → Informes (raíz del área)
  */

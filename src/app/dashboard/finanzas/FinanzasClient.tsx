@@ -982,7 +982,7 @@ export default function FinanzasClient({
                   gasto real aunque no haya flujo de caja. Fallback al precio de
                   venta cuando el producto no tiene coste de compra configurado
                   (margen 0 hasta que el jefe edite el producto). Detalle:
-                  /dashboard/ventas/transacciones filtrando por consumo/merma. */}
+                  /dashboard/informes/transacciones filtrando por consumo/merma. */}
               {summary.materialsCostCents > 0 && (
                 <>
                   <div className="px-4 pt-3 pb-1 border-t border-line">

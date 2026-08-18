@@ -670,7 +670,7 @@ export default function PosTerminal({
               href={
                 fiscalState.kind === 'facturada'
                   ? '/dashboard/ventas/facturas'
-                  : '/dashboard/ventas/transacciones'
+                  : '/dashboard/informes/transacciones'
               }
               className="inline-flex w-full items-center justify-center gap-2 rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
             >
