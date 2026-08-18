@@ -20,6 +20,7 @@ import {
 import { getAvailableSlotsFromDB } from '@/lib/availability';
 import { loadShopOverridesForDate } from '@/lib/shop-day-overrides';
 import { tryVoidInvoicesInBackground } from '@/lib/invoicing';
+import { selectCancellableBookings } from '@/lib/whatsapp/cancellable';
 import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup';
 import { createBooking as createBookingDb } from '@/lib/bookings/create';
 import { MS_IN_MINUTE, BUSINESS_TIMEZONE } from '@/lib/time';
@@ -660,67 +661,11 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   }
 
   if (interactiveId === 'reminder_cancel') {
-    // Find their upcoming booking and cancel it
-    const upcomingBooking = await db.select().from(bookings)
-      .where(and(
-        eq(bookings.clientId, config.id),
-        eq(bookings.customerPhone, msg.from),
-        eq(bookings.status, 'confirmed')
-      ))
-      .orderBy(bookings.date)
-      .limit(1);
-
-    if (upcomingBooking.length > 0) {
-      const bk = upcomingBooking[0];
-      // Delete from Google Calendar
-      if (bk.googleEventId && config.googleCalendarId) {
-        await deleteCalendarEvent(config.googleCalendarId, bk.googleEventId);
-      }
-      // Update booking status
-      await db.update(bookings)
-        .set({ status: 'cancelled', cancelledAt: new Date() })
-        .where(eq(bookings.id, bk.id));
-      // Void any attached invoice so stats/exports drop it and Alex is
-      // pinged to emit a factura rectificativa manually if needed.
-      tryVoidInvoicesInBackground(bk.id);
-
-      // Track cancellation
-      await trackAnalytics(config.id, 'bookingsCancelled');
-      await incrementCustomerCancellations(config.id, msg.from);
-
-      // Check waitlist for this date (legacy bot flow — entradas con
-      // time=null + barber TEXT que se apuntaron por el flow conversacional).
-      await notifyWaitlist(config, bk.date, bk.time, bk.service || '', bk.barber || null, token);
-      // Lista de espera por slot específico (#88) — entradas con rango +
-      // barberId canónico. Fire-and-forget.
-      onBookingCancelled({
-        clientId: config.id,
-        bookingId: bk.id,
-        date: bk.date,
-        time: bk.time,
-        duration: bk.duration,
-        barberId: bk.barberId,
-        barber: bk.barber,
-        service: bk.service,
-        customerPhone: bk.customerPhone,
-      }).catch((err) => console.error('[engine/reminder_cancel] waitlist #88 failed:', err));
-
-      const reminderCancelledMsg = lang === 'en'
-        ? 'Your appointment has been cancelled. Would you like to book another?'
-        : 'Tu cita ha sido cancelada. ¿Quieres reservar otra?';
-      await sendWhatsAppButtons(
-        msg.phoneNumberId,
-        msg.from,
-        reminderCancelledMsg,
-        [
-          { id: 'action_book', title: lang === 'en' ? 'Book another' : 'Reservar otra' },
-          { id: 'action_done', title: lang === 'en' ? 'No, thanks' : 'No, gracias' },
-        ],
-        token
-      );
-      await trackAnalytics(config.id, 'messagesReplied');
-    }
-    return;
+    // L-10: esto cancelaba a pelo la confirmed más antigua del cliente (sin
+    // filtro de fecha) y anulaba su factura. Ahora entra por el flujo normal
+    // de cancelación, que ya solo mira de hoy en adelante, pregunta «¿seguro?»
+    // con la cita delante y avisa si no hay ninguna pendiente.
+    return await startCancellationFlow(conversation, config, token, msg, customerName, lang);
   }
 
   // -- Waitlist button responses --
@@ -2000,7 +1945,7 @@ async function startCancellationFlow(
 ): Promise<void> {
   const today = getTodayDate();
 
-  const upcomingBookings = await db
+  const confirmedBookings = await db
     .select()
     .from(bookings)
     .where(
@@ -2011,6 +1956,10 @@ async function startCancellationFlow(
         gte(bookings.date, today)
       )
     );
+
+  // Filtro de fecha + orden cronológico en un solo sitio (L-10): la primera
+  // cita de la lista es la más próxima, nunca una vieja con factura emitida.
+  const upcomingBookings = selectCancellableBookings(confirmedBookings, today);
 
   if (upcomingBookings.length === 0) {
     const noBookingsMsg = lang === 'en'
