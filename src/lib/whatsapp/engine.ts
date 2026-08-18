@@ -4,6 +4,7 @@ import { conversations, clients, customers, bookings, analytics, waitlist } from
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { getClientByPhoneNumberId, type BarbershopConfig, type ServiceConfig } from './config';
 import { hasFeature } from '@/lib/billing/tier';
+import { notifyAlexBotGated } from './gated-alert';
 import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
 import { isAffirmativeReply, isCancelYes, isChangeYes, isEscapeCommand } from './confirm-intent';
@@ -514,11 +515,22 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   // contesta a mano desde su WhatsApp normal. No respondemos con
   // "upgrade" porque rompería la experiencia del cliente final que escribe
   // a la barbería sin saber del backend.
+  //
+  // Silencio hacia el cliente, sí; silencio hacia nosotros, no (L-17): si el
+  // número de Meta ya está montado y aun así entran mensajes, Alex se entera
+  // una vez cada 24 h. Ver `gated-alert.ts` para el cerrojo.
   if (!hasFeature(config, 'whatsappBot')) {
     console.log(
       `[whatsapp] gated: client ${config.id} tier=${config.tier} trial=${config.trialEndsAt?.toISOString() ?? 'none'}; dropping incoming message from ${msg.from}`,
     );
     await trackAnalytics(config.id, 'messagesReceived');
+    await notifyAlexBotGated({
+      id: config.id,
+      businessName: config.businessName,
+      tier: config.tier,
+      trialEndsAt: config.trialEndsAt,
+      status: config.status,
+    });
     return;
   }
 
