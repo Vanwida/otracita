@@ -35,7 +35,8 @@ interface Booking {
   service: string
   barber: string | null
   status: string
-  price: number | null
+  /** CÉNTIMOS (bookings.price_cents). */
+  priceCents: number | null
   clientBusinessName: string
   clientSlug: string | null
   clientBrandColor: string | null

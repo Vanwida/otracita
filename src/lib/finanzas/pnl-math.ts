@@ -17,14 +17,13 @@
 //     que respeta la factura (invoicing-math.ts calculateAmounts).
 // -----------------------------------------------------------------------------
 
-/** Componentes crudos de ingreso de un periodo, ya sumados. EUROS donde el
- *  schema guarda euros (foot-gun bookings.price / booking_services.priceEuros),
- *  CÉNTIMOS donde guarda cents (manual_incomes, product_sales, tips). */
+/** Componentes crudos de ingreso de un periodo, ya sumados. TODO en CÉNTIMOS
+ *  desde L-05 — ya no hay columnas de dinero en euros en el schema. */
 export interface RevenueComponents {
-  /** SUM(bookings.price) del periodo, en EUROS. */
-  bookingPriceEuros: number;
-  /** SUM(booking_services.priceEuros) — servicios EXTRA R7, en EUROS. */
-  extrasEuros: number;
+  /** SUM(bookings.price_cents) del periodo, en CÉNTIMOS. */
+  bookingCents: number;
+  /** SUM(booking_services.price_cents) — servicios EXTRA R7, en CÉNTIMOS. */
+  extrasCents: number;
   /** SUM(manual_incomes.amountCents), en CÉNTIMOS. */
   manualCents: number;
   /** SUM(product_sales.totalCents), en CÉNTIMOS. */
@@ -34,8 +33,7 @@ export interface RevenueComponents {
 }
 
 export interface RevenueCents {
-  /** Servicios (principal + extras) en cents — ×100 una sola vez sobre la
-   *  suma en euros, mismo boundary de redondeo que bookingTotalCents/factura. */
+  /** Servicios (principal + extras) en cents. */
   bookingCents: number;
   manualCents: number;
   productsCents: number;
@@ -45,12 +43,13 @@ export interface RevenueCents {
 }
 
 /**
- * Normaliza los componentes crudos a céntimos y devuelve el total. El ×100 de
- * servicios+extras se aplica una vez sobre la suma en euros (no por separado)
- * para que el redondeo coincida con bookingTotalCents y la factura.
+ * Agrega los componentes crudos (ya en céntimos) y devuelve el total. Sin
+ * conversiones ni redondeos: desde L-05 todo llega en céntimos enteros, así
+ * que no hay ningún punto donde se puedan perder los 50 céntimos de un
+ * servicio de 12,50 €.
  */
 export function computeRevenueCents(c: RevenueComponents): RevenueCents {
-  const bookingCents = Math.round((c.bookingPriceEuros + c.extrasEuros) * 100);
+  const bookingCents = c.bookingCents + c.extrasCents;
   const totalCents =
     bookingCents + c.manualCents + c.productsCents + c.tipsCents;
   return {

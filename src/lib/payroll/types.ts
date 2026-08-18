@@ -53,7 +53,7 @@ export interface BarberSalaryProfile {
  *  card (compat retro — todas las propinas pre-V1 eran Stripe Checkout =
  *  card). El motor lo enforza vía `normalizeTipsSplit` en compute.ts. */
 export interface BarberMonthRaw {
-  servicesRevenueCents: number       // SUM(bookings.price * 100) WHERE barberId
+  servicesRevenueCents: number       // SUM(bookings.price_cents) WHERE barberId
   productsRevenueCents: number       // SUM(product_sales.amount_cents) WHERE barberId
   tipsCents: number                   // SUM(tips.amount_cents) — total informativo
   /** Propinas CASH (ya entregadas en mano al barbero). Informativo en nómina

@@ -13,6 +13,7 @@ import type { BookingServiceLine } from '@/lib/bookings/duration'
 import { recordMovementInBackground } from '@/lib/cash/record-movement'
 import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup'
 import { BUSINESS_TIMEZONE } from '@/lib/time';
+import { eurosToCents } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
 // POST /api/pos/sale — venta de mostrador (TPV "Nueva venta", patrón Booksy).
@@ -234,7 +235,7 @@ export async function POST(req: Request) {
   const extras: BookingServiceLine[] = serviceLines.slice(1).map((s) => ({
     name: s.name,
     durationMin: s.durationMin,
-    priceEuros: s.priceEuros,
+    priceCents: eurosToCents(s.priceEuros),
   }))
 
   const created = await createBooking({
@@ -249,7 +250,7 @@ export async function POST(req: Request) {
     // bloquea agenda de verdad — es instantánea — pero el snapshot necesita
     // un valor válido.
     duration: Math.max(1, primary.durationMin || 1),
-    price: primary.priceEuros,
+    priceCents: eurosToCents(primary.priceEuros),
     extraServices: extras.length > 0 ? extras : undefined,
     source: 'pos',
   })
@@ -318,8 +319,10 @@ export async function POST(req: Request) {
 
   // Total cobrado (servicio + extras + productos), IVA incluido — para el
   // recibo y para arrancar el checkout SumUp con el importe correcto.
+  // Mismo redondeo por-línea que `computeBookingTotalCentsFromRows`, para
+  // que el total del recibo no pueda divergir del que valida /charge.
   const servicesTotalCents = serviceLines.reduce(
-    (acc, s) => acc + Math.round(s.priceEuros * 100),
+    (acc, s) => acc + (eurosToCents(s.priceEuros) ?? 0),
     0,
   )
   const productsTotalCents = productLines.reduce((acc, line) => {
@@ -376,7 +379,7 @@ export async function POST(req: Request) {
 
   // Cash movement del SERVICIO (los de productos los emite recordMovement
   // abajo). Suma principal + servicios EXTRA (R7) vía bookingTotalCents —
-  // si la cita es simple es idéntico al price*100 de antes.
+  // si la cita es simple es exactamente bookings.price_cents.
   if (recordServicePayment && updated) {
     const serviceTotalCents = await bookingTotalCents(updated.id)
     if (serviceTotalCents > 0) {

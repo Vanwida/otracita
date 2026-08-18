@@ -21,7 +21,8 @@ interface Row {
   service: string
   barber: string | null
   status: string
-  price: number | null
+  /** CÉNTIMOS (bookings.price_cents). null = cita sin importe. */
+  priceCents: number | null
   clientBusinessName: string
   clientSlug: string | null
   clientBrandColor: string | null
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
       service: bookings.service,
       barber: bookings.barber,
       status: bookings.status,
-      price: bookings.price,
+      priceCents: bookings.priceCents,
       clientBusinessName: clients.businessName,
       clientSlug: clients.publicSlug,
       clientBrandColor: clients.brandColor,

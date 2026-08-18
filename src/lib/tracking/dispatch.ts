@@ -25,7 +25,7 @@ export type TrackingEvent =
 export interface DispatchPayload {
   event: TrackingEvent
   /** Valor en CÉNTIMOS (mismo convenio que el resto del backend, salvo
-   *  `bookings.price` que es euros — el caller debe convertir). */
+   *  el catálogo jsonb de servicios, que sí está en euros). */
   valueCents?: number
   currency?: string
   /** Para de-dupe en Meta/Google Ads — normalmente el bookingId o tipId. */

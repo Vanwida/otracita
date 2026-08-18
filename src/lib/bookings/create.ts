@@ -17,6 +17,7 @@ import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
 import { publicAccountPath } from '@/lib/site';
+import { eurosToCents } from '@/lib/format';
 
 // -----------------------------------------------------------------------------
 // Shared booking creation pipeline.
@@ -62,14 +63,15 @@ export interface CreateBookingOptions {
   time: string;
   /** Minutes. Must be > 0. When omitted we derive from the client's service config. */
   duration?: number;
-  /** Euros, VAT-inclusive. Optional. */
-  price?: number | null;
+  /** CÉNTIMOS enteros, IVA incluido (1250 = 12,50 €). Opcional — si se omite
+   *  se deriva del catálogo de servicios del cliente. */
+  priceCents?: number | null;
   /** Servicios EXTRA además del principal (R7). Solo el caller del dashboard
    *  los envía. Si está ausente/vacío, el comportamiento es IDÉNTICO al de
    *  hoy (bot/voice/import/cron no lo pasan → 4 de 5 callers sin cambios).
    *  Cuando hay extras: `bookings.duration` snapshot = principal + suma(extras)
    *  para que el chequeo de solape reserve el hueco real, y la factura emite
-   *  una línea por servicio. `bookings.service`/`price` siguen siendo el
+   *  una línea por servicio. `bookings.service`/`priceCents` siguen siendo el
    *  snapshot del PRINCIPAL (compat agenda/loyalty/followup). */
   extraServices?: BookingServiceLine[] | null;
   /** Booking source tag — defaults to 'bot'. */
@@ -138,6 +140,9 @@ export type CreateBookingResult =
   | { success: true; booking: BookingRow }
   | { success: false; error: CreateBookingError; message: string };
 
+/** Entrada del catálogo `clients.chatbotServices` (jsonb). `price` está en
+ *  EUROS ahí — es lo que el barbero teclea en Ajustes → Negocio — y se
+ *  normaliza a céntimos en `resolveServiceConfig`. */
 interface ConfiguredService {
   name: string;
   duration: number;
@@ -173,12 +178,14 @@ function toMinutes(hhmm: string): number {
 function resolveServiceConfig(
   client: ClientRow,
   serviceName: string,
-): { duration: number; price: number | null } {
+): { duration: number; priceCents: number | null } {
   const services = (client.chatbotServices as ConfiguredService[] | null) || [];
   const match = services.find((s) => s?.name?.toLowerCase() === serviceName.toLowerCase());
   return {
     duration: match?.duration ?? 30,
-    price: typeof match?.price === 'number' ? match.price : null,
+    // Única frontera euros → céntimos del pipeline de reservas: el catálogo
+    // es jsonb en euros (12.5), la cita se persiste en céntimos (1250).
+    priceCents: typeof match?.price === 'number' ? eurosToCents(match.price) : null,
   };
 }
 
@@ -298,7 +305,7 @@ export async function createBooking(
   // Derive duration/price from service config when caller didn't provide them.
   const configured = resolveServiceConfig(client, service);
   const primaryDuration = options.duration ?? configured.duration;
-  const price = options.price ?? configured.price;
+  const priceCents = options.priceCents ?? configured.priceCents;
 
   if (!primaryDuration || primaryDuration <= 0) {
     return { success: false, error: 'validation', message: 'duration must be greater than 0' };
@@ -525,7 +532,7 @@ export async function createBooking(
       date,
       time,
       duration,
-      price: price ?? null,
+      priceCents: priceCents ?? null,
       status: 'confirmed',
       source,
       // Last-touch attribution para esta reserva. Null si no se capturó —
@@ -569,7 +576,7 @@ export async function createBooking(
 
   // --- Servicios extra (R7) -------------------------------------------------
   // Solo cuando el caller los envió (dashboard). Aditivo: el principal ya
-  // está en bookings.service/duration/price; estos son los EXTRA. Si esto
+  // está en bookings.service/duration/priceCents; estos son los EXTRA. Si esto
   // falla no tumbamos la reserva (ya está creada) — log y seguimos; el
   // barbero puede re-añadirlos editando la cita.
   if (extras && extras.length > 0) {
@@ -579,7 +586,7 @@ export async function createBooking(
           bookingId: created.id,
           name: s.name,
           durationMin: s.durationMin,
-          priceEuros: s.priceEuros ?? null,
+          priceCents: s.priceCents ?? null,
           displayOrder: idx,
         })),
       );

@@ -3,6 +3,7 @@ import { barbers as barbersTable, bookings, productSales, ratings, tips } from '
 import { sql } from 'drizzle-orm'
 import { Wallet, Receipt, CalendarCheck, Heart, Star, User, ShoppingBag, Trophy } from 'lucide-react'
 import DataTable, { type Column } from '@/app/dashboard/_components/DataTable'
+import { formatCents } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
 // BarberBreakdown — desglose de la actividad financiera por barbero.
@@ -30,8 +31,8 @@ import DataTable, { type Column } from '@/app/dashboard/_components/DataTable'
 // fallback al snapshot de nombre sólo si no hay booking_id (propina/rating
 // espontáneo) o el booking no tenía barber_id (legacy). Robust contra rename.
 //
-// billed_eur (ADD-2/P0-1): principal (bookings.price) + servicios EXTRA
-// (booking_services.price_euros) — antes sólo sumaba el principal.
+// billed_cents (ADD-2/P0-1): principal (bookings.price_cents) + servicios
+// EXTRA (booking_services.price_cents) — antes sólo sumaba el principal.
 //
 // Filtra por periodo igual que los KPIs globales (StatsPeriodTabs URL param).
 //
@@ -56,7 +57,7 @@ interface BarberRow {
   barber_name: string
   active: boolean | null
   completed_count: number
-  billed_eur: number | string
+  billed_cents: number | string
   tips_cents: number | string
   /** Sub-total cash de la columna Propinas (Reni V1). COALESCE legacy → 0. */
   tips_cash_cents: number | string
@@ -104,17 +105,17 @@ export default async function BarberBreakdown({
         COALESCE(b.name, book.barber, 'Sin asignar') AS barber_name,
         b.active,
         COUNT(book.id) FILTER (WHERE book.status = 'completed')::int AS completed_count,
-        -- Principal + servicios EXTRA (R7). price_euros en EUROS (foot-gun)
-        -- igual que book.price; subquery correlada, sin fan-out. Sólo
-        -- 'completed' (mismo filtro que el principal).
+        -- Principal + servicios EXTRA (R7). Ambos en CÉNTIMOS enteros;
+        -- subquery correlada, sin fan-out. Sólo 'completed' (mismo filtro
+        -- que el principal).
         COALESCE(SUM(
-          (book.price + COALESCE((
-            SELECT SUM(bs.price_euros)
+          (book.price_cents + COALESCE((
+            SELECT SUM(bs.price_cents)
             FROM booking_services bs
             WHERE bs.booking_id = book.id
-              AND bs.price_euros IS NOT NULL
+              AND bs.price_cents IS NOT NULL
           ), 0))
-        ) FILTER (WHERE book.status = 'completed'), 0)::bigint AS billed_eur
+        ) FILTER (WHERE book.status = 'completed'), 0)::bigint AS billed_cents
       FROM ${bookings} book
       LEFT JOIN ${barbersTable} b ON (
         book.barber_id = b.id
@@ -195,7 +196,7 @@ export default async function BarberBreakdown({
       bb.barber_name,
       bb.active,
       bb.completed_count,
-      bb.billed_eur,
+      bb.billed_cents,
       COALESCE(t.tips_cents, 0)::bigint AS tips_cents,
       COALESCE(t.tips_cash_cents, 0)::bigint AS tips_cash_cents,
       COALESCE(t.tips_card_cents, 0)::bigint AS tips_card_cents,
@@ -212,13 +213,13 @@ export default async function BarberBreakdown({
     )
     WHERE bb.completed_count > 0 OR bb.barber_key != '__unassigned__'
     ORDER BY
-      (bb.billed_eur + COALESCE(s.upsells_cents, 0) / 100.0) DESC NULLS LAST,
+      (bb.billed_cents + COALESCE(s.upsells_cents, 0)) DESC NULLS LAST,
       bb.completed_count DESC
   `)
 
   const rows = (result as unknown as { rows: BarberRow[] }).rows.map((r) => ({
     ...r,
-    billed_eur: Number(r.billed_eur),
+    billed_cents: Number(r.billed_cents),
     tips_cents: Number(r.tips_cents),
     tips_cash_cents: Number(r.tips_cash_cents),
     tips_card_cents: Number(r.tips_card_cents),
@@ -232,14 +233,14 @@ export default async function BarberBreakdown({
   if (rows.length === 0) return null
 
   // Total para % de cuota.
-  const grandTotalEur = rows.reduce((acc, r) => acc + Number(r.billed_eur), 0)
+  const grandTotalCents = rows.reduce((acc, r) => acc + Number(r.billed_cents), 0)
 
   // TOP = el que más factura. Las filas YA vienen ordenadas por
   // (billed + upsells) desc desde SQL: el TOP es la primera fila asignada
   // con facturación > 0. Pura UI sobre el orden existente — no re-ordena ni
   // añade query. Solo se marca con ≥2 barberos facturando (con 1 es obvio).
   const billingRows = rows.filter(
-    (r) => r.barber_key !== '__unassigned__' && Number(r.billed_eur) > 0,
+    (r) => r.barber_key !== '__unassigned__' && Number(r.billed_cents) > 0,
   )
   const topBarberKey =
     highlightTop && billingRows.length >= 2 ? billingRows[0].barber_key : null
@@ -259,21 +260,21 @@ export default async function BarberBreakdown({
         ariaLabel={title}
         rows={rows}
         rowKey={(r) => r.barber_key}
-        columns={barberColumns({ topBarberKey, grandTotalEur })}
+        columns={barberColumns({ topBarberKey, grandTotalCents })}
       />
     </section>
   )
 }
 
 // Builder de columnas — necesita `topBarberKey` (badge "Top") y
-// `grandTotalEur` (calcular % share). Fuera del JSX para que `DataTable`
+// `grandTotalCents` (calcular % share). Fuera del JSX para que `DataTable`
 // reciba un array tipado sin closures pesados inline.
 function barberColumns({
   topBarberKey,
-  grandTotalEur,
+  grandTotalCents,
 }: {
   topBarberKey: string | null
-  grandTotalEur: number
+  grandTotalCents: number
 }): Column<BarberRow>[] {
   return [
     {
@@ -332,11 +333,12 @@ function barberColumns({
       align: 'right',
       numeric: true,
       cell: (r) => {
-        const billed = Number(r.billed_eur)
-        const sharePct = grandTotalEur > 0 ? Math.round((billed / grandTotalEur) * 100) : 0
+        const billed = Number(r.billed_cents)
+        const sharePct =
+          grandTotalCents > 0 ? Math.round((billed / grandTotalCents) * 100) : 0
         return (
           <>
-            <span className="text-ink font-medium">{billed.toFixed(0)} €</span>
+            <span className="text-ink font-medium">{formatCents(billed, { compact: true })}</span>
             {sharePct > 0 && (
               <span className="block text-[10px] text-ink-3">{sharePct}% del total</span>
             )}
@@ -356,12 +358,10 @@ function barberColumns({
       align: 'right',
       numeric: true,
       cell: (r) => {
-        const billed = Number(r.billed_eur)
+        const billed = Number(r.billed_cents)
         const tickets = r.completed_count
-        const medio = tickets > 0 ? billed / tickets : 0
-        return (
-          <span className="text-ink-2">{tickets > 0 ? `${medio.toFixed(2)} €` : '—'}</span>
-        )
+        const medio = tickets > 0 ? Math.round(billed / tickets) : 0
+        return <span className="text-ink-2">{tickets > 0 ? formatCents(medio) : '—'}</span>
       },
     },
     {

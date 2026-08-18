@@ -55,8 +55,8 @@ import { formatCents } from '@/lib/format'
 
 interface BookingShape {
   id: string
-  /** EUROS (foot-gun) — multiplicar ×100 para tocar payments/tips. */
-  price: number
+  /** CÉNTIMOS enteros — misma unidad que payments/tips, sin conversión. */
+  priceCents: number
   customerName: string | null
   barberId: string | null
   serviceLabel: string
@@ -146,7 +146,7 @@ export default function ChargeFlow({
     }
   }, [open])
 
-  const totalCents = Math.round(booking.price * 100)
+  const totalCents = booking.priceCents
 
   // -------------------------------------------------------------------------
   // Cobro nuclear: POST /api/bookings/:id/charge con N tramos.
@@ -328,7 +328,7 @@ export default function ChargeFlow({
 
       {step.kind === 'split-builder' && (
         <SplitPaymentBuilder
-          bookingPrice={booking.price}
+          bookingTotalCents={booking.priceCents}
           stripeConnectActive={stripeConnectActive}
           onSubmit={doCharge}
           onCancel={() => setStep({ kind: 'method-select' })}

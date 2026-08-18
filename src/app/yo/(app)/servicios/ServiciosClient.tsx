@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { Scissors, Loader2, Plus, Trash2, Check } from 'lucide-react';
+import NumberInput from '@/app/dashboard/_components/NumberInput';
 
 // -----------------------------------------------------------------------------
 // ServiciosClient (#72) — editor del catálogo de servicios del local, gated
@@ -149,12 +150,15 @@ export default function ServiciosClient() {
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
                     Precio (€)
                   </span>
-                  <input
-                    type="number"
+                  {/* L-05: 2 decimales reales (12,50 €), no pasos de 0,5. */}
+                  <NumberInput
                     min={0}
-                    step={0.5}
+                    decimals={2}
+                    step="0.01"
+                    placeholder="0,00"
                     value={s.price}
-                    onChange={(e) => update(idx, { price: Number(e.target.value) })}
+                    onValueChange={(n) => update(idx, { price: n ?? 0 })}
+                    aria-label="Precio del servicio en euros"
                     className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-brand"
                     disabled={saving}
                   />

@@ -1415,7 +1415,7 @@ _`mi-plan/page.tsx`_
 
 ## Summary (A)
 
-El dashboard otracita cubre **7 áreas** de primer nivel más shell, setup y rutas legacy, con los siguientes módulos críticos de dinero y fiscalidad (risk P0): toda la capa VeriFactu/AEAT (emitir, rectificar, timeline, QR aceptado), facturación manual con detección NIF y tope ticket 400 €, bookings.price en EUROS (no cents — foot-gun crítico), TPV con 4 métodos de pago + SumUp, caja registradora (apertura/cierre/apuntes/PDF), Stripe Connect onboarding + payment links + refunds, propinas con asignación a barbero, P&L con IVA soportado/repercutido/vencimientos trimestrales, nóminas por barbero (fijo/mixto/autónomo), comisiones por servicio con override, y el módulo de fidelidad stamps/points.
+El dashboard otracita cubre **7 áreas** de primer nivel más shell, setup y rutas legacy, con los siguientes módulos críticos de dinero y fiscalidad (risk P0): toda la capa VeriFactu/AEAT (emitir, rectificar, timeline, QR aceptado), facturación manual con detección NIF y tope ticket 400 €, bookings.price_cents en CÉNTIMOS, igual que el resto del schema (L-05), TPV con 4 métodos de pago + SumUp, caja registradora (apertura/cierre/apuntes/PDF), Stripe Connect onboarding + payment links + refunds, propinas con asignación a barbero, P&L con IVA soportado/repercutido/vencimientos trimestrales, nóminas por barbero (fijo/mixto/autónomo), comisiones por servicio con override, y el módulo de fidelidad stamps/points.
 
 Los módulos de flujo core (risk P1) cubren: agenda con ventana dinámica, drag&drop, 3 vistas (Día/Semana/Mes), polling SWR 10s, BookingDetailPanel con sus 8 acciones, NewBookingPanel multi-servicio, import vision en 3 pasos, gestión del equipo (barberos CRUD + turnos + ausencias + bloques), clientes con ficha Booksy-grade y edición inline, y marketing completo (promos, bot, reseñas, fidelidad).
 
@@ -3239,9 +3239,9 @@ _`src/lib/bookings/create.ts` (607 líneas). Única fuente para todos los caller
 
 ### 24.3 `bookingTotalCents(bookingId)` — total real de la cita en cents
 - `src/lib/bookings/total.ts`
-- `Math.round((bookings.price + Σ bookingServices.priceEuros) * 100)`
+- `bookings.priceCents + Σ bookingServices.priceCents` (todo en céntimos)
 - El ×100 se aplica UNA VEZ sobre la suma en euros → mismo boundary de redondeo que la factura
-- Sin extras devuelve `round(bookings.price * 100)` (no-regresión)
+- Sin extras devuelve `bookings.priceCents` (no-regresión)
 - [unit: src/lib/bookings/total.test.ts] [e2e: —] [risk: P0]
 
 ### 24.4 `hasBookingOverlap(params)` — único check de solape
@@ -3554,7 +3554,7 @@ _`src/lib/sumup/client.ts` + `src/lib/sumup/oauth.ts` + `src/lib/sumup/record-ch
 
 ### 33.1 `periodRevenueComponents(clientId, start, end, opts)` — 5 queries paralelas
 - `src/lib/finanzas/period-revenue.ts`
-- Queries: bookings.price (servicios) + booking_services.priceEuros (extras R7) + manual_incomes.amountCents + product_sales.totalCents + tips.amountCents (status='paid')
+- Queries: bookings.price_cents (servicios) + booking_services.price_cents (extras R7) + manual_incomes.amountCents + product_sales.totalCents + tips.amountCents (status='paid')
 - Extras en query SEPARADA del booking (no LEFT JOIN) → evita SUM inflation por fan-out
 - `includeManual` flag (default true) para compat con endpoints legacy que no lo incluían
 - Retorna `RevenueComponents: {bookingPriceEuros, extrasEuros, manualCents, productsCents, tipsCents}`

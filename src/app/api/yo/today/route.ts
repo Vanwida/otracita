@@ -105,7 +105,7 @@ export async function GET(req: Request) {
 
   const monthRows = await db
     .select({
-      price: bookings.price,
+      priceCents: bookings.priceCents,
       date: bookings.date,
       status: bookings.status,
     })
@@ -121,9 +121,8 @@ export async function GET(req: Request) {
     );
 
   // Propinas del día (cash entregada vs card pendiente).
-  // foot-gun: tips.amountCents está en CENTS, pero bookings.price está en
-  // EUROS. Mantenemos cents en la respuesta y multiplicamos los EUROS por
-  // 100 al sumar las ventas.
+  // Todo en CÉNTIMOS (tips.amountCents y bookings.price_cents): la respuesta
+  // no necesita ninguna conversión de unidad.
   const todayStart = new Date(`${today}T00:00:00.000Z`);
   const todayEnd = new Date(`${today}T23:59:59.999Z`);
   const tipRows = await db
@@ -167,18 +166,18 @@ export async function GET(req: Request) {
     0,
   );
 
-  // Sales (CENTS — los EUROS de bookings.price los multiplicamos x100).
+  // Sales (CÉNTIMOS — bookings.price_cents ya viene en céntimos).
   const completedThisMonth = monthRows.filter((r) => r.status === 'completed');
   const monthSalesCents = completedThisMonth.reduce(
-    (sum, r) => sum + (r.price ?? 0) * 100,
+    (sum, r) => sum + (r.priceCents ?? 0),
     0,
   );
   const todaySalesCents = completedThisMonth
     .filter((r) => r.date === today)
-    .reduce((sum, r) => sum + (r.price ?? 0) * 100, 0);
+    .reduce((sum, r) => sum + (r.priceCents ?? 0), 0);
   const weekSalesCents = weekRows
     .filter((b) => b.status === 'completed')
-    .reduce((sum, b) => sum + (b.price ?? 0) * 100, 0);
+    .reduce((sum, b) => sum + (b.priceCents ?? 0), 0);
   const todayCount = completedThisMonth.filter(
     (r) => r.date === today,
   ).length;
@@ -255,7 +254,7 @@ function serializeBooking(b: typeof bookings.$inferSelect) {
     service: b.service,
     customerName: b.customerName,
     customerPhone: b.customerPhone,
-    price: b.price,
+    priceCents: b.priceCents,
     status: b.status,
     paymentMethod: b.paymentMethod,
   };

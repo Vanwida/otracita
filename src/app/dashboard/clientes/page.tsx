@@ -46,7 +46,7 @@ import CustomerContactActions from './CustomerContactActions'
 // puntual ("¿quién era Carlos?"). El caso normal es entrar desde la cita en
 // Agenda — el usuario no busca clientes a diario.
 //
-// Datos: `bookings.price` está en EUROS (foot-gun en CLAUDE.md). Aggregates
+// Datos: `bookings.price_cents` está en CÉNTIMOS. Aggregates
 // vía LEFT JOIN en una sola query — escala hasta miles sin paginar.
 // -----------------------------------------------------------------------------
 
@@ -191,7 +191,7 @@ export default async function ClientesPage({ searchParams }: Props) {
     FROM ${customers} c
     LEFT JOIN (
       SELECT customer_phone,
-             SUM(price) * 100 AS spent_cents,
+             SUM(price_cents) AS spent_cents,
              COUNT(*) AS completed_count
       FROM ${bookings}
       WHERE client_id = ${client.id} AND status = 'completed'

@@ -5,6 +5,7 @@ import {
   requireManagerPermission,
   managerPermissionErrorResponse,
 } from '@/lib/manager-permissions/guard';
+import { roundEuros } from '@/lib/format';
 
 // -----------------------------------------------------------------------------
 // /api/yo/services (#72) — catálogo de servicios del local, gated por
@@ -89,7 +90,7 @@ export async function PATCH(req: Request) {
     clean.push({
       name: s.name.trim().slice(0, 80),
       duration: Math.round(s.duration),
-      price: Math.round(s.price * 100) / 100,
+      price: roundEuros(s.price) ?? 0,
     });
   }
 

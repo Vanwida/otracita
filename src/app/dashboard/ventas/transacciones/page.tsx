@@ -89,7 +89,7 @@ export default async function VentasTransaccionesPage() {
       service: bookings.service,
       customerName: bookings.customerName,
       barber: bookings.barber,
-      price: bookings.price,
+      priceCents: bookings.priceCents,
       paymentMethod: bookings.paymentMethod,
       createdAt: bookings.createdAt,
     })
@@ -98,7 +98,7 @@ export default async function VentasTransaccionesPage() {
       and(
         eq(bookings.clientId, client.id),
         eq(bookings.status, 'completed'),
-        ne(bookings.price, 0),
+        ne(bookings.priceCents, 0),
       ),
     )
     .orderBy(desc(bookings.createdAt))
@@ -155,14 +155,14 @@ export default async function VentasTransaccionesPage() {
 
   const rows: LedgerRow[] = [
     ...bookingRows
-      .filter((b) => b.price != null && b.price > 0)
+      .filter((b) => b.priceCents != null && b.priceCents > 0)
       .map<LedgerRow>((b) => ({
         id: `b-${b.id}`,
         soldAt: b.createdAt,
         concept: b.service,
         who: b.customerName ?? b.barber ?? null,
         method: (b.paymentMethod as Method) ?? null,
-        amountCents: Math.round((b.price ?? 0) * 100),
+        amountCents: b.priceCents ?? 0,
         kind: 'servicio',
         consumptionKind: null,
         bookingId: b.id,

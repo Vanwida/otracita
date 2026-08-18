@@ -26,7 +26,7 @@ import {
 //
 // Shape devuelto:
 //   {
-//     booking: { id, customerName, customerPhone, service, priceEuros,
+//     booking: { id, customerName, customerPhone, service, priceCents,
 //                paymentMethod, startsAt, endsAt, barberName },
 //     customer: { id, email } | null,    // null = walk-in sin row en customers
 //     invoice:  { id, number, subtotalCents, ivaRate, ivaAmountCents,
@@ -41,7 +41,7 @@ import {
 //     "Enviar por email" y "WhatsApp" sin segundo round-trip.
 //   · invoice (si existe) → número de factura + base imponible para el
 //     bloque colapsable "Ver desglose IVA". Si no hay invoice (Solo plan,
-//     booking sin emitir), fallback al booking.price.
+//     booking sin emitir), fallback al booking.priceCents.
 //   · payments[] → método(s) de cobro real(es). El "mixed" se infiere si
 //     hay >1 row con method distinto. El input de cambio sólo aplica si
 //     algún row tiene method='cash'.
@@ -153,10 +153,9 @@ export async function GET(
       customerName: booking.customerName,
       customerPhone: booking.customerPhone,
       service: booking.service,
-      // EUROS (foot-gun) — el front lo multiplica ×100 cuando lo cruza con
-      // los céntimos de invoice/payments. Lo mantenemos como llega de la BD
-      // para no introducir conversiones implícitas aquí.
-      priceEuros: booking.price,
+      // CÉNTIMOS, misma unidad que invoice/payments — el front ya no
+      // necesita convertir nada al cruzarlos.
+      priceCents: booking.priceCents,
       paymentMethod: booking.paymentMethod,
       startsAt,
       durationMin: booking.duration,

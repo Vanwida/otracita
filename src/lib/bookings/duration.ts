@@ -3,7 +3,7 @@
 // columnas snapshot de `bookings` cuando una cita tiene varios servicios (R7).
 //
 // Modelo de datos:
-//   · `bookings.service` / `bookings.duration` / `bookings.price` siguen siendo
+//   · `bookings.service` / `bookings.duration` / `bookings.priceCents` siguen siendo
 //     el snapshot del SERVICIO PRINCIPAL (compat: agenda, loyalty, followup,
 //     y 4 de 5 callers de createBooking leen estas columnas tal cual).
 //   · Los servicios EXTRA viven en la tabla aditiva `booking_services`.
@@ -13,7 +13,7 @@
 // duración del principal, el motor reserva un hueco demasiado corto y permite
 // doble-booking encima de la segunda mitad de la cita. Por eso `duration`
 // SNAPSHOT = suma de duraciones (principal + extras). El precio NO se suma
-// aquí: `bookings.price` se mantiene como el del principal y la factura emite
+// aquí: `bookings.priceCents` se mantiene como el del principal y la factura emite
 // una línea por servicio (ver invoicing.ts) — así loyalty/agenda no cambian.
 // -----------------------------------------------------------------------------
 
@@ -21,7 +21,8 @@
 export interface BookingServiceLine {
   name: string
   durationMin: number
-  priceEuros: number | null
+  /** CÉNTIMOS enteros (1250 = 12,50 €). null = extra de cortesía. */
+  priceCents: number | null
 }
 
 export interface BookingSnapshot {
@@ -43,7 +44,7 @@ export interface BookingSnapshot {
  */
 export function computeBookingSnapshot(
   primaryDurationMin: number,
-  extras?: BookingServiceLine[] | null,
+  extras?: ReadonlyArray<{ durationMin: number }> | null,
 ): BookingSnapshot {
   const base = Number.isFinite(primaryDurationMin) ? Math.max(0, primaryDurationMin) : 0
   if (!extras || extras.length === 0) {
@@ -74,11 +75,17 @@ export function sanitizeExtraServices(input: unknown): BookingServiceLine[] {
         ? Math.trunc(r.durationMin)
         : 0
     if (!name || durationMin <= 0) continue
-    const priceEuros =
-      typeof r.priceEuros === 'number' && Number.isFinite(r.priceEuros) && r.priceEuros >= 0
-        ? r.priceEuros
-        : null
-    out.push({ name, durationMin, priceEuros })
+    // `priceEuros` es el nombre LEGACY del campo (euros) que usaba el wire
+    // antes de L-05. Se sigue aceptando para que una pestaña del dashboard
+    // abierta desde antes del deploy no mande el extra como cortesía y se
+    // pierda el dinero. Eliminable cuando el deploy esté asentado.
+    const centsRaw =
+      typeof r.priceCents === 'number' && Number.isFinite(r.priceCents) && r.priceCents >= 0
+        ? Math.round(r.priceCents)
+        : typeof r.priceEuros === 'number' && Number.isFinite(r.priceEuros) && r.priceEuros >= 0
+          ? Math.round(r.priceEuros * 100)
+          : null
+    out.push({ name, durationMin, priceCents: centsRaw })
   }
   return out
 }

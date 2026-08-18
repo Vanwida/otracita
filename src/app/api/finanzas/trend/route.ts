@@ -17,7 +17,7 @@ import { computePayrollTotalsByMonth } from '@/lib/payroll/by-month'
 // GET /api/finanzas/trend?months=6
 //
 // Devuelve los últimos N meses de beneficio bruto para sparkline.
-// bookings.price en EUROS — normalizado a cents ×100.
+// bookings.price_cents ya en CÉNTIMOS.
 // Multi-tenancy via requireClientAccess. Feature gate: controlFinanciero.
 // -----------------------------------------------------------------------------
 

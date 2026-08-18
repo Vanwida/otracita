@@ -127,7 +127,7 @@ export async function POST(
 
   const totalCents = invoice
     ? invoice.totalCents
-    : Math.round((booking.price ?? 0) * 100)
+    : (booking.priceCents ?? 0)
 
   // Método humano-legible. Si hay >1 row con methods distintos → "pago
   // fraccionado". Si todos = mismo método, usamos su label canónico.

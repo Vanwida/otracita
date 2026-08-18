@@ -130,33 +130,33 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
     tipsRow,
   ] = await Promise.all([
     db
-      .select({ totalEur: sql<number>`COALESCE(SUM(price), 0)` })
+      .select({ total: sql<number>`COALESCE(SUM(price_cents), 0)` })
       .from(bookings)
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
     db
       .select({
         count: sql<number>`COUNT(*)::int`,
-        ticketMedio: sql<number>`COALESCE(AVG(price), 0)`,
+        ticketMedioCents: sql<number>`COALESCE(AVG(price_cents), 0)`,
       })
       .from(bookings)
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
     db
-      .select({ total: sql<number>`COALESCE(SUM(price), 0)` })
+      .select({ total: sql<number>`COALESCE(SUM(price_cents), 0)` })
       .from(bookings)
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, prevBounds.start), lt(bookings.date, prevBounds.end))),
     db
-      .select({ total: sql<number>`COALESCE(SUM(price), 0)` })
+      .select({ total: sql<number>`COALESCE(SUM(price_cents), 0)` })
       .from(bookings)
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, prevYearStart), lt(bookings.date, prevYearEnd))),
-    // Servicios EXTRA (R7) — booking_services.priceEuros (EUROS, foot-gun).
-    // Query separada (no LEFT JOIN) para no inflar SUM(price) por fan-out.
+    // Servicios EXTRA (R7) — booking_services.price_cents (CÉNTIMOS).
+    // Query separada (no LEFT JOIN) para no inflar SUM(price_cents) por fan-out.
     db
-      .select({ total: sql<number>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .select({ total: sql<number>`COALESCE(SUM(${bookingServices.priceCents}), 0)` })
       .from(bookingServices)
       .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
     db
-      .select({ total: sql<number>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .select({ total: sql<number>`COALESCE(SUM(${bookingServices.priceCents}), 0)` })
       .from(bookingServices)
       .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
       .where(and(eq(bookings.clientId, client.id), eq(bookings.status, 'completed'), gte(bookings.date, prevYearStart), lt(bookings.date, prevYearEnd))),
@@ -179,8 +179,8 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   // bespoke (necesita count/ticketMedio/prevMes que el helper no da) pero
   // el cálculo ingresos→IVA→neto NO se duplica: idéntico byte a byte.
   const revenue = computeRevenueCents({
-    bookingPriceEuros: Number(bookingRow[0]?.totalEur ?? 0),
-    extrasEuros: Number(extrasRow[0]?.total ?? 0),
+    bookingCents: Number(bookingRow[0]?.total ?? 0),
+    extrasCents: Number(extrasRow[0]?.total ?? 0),
     manualCents: monthManualIncomes.reduce((sum, m) => sum + m.amountCents, 0),
     productsCents: Number(productsRow[0]?.total ?? 0),
     tipsCents: Number(tipsRow[0]?.total ?? 0),
@@ -190,13 +190,13 @@ export default async function FinanzasPage({ searchParams }: PageProps) {
   const tipsIngresosCents = revenue.tipsCents
   const ingresosCents = revenue.totalCents
   const serviciosCount = Number(bookingContextRow[0]?.count ?? 0)
-  const ticketMedioCents = Math.round(Number(bookingContextRow[0]?.ticketMedio ?? 0) * 100)
-  const prevIngresosCents = Math.round(Number(prevBookingRow[0]?.total ?? 0) * 100)
+  const ticketMedioCents = Math.round(Number(bookingContextRow[0]?.ticketMedioCents ?? 0))
+  const prevIngresosCents = Number(prevBookingRow[0]?.total ?? 0)
   // prevYear: solo servicios+extras (comparativa de facturación, sin
   // productos/propinas/manual — misma semántica que /summary).
   const prevYearIngresosCents = computeRevenueCents({
-    bookingPriceEuros: Number(prevYearBookingRow[0]?.total ?? 0),
-    extrasEuros: Number(prevYearExtrasRow[0]?.total ?? 0),
+    bookingCents: Number(prevYearBookingRow[0]?.total ?? 0),
+    extrasCents: Number(prevYearExtrasRow[0]?.total ?? 0),
     manualCents: 0,
     productsCents: 0,
     tipsCents: 0,

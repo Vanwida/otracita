@@ -149,14 +149,14 @@ export async function generateInvoiceFromBooking(
   // ── Construir líneas: servicio + productos pendientes de facturar ─────
   const lines: InvoiceLineComputed[] = [];
 
-  if (booking.price != null && booking.price > 0) {
+  if (booking.priceCents != null && booking.priceCents > 0) {
     lines.push(
       buildLineItem(
         {
           kind: 'service',
           name: booking.service,
           quantity: 1,
-          unitPriceCents: Math.round(booking.price * 100),
+          unitPriceCents: booking.priceCents,
         },
         client.ivaRate,
       ),
@@ -164,10 +164,9 @@ export async function generateInvoiceFromBooking(
   }
 
   // Servicios EXTRA (R7) — una línea por servicio adicional. El principal va
-  // arriba desde booking.price; estos vienen de booking_services. Si no hay
-  // (caso normal: bot/voice/import o cita simple) este SELECT devuelve [] y
-  // el comportamiento es idéntico al de antes. priceEuros está en EUROS
-  // (mismo foot-gun que bookings.price) → ×100 a céntimos.
+  // arriba desde booking.priceCents; estos vienen de booking_services. Si no
+  // hay (caso normal: bot/voice/import o cita simple) este SELECT devuelve []
+  // y el comportamiento es idéntico al de antes. Ambos ya en CÉNTIMOS.
   const extraServiceRows = await db
     .select()
     .from(bookingServices)
@@ -175,14 +174,14 @@ export async function generateInvoiceFromBooking(
     .orderBy(bookingServices.displayOrder);
 
   for (const ex of extraServiceRows) {
-    if (ex.priceEuros == null || ex.priceEuros <= 0) continue;
+    if (ex.priceCents == null || ex.priceCents <= 0) continue;
     lines.push(
       buildLineItem(
         {
           kind: 'service',
           name: ex.name,
           quantity: 1,
-          unitPriceCents: Math.round(ex.priceEuros * 100),
+          unitPriceCents: ex.priceCents,
         },
         client.ivaRate,
       ),

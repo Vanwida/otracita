@@ -112,7 +112,7 @@ export async function POST(
     }
   }
 
-  // ── Total esperado (cents). Foot-gun: bookings.price es EUROS. ────────
+  // ── Total esperado (cents) — bookings.price_cents ya es céntimos. ─────
   const bookingTotal = await bookingTotalCents(bookingId);
 
   // ── Validación pura del body ──────────────────────────────────────────

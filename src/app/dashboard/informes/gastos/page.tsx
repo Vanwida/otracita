@@ -26,7 +26,7 @@ import { formatCents as formatCentsBase } from '@/lib/format'
 // y desglose por categoría, pensada para revisar "¿cuánto me he gastado y en
 // qué?" en el periodo que sea.
 //
-// `expenses.amountCents` YA está en céntimos (a diferencia de bookings.price).
+// `expenses.amountCents` está en céntimos, como todo el dinero del schema.
 // El tenant se resuelve de la sesión (loadReportContext), nunca del request.
 // Periodo por `?period=` + opcional `?date=`/`?start=&end=`; periodEndIso es
 // exclusivo (YYYY-MM-DD), igual que la página de ingresos.

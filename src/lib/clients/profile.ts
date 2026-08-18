@@ -29,7 +29,8 @@ export interface ClientProfileBooking {
   service: string
   barber: string | null
   status: string
-  price: number | null
+  /** CÉNTIMOS (bookings.price_cents). null = cita sin importe. */
+  priceCents: number | null
 }
 
 export interface ClientProfileRating {
@@ -62,12 +63,15 @@ export interface ClientProfileData {
     firstSourceCapturedAt: string | null
   }
   stats: {
-    spentEur: number
+    /** Total gastado en servicios completados, en CÉNTIMOS. */
+    spentCents: number
     completedCount: number
-    tipsEur: number
+    /** Propinas pagadas, en CÉNTIMOS. */
+    tipsCents: number
     avgRating: number | null
     ratingCount: number
-    avgTicketEur: number
+    /** Ticket medio = spentCents / completedCount, en CÉNTIMOS. */
+    avgTicketCents: number
     loyaltyBalance: number
   }
   /**
@@ -146,9 +150,9 @@ export async function loadClientProfile(
   const [statsRow, bookingRows, ratingRows, loyaltyRow] = await Promise.all([
     db.execute(sql`
       SELECT
-        (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+        (SELECT COALESCE(SUM(price_cents), 0) FROM ${bookings}
           WHERE client_id = ${clientId} AND customer_phone = ${customer.phone}
-          AND status = 'completed')::bigint AS spent_eur,
+          AND status = 'completed')::bigint AS spent_cents,
         (SELECT COUNT(*) FROM ${bookings}
           WHERE client_id = ${clientId} AND customer_phone = ${customer.phone}
           AND status = 'completed')::int AS completed_count,
@@ -188,7 +192,7 @@ export async function loadClientProfile(
 
   const stats = (statsRow as unknown as {
     rows: Array<{
-      spent_eur: number | string
+      spent_cents: number | string
       completed_count: number
       total_count: number
       cancelled_count: number
@@ -199,15 +203,15 @@ export async function loadClientProfile(
     }>
   }).rows[0]
 
-  const spentEur = Number(stats?.spent_eur ?? 0)
+  const spentCents = Number(stats?.spent_cents ?? 0)
   const completedCount = Number(stats?.completed_count ?? 0)
-  const tipsEur = Number(stats?.tips_cents ?? 0) / 100
+  const tipsCents = Number(stats?.tips_cents ?? 0)
   const avgRating =
     stats?.avg_rating !== null && stats?.avg_rating !== undefined
       ? Number(stats.avg_rating)
       : null
   const ratingCount = Number(stats?.rating_count ?? 0)
-  const avgTicketEur = completedCount > 0 ? spentEur / completedCount : 0
+  const avgTicketCents = completedCount > 0 ? Math.round(spentCents / completedCount) : 0
   const loyaltyBalance = Number(loyaltyRow?.balance ?? 0)
 
   // Contador de Booksy (10.04.36/.46) — derivado de bookings, misma
@@ -249,12 +253,12 @@ export async function loadClientProfile(
         : null,
     },
     stats: {
-      spentEur,
+      spentCents,
       completedCount,
-      tipsEur,
+      tipsCents,
       avgRating,
       ratingCount,
-      avgTicketEur,
+      avgTicketCents,
       loyaltyBalance,
     },
     counters,
@@ -268,7 +272,7 @@ export async function loadClientProfile(
       service: b.service,
       barber: b.barber,
       status: b.status,
-      price: b.price,
+      priceCents: b.priceCents,
     })),
     ratings: ratingRows.map((r) => ({
       id: r.id,

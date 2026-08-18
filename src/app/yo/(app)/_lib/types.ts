@@ -10,7 +10,8 @@ export interface BarberBooking {
   service: string;
   customerName: string | null;
   customerPhone: string;
-  price: number | null;
+  /** CÉNTIMOS (bookings.price_cents). */
+  priceCents: number | null;
   status: 'confirmed' | 'completed' | 'cancelled' | 'no_show';
   paymentMethod: 'cash' | 'card' | 'online' | 'mixed' | null;
 }

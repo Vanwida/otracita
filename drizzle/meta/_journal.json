@@ -176,6 +176,13 @@
       "when": 1785691007084,
       "tag": "0060_google_business_location_title",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1785691007085,
+      "tag": "0061_booking_price_cents",
+      "breakpoints": true
     }
   ]
 }

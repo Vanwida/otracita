@@ -564,7 +564,7 @@ export const teamCompetitions = pgTable('team_competitions', {
   clientId: uuid('client_id').notNull().references(() => clients.id),
   name: text('name').notNull(),
   // Métrica que decide el ganador de la semana.
-  //   'revenue'  → € facturados (bookings.price completados)
+  //   'revenue'  → € facturados (bookings.priceCents completados)
   //   'bookings' → nº de citas completadas
   metric: text('metric').notNull(),                                   // 'revenue' | 'bookings'
   rewardCentsPerWeek: integer('reward_cents_per_week').notNull(),
@@ -704,7 +704,12 @@ export const bookings = pgTable('bookings', {
   date: text('date').notNull(), // YYYY-MM-DD
   time: text('time').notNull(), // HH:MM
   duration: integer('duration').notNull(), // minutes
-  price: integer('price'), // euros
+  // CÉNTIMOS enteros (1250 = 12,50 €). Misma convención que `payments`,
+  // `tips`, `invoices` y `products` — ya NO hay foot-gun de euros aquí.
+  // Antes era `price integer` en EUROS, lo que truncaba 12,50 → 13 en el
+  // INSERT y hacía imposible cobrar precios con decimales (L-05). Null =
+  // sin importe (cortesía / cita sin precio asignado).
+  priceCents: integer('price_cents'),
   status: text('status').notNull().default('confirmed'), // confirmed, cancelled, completed, no_show
   googleEventId: text('google_event_id'),
   source: text('source').notNull().default('bot'), // 'bot' | 'booksy' | 'web' | 'manual' | 'voice'
@@ -759,15 +764,16 @@ export const bookings = pgTable('bookings', {
 // booking_services — servicios EXTRA de una cita multi-servicio (R7).
 //
 // Tabla ADITIVA. El servicio PRINCIPAL sigue viviendo en las columnas snapshot
-// de `bookings` (`service`/`duration`/`price`) — eso mantiene compatibles la
+// de `bookings` (`service`/`duration`/`priceCents`) — eso mantiene compatibles la
 // agenda, loyalty, followup y los 4 callers de createBooking que no envían
 // multi-servicio. Aquí solo se guardan los servicios añadidos por encima del
 // principal.
 //
 // `durationMin` se SUMA al snapshot `bookings.duration` al crear/editar
 // (ver src/lib/bookings/duration.ts) para que el chequeo de solape reserve el
-// hueco real. `priceEuros` es EUROS (igual que `bookings.price`, foot-gun del
-// schema) — la factura emite una línea por servicio (ver invoicing.ts).
+// hueco real. `priceCents` son CÉNTIMOS (igual que `bookings.priceCents` y
+// que el resto del schema) — la factura emite una línea por servicio (ver
+// invoicing.ts).
 // `displayOrder` 0..n para pintar en orden estable.
 //
 // ON DELETE CASCADE: si se borra/cancela la cita, sus extras se van con ella.
@@ -779,7 +785,7 @@ export const bookingServices = pgTable('booking_services', {
     .references(() => bookings.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   durationMin: integer('duration_min').notNull(), // minutos, > 0
-  priceEuros: integer('price_euros'),             // EUROS (no céntimos), null = cortesía
+  priceCents: integer('price_cents'),             // CÉNTIMOS (1250 = 12,50 €), null = cortesía
   displayOrder: integer('display_order').default(0).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -1620,7 +1626,7 @@ export const mobileSessions = pgTable('mobile_sessions', {
 //   - owner_withdrawals: retiradas de caja a bolsillo del dueño (autónomo).
 //
 // Todos los importes en cents. El summary del módulo cruza estas tablas con
-// bookings.price (que está en EUROS, ×100 para normalizar) para calcular
+// bookings.priceCents (céntimos, sin conversión) para calcular
 // beneficio bruto, IVA a pagar e IRPF estimado.
 // -----------------------------------------------------------------------------
 

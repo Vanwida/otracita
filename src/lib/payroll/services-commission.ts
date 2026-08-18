@@ -19,7 +19,7 @@ function clampPct(n: number): number {
 }
 
 /** Facturación de servicios de UN barbero, partida por nombre de servicio.
- *  `revenueCents` ya en cents (bookings.price es EUROS → ×100 en monthly). */
+ *  `revenueCents` en cents (viene tal cual de bookings.price_cents). */
 export interface ServiceRevenueRow {
   serviceName: string
   revenueCents: number

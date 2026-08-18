@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
     status: b.status,
     customerPhone: b.customerPhone,
     customerName: b.customerName,
-    price: b.price,
+    priceCents: b.priceCents,
     service: b.service,
     paymentMethod: b.paymentMethod,
     // Columna real cableada en el commit A2 (migración aditiva). `?? false`

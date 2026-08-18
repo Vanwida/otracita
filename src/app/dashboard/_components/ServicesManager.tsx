@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react'
 import { Plus, Pencil, Trash2, Check, X, Clock, Euro, Star, Pipette } from 'lucide-react'
 import SlideOver from './SlideOver'
+import NumberInput from './NumberInput'
 import {
   SERVICE_COLOR_TOKENS,
   SERVICE_COLOR_CLASSES,
@@ -63,6 +64,11 @@ const EMPTY: Service = {
 }
 const MAX_FEATURED = 3
 const DURATION_STEP = 5
+/** El precio de un servicio son EUROS con 2 decimales. Prohibido forzar
+ *  enteros (L-05): Reni cobra 12,50 y 17,50 y ese número es el que acaba en
+ *  la factura, la caja y las comisiones. */
+const PRICE_DECIMALS = 2
+const PRICE_STEP = '0.01'
 /** Hex inicial del picker custom cuando el barbero abre por primera vez el
  *  selector — fucsia vivo que no se confunde con ningún token canónico. */
 const CUSTOM_DEFAULT_HEX = '#ff4dac'
@@ -336,17 +342,21 @@ function ServiceForm({
             </label>
             <div className="relative">
               <Euro className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-3" />
-              <input
+              {/* L-05: 2 decimales de verdad. Reni cobra 12,50 y 17,50 —
+                  forzar enteros (o pasos de 0,5) está prohibido. NumberInput
+                  además parsea la COMA decimal es-ES, que es lo que teclea
+                  el barbero y lo que muestra el teclado de iOS. */}
+              <NumberInput
                 id="svc-price"
-                type="number"
-                inputMode="decimal"
-                value={draft.price}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, price: e.target.value }))
+                value={draft.price === '' ? null : Number(draft.price)}
+                onValueChange={(n) =>
+                  setDraft((d) => ({ ...d, price: n === null ? '' : n }))
                 }
-                placeholder="0"
+                placeholder="0,00"
                 min={0}
-                step="0.5"
+                decimals={PRICE_DECIMALS}
+                step={PRICE_STEP}
+                aria-label="Precio del servicio en euros"
                 className="w-full min-h-11 bg-canvas border border-line rounded-lg pl-8 py-2.5 text-sm text-ink focus:border-brand focus:bg-surface focus:shadow-[0_0_0_3px_var(--color-brand-softer)] outline-none transition-colors"
               />
             </div>

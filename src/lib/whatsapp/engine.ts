@@ -21,6 +21,7 @@ import { handleFollowupReply, isFollowupReplyId } from '@/lib/whatsapp/followup'
 import { createBooking as createBookingDb } from '@/lib/bookings/create';
 import { MS_IN_MINUTE, BUSINESS_TIMEZONE } from '@/lib/time';
 import { onBookingCancelled } from '@/lib/waitlist/match';
+import { eurosToCents } from '@/lib/format'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -1787,7 +1788,7 @@ async function handleConfirmation(
               date,
               time,
               duration: ctx.serviceDuration || 30,
-              price: ctx.servicePrice ?? null,
+              priceCents: eurosToCents(ctx.servicePrice),
               source: 'bot',
             });
             bookingSuccess = result.success;
@@ -1844,7 +1845,7 @@ async function handleConfirmation(
                 date,
                 time,
                 duration: ctx.serviceDuration || 30,
-                price: ctx.servicePrice || null,
+                priceCents: eurosToCents(ctx.servicePrice),
                 status: 'confirmed',
                 googleEventId: result.eventId || null,
                 source: 'bot',

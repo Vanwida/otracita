@@ -13,7 +13,7 @@ import { MS_IN_DAY } from '@/lib/time'
 // schema nuevo. Multi-tenancy: el caller resuelve `clientId` de la sesión
 // (informes/page.tsx, patrón intacto) — aquí nunca llega del request.
 //
-// Convenio de importes: `bookings.price` está en EUROS (foot-gun del schema,
+// Convenio de importes: TODO el dinero está en CÉNTIMOS enteros (`bookings.price_cents`,
 // documentado en CLAUDE.md). `product_sales.total_cents` y `tips.amount_cents`
 // en céntimos. Devolvemos todo en CÉNTIMOS para que la UI formatee con un
 // único helper (coherencia con el resto de Informes / P&L).
@@ -79,9 +79,9 @@ export async function loadOperatorMetrics(
     (await db
       .execute(sql`
     SELECT
-      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+      (SELECT COALESCE(SUM(price_cents), 0) FROM ${bookings}
         WHERE client_id = ${clientId} AND status = 'completed'
-        AND date >= ${start} AND date < ${end})::bigint AS servicios_eur,
+        AND date >= ${start} AND date < ${end})::bigint AS servicios_cents,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
         WHERE client_id = ${clientId} AND consumption_kind IS NULL
         AND sold_at >= ${start}::date AND sold_at < ${end}::date)::bigint AS productos_cents,
@@ -124,7 +124,7 @@ export async function loadOperatorMetrics(
           (
             r as unknown as {
               rows: {
-                servicios_eur: string | number
+                servicios_cents: string | number
                 productos_cents: string | number
                 propinas_cents: string | number
                 completed_count: number
@@ -138,7 +138,7 @@ export async function loadOperatorMetrics(
           ).rows,
       )) ?? []
 
-  const serviciosCents = Math.round(Number(row?.servicios_eur ?? 0) * 100)
+  const serviciosCents = Number(row?.servicios_cents ?? 0)
   const productosCents = Number(row?.productos_cents ?? 0)
   const propinasCents = Number(row?.propinas_cents ?? 0)
 
@@ -162,9 +162,9 @@ export async function loadOperatorMetrics(
     (await db
       .execute(sql`
     SELECT
-      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+      (SELECT COALESCE(SUM(price_cents), 0) FROM ${bookings}
         WHERE client_id = ${clientId} AND status = 'completed'
-        AND date >= ${prevStart} AND date < ${prevEnd})::bigint AS servicios_eur,
+        AND date >= ${prevStart} AND date < ${prevEnd})::bigint AS servicios_cents,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
         WHERE client_id = ${clientId} AND consumption_kind IS NULL
         AND sold_at >= ${prevStart}::date AND sold_at < ${prevEnd}::date)::bigint AS productos_cents,
@@ -187,7 +187,7 @@ export async function loadOperatorMetrics(
           (
             r as unknown as {
               rows: {
-                servicios_eur: string | number
+                servicios_cents: string | number
                 productos_cents: string | number
                 propinas_cents: string | number
                 clientes_nuevos: number
@@ -197,7 +197,7 @@ export async function loadOperatorMetrics(
       )) ?? []
 
   const prevIngresosTotalCents = prevRow
-    ? Math.round(Number(prevRow.servicios_eur) * 100) +
+    ? Number(prevRow.servicios_cents) +
       Number(prevRow.productos_cents) +
       Number(prevRow.propinas_cents)
     : null
@@ -224,7 +224,7 @@ export async function loadOperatorMetrics(
     (await db
       .execute(sql`
     SELECT to_char(date::date, 'YYYY-MM') AS ym,
-           COALESCE(SUM(price), 0)::bigint AS eur
+           COALESCE(SUM(price_cents), 0)::bigint AS cents
     FROM ${bookings}
     WHERE client_id = ${clientId} AND status = 'completed'
       AND date::date >= (${end}::date - INTERVAL '12 months')
@@ -234,13 +234,13 @@ export async function loadOperatorMetrics(
   `)
       .then(
         (r) =>
-          (r as unknown as { rows: { ym: string; eur: string | number }[] })
+          (r as unknown as { rows: { ym: string; cents: string | number }[] })
             .rows,
       )) ?? []
 
   const trend = trendRows.map((t) => ({
     month: t.ym,
-    cents: Math.round(Number(t.eur) * 100),
+    cents: Number(t.cents),
   }))
 
   return {

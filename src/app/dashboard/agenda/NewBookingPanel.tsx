@@ -5,10 +5,11 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import SlideOver from '../_components/SlideOver';
 import CustomerTypeahead from '../_components/CustomerTypeahead';
-import ServiceLinePicker from '../_components/ServiceLinePicker';
+import ServiceLinePicker, { type ServiceLineValue } from '../_components/ServiceLinePicker';
 import { useConfirm } from '../_components/ConfirmDialog';
 import BarberAvatar from '../_components/BarberAvatar';
-import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
+import { computeBookingSnapshot } from '@/lib/bookings/duration';
+import { eurosToCents } from '@/lib/format';
 
 import type { Barber } from './types';
 
@@ -70,7 +71,7 @@ export default function NewBookingPanel({
   const [price, setPrice] = useState<number | null>(services[0]?.price ?? null);
   // Servicios EXTRA (R7). El principal vive en `service`/`duration`/`price`;
   // estos se mandan como `extraServices` y se guardan en booking_services.
-  const [extraServices, setExtraServices] = useState<BookingServiceLine[]>([]);
+  const [extraServices, setExtraServices] = useState<ServiceLineValue[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,7 +125,7 @@ export default function NewBookingPanel({
     ]);
   };
 
-  const updateExtraService = (idx: number, patch: Partial<BookingServiceLine>) => {
+  const updateExtraService = (idx: number, patch: Partial<ServiceLineValue>) => {
     setExtraServices(prev =>
       prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
     );
@@ -158,8 +159,16 @@ export default function NewBookingPanel({
           date,
           time,
           duration: duration ?? undefined,
-          price: price ?? undefined,
-          extraServices: extraServices.length > 0 ? extraServices : undefined,
+          // El formulario habla EUROS; la API y la DB, CÉNTIMOS.
+          priceCents: eurosToCents(price) ?? undefined,
+          extraServices:
+            extraServices.length > 0
+              ? extraServices.map((e) => ({
+                  name: e.name,
+                  durationMin: e.durationMin,
+                  priceCents: eurosToCents(e.priceEuros),
+                }))
+              : undefined,
           ...(allowOverlap ? { allowOverlap: true } : {}),
           ...(allowOutOfHours ? { allowOutOfHours: true } : {}),
         }),

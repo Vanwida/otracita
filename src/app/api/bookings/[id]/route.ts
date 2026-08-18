@@ -485,7 +485,7 @@ export async function PATCH(
   // ── Cash movement enlazado al booking completado ─────────────────────
   // Si el barbero eligió método de pago y hay sesión de caja abierta,
   // alimentamos el cuadre del día. Suma principal + servicios EXTRA (R7)
-  // vía bookingTotalCents — cita simple ⇒ idéntico al price*100 de antes.
+  // vía bookingTotalCents — cita simple ⇒ es exactamente bookings.price_cents.
   if (patch.status === 'completed' && paymentMethodToRecord && updated) {
     const serviceTotalCents = await bookingTotalCents(updated.id)
     if (serviceTotalCents > 0) {

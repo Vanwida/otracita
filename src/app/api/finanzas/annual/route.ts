@@ -96,7 +96,7 @@ export async function GET(request: Request) {
 
     const revComponents =
       revByMonth.get(month) ??
-      { bookingPriceEuros: 0, extrasEuros: 0, manualCents: 0, productsCents: 0, tipsCents: 0 }
+      { bookingCents: 0, extrasCents: 0, manualCents: 0, productsCents: 0, tipsCents: 0 }
     const revenue = computeRevenueCents(revComponents)
     const ingresosCents = revenue.totalCents
     const expData = expenseByMonth.get(month) ?? { total: 0, iva: 0 }

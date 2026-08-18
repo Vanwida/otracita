@@ -34,7 +34,7 @@ import {
 // y "retención" son métricas de CARTERA (lifetime), no de periodo — un
 // cliente está en riesgo por no volver, no por un rango de fechas.
 //
-// `bookings.price` está en EUROS (foot-gun); normalizamos a céntimos.
+// `bookings.price_cents` está en CÉNTIMOS, igual que el resto del schema.
 // -----------------------------------------------------------------------------
 
 // Cliente "en riesgo": sin cita desde hace ≥ N días pero con ≥2 citas
@@ -85,12 +85,12 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
       customer_phone AS phone,
       COALESCE(MAX(customer_name), customer_phone) AS name,
       COUNT(*)::int AS count,
-      COALESCE(SUM(price), 0)::bigint AS eur
+      COALESCE(SUM(price_cents), 0)::bigint AS cents
     FROM ${bookings}
     WHERE client_id = ${client.id} AND status = 'completed'
       AND date >= ${dateLo} AND date < ${periodEndIso}
     GROUP BY customer_phone
-    ORDER BY eur DESC, count DESC
+    ORDER BY cents DESC, count DESC
     LIMIT 10
   `)
       .then(
@@ -101,7 +101,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
                 phone: string
                 name: string
                 count: number
-                eur: string | number
+                cents: string | number
               }[]
             }
           ).rows,
@@ -111,7 +111,7 @@ export default async function InformesClientesPage({ searchParams }: PageProps) 
     name: r.name,
     phone: r.phone,
     count: Number(r.count),
-    cents: Math.round(Number(r.eur) * 100),
+    cents: Number(r.cents),
   }))
 
   // ── Clientes en riesgo (cartera, lifetime): ≥2 citas históricas y sin

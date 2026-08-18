@@ -49,15 +49,29 @@ authenticated session.
 Webhooks (Stripe, WhatsApp, Postmark) authenticate via signed payloads.
 Cron routes use `requireCron(req)` with `CRON_SECRET`.
 
-### 2. `bookings.price` is in EUROS, not cents
+### 2. ALL money is in CENTS. No exceptions.
 
-Foot-gun. Everything else (`invoices.subtotalCents`, `payments.amountCents`,
-`tips.amountCents`, `loyalty` thresholds) is in **cents**. Bookings is the
-exception — the price column is plain euros (e.g. `25` for €25.00).
+`bookings.priceCents`, `bookingServices.priceCents`, `invoices.subtotalCents`,
+`payments.amountCents`, `tips.amountCents`, `products.priceCents`, loyalty
+thresholds — every persisted amount is an **integer number of cents**
+(`1250` = €12.50). There is no euros column anywhere in `schema.ts`.
 
-When passing a booking price into anything else, multiply by 100. See
-`computeBookingDelta` in `src/lib/loyalty/compute.ts` for the canonical
-example.
+Euros exist in exactly two places, both on purpose:
+
+1. **Human input/output** — what the barber types in a form and what we
+   render on screen. Convert at the component boundary with `eurosToCents`
+   / `centsToEuros` / `formatCents` from `src/lib/format.ts`. That file is
+   the single source for money conversion — do not scatter `* 100`.
+2. **The service catalogue** `clients.chatbotServices` (jsonb, `price` in
+   euros) — it is the barber's own editable config, not an accounting
+   record. `resolveServiceConfig` in `src/lib/bookings/create.ts` is the one
+   place that converts it to cents.
+
+History: until L-05, `bookings.price` was `INTEGER` in **euros**, so Postgres
+truncated a €12.50 service to `13` on insert and the invoice, the till and
+the commissions all lied. Never reintroduce a money column in euros, and
+never round a price to a whole euro — the number the barber types is the
+number that must reach the invoice.
 
 ### 3. Notifications: one channel per event
 
