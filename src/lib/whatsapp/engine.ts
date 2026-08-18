@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { conversations, clients, customers, bookings, analytics, waitlist } from '@/db/schema';
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { getClientByPhoneNumberId, type BarbershopConfig, type ServiceConfig } from './config';
+import { canServeBookingFlow } from './availability-mode';
 import { hasFeature } from '@/lib/billing/tier';
 import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
@@ -1230,8 +1231,8 @@ async function handleServiceSelection(
   const service = config.services[serviceIndex];
   const ctx = getContext(conversation);
 
-  // ----- Calendar flow: if googleCalendarId is configured -----
-  if (config.googleCalendarId) {
+  // ----- Booking flow: DB availability (default) o GCal legacy -----
+  if (canServeBookingFlow(config)) {
     const baseContext: ConversationContext = {
       serviceDuration: service.duration,
       servicePrice: service.price,
@@ -1566,7 +1567,7 @@ async function handleDateSelection(
     return;
   }
 
-  if (!config.useDbAvailability && !config.googleCalendarId) {
+  if (!canServeBookingFlow(config)) {
     const internalErrMsg = lang === 'en' ? 'Internal error. Please try again.' : 'Error interno. Intenta de nuevo.';
     await sendWhatsAppMessage(msg.phoneNumberId, msg.from, internalErrMsg, token);
     await updateConversation(conversation.id, { step: 'idle', selectedService: null, selectedSlot: null, context: null });

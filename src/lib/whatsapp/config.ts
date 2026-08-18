@@ -100,7 +100,7 @@ export async function getClientByPhoneNumberId(
     hours: (client.chatbotHours as Record<string, string>) || null,
     address: client.address || '',
     googleCalendarId: client.googleCalendarId || undefined,
-    useDbAvailability: client.useDbAvailability ?? false,
+    useDbAvailability: client.useDbAvailability ?? true,
     whatsappPhoneNumberId: phoneNumberId,
     whatsappAccessToken:
       client.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '',
