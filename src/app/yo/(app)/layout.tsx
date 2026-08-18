@@ -5,6 +5,7 @@ import { requireBarberRole } from '@/lib/auth/require-barber-role';
 import { activeManagerPermissions } from '@/lib/manager-permissions';
 import { barberPhotoUrl } from '@/lib/barber-photo-url';
 import BottomNav from './BottomNav';
+import { UndoToastHost } from '@/app/dashboard/_components/UndoToast';
 
 // -----------------------------------------------------------------------------
 // Modo barbero v2 — layout móvil con header de identidad + bottom nav.
@@ -56,6 +57,13 @@ export default async function YoAppLayout({
         <main className="px-4 pb-8 pt-4">{children}</main>
       </div>
       <BottomNav permissions={permissions} />
+
+      {/* UndoToastHost — el shell del barbero reusa componentes del dashboard
+          que empujan toasts con ventana de deshacer (PendingClosureList,
+          BookingDetailPanel). El timer del commit vive en el HOST: sin
+          montarlo aquí, "Completada" sobre una cita gratis desaparecía de la
+          lista y el PATCH nunca se disparaba. */}
+      <UndoToastHost />
 
       {/* Toaster sonner — feedback post-save canónico para el shell barbero.
           En móvil va abajo-centrada por encima del BottomNav (offset). */}
