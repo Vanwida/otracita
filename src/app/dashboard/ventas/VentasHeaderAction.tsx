@@ -1,36 +1,46 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { CalendarDays } from 'lucide-react'
 import StatsPeriodTabs from '../_components/StatsPeriodTabs'
 
 // -----------------------------------------------------------------------------
-// VentasHeaderAction — gate del selector de periodo SOLO para el área Ventas.
+// VentasHeaderAction — qué ocupa la esquina derecha del header del área Ventas.
 //
-// Ventas comparte chrome (AreaShell) entre 8 pestañas, pero el selector de
-// periodo solo tiene sentido en las que son informe con ventana temporal
-// (Resumen, Cobros). En Nueva venta (TPV), Transacciones, Cierre de caja y
-// Facturas el selector confunde — esas tienen su propia ventana o no la
-// necesitan. Patrón Booksy literal: el TPV "Nueva venta" (10.00.16) no
-// muestra selector de periodo en el header.
+// Por defecto: LA LÍNEA (U-13). El fallo del día 1 es que el barbero abre
+// Ventas buscando cobrar la cita que acaba de hacer, y Ventas es el TPV de
+// ventas SUELTAS — el cobro de una cita se hace desde la agenda, pulsando la
+// cita. Esa frase tiene que estar visible en el área donde se produce la duda,
+// no en un onboarding que ya cerró. Va en el header (chrome del layout) → se ve
+// en las 4 pestañas y no toca el layout viewport-locked de ninguna página.
 //
-// Se hace AQUÍ y no en StatsPeriodTabs porque ese componente lo comparten
-// Equipo e Informes — tocarlo cambiaría su comportamiento global. Este gate
-// es local al layout de Ventas.
+// Excepción: /dashboard/ventas/cobros (fuera del nav desde U-13, pero viva y
+// enlazada desde Informes → Fiscal) necesita el selector de periodo para
+// acotar la ventana de movimientos Stripe.
+//
+// El gate se hace AQUÍ y no en StatsPeriodTabs porque ese componente lo
+// comparten Equipo e Informes — tocarlo cambiaría su comportamiento global.
 // -----------------------------------------------------------------------------
 
-const PERIOD_ROUTES = new Set([
-  '/dashboard/ventas/cobros',
-  // Propinas se beneficia del selector (R7 Reni): el barbero quiere ver
-  // propinas de hoy / semana / mes para reconciliar cash vs card.
-  '/dashboard/ventas/propinas',
-  // NOTA: /dashboard/ventas/resumen NO va aquí — esa pestaña pasó a ser
-  // detalle por DÍA estilo cierre de caja (#64) y tiene su propio DayPicker
-  // dentro del page. El selector de periodo confundiría al mostrar otra
-  // ventana temporal en paralelo.
-])
+/** Rutas del área Ventas que sí quieren el selector de periodo en el header. */
+const PERIOD_ROUTES = new Set(['/dashboard/ventas/cobros'])
 
 export default function VentasHeaderAction() {
   const pathname = usePathname()
-  if (!PERIOD_ROUTES.has(pathname)) return null
-  return <StatsPeriodTabs />
+
+  if (PERIOD_ROUTES.has(pathname)) return <StatsPeriodTabs />
+
+  return (
+    <Link
+      href="/dashboard/agenda"
+      className="flex items-center gap-2 rounded-control border border-line bg-surface px-3 py-1.5 text-[0.8125rem] text-ink-2 transition-colors hover:border-brand hover:text-ink"
+    >
+      <CalendarDays className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+      <span>
+        El cobro de una cita se hace{' '}
+        <span className="font-semibold text-ink">desde la agenda</span>
+      </span>
+    </Link>
+  )
 }
