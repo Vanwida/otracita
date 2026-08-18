@@ -6,7 +6,7 @@ import { getClientByPhoneNumberId, type BarbershopConfig, type ServiceConfig } f
 import { hasFeature } from '@/lib/billing/tier';
 import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
-import { isAffirmativeReply } from './confirm-intent';
+import { isAffirmativeReply, isCancelYes, isChangeYes, isEscapeCommand } from './confirm-intent';
 import {
   getAvailableSlots,
   createBooking,
@@ -42,6 +42,9 @@ type ConversationStep =
   | 'cancel_confirming'
   | 'changing'
   | 'done';
+
+/** Pasos donde "cancelar" es una respuesta al bot, no una huida al menú. */
+const CANCEL_FLOW_STEPS: ConversationStep[] = ['cancelling', 'cancel_confirming', 'changing'];
 
 type Intent = 'booking' | 'cancel' | 'change' | 'question' | 'greeting';
 
@@ -598,8 +601,11 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   // -----------------------------------------------------------------------
   // Global escape: reset conversation from any step
   // -----------------------------------------------------------------------
-  const escapePhrases = ['cancelar', 'cancel', 'reset', 'reiniciar', 'salir', 'exit', 'menu', 'menú', 'inicio', 'empezar', 'start'];
-  const isEscape = step !== 'idle' && escapePhrases.includes(text.toLowerCase());
+  // "cancelar" NO escapa dentro de los flujos de cancelar/cambiar: ahí el
+  // cliente está diciendo "sí, cancela mi cita" y devolverle al menú le hacía
+  // creer que había anulado mientras la cita seguía viva. Ver `confirm-intent.ts`.
+  const inCancelFlow = CANCEL_FLOW_STEPS.includes(step);
+  const isEscape = step !== 'idle' && isEscapeCommand(text, { inCancelFlow });
   if (isEscape) {
     await updateConversation(conversation.id, { step: 'idle', selectedService: null, selectedSlot: null, context: null });
     await sendWhatsAppButtons(
@@ -2069,8 +2075,9 @@ async function handleCancelConfirmation(
   lang: Lang = 'es'
 ): Promise<void> {
   const ctx = getContext(conversation);
-  const lower = text.toLowerCase();
-  const isYes = lower.includes('si') || lower.includes('yes') || text === 'cancel_yes';
+  // Lista cerrada, no `includes('si')`: "lo siento, no puedo ir" contiene "si"
+  // y cancelaba la cita de verdad. Ver `confirm-intent.ts`.
+  const isYes = isCancelYes(text);
 
   if (!isYes) {
     const keptMsg = lang === 'en'
@@ -2266,8 +2273,8 @@ async function handleChangeConfirmation(
   msg: IncomingMessage,
   lang: Lang = 'es'
 ): Promise<void> {
-  const lower = text.toLowerCase();
-  const isYes = lower.includes('si') || lower.includes('yes') || text === 'change_yes';
+  // Lista cerrada, no `includes('si')`: ver `confirm-intent.ts`.
+  const isYes = isChangeYes(text);
 
   if (!isYes) {
     const keptMsg = lang === 'en'
