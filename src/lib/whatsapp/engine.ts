@@ -44,7 +44,7 @@ type ConversationStep =
 
 type Intent = 'booking' | 'cancel' | 'change' | 'question' | 'greeting';
 
-interface IncomingMessage {
+export interface IncomingMessage {
   from: string;
   phoneNumberId: string;
   messageText: string;

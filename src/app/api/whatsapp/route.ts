@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { handleIncomingMessage } from '@/lib/whatsapp/engine';
+import { processWebhookPayload, type WhatsAppWebhookPayload } from './handler';
 
 // ---------------------------------------------------------------------------
 // GET — Meta webhook verification
@@ -80,66 +81,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ status: 'ok' });
   }
 
-  // Same shape-handling as before — we were only working with entry[0] anyway.
-  const payload = body as {
-    entry?: Array<{
-      changes?: Array<{
-        value?: {
-          messages?: Array<{
-            from: string;
-            type: string;
-            text?: { body?: string };
-            interactive?: {
-              button_reply?: { id?: string; title?: string };
-              list_reply?: { id?: string; title?: string };
-            };
-          }>;
-          metadata: { phone_number_id: string };
-        };
-      }>;
-    }>;
-  };
-
-  const entry = payload.entry?.[0];
-  const changes = entry?.changes?.[0];
-  const value = changes?.value;
-
-  // Skip status updates (delivered, read, etc.)
-  if (!value?.messages) {
-    return Response.json({ status: 'ok' });
-  }
-
-  const message = value.messages[0];
-  const from: string = message.from;
-  const phoneNumberId: string = value.metadata.phone_number_id;
-
-  // Extract text from different message types
-  let messageText = '';
-  let interactiveReplyId: string | undefined;
-
-  if (message.type === 'text') {
-    messageText = message.text?.body || '';
-  } else if (message.type === 'interactive') {
-    // Button or list reply
-    const reply = message.interactive?.button_reply || message.interactive?.list_reply;
-    messageText = reply?.title || '';
-    interactiveReplyId = reply?.id;
-  } else {
-    // Unsupported message type — ignore for now
-    return Response.json({ status: 'ok' });
-  }
-
-  try {
-    await handleIncomingMessage({
-      from,
-      phoneNumberId,
-      messageText,
-      messageType: message.type,
-      interactiveReplyId,
-    });
-  } catch (error) {
-    console.error('Error handling WhatsApp message:', error);
-  }
+  // Meta manda arrays: entry[] → changes[] → messages[]. Leer solo messages[0]
+  // perdía el segundo mensaje del paquete (el cliente escribe dos veces
+  // seguidas y el bot se quedaba esperando). El aplanado + despacho vive en
+  // ./handler.ts, testeado sin DB ni red.
+  await processWebhookPayload(body as WhatsAppWebhookPayload, handleIncomingMessage);
 
   // Always return 200 quickly so Meta doesn't retry
   return Response.json({ status: 'ok' });
