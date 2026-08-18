@@ -87,7 +87,8 @@ export interface BookingRow {
   customerPhone: string
   service: string
   barber: string | null
-  price: number | null
+  /** CÉNTIMOS (bookings.price_cents). null = cita sin importe. */
+  priceCents: number | null
   status: string
 }
 
