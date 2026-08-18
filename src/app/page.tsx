@@ -12,7 +12,13 @@ const PHONE_TEL = "+34711248500";
 const PHONE_WA_URL =
   "https://wa.me/34711248500?text=Hola%2C%20quiero%20probar%20otracita";
 const SIGNUP_URL = "/login?signup=1";
-const DEMO_URL = "/demo";
+/* Barbería de ejemplo: la PWA pública real de un tenant sembrado, no una
+ * maqueta. El slug lo provisiona `scripts/provision-demo-tenant.ts`
+ * (PUBLIC_SLUG) y lo puebla `scripts/seed-demo-tenant.ts`. Invariante: ese
+ * tenant tiene que seguir con `publicEnabled = true` y servicios en
+ * `chatbotServices`, o esta puerta se cae a 404. No hay demo del panel —
+ * no prometer aquí nada de agenda/caja. */
+const DEMO_URL = "/reni-test";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 const reveal = {
@@ -493,7 +499,7 @@ function PruebaloAhora() {
             <em className="italic">segundos</em>.
           </h2>
           <p className="max-w-[55ch] text-base leading-relaxed text-[var(--color-ink-2)] md:text-lg">
-            Tres puertas a otracita: una agenda viva donde toquetear, un bot
+            Tres puertas a otracita: la app donde reserva tu cliente, un bot
             real al que escribirle, un teléfono real al que llamar. Tú decides
             por dónde entras.
           </p>
@@ -502,9 +508,9 @@ function PruebaloAhora() {
         <ul className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
           <PruebaloCard
             number="01"
-            heading="Entra a una barbería demo"
-            description="Una agenda llena de citas reales. Mueve un hueco, cobra un servicio, cierra caja del día. Sin registrarte."
-            cta={{ label: "Entrar a la demo", href: DEMO_URL }}
+            heading="Reserva como si fueras tu cliente"
+            description="La app que ve tu cliente cuando le pasas el link. Eliges servicio, barbero, día y hueco, y la cita queda hecha. Sin registrarte y sin instalar nada."
+            cta={{ label: "Abrir la app de cliente", href: DEMO_URL }}
           />
           <PruebaloCard
             number="02"
@@ -1788,7 +1794,7 @@ function LandingFooter() {
             <FooterLink href="#como-funciona">Cómo funciona</FooterLink>
             <FooterLink href="#precios">Precios</FooterLink>
             <FooterLink href="#pruebalo">Pruébalo en 30s</FooterLink>
-            <FooterLink href={DEMO_URL}>Cuenta demo</FooterLink>
+            <FooterLink href={DEMO_URL}>App de cliente</FooterLink>
           </FooterColumn>
 
           <FooterColumn title="Empresa">
