@@ -48,7 +48,9 @@ export const FEATURE_MIN_TIER = {
   // Pro+: auto-respuesta IA a reseñas de Google Business Profile.
   googleReviews: 'pro',
 
-  // Estudio (99€): IA voz + subdominio + onboarding 1:1.
+  // Estudio (169€/mes, 119€/mes anual): IA voz + subdominio + onboarding 1:1.
+  // La IA de voz es hoy prueba de micrófono en el navegador: no hay puente
+  // telefónico todavía (ver src/app/dashboard/voice-test/VoiceTest.tsx).
   recepcionistaIA: 'estudio',
   subdominioPropio: 'estudio',
   onboarding1a1: 'estudio',
@@ -145,7 +147,7 @@ export function upgradeMessage(feature: Feature): {
     promosContextuales: 'las promos contextuales',
     walkInsAvanzados: 'los walk-ins avanzados',
     googleReviews: 'la auto-respuesta a reseñas de Google',
-    recepcionistaIA: 'la recepcionista de IA',
+    recepcionistaIA: 'la prueba de la recepcionista de IA',
     subdominioPropio: 'tu subdominio propio',
     onboarding1a1: 'el onboarding 1:1',
     soportePrioritario: 'el soporte prioritario',

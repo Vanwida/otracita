@@ -1,11 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, PhoneCall, PhoneOff, Loader2 } from 'lucide-react';
+import { AlertTriangle, Mic, MicOff, PhoneCall, PhoneOff, Loader2 } from 'lucide-react';
 import { useConversation, ConversationProvider } from '@elevenlabs/react';
 
 // -----------------------------------------------------------------------------
-// Recepcionista IA voice-test (ElevenLabs Conversational AI)
+// Recepcionista IA — PRUEBA DE MICRÓFONO EN EL NAVEGADOR.
+//
+// No hay puente telefónico (Twilio/SIP) todavía: nadie puede llamar al
+// negocio y que le conteste esto. La UI lo dice con todas las letras, porque
+// una pantalla que habla de "llamadas" dentro del dashboard se lee como un
+// servicio contratado y funcionando.
+//
+// El agente es global (ver /api/voice/token): no se le pasan ni servicios ni
+// barberos ni horario del cliente. Por eso aquí no se pintan como si los
+// usara.
 //
 // Migrado el 2026-05-01 de Grok Realtime (~700 LOC manuales de WebSocket /
 // PCM / VAD / playback) a @elevenlabs/react useConversation hook. El SDK
@@ -17,22 +26,8 @@ import { useConversation, ConversationProvider } from '@elevenlabs/react';
 // elegir entre JeiJo / Dante / etc).
 // -----------------------------------------------------------------------------
 
-interface ServiceConfig {
-  name: string;
-  duration: number;
-  price?: number;
-}
-
-interface BusinessHours {
-  start: string;
-  end: string;
-}
-
 interface ClientConfig {
   businessName: string;
-  services: ServiceConfig[];
-  barbers: string[];
-  hours: BusinessHours;
 }
 
 interface TranscriptEntry {
@@ -142,7 +137,7 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
     } catch (err) {
       console.error('[voice-test] startCall error:', err);
       setErrorMessage(
-        err instanceof Error ? err.message : 'No se pudo iniciar la llamada.',
+        err instanceof Error ? err.message : 'No se pudo empezar la prueba.',
       );
       setConnecting(false);
     }
@@ -187,11 +182,32 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
           className="font-semibold text-ink leading-tight mb-0.5"
           style={{ fontSize: 'var(--text-page-title)' }}
         >
-          Recepcionista de Voz
+          Recepcionista IA
         </h1>
         <p className="text-ink-2 text-sm">
-          Test del asistente de llamadas — {client.businessName}
+          Prueba de micrófono — {client.businessName}
         </p>
+      </div>
+
+      {/* Aviso — esta pestaña NO es un servicio activo. Sin esto se lee como
+          "ya tengo una recepcionista cogiendo el teléfono", que es falso:
+          no hay ningún número conectado todavía. */}
+      <div
+        className="rounded-2xl border border-warning/30 bg-warning/5 p-4 flex items-start gap-3"
+        style={{ marginBottom: 'var(--space-section)' }}
+      >
+        <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+        <div className="text-sm text-ink-2 leading-relaxed">
+          <p className="font-semibold text-ink">
+            Esto es una prueba, todavía no coge llamadas.
+          </p>
+          <p className="mt-1">
+            Aquí hablas con la IA por el micrófono de este navegador, para oír
+            cómo suena y cómo responde. Tu teléfono no está conectado: si un
+            cliente llama hoy a tu negocio, la IA no lo va a coger. Te avisamos
+            en cuanto empiece a atender llamadas de verdad.
+          </p>
+        </div>
       </div>
 
       {/* Main card */}
@@ -227,12 +243,12 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
           {/* Status label */}
           <div className="flex items-center gap-2 text-sm font-medium">
             {status === 'disconnected' && !connecting && (
-              <span className="text-ink-2">Listo para iniciar</span>
+              <span className="text-ink-2">Listo para probar</span>
             )}
             {(connecting || status === 'connecting') && (
               <>
                 <Loader2 className="h-4 w-4 text-brand animate-spin" />
-                <span className="text-brand">Conectando...</span>
+                <span className="text-brand">Conectando…</span>
               </>
             )}
             {status === 'connected' && (
@@ -264,7 +280,7 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
               ) : (
                 <PhoneCall className="h-4 w-4" />
               )}
-              {connecting ? 'Conectando...' : 'Iniciar llamada'}
+              {connecting ? 'Conectando…' : 'Empezar la prueba'}
             </button>
           ) : (
             <button
@@ -272,7 +288,7 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
               className="flex items-center gap-2.5 bg-danger/10 hover:bg-danger/15 border border-danger/30 text-danger font-semibold text-sm px-6 py-3 rounded-xl transition-colors"
             >
               <PhoneOff className="h-4 w-4" />
-              Colgar
+              Terminar prueba
             </button>
           )}
         </div>
@@ -331,14 +347,10 @@ function VoiceTestInner({ client }: { client: ClientConfig }) {
         </div>
       </div>
 
-      {/* Info footer */}
-      <div className="mt-4 flex flex-wrap gap-3 text-xs text-ink-3">
-        <span>Servicios: {client.services.map((s) => s.name).join(', ') || '—'}</span>
-        {client.barbers.length > 0 && <span>Barberos: {client.barbers.join(', ')}</span>}
-        <span>
-          Horario: {client.hours.start} – {client.hours.end}
-        </span>
-      </div>
+      <p className="mt-4 text-xs text-ink-3 leading-relaxed">
+        En esta prueba la IA todavía no lee tu ficha: no conoce tus servicios,
+        tu equipo ni tu horario, y nada de lo que digáis entra en la agenda.
+      </p>
     </div>
     </div>
   );

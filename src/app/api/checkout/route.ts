@@ -32,7 +32,7 @@ function buildPlan(tier: Tier, interval: BillingInterval): PlanDef | null {
     description:
       tier === 'pro'
         ? 'Agenda + bot WhatsApp + SumUp Tap to Pay + facturación VeriFactu + fidelidad. Sin permanencia.'
-        : 'Todo Pro + recepcionista IA + subdominio propio + onboarding 1:1.',
+        : 'Todo Pro + subdominio propio + onboarding 1:1 + soporte prioritario. Incluye la recepcionista IA en cuanto salga de pruebas.',
     // Para anual cobramos 12x el precio anual/mes a la vez. Stripe maneja
     // el "anual" como un sólo cobro al inicio del periodo.
     unitAmountCents: interval === 'annual' ? annual * 12 : monthly,
