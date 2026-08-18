@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   Check, ChevronRight, ChevronLeft, Scissors, ClipboardCheck, Search, Plus, X,
   Store, Users, Clock, Palette, Receipt, Sun, Moon, Shield, Globe, Loader2,
+  MessageCircle,
 } from "lucide-react"
 import { BRAND_TERRACOTA_HEX, PUBLIC_PWA_THEME } from "@/lib/brand-hex"
 import FormGrid from "@/app/dashboard/_components/FormGrid"
@@ -229,8 +230,9 @@ export default function SetupPage() {
           Configura tu cuenta
         </h1>
         <p className="text-ink-2">
-          5 minutos y tendrás tu bot de WhatsApp, tu app para clientes y tu
-          facturación legal funcionando.
+          Al terminar tendrás tu agenda, tu app para clientes y la facturación
+          legal funcionando. El WhatsApp va aparte: el alta con Meta la hacemos
+          nosotros y te avisamos cuando esté.
         </p>
       </div>
 
@@ -271,8 +273,8 @@ export default function SetupPage() {
             <div>
               <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Tu negocio</h2>
               <p className="text-sm text-ink-2 mt-1">
-                Los datos básicos. Usaremos este número de teléfono como WhatsApp
-                del bot y de tu dashboard.
+                Los datos básicos. Este teléfono es tu contacto en el dashboard
+                y el que proponemos el día que demos de alta tu WhatsApp.
               </p>
             </div>
 
@@ -441,9 +443,9 @@ export default function SetupPage() {
             <div>
               <h2 className="font-semibold text-ink" style={{ fontSize: 'var(--text-section-title)' }}>Horario semanal</h2>
               <p className="text-sm text-ink-2 mt-1">
-                Horas de apertura por día. El bot solo ofrecerá huecos dentro
-                de este rango. Lo podrás refinar después (parada comida, barberos
-                con horario propio, etc).
+                Horas de apertura por día. Solo se ofrecen huecos dentro de
+                este rango, tanto en tu app como en la agenda. Lo podrás
+                refinar después (parada comida, barberos con horario propio, etc).
               </p>
             </div>
             <div className="space-y-2">
@@ -717,6 +719,21 @@ export default function SetupPage() {
                 <ReviewItem label="Estado" value="Desactivada (puedes activarla después)" />
               )}
             </ReviewSection>
+
+            {/* Expectativa WhatsApp — el alta con Meta no ocurre aquí. Sin
+                esto, "Activar mi cuenta" se lee como "el bot queda vivo". */}
+            <div className="rounded-xl border border-line bg-overlay/40 p-4 flex items-start gap-2.5">
+              <MessageCircle className="h-4 w-4 text-ink-3 shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-sm text-ink-2 leading-relaxed">
+                <span className="font-semibold text-ink">
+                  El WhatsApp no se activa aquí.
+                </span>{" "}
+                Agenda, app pública y facturación funcionan en cuanto le des al
+                botón. El alta del número con Meta la hacemos nosotros: la pides
+                desde Crecimiento → Bot WhatsApp y te avisamos por email cuando
+                esté atendiendo.
+              </p>
+            </div>
 
             {error && (
               <div className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
