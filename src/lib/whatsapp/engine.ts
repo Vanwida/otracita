@@ -7,6 +7,7 @@ import { hasFeature } from '@/lib/billing/tier';
 import { canonicalPhone } from '@/lib/phone';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from './sender';
 import { isAffirmativeReply, isCancelYes, isChangeYes, isEscapeCommand } from './confirm-intent';
+import { extractSelfIntroName } from './self-intro';
 import { bookingFailureReply, type BookingFailure } from './booking-failure';
 import {
   getAvailableSlots,
@@ -1006,13 +1007,13 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
 
   // -----------------------------------------------------------------------
   // "Change my name" — e.g. "me llamo X", "my name is X", "llámame X"
+  //
+  // Sólo si la presentación es el mensaje entero (U-14): "soy cliente nuevo y
+  // quiero cita" NO es una presentación y tiene que seguir hasta
+  // `classifyIntent` para que arranque la reserva. Ver `self-intro.ts`.
   // -----------------------------------------------------------------------
-  const nameChangeES = lower.match(/(?:me llamo|mi nombre es|soy|llámame|llamame)\s+([a-záéíóúüñA-ZÁÉÍÓÚÜÑ][a-záéíóúüñA-ZÁÉÍÓÚÜÑ\s]{1,20})/);
-  const nameChangeEN = lower.match(/(?:my name is|call me|i(?:'m| am))\s+([a-zA-Z][a-zA-Z\s]{1,20})/);
-  const nameMatch = nameChangeES || nameChangeEN;
-  if (nameMatch) {
-    const newName = nameMatch[1].trim().split(' ')[0]; // Take first word only
-    const capitalized = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
+  const capitalized = extractSelfIntroName(text);
+  if (capitalized) {
     await setCustomerName(config.id, msg.from, capitalized);
     await updateConversation(conversation.id, { context: { ...getContext(conversation), customerName: capitalized, lang } });
     const reply = lang === 'en'
