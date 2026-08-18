@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import { clients } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { barbers as barbersTable, clients } from '@/db/schema'
+import { and, asc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/server'
 import { ChevronLeft, Receipt } from 'lucide-react'
 import ManualInvoiceForm from './ManualInvoiceForm'
@@ -19,7 +19,6 @@ import ManualInvoiceForm from './ManualInvoiceForm'
 // -----------------------------------------------------------------------------
 
 interface ChatbotService { name: string; duration?: number; price?: number }
-interface BooksyBarber { name: string }
 
 export default async function NuevaFacturaPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -58,9 +57,14 @@ export default async function NuevaFacturaPage() {
   const services: ChatbotService[] = Array.isArray(client.chatbotServices)
     ? (client.chatbotServices as ChatbotService[])
     : []
-  const barbers: BooksyBarber[] = Array.isArray(client.booksyServices)
-    ? (client.booksyServices as BooksyBarber[])
-    : []
+  // Equipo activo: canonical `barbers` table (CLAUDE.md regla 4). NUNCA
+  // client.booksyServices — ese jsonb está congelado y en un tenant nuevo
+  // viene vacío, así que el desplegable "Profesional" salía sin opciones.
+  const barbers = await db
+    .select({ name: barbersTable.name })
+    .from(barbersTable)
+    .where(and(eq(barbersTable.clientId, client.id), eq(barbersTable.active, true)))
+    .orderBy(asc(barbersTable.displayOrder), asc(barbersTable.name))
 
   return (
     <div className="h-full overflow-y-auto bg-canvas">
