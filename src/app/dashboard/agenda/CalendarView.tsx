@@ -19,7 +19,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Loader2, Megaphone, X, PanelLeftOpen, PanelLeftClose, CircleAlert } from 'lucide-react';
 import { isMobileViewport } from '@/lib/responsive';
 import WeekGrid from './WeekGrid';
 import MonthGrid from './MonthGrid';
@@ -31,6 +31,8 @@ import PromosFillModal from './PromosFillModal';
 import SlotActionMenu from './SlotActionMenu';
 import BarberActionMenu from './BarberActionMenu';
 import BarberVisibilityControl from './BarberVisibilityControl';
+import SlideOver from '../_components/SlideOver';
+import PendingClosureList, { type PendingClosureBooking } from '../_components/PendingClosureList';
 import AbsenceModal from '../equipo/turnos/AbsenceModal';
 import BlockModal from '../equipo/turnos/BlockModal';
 import { useConfirm } from '../_components/ConfirmDialog';
@@ -44,6 +46,19 @@ interface CalendarPayload {
   blocks: CalendarBlock[];
 }
 const EMPTY_PAYLOAD: CalendarPayload = { events: [], blocks: [] };
+
+/** Respuesta de `/api/dashboard/pending-closures` — citas de días pasados
+ *  todavía en `confirmed`. Alimenta el contador «N por cerrar». */
+interface PendingClosuresPayload {
+  bookings: PendingClosureBooking[];
+  todayStr: string;
+  yesterdayStr: string;
+}
+const EMPTY_PENDING: PendingClosuresPayload = { bookings: [], todayStr: '', yesterdayStr: '' };
+
+/** Poll del contador «por cerrar». Más lento que el de la rejilla (10s):
+ *  esto no cambia por sí solo salvo que otro dispositivo cierre una cita. */
+const PENDING_CLOSURES_REFRESH_MS = 60_000;
 
 interface Props {
   /** Servicios configurados del cliente (`clients.chatbotServices`). El
@@ -324,6 +339,44 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
     revalidateOnFocus: true,
     keepPreviousData: true,
   });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // U-03 — «N por cerrar». Citas de días pasados que siguen en `confirmed`:
+  // el barbero cortó el pelo, cobró (o no) y nunca cerró la cita. Sin este
+  // contador se enteraba a los 3 días, cuando el cron las cerraba solas:
+  // sin método de pago, sin factura y sin que nadie se lo dijera.
+  //
+  // Query independiente de la rejilla a propósito: el contador NO depende
+  // del rango que el barbero esté mirando. Si está planificando la semana
+  // que viene, las tres citas de ayer sin cerrar tienen que seguir gritando.
+  // ───────────────────────────────────────────────────────────────────────
+  const pendingClosuresUrl = effectiveBarberFilterId
+    ? `/api/dashboard/pending-closures?barberId=${encodeURIComponent(effectiveBarberFilterId)}`
+    : '/api/dashboard/pending-closures';
+
+  const { data: pendingClosures = EMPTY_PENDING, mutate: refetchPendingClosures } =
+    useSWR<PendingClosuresPayload>(pendingClosuresUrl, async (url: string) => {
+      const r = await fetch(url);
+      const d = await r.json();
+      if (d && Array.isArray(d.bookings)) return d as PendingClosuresPayload;
+      return EMPTY_PENDING;
+    }, {
+      refreshInterval: PENDING_CLOSURES_REFRESH_MS,
+      revalidateOnFocus: true,
+      keepPreviousData: true,
+    });
+
+  const pendingClosureCount = pendingClosures.bookings.length;
+  const [isPendingClosuresOpen, setIsPendingClosuresOpen] = useState(false);
+
+  // Si el barbero cierra la última cita desde el slide-over, cerramos el
+  // panel solo: dejarlo abierto con un estado vacío es un callejón sin
+  // salida que le obliga a buscar la X.
+  useEffect(() => {
+    if (isPendingClosuresOpen && pendingClosureCount === 0) {
+      setIsPendingClosuresOpen(false);
+    }
+  }, [isPendingClosuresOpen, pendingClosureCount]);
 
   // Desestructurado SIEMPRE: el resto del componente sigue usando `events`
   // como un array directo (compat con la API previa). `blocks` se pasa a
@@ -880,46 +933,67 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           />
         )}
 
-        {/* Promos + import + new booking — Importar y Promos son admin-only
-            (operación de tienda, no del barbero); ocultos en mobileMode. */}
-        {!mobileMode && promosEnabled && (
-          <button
-            type="button"
-            onClick={() => setIsPromosOpen(true)}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-brand/40 hover:border-brand text-brand-strong hover:bg-brand-softer transition-colors"
-            title="Avisar a clientes habituales para llenar huecos"
-          >
-            <Megaphone className="h-3.5 w-3.5" />
-            Llenar huecos
-          </button>
-        )}
-        {!mobileMode && (
-          <Link
-            href="/dashboard/agenda/importar"
-            className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors`}
-            title="Importar reservas desde Booksy / agenda externa"
-          >
-            Importar
-          </Link>
-        )}
-        {/* "Nueva cita": botón normal en admin; en mobileMode el botón
-            se renderiza FUERA de la barra (FAB flotante abajo a la derecha,
-            ver al final del JSX). Aquí lo omitimos. Pre-rellenamos el slot
-            con el barbero filtrado en móvil para que NewBookingPanel ya
-            traiga seleccionado al barbero correcto. */}
-        {!mobileMode && (
-          <button
-            onClick={() => {
-              setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: effectiveBarberFilterId });
-              setSelectedBookingId(null);
-              setIsNewBookingOpen(true);
-            }}
-            className={`${promosEnabled ? '' : 'ml-auto'} flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors`}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Nueva cita
-          </button>
-        )}
+        {/* Grupo derecho — «por cerrar» + promos + import + nueva cita.
+            El `ml-auto` vive en el CONTENEDOR, no en cada botón: antes cada
+            uno lo aplicaba condicionalmente y con promos desactivado había
+            dos `ml-auto` repartiéndose el hueco. Además el grupo envuelve
+            entero al hacer wrap en pantallas estrechas en vez de romperse
+            botón a botón. Importar y Promos son admin-only (operación de
+            tienda, no del barbero) y quedan ocultos en mobileMode. */}
+        <div className="ml-auto flex items-center gap-2">
+          {/* «N por cerrar» — U-03. Solo aparece si hay algo que cerrar:
+              cero ruido cuando el barbero va al día. Tono ámbar (aviso),
+              no rojo: no es un error, es trabajo pendiente. */}
+          {pendingClosureCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsPendingClosuresOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-warning-surface border border-warning/50 hover:border-warning text-ink transition-colors"
+              title="Citas pasadas que siguen sin cobrar ni marcar"
+            >
+              <CircleAlert className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
+              {pendingClosureCount} por cerrar
+            </button>
+          )}
+          {!mobileMode && promosEnabled && (
+            <button
+              type="button"
+              onClick={() => setIsPromosOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-brand/40 hover:border-brand text-brand-strong hover:bg-brand-softer transition-colors"
+              title="Avisar a clientes habituales para llenar huecos"
+            >
+              <Megaphone className="h-3.5 w-3.5" />
+              Llenar huecos
+            </button>
+          )}
+          {!mobileMode && (
+            <Link
+              href="/dashboard/agenda/importar"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink transition-colors"
+              title="Importar reservas desde Booksy / agenda externa"
+            >
+              Importar
+            </Link>
+          )}
+          {/* "Nueva cita": botón normal en admin; en mobileMode el botón
+              se renderiza FUERA de la barra (FAB flotante abajo a la derecha,
+              ver al final del JSX). Aquí lo omitimos. Pre-rellenamos el slot
+              con el barbero filtrado en móvil para que NewBookingPanel ya
+              traiga seleccionado al barbero correcto. */}
+          {!mobileMode && (
+            <button
+              onClick={() => {
+                setNewBookingSlot({ date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', barberId: effectiveBarberFilterId });
+                setSelectedBookingId(null);
+                setIsNewBookingOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand hover:bg-brand-strong text-brand-ink transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Nueva cita
+            </button>
+          )}
+        </div>
 
         {/* Loading indicator */}
         {loading && <Loader2 className="h-4 w-4 text-ink-3 animate-spin" />}
@@ -1182,6 +1256,36 @@ export default function CalendarView({ services, barbers, blockedDates, hours, s
           }}
         />
       )}
+
+      {/* U-03 — slide-over «Citas por cerrar». Lo abre el contador de la
+          cabecera. Reusa PendingClosureList (mismo motor de cobro que el
+          detalle de cita: ChargeFlow) para que cerrar desde aquí y cerrar
+          desde la cita sean la MISMA operación, no dos caminos parecidos.
+          `onChanged` revalida a la vez el contador y la rejilla — la cita
+          cerrada cambia de color en la agenda sin recargar.
+          `cashSessionOpen` se omite (default true): misma decisión que
+          BookingDetailPanel, la agenda todavía no sabe si la sesión de caja
+          está abierta y no queremos pintar un warning inventado. */}
+      <SlideOver
+        open={isPendingClosuresOpen}
+        onClose={() => setIsPendingClosuresOpen(false)}
+        title="Citas por cerrar"
+        surface="canvas"
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <PendingClosureList
+            bookings={pendingClosures.bookings}
+            todayStr={pendingClosures.todayStr}
+            yesterdayStr={pendingClosures.yesterdayStr}
+            barbers={barbers.map((b) => ({ id: b.id, displayName: b.name }))}
+            stripeConnectActive={stripeConnectStatus === 'active'}
+            onChanged={() => {
+              refetchPendingClosures();
+              refetch();
+            }}
+          />
+        </div>
+      </SlideOver>
 
       {/* Menú de acciones del barbero (fix #2) — clic en su cabecera de
           columna. Reusa AbsenceModal/BlockModal y los eventos ya cargados.
