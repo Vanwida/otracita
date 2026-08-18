@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, index, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, uuid, jsonb, primaryKey, date, unique, index, uniqueIndex, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 
@@ -1193,7 +1193,20 @@ export const loyaltyLedger = pgTable('loyalty_ledger', {
   rewardSnapshot: jsonb('reward_snapshot'),                                // snapshot de la recompensa canjeada
   createdBy: text('created_by').notNull(),                                 // 'system_cron' | 'barber:<clientId>' | 'customer:<userId>'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  // Idempotencia del cron de awards. El INSERT de
+  // `/api/cron/loyalty-award` hace ON CONFLICT (booking_id)
+  // WHERE reason = 'booking_completed' — Postgres infiere el árbitro por
+  // (columna + predicado), así que el predicado de ESTE índice tiene que
+  // coincidir literalmente con el del ON CONFLICT. Si divergen,
+  // Postgres lanza 42P10 en cada insert y no se otorga ni un sello.
+  //
+  // Parcial a propósito: los canjes y ajustes manuales pueden repetir
+  // booking_id (o traerlo a null) sin chocar con el award automático.
+  bookingCompletedUniq: uniqueIndex('loyalty_ledger_booking_completed_uniq')
+    .on(table.bookingId)
+    .where(sql`reason = 'booking_completed'`),
+}));
 
 // Reseñas — almacén canónico de valoraciones de clientes a barberías.
 //
