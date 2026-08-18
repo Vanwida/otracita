@@ -28,6 +28,10 @@ import {
   isCustomHex,
   type ServiceColorToken,
 } from '@/lib/service-colors'
+import {
+  normalizeServicePrice,
+  servicePriceError,
+} from '@/lib/service-price'
 
 interface ServiceItem {
   name: string
@@ -35,6 +39,8 @@ interface ServiceItem {
   price: string | number
   description?: string
   featured?: boolean
+  /** Precio 0 € intencional (U-12). Sin el flag, el precio es obligatorio. */
+  courtesy?: boolean
   /** Token canónico de la paleta o hex `#RRGGBB` custom. */
   colorToken?: ServiceColorToken | string
 }
@@ -60,14 +66,19 @@ export default async function AjustesNegocioPage() {
    * viven ahora en /dashboard/caja con sus propios endpoints
    * (/api/invoicing/config y /api/stripe/connect/*) — no se gestionan
    * desde aquí.
+   *
+   * Devuelve `{ error }` cuando el guardado se rechaza (p.ej. un servicio a
+   * 0 € sin marcar cortesía) — NegocioSettings lo convierte en toast. Un
+   * `throw` no serviría: Next redacta el mensaje de los server actions en
+   * producción y el barbero vería un error genérico.
    */
-  async function saveBusiness(formData: FormData) {
+  async function saveBusiness(formData: FormData): Promise<{ error?: string } | void> {
     'use server'
 
     const { auth: serverAuth } = await import('@/lib/auth/server')
     const { headers: getHeaders } = await import('next/headers')
     const session = await serverAuth.api.getSession({ headers: await getHeaders() })
-    if (!session?.user?.email) return
+    if (!session?.user?.email) return { error: 'Sesión caducada. Vuelve a entrar.' }
 
     const email = session.user.email
 
@@ -83,27 +94,53 @@ export default async function AjustesNegocioPage() {
     try { if (servicesRaw) chatbotServices = JSON.parse(servicesRaw) } catch { /* ignore */ }
     try { if (hoursRaw) chatbotHours = JSON.parse(hoursRaw) } catch { /* ignore */ }
 
-    // Sanea colorToken contra la whitelist. Nunca confiamos en el JSON
-    // entrante: `chatbotServices` es jsonb sin schema en Postgres, así que
-    // si alguien manda `colorToken: "rm -rf"` lo silenciamos antes de
-    // guardar. Aceptamos token canónico (red/blue/...) O hex `#RRGGBB`
-    // (custom picker). Cualquier otro valor → se elimina el campo y el
-    // consumidor cae al DEFAULT.
+    // Sanea colorToken contra la whitelist y aplica la regla de precio.
+    // Nunca confiamos en el JSON entrante: `chatbotServices` es jsonb sin
+    // schema en Postgres, así que si alguien manda `colorToken: "rm -rf"` lo
+    // silenciamos antes de guardar. Aceptamos token canónico (red/blue/...)
+    // O hex `#RRGGBB` (custom picker). Cualquier otro valor → se elimina el
+    // campo y el consumidor cae al DEFAULT.
+    //
+    // Precio (U-12): > 0 salvo `courtesy`. El form ya lo bloquea en cliente;
+    // aquí es la última puerta — si algo llega a 0 sin marcar cortesía, NO
+    // guardamos nada y devolvemos el error para que la save bar lo enseñe.
     if (Array.isArray(chatbotServices)) {
-      chatbotServices = chatbotServices.map((raw) => {
-        if (typeof raw !== 'object' || raw === null) return raw
-        const svc = raw as Record<string, unknown>
-        if (!('colorToken' in svc)) return svc
-        const ct = svc.colorToken
-        if (isServiceColorToken(ct)) return svc
-        if (isCustomHex(ct)) {
-          // Normaliza a minúsculas — formato canónico que persistimos.
-          return { ...svc, colorToken: (ct as string).toLowerCase() }
+      const cleaned: unknown[] = []
+      for (const raw of chatbotServices) {
+        if (typeof raw !== 'object' || raw === null) {
+          cleaned.push(raw)
+          continue
         }
-        const sanitized = { ...svc }
-        delete sanitized.colorToken
-        return sanitized
-      })
+        const svc = { ...(raw as Record<string, unknown>) }
+
+        // Estricto a propósito: el flag tiene que venir explícito. La
+        // inferencia «0 € legacy ⇒ cortesía» vive en el cliente
+        // (ServicesManager.withDefaults), que ya manda el booleano.
+        const courtesy = svc.courtesy === true
+        const priceError = servicePriceError(svc.price, courtesy)
+        if (priceError) {
+          // Nombramos el servicio: el barbero puede tener 20 en la lista y el
+          // que falla puede ser uno viejo que ni ha tocado en esta sesión.
+          const label = typeof svc.name === 'string' && svc.name.trim()
+            ? `«${svc.name.trim()}»: `
+            : ''
+          return { error: `${label}${priceError}` }
+        }
+        svc.price = normalizeServicePrice(svc.price, courtesy)
+        svc.courtesy = courtesy
+
+        if ('colorToken' in svc) {
+          const ct = svc.colorToken
+          if (isCustomHex(ct)) {
+            // Normaliza a minúsculas — formato canónico que persistimos.
+            svc.colorToken = (ct as string).toLowerCase()
+          } else if (!isServiceColorToken(ct)) {
+            delete svc.colorToken
+          }
+        }
+        cleaned.push(svc)
+      }
+      chatbotServices = cleaned
     }
 
     const { db } = await import('@/db')
@@ -111,7 +148,7 @@ export default async function AjustesNegocioPage() {
     const { eq } = await import('drizzle-orm')
 
     const records = await db.select().from(clients).where(eq(clients.email, email))
-    if (records.length === 0) return // setup wizard handles first creation
+    if (records.length === 0) return { error: 'Cuenta no encontrada.' } // setup wizard handles first creation
     const current = records[0]
 
     const slotStep = parseInt(slotStepRaw, 10)

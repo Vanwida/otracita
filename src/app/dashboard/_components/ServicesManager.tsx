@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useRef, useState } from 'react'
-import { Plus, Pencil, Trash2, Check, X, Clock, Euro, Star, Pipette } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Clock, Euro, Star, Pipette, Gift } from 'lucide-react'
 import SlideOver from './SlideOver'
 import {
   SERVICE_COLOR_TOKENS,
@@ -15,6 +15,12 @@ import {
   pickTextColorFor,
   type ServiceColorToken,
 } from '@/lib/service-colors'
+import {
+  formatServicePrice,
+  inferCourtesy,
+  normalizeServicePrice,
+  servicePriceError,
+} from '@/lib/service-price'
 
 // -----------------------------------------------------------------------------
 // ServicesManager — CRUD de servicios del barbero.
@@ -25,7 +31,8 @@ import {
 // descripción (textarea grande) y elimina el scroll vertical largo en
 // Ajustes → Negocio.
 //
-// Cada servicio: nombre, duración, precio, descripción, `featured`
+// Cada servicio: nombre, duración, precio, `courtesy` (U-12 — el 0 € sólo
+// se guarda si el barbero lo marca a propósito), descripción, `featured`
 // (destacar en home) y `colorToken` (color del bloque en agenda — token de
 // la paleta saturada O hex custom `#RRGGBB`). Se guardan como JSON en
 // `clients.chatbotServices` — añadir campos no requiere migración. La
@@ -45,6 +52,9 @@ interface Service {
   price: number | string
   description?: string
   featured?: boolean
+  /** Precio 0 € a propósito (invitación, retoque gratis). Sin este flag el
+   *  servidor rechaza un precio a 0 — ver `@/lib/service-price`. */
+  courtesy?: boolean
   /** Token de paleta o hex custom (#RRGGBB en minúsculas). */
   colorToken?: ServiceColor
 }
@@ -56,9 +66,11 @@ interface Props {
 const EMPTY: Service = {
   name: '',
   duration: 30,
-  price: 0,
+  // Vacío, no 0: el barbero tiene que escribir un precio (o marcar cortesía).
+  price: '',
   description: '',
   featured: false,
+  courtesy: false,
   colorToken: DEFAULT_SERVICE_COLOR,
 }
 const MAX_FEATURED = 3
@@ -81,6 +93,10 @@ function withDefaults(s: Service): Service {
     description: '',
     featured: false,
     ...s,
+    // Un 0 € ya guardado sin flag (dato anterior a U-12) se lee como
+    // cortesía: si no, el barbero no podría ni abrir y volver a guardar el
+    // servicio sin cambiarle el precio.
+    courtesy: inferCourtesy(s.price, s.courtesy),
     colorToken: color,
   }
 }
@@ -280,10 +296,28 @@ function ServiceForm({
   const color: ServiceColor = normalizeServiceColor(draft.colorToken)
   const isCustom = isCustomHex(color)
   const featuredLockedOut = !draft.featured && featuredCount >= MAX_FEATURED
+  // El error de precio no salta mientras el barbero aún escribe el nombre —
+  // sólo cuando ya ha pasado por el campo (blur) o ha intentado guardar.
+  const [priceTouched, setPriceTouched] = useState(false)
+  const priceError = servicePriceError(draft.price, draft.courtesy)
+  const showPriceError = priceTouched && !!priceError
   const canSave =
     draft.name.trim().length > 0 &&
-    Number(draft.price) >= 0 &&
+    !priceError &&
     Number(draft.duration) >= 5
+
+  const handleSaveClick = () => {
+    setPriceTouched(true)
+    if (!canSave) return
+    onSave()
+  }
+
+  /** Cortesía on ⇒ precio a 0 y campo bloqueado. Off ⇒ vuelve a vacío para
+   *  que el barbero escriba el precio real (y no herede el 0). */
+  const toggleCourtesy = (checked: boolean) => {
+    setDraft((d) => ({ ...d, courtesy: checked, price: checked ? 0 : '' }))
+    if (checked) setPriceTouched(false)
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -340,17 +374,52 @@ function ServiceForm({
                 id="svc-price"
                 type="number"
                 inputMode="decimal"
-                value={draft.price}
+                value={draft.courtesy ? '' : draft.price}
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, price: e.target.value }))
                 }
-                placeholder="0"
+                onBlur={() => setPriceTouched(true)}
+                disabled={!!draft.courtesy}
+                placeholder={draft.courtesy ? 'Gratis' : '15'}
                 min={0}
                 step="0.5"
-                className="w-full min-h-11 bg-canvas border border-line rounded-lg pl-8 py-2.5 text-sm text-ink focus:border-brand focus:bg-surface focus:shadow-[0_0_0_3px_var(--color-brand-softer)] outline-none transition-colors"
+                aria-invalid={showPriceError}
+                aria-describedby={showPriceError ? 'svc-price-error' : undefined}
+                className={`w-full min-h-11 bg-canvas border rounded-lg pl-8 py-2.5 text-sm text-ink focus:bg-surface outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  showPriceError
+                    ? 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_var(--color-danger-surface)]'
+                    : 'border-line focus:border-brand focus:shadow-[0_0_0_3px_var(--color-brand-softer)]'
+                }`}
               />
             </div>
           </div>
+        </div>
+
+        {/* Cortesía — la única puerta que deja guardar un servicio a 0 €. */}
+        <div className="space-y-1.5">
+          {showPriceError && (
+            <p id="svc-price-error" role="alert" className="text-xs text-danger">
+              {priceError}
+            </p>
+          )}
+          <label className="flex items-start gap-3 rounded-xl border border-line bg-canvas p-3 cursor-pointer hover:bg-surface transition-colors">
+            <input
+              type="checkbox"
+              checked={!!draft.courtesy}
+              onChange={(e) => toggleCourtesy(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-ink inline-flex items-center gap-1.5">
+                <Gift className="h-3.5 w-3.5" />
+                Cortesía — servicio gratis
+              </p>
+              <p className="mt-0.5 text-xs text-ink-3">
+                Se guarda a 0 € a propósito. Sin marcarlo, el precio es
+                obligatorio.
+              </p>
+            </div>
+          </label>
         </div>
 
         {/* Color picker — 12 tokens + chip "Personalizado" */}
@@ -447,8 +516,8 @@ function ServiceForm({
         </button>
         <button
           type="button"
-          onClick={onSave}
-          disabled={!canSave}
+          onClick={handleSaveClick}
+          disabled={draft.name.trim().length === 0 || Number(draft.duration) < 5}
           className="btn-primary btn-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Check className="h-3.5 w-3.5" /> {saveLabel}
@@ -484,7 +553,14 @@ export default function ServicesManager({ initial }: Props) {
   // ── Save ────────────────────────────────────────────
   const handleSave = () => {
     if (!draft.name.trim()) return
-    const sanitized = withDefaults(draft)
+    // Red de seguridad: el form ya bloquea el guardado y enseña el error,
+    // pero el precio nunca entra al array sin pasar por la regla.
+    if (servicePriceError(draft.price, draft.courtesy)) return
+    const sanitized: Service = {
+      ...withDefaults(draft),
+      price: normalizeServicePrice(draft.price, draft.courtesy),
+      courtesy: !!draft.courtesy,
+    }
     if (isNew) {
       setServices((s) => [...s, sanitized])
     } else if (editingIdx !== null && editingIdx >= 0) {
@@ -610,9 +686,18 @@ export default function ServicesManager({ initial }: Props) {
                     <Clock className="h-3.5 w-3.5" />
                     <span>{svc.duration} min</span>
                   </div>
-                  <div className="text-xs text-ink-2 shrink-0 w-14 text-right font-medium">
-                    {svc.price}€
-                  </div>
+                  {/* Precio. Un servicio guardado antes de U-12 puede venir
+                      sin precio: lo marcamos en rojo para que el barbero sepa
+                      cuál abrir cuando el servidor rechace el guardado. */}
+                  {servicePriceError(svc.price, svc.courtesy) ? (
+                    <div className="text-[11px] text-danger shrink-0 w-16 text-right font-medium">
+                      Sin precio
+                    </div>
+                  ) : (
+                    <div className="text-xs text-ink-2 shrink-0 w-16 text-right font-medium">
+                      {formatServicePrice(svc.price, svc.courtesy)}
+                    </div>
+                  )}
                   {/* Acciones */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button
