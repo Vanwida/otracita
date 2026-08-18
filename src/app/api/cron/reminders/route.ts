@@ -9,6 +9,7 @@ import { tryRatingFollowupForCompletedBooking } from '@/lib/whatsapp/followup';
 import { MS_IN_DAY, BUSINESS_TIMEZONE } from '@/lib/time';
 import { publicAccountPath } from '@/lib/site';
 import { logBookingEvent } from '@/lib/bookings/events';
+import { isBackfilledImport } from '@/lib/bookings/source';
 
 type Lang = 'es' | 'en';
 
@@ -162,6 +163,14 @@ export async function GET(request: Request) {
   //   2. Decrementar noShows del customer (min 0) — recompensa por
   //      cliente fiable que no falló esta cita
   //
+  // EXCEPCIÓN (L-15) — backfills de importación. Las citas que el barbero
+  // sube al migrar (.ics de Booksy o capturas vía Vision) con fecha YA
+  // pasada el día del import ocurrieron en Booksy, no aquí: cerrarlas
+  // inflaría la caja de otracita con dinero que cobró en otro sitio.
+  // `isBackfilledImport` las deja en `confirmed` como registro histórico.
+  // Una cita importada FUTURA (migras el 1, tienes cita el 5) sí es suya y
+  // sigue entrando en el sweep. Ver `src/lib/bookings/source.ts`.
+  //
   // La cita queda como TICKET interno (cuenta para caja/ingresos/BI). NO
   // se factura a Hacienda: facturar VeriFactu es una acción explícita del
   // barbero (POST /api/invoices/from-booking) — el cron jamás declara por
@@ -174,6 +183,7 @@ export async function GET(request: Request) {
 
   let completedCount = 0;
   let decrementedCount = 0;
+  let importBackfillsSkipped = 0;
   // Siempre 0 desde que la facturación dejó de ser automática. Se mantiene
   // en la respuesta para no romper el contrato del cron / monitorización.
   const autoInvoicedCount = 0;
@@ -183,6 +193,10 @@ export async function GET(request: Request) {
         id: bookings.id,
         clientId: bookings.clientId,
         customerPhone: bookings.customerPhone,
+        source: bookings.source,
+        date: bookings.date,
+        createdAt: bookings.createdAt,
+        importedIcalUid: bookings.importedIcalUid,
       })
       .from(bookings)
       .where(and(lt(bookings.date, safetyCutoff), eq(bookings.status, 'confirmed')));
@@ -191,6 +205,14 @@ export async function GET(request: Request) {
     // cerrar por sweep. Eliminado: la facturación ya no es automática.)
 
     for (const row of toClose) {
+      // Backfill de migración → no es ingreso de otracita. Se queda en
+      // `confirmed`; el barbero puede cerrarla a mano si de verdad la quiere
+      // en su caja, pero el sistema no se lo hace solo.
+      if (isBackfilledImport(row, BUSINESS_TIMEZONE)) {
+        importBackfillsSkipped++;
+        continue;
+      }
+
       await db
         .update(bookings)
         .set({ status: 'completed' })
@@ -244,6 +266,7 @@ export async function GET(request: Request) {
     date: tomorrowStr,
     bookingsCompleted: completedCount,
     noShowsDecremented: decrementedCount,
+    importBackfillsSkipped,
     autoInvoiced: autoInvoicedCount,
     safetyNetDays: SAFETY_NET_DAYS,
   });
