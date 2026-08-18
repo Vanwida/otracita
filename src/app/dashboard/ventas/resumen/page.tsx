@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic'
 
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { ChevronLeft } from 'lucide-react'
 import { headers } from 'next/headers'
 import { db } from '@/db'
 import { clients } from '@/db/schema'
@@ -14,6 +16,11 @@ import DayPicker from './DayPicker'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ventas/resumen — Resumen DETALLADO del día seleccionado (#64).
+//
+// FUERA DEL NAV desde U-13: era una de las cuatro pestañas de Ventas que
+// hablaban del mismo dinero. Se alcanza desde Caja ("ver el detalle de otro
+// día") — que es exactamente lo que es: el mismo informe de cierre, navegable
+// por fecha. La ruta sigue viva para deep-links.
 //
 // Antes esta pestaña era una tira de 4 KPIs + barberos. Reni necesita un
 // detalle estilo "cierre de caja" pero NAVEGABLE por día — no solo la
@@ -59,6 +66,14 @@ export default async function VentasResumenPage({ searchParams }: PageProps) {
   return (
     <AreaContent scroll="region" maxWidth="7xl">
       <div className="space-y-4">
+        <Link
+          href="/dashboard/ventas/caja"
+          className="inline-flex items-center gap-1.5 text-[0.8125rem] text-ink-2 transition-colors hover:text-ink"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          Volver a Caja
+        </Link>
+
         <DayPicker
           selectedDay={selectedDay}
           today={todayIso}

@@ -117,7 +117,7 @@ export default async function VentasFacturasPage({
             title="Activa la facturación"
             description="Emite tickets y facturas automáticamente con cada reserva confirmada. Exporta cada mes un CSV para tu gestor."
             action={
-              <Link href="/dashboard/ventas/cobros" className="btn-primary">
+              <Link href="/dashboard/ajustes/pagos" className="btn-primary">
                 Activar facturación
                 <ChevronRight className="h-4 w-4" />
               </Link>

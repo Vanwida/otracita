@@ -25,7 +25,7 @@ import type { ReactNode } from 'react'
 //     tone="brand"
 //     title="La caja de efectivo está desactivada"
 //     description="Actívala para abrir y cerrar caja cada día…"
-//     action={<Link href="/dashboard/ventas/cobros" className="btn-primary">Activar</Link>}
+//     action={<Link href="/dashboard/ajustes/pagos" className="btn-primary">Activar</Link>}
 //   />
 // -----------------------------------------------------------------------------
 

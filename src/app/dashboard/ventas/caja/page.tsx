@@ -9,7 +9,7 @@ import EmptyState from '../../_components/EmptyState'
 import { loadVentasData } from '../_data'
 
 // -----------------------------------------------------------------------------
-// /dashboard/ventas/caja — pestaña CIERRE DE CAJA.
+// /dashboard/ventas/caja — pestaña CAJA (cierre y cuadre).
 //
 // Patrón Booksy "Cajas registradoras" (10.06.29): master-detail — lista de
 // sesiones a la izquierda + panel de detalle acoplado a la derecha. El
@@ -40,8 +40,8 @@ export default async function VentasCajaPage({ searchParams }: PageProps) {
             title="La caja de efectivo está desactivada"
             description="Actívala para abrir y cerrar caja cada día, cuadrar efectivo y datáfono, y llevar el histórico de sesiones."
             action={
-              <Link href="/dashboard/ventas/cobros" className="btn-primary">
-                Activar en Cobros
+              <Link href="/dashboard/ajustes/pagos" className="btn-primary">
+                Activar en Ajustes → Pagos
                 <ChevronRight className="h-4 w-4" />
               </Link>
             }
@@ -62,6 +62,22 @@ export default async function VentasCajaPage({ searchParams }: PageProps) {
         periodStartIso={d.periodStartIso}
         periodLabel={d.periodLabel}
       />
+
+      {/* Única puerta al detalle por día (ex-pestaña "Resumen"). Salió del
+          nav en U-13 —era la cuarta pestaña que hablaba del mismo dinero—
+          pero la vista sigue siendo útil: el mismo informe de cierre para
+          CUALQUIER día, no solo la sesión abierta. */}
+      <Link
+        href="/dashboard/ventas/resumen"
+        className="mt-3 flex items-center justify-between gap-3 rounded-control border border-line bg-surface px-4 py-2.5 text-[0.8125rem] transition-colors hover:border-brand"
+      >
+        <span className="text-ink-2">
+          <span className="font-semibold text-ink">Ver el detalle de otro día</span>{' '}
+          — cierre completo de cualquier fecha, aunque no abrieras caja.
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-2" aria-hidden="true" />
+      </Link>
+
       <CajaRegisters history={d.registerHistory} />
     </AreaContent>
   )
