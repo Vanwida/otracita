@@ -1,7 +1,15 @@
-const GRAPH_API_VERSION = 'v21.0';
+export const GRAPH_API_VERSION = 'v21.0';
+
+/** Base de cualquier llamada a la Graph API de Meta. Vive aquí (y no
+ *  duplicada por módulo) para que subir de versión sea una línea: un sender
+ *  en v21 con un health-check en v19 daría diagnósticos que no corresponden
+ *  a lo que de verdad se usa. */
+export function graphUrl(path: string): string {
+  return `https://graph.facebook.com/${GRAPH_API_VERSION}/${path}`;
+}
 
 function getMessagesUrl(phoneNumberId: string): string {
-  return `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
+  return graphUrl(`${phoneNumberId}/messages`);
 }
 
 function getHeaders(accessToken: string): HeadersInit {
