@@ -40,6 +40,7 @@ interface Props {
   disabled?: boolean
   'aria-label'?: string
   'aria-describedby'?: string
+  'aria-invalid'?: boolean
   onBlur?: (final: number | null) => void
 }
 
@@ -143,6 +144,7 @@ export default function NumberInput({
       step={step}
       aria-label={aria['aria-label']}
       aria-describedby={aria['aria-describedby']}
+      aria-invalid={aria['aria-invalid']}
     />
   )
 }

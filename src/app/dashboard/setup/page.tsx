@@ -4,11 +4,16 @@ import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   Check, ChevronRight, ChevronLeft, Scissors, ClipboardCheck, Search, Plus, X,
-  Store, Users, Clock, Palette, Receipt, Sun, Moon, Shield, Globe, Loader2,
+  Store, Users, Clock, Palette, Receipt, Sun, Moon, Shield, Globe, Loader2, Gift,
   MessageCircle,
 } from "lucide-react"
 import { BRAND_TERRACOTA_HEX, PUBLIC_PWA_THEME } from "@/lib/brand-hex"
 import FormGrid from "@/app/dashboard/_components/FormGrid"
+import {
+  inferCourtesy,
+  normalizeServicePrice,
+  servicePriceError,
+} from "@/lib/service-price"
 
 // -----------------------------------------------------------------------------
 // Setup Wizard — onboarding de un barbero en 6 pasos + revisión.
@@ -27,7 +32,10 @@ import FormGrid from "@/app/dashboard/_components/FormGrid"
 interface Service {
   name: string
   duration: string
+  /** Euros, como texto del input. Vacío = sin decidir (no es 0 €). */
   price: string
+  /** Marcado a mano ⇒ el servicio se guarda a 0 € a propósito (U-12). */
+  courtesy: boolean
 }
 
 const DAYS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
@@ -63,7 +71,12 @@ export default function SetupPage() {
   const [scraped, setScraped] = useState(false)
 
   // ── Step 2: Equipo + Servicios ──
-  const [services, setServices] = useState<Service[]>([{ name: "", duration: "30", price: "" }])
+  const [services, setServices] = useState<Service[]>([
+    { name: "", duration: "30", price: "", courtesy: false },
+  ])
+  // Los errores de precio no se pintan mientras el barbero rellena; sólo
+  // cuando intenta avanzar de paso o activar la cuenta.
+  const [showServiceErrors, setShowServiceErrors] = useState(false)
   const [barbers, setBarbers] = useState<string[]>([])
   const [newBarber, setNewBarber] = useState("")
 
@@ -123,6 +136,32 @@ export default function SetupPage() {
     fiscalName, fiscalNif, fiscalAddress, fiscalCity, fiscalPostalCode,
   ])
 
+  // ── Regla de precio (U-12) ──
+  // Un servicio con nombre necesita precio > 0, salvo que esté marcado como
+  // cortesía. Sólo miramos las filas con nombre: las vacías se descartan al
+  // enviar, igual que antes.
+  const servicePriceIssues = useMemo(
+    () =>
+      services
+        .filter((s) => s.name.trim())
+        .map((s) => servicePriceError(s.price, s.courtesy))
+        .filter((e): e is string => e !== null),
+    [services],
+  )
+  const hasServicePriceIssues = servicePriceIssues.length > 0
+
+  /** Avanza de paso. En el paso 2 no deja pasar con precios sin poner —
+   *  enseña el error en la fila en vez de dejar el botón muerto. */
+  const goNext = () => {
+    if (step === 2 && hasServicePriceIssues) {
+      setShowServiceErrors(true)
+      setError(servicePriceIssues[0])
+      return
+    }
+    setError("")
+    setStep(step + 1)
+  }
+
   // ── Scraper Booksy (opcional, dentro de paso 1) ──
   const handleScrapeBooksy = async () => {
     if (!booksyUrl || !booksyUrl.includes("booksy.com")) return
@@ -141,7 +180,12 @@ export default function SetupPage() {
       if (data.phone) setPhone(data.phone)
       if (data.services?.length > 0) {
         setServices(data.services.map((s: { name: string; duration: number; price: number }) => ({
-          name: s.name, duration: String(s.duration || 30), price: String(s.price || ""),
+          name: s.name,
+          duration: String(s.duration || 30),
+          price: String(s.price || ""),
+          // Booksy puede traer servicios a 0 €; los marcamos cortesía para no
+          // dejar al barbero con filas que no puede guardar sin tocarlas.
+          courtesy: inferCourtesy(s.price),
         })))
       }
       if (data.barbers?.length > 0) {
@@ -157,18 +201,35 @@ export default function SetupPage() {
   }
 
   // ── Service helpers ──
-  const addService = () => setServices([...services, { name: "", duration: "30", price: "" }])
+  const addService = () =>
+    setServices([...services, { name: "", duration: "30", price: "", courtesy: false }])
   const removeService = (index: number) => {
     if (services.length > 1) setServices(services.filter((_, i) => i !== index))
   }
-  const updateService = (index: number, field: keyof Service, value: string) => {
+  const updateService = (index: number, patch: Partial<Service>) => {
     const updated = [...services]
-    updated[index] = { ...updated[index], [field]: value }
+    updated[index] = { ...updated[index], ...patch }
     setServices(updated)
+    // El banner global se refiere al estado anterior — al tocar un servicio
+    // deja de ser cierto. Los errores por fila se recalculan solos.
+    setError("")
   }
+
+  /** Cortesía on ⇒ 0 € a propósito. Off ⇒ el precio vuelve a vacío para que
+   *  el barbero escriba el real y no herede un 0 silencioso. */
+  const toggleCourtesy = (index: number, checked: boolean) =>
+    updateService(index, { courtesy: checked, price: checked ? "0" : "" })
 
   // ── Submit ──
   const handleSubmit = async () => {
+    // Última puerta en cliente: si algún servicio quedó sin precio, volvemos
+    // al paso 2 con el error visible en lugar de crear la cuenta con caja a 0.
+    if (hasServicePriceIssues) {
+      setShowServiceErrors(true)
+      setError(servicePriceIssues[0])
+      setStep(2)
+      return
+    }
     setSaving(true)
     setError("")
     try {
@@ -179,7 +240,21 @@ export default function SetupPage() {
       fd.set("city", city)
       fd.set("address", address)
       fd.set("booksyUrl", booksyUrl)
-      fd.set("services", JSON.stringify(services.filter((s) => s.name.trim())))
+      fd.set(
+        "services",
+        JSON.stringify(
+          services
+            .filter((s) => s.name.trim())
+            .map((s) => ({
+              name: s.name.trim(),
+              // Números, no strings: bookings/create.ts exige `typeof price
+              // === 'number'` para copiar el precio del catálogo a la reserva.
+              duration: Number(s.duration) || 30,
+              price: normalizeServicePrice(s.price, s.courtesy),
+              courtesy: s.courtesy,
+            })),
+        ),
+      )
       fd.set("barbers", JSON.stringify(barbers.filter((b) => b.trim())))
       fd.set("hours", JSON.stringify(hours))
       fd.set("publicSlug", publicSlug)
@@ -390,40 +465,80 @@ export default function SetupPage() {
               <h3 className="text-sm font-bold uppercase tracking-widest text-ink-3">
                 Servicios · {services.filter((s) => s.name.trim()).length}
               </h3>
-              <div className="space-y-2">
-                {services.map((service, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={service.name}
-                      onChange={(e) => updateService(i, "name", e.target.value)}
-                      placeholder="Nombre del servicio"
-                      className="flex-1 bg-surface border border-line rounded-lg p-2.5 text-sm text-ink focus:border-brand outline-none"
-                    />
-                    <input
-                      type="number"
-                      value={service.duration}
-                      onChange={(e) => updateService(i, "duration", e.target.value)}
-                      placeholder="Min"
-                      className="w-20 bg-surface border border-line rounded-lg p-2.5 text-sm text-ink focus:border-brand outline-none text-center"
-                    />
-                    <input
-                      type="number"
-                      value={service.price}
-                      onChange={(e) => updateService(i, "price", e.target.value)}
-                      placeholder="€"
-                      className="w-20 bg-surface border border-line rounded-lg p-2.5 text-sm text-ink focus:border-brand outline-none text-center"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeService(i)}
-                      disabled={services.length <= 1}
-                      className="rounded-lg p-2.5 text-ink-3 hover:text-danger hover:bg-danger/10 disabled:opacity-20 disabled:cursor-not-allowed"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                {services.map((service, i) => {
+                  const named = service.name.trim().length > 0
+                  const priceError = named
+                    ? servicePriceError(service.price, service.courtesy)
+                    : null
+                  const showError = showServiceErrors && !!priceError
+                  return (
+                    <div key={i} className="space-y-1.5">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={service.name}
+                          onChange={(e) => updateService(i, { name: e.target.value })}
+                          placeholder="Nombre del servicio"
+                          className="flex-1 bg-surface border border-line rounded-lg p-2.5 text-sm text-ink focus:border-brand outline-none"
+                        />
+                        <input
+                          type="number"
+                          value={service.duration}
+                          onChange={(e) => updateService(i, { duration: e.target.value })}
+                          placeholder="Min"
+                          className="w-20 bg-surface border border-line rounded-lg p-2.5 text-sm text-ink focus:border-brand outline-none text-center"
+                        />
+                        <input
+                          type="number"
+                          value={service.courtesy ? "" : service.price}
+                          onChange={(e) => updateService(i, { price: e.target.value })}
+                          disabled={service.courtesy}
+                          placeholder={service.courtesy ? "Gratis" : "€"}
+                          min={0}
+                          step="0.5"
+                          aria-invalid={showError}
+                          aria-label={`Precio de ${service.name.trim() || "servicio"} en euros`}
+                          className={`w-20 bg-surface border rounded-lg p-2.5 text-sm text-ink outline-none text-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                            showError
+                              ? "border-danger focus:border-danger"
+                              : "border-line focus:border-brand"
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeService(i)}
+                          disabled={services.length <= 1}
+                          aria-label={`Eliminar ${service.name.trim() || "servicio"}`}
+                          className="rounded-lg p-2.5 text-ink-3 hover:text-danger hover:bg-danger/10 disabled:opacity-20 disabled:cursor-not-allowed"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {/* La fila sólo pide precio cuando ya tiene nombre — así
+                          la fila vacía inicial no grita nada. */}
+                      {named && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-1">
+                          <label className="flex items-center gap-1.5 text-xs text-ink-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={service.courtesy}
+                              onChange={(e) => toggleCourtesy(i, e.target.checked)}
+                              className="h-3.5 w-3.5 accent-[var(--color-brand)]"
+                            />
+                            <Gift className="h-3.5 w-3.5" />
+                            Cortesía (gratis)
+                          </label>
+                          {showError && (
+                            <p role="alert" className="text-xs text-danger">
+                              {priceError}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
               <button
                 type="button"
@@ -734,12 +849,17 @@ export default function SetupPage() {
                 esté atendiendo.
               </p>
             </div>
+          </div>
+        )}
 
-            {error && (
-              <div className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
-                {error}
-              </div>
-            )}
+        {/* Error global — vive fuera del paso 6 porque también lo disparan el
+            import de Booksy (paso 1) y la regla de precio (paso 2). */}
+        {error && (
+          <div
+            role="alert"
+            className="mt-6 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger"
+          >
+            {error}
           </div>
         )}
 
@@ -761,7 +881,7 @@ export default function SetupPage() {
           {step < 6 && (
             <button
               type="button"
-              onClick={() => setStep(step + 1)}
+              onClick={goNext}
               disabled={!canAdvance}
               className="btn-primary active:scale-95 disabled:opacity-40"
             >

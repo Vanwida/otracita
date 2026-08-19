@@ -66,6 +66,8 @@ interface ServiceItem {
   price: number | string
   description?: string
   featured?: boolean
+  /** Precio 0 € intencional (U-12). Sin el flag, el precio es obligatorio. */
+  courtesy?: boolean
   /** Token canónico de la paleta o hex `#RRGGBB` custom. */
   colorToken?: ServiceColorToken | string
 }
@@ -85,7 +87,9 @@ interface Props {
     blockedDates: string[]
     dayOverrides: DayOverride[]
   }
-  save: (formData: FormData) => Promise<void>
+  /** Devuelve `{ error }` si el servidor rechaza el guardado (p.ej. un
+   *  servicio a 0 € sin marcar cortesía). `void` = guardado OK. */
+  save: (formData: FormData) => Promise<{ error?: string } | void>
 }
 
 const DAY_ORDER = [
@@ -165,7 +169,12 @@ export default function NegocioSettings({
     setSaveState('saving')
     startTransition(async () => {
       try {
-        await save(formData)
+        const result = await save(formData)
+        if (result?.error) {
+          setSaveState('idle')
+          toast.error(result.error)
+          return
+        }
         // Feedback "Guardado" lo aporta AjustesSaveBar (pill al lado del botón).
         // No emitimos toast.success — evita doble feedback visual con el chip.
         setSaveState('saved')

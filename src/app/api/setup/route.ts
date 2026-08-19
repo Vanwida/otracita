@@ -5,6 +5,10 @@ import { and, eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 import { ensureUniqueSlug, isValidSlug, slugifyName } from "@/lib/slug"
 import { publicPagePath } from "@/lib/site"
+import {
+  normalizeServicePrice,
+  servicePriceError,
+} from "@/lib/service-price"
 
 // -----------------------------------------------------------------------------
 // POST /api/setup — Onboarding de un cliente nuevo (barbero).
@@ -23,6 +27,9 @@ import { publicPagePath } from "@/lib/site"
 // Reglas de integridad:
 //   - invoicingEnabled solo queda true si TODOS los datos fiscales están.
 //     RD 1619/2012 art. 6 exige nombre + NIF + dirección completa del emisor.
+//   - Servicios: nombre obligatorio y precio > 0 salvo `courtesy` (U-12).
+//     Se persisten con duration/price NUMÉRICOS — el resto de la app
+//     (bookings/create.ts, /api/yo/services) exige números, no strings.
 //   - Slug se saneaa via slugifyName + ensureUniqueSlug para evitar colisión.
 //   - Status pasa a 'onboarding' (luego el admin lo activa a 'active').
 // -----------------------------------------------------------------------------
@@ -31,6 +38,65 @@ function cleanString(v: FormDataEntryValue | null, max = 200): string | null {
   if (typeof v !== "string") return null
   const s = v.trim()
   return s ? s.slice(0, max) : null
+}
+
+interface CleanService {
+  name: string
+  duration: number
+  price: number
+  courtesy: boolean
+}
+
+const MIN_SERVICE_DURATION = 5
+const MAX_SERVICE_DURATION = 600
+const MAX_SERVICES = 60
+
+/**
+ * Valida y normaliza el catálogo que manda el wizard. Devuelve el array
+ * limpio o un mensaje de error — nunca guarda un servicio a 0 € que no venga
+ * marcado como cortesía (U-12: el input en blanco se guardaba a 0 y dejaba
+ * la caja del barbero a cero sin que nadie se enterase).
+ */
+function cleanServices(
+  raw: unknown,
+): { services: CleanService[] } | { error: string } {
+  if (raw === null || raw === undefined) return { services: [] }
+  if (!Array.isArray(raw)) return { error: "El catálogo de servicios no es válido." }
+  if (raw.length > MAX_SERVICES) return { error: `Máximo ${MAX_SERVICES} servicios.` }
+
+  const services: CleanService[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") {
+      return { error: "El catálogo de servicios no es válido." }
+    }
+    const svc = entry as Record<string, unknown>
+
+    const name = typeof svc.name === "string" ? svc.name.trim().slice(0, 80) : ""
+    if (!name) continue // filas vacías del wizard — se descartan, como siempre
+
+    const duration = Number(svc.duration)
+    if (
+      !Number.isFinite(duration) ||
+      duration < MIN_SERVICE_DURATION ||
+      duration > MAX_SERVICE_DURATION
+    ) {
+      return { error: `«${name}»: la duración debe estar entre ${MIN_SERVICE_DURATION} y ${MAX_SERVICE_DURATION} minutos.` }
+    }
+
+    // Estricto: el flag tiene que venir explícito desde el wizard. Un 0 sin
+    // flag es exactamente el bug que estamos cerrando.
+    const courtesy = svc.courtesy === true
+    const priceError = servicePriceError(svc.price, courtesy)
+    if (priceError) return { error: `«${name}»: ${priceError.charAt(0).toLowerCase()}${priceError.slice(1)}` }
+
+    services.push({
+      name,
+      duration: Math.round(duration),
+      price: normalizeServicePrice(svc.price, courtesy),
+      courtesy,
+    })
+  }
+  return { services }
 }
 
 export async function POST(request: Request) {
@@ -57,9 +123,18 @@ export async function POST(request: Request) {
   let chatbotServices: unknown = null
   let barbersList: string[] = []
   let chatbotHours: unknown = null
+  let servicesParsed: unknown = null
   try {
-    if (servicesRaw) chatbotServices = JSON.parse(servicesRaw)
+    if (servicesRaw) servicesParsed = JSON.parse(servicesRaw)
   } catch { /* ignore */ }
+  const servicesResult = cleanServices(servicesParsed)
+  if ("error" in servicesResult) {
+    return NextResponse.json({ error: servicesResult.error }, { status: 400 })
+  }
+  // Sin servicios dejamos `null` (no `[]`): `admin/onboarding` usa
+  // `chatbotServices !== null` como señal de "el wizard ya pasó por aquí".
+  chatbotServices =
+    servicesResult.services.length > 0 ? servicesResult.services : null
   try {
     if (barbersRaw) {
       const parsed = JSON.parse(barbersRaw)
