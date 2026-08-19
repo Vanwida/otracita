@@ -13,6 +13,7 @@ import {
 import { canonicalPhone } from '@/lib/phone';
 import { logBookingEvent, createdEventActor } from '@/lib/bookings/events';
 import { isSelfServiceSource } from '@/lib/bookings/source';
+import { slotLockKeys, withSlotLock, SlotLockTimeoutError } from '@/lib/bookings/slot-lock';
 import { verifyConfirmedSetupIntent } from '@/lib/stripe/setup-intent';
 import type { BarberConfig } from '@/lib/whatsapp/config';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
@@ -138,6 +139,13 @@ export type CreateBookingError =
 
 export type CreateBookingResult =
   | { success: true; booking: BookingRow }
+  | { success: false; error: CreateBookingError; message: string };
+
+/** Lo que devuelve la sección crítica bajo candado (L-13): el mismo shape de
+ *  error que `CreateBookingResult` — para que los `return` de dentro no
+ *  cambien — más el barbero resuelto, que el log y el push necesitan fuera. */
+type SlotOutcome =
+  | { success: true; booking: BookingRow; resolved: BarberConfig }
   | { success: false; error: CreateBookingError; message: string };
 
 /** Entrada del catálogo `clients.chatbotServices` (jsonb). `price` está en
@@ -407,144 +415,185 @@ export async function createBooking(
     };
   }
 
-  // --- Conflict check (considers buffer) ------------------------------------
-  const existingOnDay = await db
-    .select()
-    .from(bookings)
-    .where(
-      and(
-        eq(bookings.clientId, client.id),
-        eq(bookings.date, date),
-        ne(bookings.status, 'cancelled'),
-      ),
-    );
+  // --- Sección crítica: candado de hueco (L-13) -----------------------------
+  // Desde aquí hasta el INSERT hay un "leo la agenda → escribo" con varios
+  // awaits en medio (descansos, bloqueos, elección de barbero). Sin candado,
+  // dos peticiones simultáneas al último hueco leen las dos "libre" y crean
+  // las dos: dos 201 al mismo minuto.
+  //
+  // Bloqueamos por (día, barbero): el barbero explícito si el cliente eligió,
+  // o TODOS los activos si pidió "cualquier disponible" — hasta dentro de la
+  // sección no sabemos a quién nos van a asignar. Dos barberos distintos
+  // siguen reservando en paralelo; sólo se serializa quien compite de verdad.
+  //
+  // No usamos un unique (barbero, día, hora) a propósito: el barbero SÍ puede
+  // solapar citas desde el panel (`allowOverlap`) y un unique se lo rompería.
+  const lockBarberIds = barberId ? [barberId] : activeBarbers.map((b) => b.id);
 
-  const bufferMin = client.serviceBufferMinutes;
-  const newStart = toMinutes(time);
-  const newEnd = newStart + duration;
-  // Solape: predicado puro compartido (mismo buffer + match barberId|nombre
-  // en `hasBookingOverlap`, fuente única) en vez de reimplementar el clash
-  // aquí. Al CREAR no hay cita propia → selfId null.
-  const overlapsForBarber = (barber: BarberConfig): boolean => {
-    // Admin override (dashboard tras confirm del barbero): permitir solape
-    // explícito. NO afecta a descansos/bloqueos (esos son inviolables).
-    if (allowOverlap) return false;
-    return hasBookingOverlap(
-      {
-        selfId: null,
-        startMinutes: newStart,
-        durationMin: duration,
-        barberId: barber.id,
-        barber: barber.name,
-      },
-      existingOnDay,
-      bufferMin,
-    );
-  };
+  let slotResult: SlotOutcome;
+  try {
+    slotResult = await withSlotLock(slotLockKeys(date, lockBarberIds), async (): Promise<SlotOutcome> => {
+      // --- Conflict check (considers buffer) --------------------------------
+      const existingOnDay = await db
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.clientId, client.id),
+            eq(bookings.date, date),
+            ne(bookings.status, 'cancelled'),
+          ),
+        );
 
-  // Recurring breaks (R12) + ad-hoc blocks/absences (R2) — a manual booking
-  // with an explicit barber must not land inside one either. The "any
-  // available" path already enforces this via pickBarberForCustomer; this
-  // covers the explicit-barberId path. Wide clamp [0,1440) so the raw
-  // break/block ranges come back unclipped for the overlap test.
-  const unavailMap = await loadShopUnavailability(client.id, date);
-  const hitsBreakOrBlock = (barber: BarberConfig): boolean => {
-    const intervals = unavailabilityIntervals(
-      date,
-      0,
-      24 * 60,
-      unavailabilityFor(unavailMap, barber.id),
-    );
-    return intervals.some((iv) => newStart < iv.end && newEnd > iv.start);
-  };
+      const bufferMin = client.serviceBufferMinutes;
+      const newStart = toMinutes(time);
+      const newEnd = newStart + duration;
+      // Solape: predicado puro compartido (mismo buffer + match barberId|nombre
+      // en `hasBookingOverlap`, fuente única) en vez de reimplementar el clash
+      // aquí. Al CREAR no hay cita propia → selfId null.
+      const overlapsForBarber = (barber: BarberConfig): boolean => {
+        // Admin override (dashboard tras confirm del barbero): permitir solape
+        // explícito. NO afecta a descansos/bloqueos (esos son inviolables).
+        if (allowOverlap) return false;
+        return hasBookingOverlap(
+          {
+            selfId: null,
+            startMinutes: newStart,
+            durationMin: duration,
+            barberId: barber.id,
+            barber: barber.name,
+          },
+          existingOnDay,
+          bufferMin,
+        );
+      };
 
-  // --- Barber resolution ----------------------------------------------------
-  // `barberWasRequested` = el caller pasó un barberId explícito (el cliente
-  // PIDIÓ a esa persona) vs lo elegimos nosotros con pickBarberForCustomer.
-  // Alimenta bookings.barberRequested → ♥ "Solicitado por el cliente" (A2).
-  const barberWasRequested = Boolean(barberId);
-  let resolved: BarberConfig | null = null;
-  if (barberId) {
-    const requested = activeBarbers.find((b) => b.id === barberId);
-    if (!requested) {
-      return {
-        success: false,
-        error: 'validation',
-        message: 'El profesional indicado no existe o está inactivo.',
+      // Recurring breaks (R12) + ad-hoc blocks/absences (R2) — a manual booking
+      // with an explicit barber must not land inside one either. The "any
+      // available" path already enforces this via pickBarberForCustomer; this
+      // covers the explicit-barberId path. Wide clamp [0,1440) so the raw
+      // break/block ranges come back unclipped for the overlap test.
+      const unavailMap = await loadShopUnavailability(client.id, date);
+      const hitsBreakOrBlock = (barber: BarberConfig): boolean => {
+        const intervals = unavailabilityIntervals(
+          date,
+          0,
+          24 * 60,
+          unavailabilityFor(unavailMap, barber.id),
+        );
+        return intervals.some((iv) => newStart < iv.end && newEnd > iv.start);
       };
-    }
-    if (overlapsForBarber(requested)) {
-      return {
-        success: false,
-        error: 'overlap',
-        message: 'Ya hay una reserva en ese horario.',
-      };
-    }
-    if (hitsBreakOrBlock(requested)) {
-      return {
-        success: false,
-        error: 'overlap',
-        message: 'El profesional no está disponible en ese horario (descanso o ausencia).',
-      };
-    }
-    resolved = requested;
-  } else {
-    // "Any available" — last-barber-first heuristic.
-    resolved = await pickBarberForCustomer({
-      clientId: client.id,
-      customerPhone: canonicalCustomerPhone,
-      barbers: activeBarbers,
-      date,
-      time,
-      duration,
-      shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
-      shopDayOverrides: await loadShopOverridesForDate(client.id, date),
-      shopBlockedDates: (client.blockedDates as string[]) ?? [],
-      serviceBufferMinutes: bufferMin,
-    });
-    if (!resolved) {
-      if (allowOutOfHours && activeBarbers.length > 0) {
-        // El barbero confirmó crear fuera de horario: asignamos el primero activo.
-        resolved = activeBarbers[0];
+
+      // --- Barber resolution ------------------------------------------------
+      // `barberWasRequested` = el caller pasó un barberId explícito (el cliente
+      // PIDIÓ a esa persona) vs lo elegimos nosotros con pickBarberForCustomer.
+      // Alimenta bookings.barberRequested → ♥ "Solicitado por el cliente" (A2).
+      const barberWasRequested = Boolean(barberId);
+      let resolved: BarberConfig | null = null;
+      if (barberId) {
+        const requested = activeBarbers.find((b) => b.id === barberId);
+        if (!requested) {
+          return {
+            success: false,
+            error: 'validation',
+            message: 'El profesional indicado no existe o está inactivo.',
+          };
+        }
+        if (overlapsForBarber(requested)) {
+          return {
+            success: false,
+            error: 'overlap',
+            message: 'Ya hay una reserva en ese horario.',
+          };
+        }
+        if (hitsBreakOrBlock(requested)) {
+          return {
+            success: false,
+            error: 'overlap',
+            message: 'El profesional no está disponible en ese horario (descanso o ausencia).',
+          };
+        }
+        resolved = requested;
       } else {
-        return {
-          success: false,
-          error: 'no_barber_available',
-          message: 'No hay profesionales libres en ese horario.',
-        };
+        // "Any available" — last-barber-first heuristic.
+        resolved = await pickBarberForCustomer({
+          clientId: client.id,
+          customerPhone: canonicalCustomerPhone,
+          barbers: activeBarbers,
+          date,
+          time,
+          duration,
+          shopHours: (client.chatbotHours as Record<string, string> | null) ?? null,
+          shopDayOverrides: await loadShopOverridesForDate(client.id, date),
+          shopBlockedDates: (client.blockedDates as string[]) ?? [],
+          serviceBufferMinutes: bufferMin,
+        });
+        if (!resolved) {
+          if (allowOutOfHours && activeBarbers.length > 0) {
+            // El barbero confirmó crear fuera de horario: asignamos el primero activo.
+            resolved = activeBarbers[0];
+          } else {
+            return {
+              success: false,
+              error: 'no_barber_available',
+              message: 'No hay profesionales libres en ese horario.',
+            };
+          }
+        }
       }
+
+      // --- Insert -----------------------------------------------------------
+      const [inserted] = await db
+        .insert(bookings)
+        .values({
+          clientId: client.id,
+          customerPhone: canonicalCustomerPhone,
+          customerName: customerName ? customerName.trim() : null,
+          service,
+          // Persist BOTH the id (canonical) and the name (snapshot, survives renames).
+          barberId: resolved.id,
+          barber: resolved.name,
+          // A2: true solo si el cliente pidió a este barbero explícitamente.
+          barberRequested: barberWasRequested,
+          date,
+          time,
+          duration,
+          priceCents: priceCents ?? null,
+          status: 'confirmed',
+          source,
+          // Last-touch attribution para esta reserva. Null si no se capturó —
+          // típico para bot/manual/voice. Solo PWA y voice pueden traer esto.
+          referrerSource: attribution?.source ?? null,
+          referrerMedium: attribution?.medium ?? null,
+          referrerCampaign: attribution?.campaign ?? null,
+          // UID iCal del VEVENT origen (idempotencia per tenant). Null para
+          // todo lo que no sea import .ics.
+          importedIcalUid: importedIcalUid ?? null,
+        })
+        .returning();
+
+      return { success: true, booking: inserted, resolved };
+    });
+  } catch (err) {
+    if (err instanceof SlotLockTimeoutError) {
+      // El candado sigue ocupado tras varios segundos. Fallamos en cerrado: es
+      // preferible pedirle que reintente a arriesgar un hueco duplicado.
+      console.error('[createBooking] timeout esperando el candado de hueco', {
+        clientId: client.id,
+        date,
+        time,
+      });
+      return {
+        success: false,
+        error: 'overlap',
+        message: 'Ese hueco se está reservando ahora mismo. Inténtalo de nuevo en unos segundos.',
+      };
     }
+    throw err;
   }
 
-  // --- Insert ---------------------------------------------------------------
-  const [created] = await db
-    .insert(bookings)
-    .values({
-      clientId: client.id,
-      customerPhone: canonicalCustomerPhone,
-      customerName: customerName ? customerName.trim() : null,
-      service,
-      // Persist BOTH the id (canonical) and the name (snapshot, survives renames).
-      barberId: resolved.id,
-      barber: resolved.name,
-      // A2: true solo si el cliente pidió a este barbero explícitamente.
-      barberRequested: barberWasRequested,
-      date,
-      time,
-      duration,
-      priceCents: priceCents ?? null,
-      status: 'confirmed',
-      source,
-      // Last-touch attribution para esta reserva. Null si no se capturó —
-      // típico para bot/manual/voice. Solo PWA y voice pueden traer esto.
-      referrerSource: attribution?.source ?? null,
-      referrerMedium: attribution?.medium ?? null,
-      referrerCampaign: attribution?.campaign ?? null,
-      // UID iCal del VEVENT origen (idempotencia per tenant). Null para
-      // todo lo que no sea import .ics.
-      importedIcalUid: importedIcalUid ?? null,
-    })
-    .returning();
+  if (!slotResult.success) return slotResult;
+  const { booking: created, resolved } = slotResult;
 
   // --- Log de evento 'created' (task #107) ----------------------------------
   // Fuente única del log de actividad. El actor se deriva del `source` (bot,
