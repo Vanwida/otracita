@@ -1083,11 +1083,15 @@ function CalculadoraPerdidas() {
                 <strong className="font-semibold text-[var(--color-ink)]">
                   otracita Estudio
                 </strong>{" "}
-                contesta el 100% de las llamadas, 24/7. Cuesta{" "}
+                está para contestar el 100% de las llamadas, 24/7. Costará{" "}
                 <span className="font-brand-num font-semibold text-[var(--color-ink)]">
                   {costeAnualEstudio.toLocaleString("es-ES")} €
                 </span>{" "}
                 al año.
+              </p>
+              <p className="mt-2 text-xs text-[var(--color-ink-3)]">
+                Todavía no coge llamadas: está en pruebas. Hasta que abra, esa
+                cuenta es lo que te vas a ahorrar, no lo que te ahorras hoy.
               </p>
               {beneficioNetoAnual > 0 ? (
                 <p className="font-brand-num mt-3 text-sm font-semibold text-[var(--color-success)]">
@@ -1099,7 +1103,7 @@ function CalculadoraPerdidas() {
                 </p>
               )}
               <p className="mt-3 text-xs text-[var(--color-ink-3)]">
-                Empieza con <strong className="font-semibold text-[var(--color-ink-2)]">Pro 14 días gratis</strong>. Cuando lo notes, activa el asistente de voz desde el dashboard.
+                Empieza con <strong className="font-semibold text-[var(--color-ink-2)]">Pro 14 días gratis</strong>. Lo que ya funciona hoy — agenda, app y facturación — no depende de la voz.
               </p>
             </div>
 
@@ -1249,14 +1253,14 @@ function Precios() {
             interval={interval}
             secondary={
               interval === "annual"
-                ? "1.428 € al año (un solo cobro · ahorras 600 €). Incluye 200 llamadas/mes con la recepcionista IA, después 0,30 € cada una."
-                : "Incluye 200 llamadas/mes con la recepcionista IA, después 0,30 € cada una."
+                ? "1.428 € al año (un solo cobro · ahorras 600 €). Incluirá 200 llamadas/mes con la recepcionista IA, después 0,30 € cada una."
+                : "Incluirá 200 llamadas/mes con la recepcionista IA, después 0,30 € cada una."
             }
             cta={{ label: "Empezar Estudio", checkoutTier: "estudio" }}
             checkoutInterval={interval}
             features={[
               "Todo lo de Pro",
-              "Recepcionista de IA por teléfono (200 llamadas/mes)",
+              "Recepcionista de IA por teléfono (200 llamadas/mes) — en pruebas, aún no coge llamadas",
               "Subdominio propio (reservas.tubarberia.com)",
               "Onboarding 1:1 con migración asistida",
               "Soporte prioritario por WhatsApp",
@@ -1651,8 +1655,8 @@ function Comparativa() {
           Cifras basadas en mediana de mercado: agenda + staff extra (€45),
           software facturación SMB (€40), chatbot WhatsApp con IA (€30),
           plataforma de fidelidad (€15). Si además quieres recepcionista IA por
-          teléfono, suma €150-200/mes a ese stack — o pasa a otracita Estudio
-          (169 €/mes, o 119 €/mes en anual) y ya viene incluida.
+          teléfono, suma €150-200/mes a ese stack — la nuestra irá dentro de
+          otracita Estudio (169 €/mes, o 119 €/mes en anual) y sigue en pruebas.
         </p>
       </div>
     </section>
@@ -1690,7 +1694,7 @@ function Faq() {
     },
     {
       q: "¿Cómo es el flujo natural? ¿Por dónde empiezo?",
-      a: "Empiezas en Solo (gratis, sin tarjeta) para ver la app por dentro. Cuando le veas el sitio, pasas a Pro 14 días gratis y activas el bot de WhatsApp y SumUp. Cuando ya estás cómodo en Pro y quieres dejar de coger el teléfono, pasas a Estudio y activas la recepcionista IA desde el dashboard. Cero presión, cero saltos: cada paso encaja con lo que necesites en ese momento.",
+      a: "Empiezas en Solo (gratis, sin tarjeta) para ver la app por dentro. Cuando le veas el sitio, pasas a Pro 14 días gratis, pides el alta del bot de WhatsApp (el papeleo con Meta lo hacemos nosotros y te avisamos cuando esté) y conectas SumUp. Cuando ya estás cómodo en Pro y quieres dejar de coger el teléfono, te toca Estudio — la recepcionista IA sigue en pruebas y te avisamos en cuanto empiece a coger llamadas. Cero presión, cero saltos: cada paso encaja con lo que necesites en ese momento.",
     },
     {
       q: "¿Soporta otracita varias barberías o más de un local?",

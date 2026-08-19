@@ -114,7 +114,7 @@ export default function MobileSidebar({ email, isAdmin, needsSetup }: Props) {
         {needsSetup && (
           <div className="bg-sidebar-card border border-sidebar-line rounded-xl p-4 mb-4 mt-4">
             <p className="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">Configuración pendiente</p>
-            <p className="text-xs text-ink-2 leading-relaxed">Termina de configurar tu bot para empezar a agendar.</p>
+            <p className="text-xs text-ink-2 leading-relaxed">Termina de configurar tu cuenta para empezar a agendar.</p>
             <Link
               href="/dashboard/setup"
               className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-brand hover:text-brand-strong transition-colors"

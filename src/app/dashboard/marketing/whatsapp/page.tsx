@@ -12,6 +12,7 @@ import AreaContent from '@/app/dashboard/_components/AreaContent'
 import UpgradeRequired from '@/app/dashboard/_components/UpgradeRequired'
 import FormGrid from '@/app/dashboard/_components/FormGrid'
 import BotActivationStatus from '@/app/dashboard/_components/BotActivationStatus'
+import { getBotActivationStatus } from '@/lib/whatsapp/activation-status'
 import BotRequestForm from './_components/BotRequestForm'
 import {
   Bot,
@@ -22,16 +23,20 @@ import {
 // -----------------------------------------------------------------------------
 // /dashboard/marketing/whatsapp — configuración del asistente WhatsApp.
 //
-// Capas de estado (controladas por BotActivationStatus arriba):
+// Capas de estado (las calcula `getBotActivationStatus`, no esta página):
 //   1. IDLE        — sin phoneNumberId, sin botRequest → form de solicitud
 //                    self-service. La config de personalidad NO se muestra
 //                    todavía (no tiene sentido configurarla antes del alta).
 //   2. REQUESTED   — botRequest guardado, esperando que Alex complete alta
-//                    en Meta. Banner amarillo "En cola" + botón editar
+//                    en Meta. Banner ámbar "En cola" + botón editar
 //                    solicitud. La config de personalidad SÍ se muestra para
 //                    que el barbero la deje lista mientras tanto.
-//   3. ACTIVE      — phoneNumberId poblado → banner verde "Atendiendo" + la
-//                    config de personalidad editable.
+//   3. INCOMPLETE  — hay phoneNumberId pero el bot NO puede atender (Meta
+//                    rechaza el token, no hay servicios/barberos/horario,
+//                    el motor de huecos no está enchufado…). Banner ámbar
+//                    con los motivos concretos. Antes esto salía verde.
+//   4. ACTIVE      — número + credenciales vivas + agenda que ofrecer →
+//                    banner verde "Atendiendo" + config editable.
 //
 // Auditoría previa: la sección "Integraciones" (Booksy URL + Google Calendar
 // ID) era legacy — Booksy URL se movió a Mi negocio > Servicios como ayuda
@@ -99,17 +104,20 @@ export default async function BotPage() {
     revalidatePath('/dashboard/marketing/whatsapp')
   }
 
-  // Estado de activación (los 3 modos).
-  const botActive = !!client.whatsappPhoneNumberId
+  // Estado de activación real (ver activation-status.ts).
+  const activation = await getBotActivationStatus(client)
   const botRequest = client.whatsappBotRequest ?? null
-  const botRequested = !botActive && !!botRequest?.phoneRequested
-  const botIdle = !botActive && !botRequest?.phoneRequested
+  const botRequested = activation.state === 'requested'
+  const botIdle = activation.state === 'idle'
+  // La personalidad se puede dejar preparada en cuanto hay solicitud o
+  // número, aunque el bot todavía no esté atendiendo.
+  const showPersonality = !botIdle
 
   return (
     <AreaShell area="marketing">
       <AreaContent scroll="region" maxWidth="5xl">
         <BotActivationStatus
-          whatsappPhoneNumberId={client.whatsappPhoneNumberId}
+          status={activation}
           whatsappBotRequest={botRequest}
           publicSlug={client.publicSlug}
           publicEnabled={client.publicEnabled}
@@ -137,7 +145,7 @@ export default async function BotPage() {
           </details>
         )}
 
-        {(botActive || botRequested) && (
+        {showPersonality && (
           <>
             <p className="text-ink-2 mb-4" style={{ fontSize: 'var(--text-meta)' }}>
               Cómo se presenta y responde por WhatsApp. Todo aplica a partir del

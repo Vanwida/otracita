@@ -14,31 +14,17 @@ import VoiceTest from '../../voice-test/VoiceTest'
 
 // -----------------------------------------------------------------------------
 // /dashboard/ajustes/recepcionista — pestaña RECEPCIONISTA IA del área
-// Ajustes. Contrato de IA. Contenido movido 1:1 desde /dashboard/voice-test
-// (mismo gate recepcionistaIA, mismas queries client/chatbotServices/
-// booksyServices, mismo VoiceTest). /dashboard/voice-test → redirect aquí.
+// Ajustes. Gate `recepcionistaIA`. /dashboard/voice-test → redirect aquí.
 //
-// Nota: el voice bot es browser-test only hoy (puente Twilio es otro todo,
-// ver CLAUDE.md) — esto no cambia, solo se reubica la ruta.
-// LÓGICA DE SERVIDOR INTACTA.
+// El voice bot es browser-test only hoy (el puente telefónico es otro todo,
+// ver CLAUDE.md): esta pantalla es una prueba de micrófono y así lo dice.
+//
+// Ya no se le pasan servicios / barberos / horario al componente: el agente
+// de voz es global (ver /api/voice/token) y no recibe nada de esto, así que
+// pintarlo daba a entender una personalización que no existe. De paso se cae
+// la lectura de `booksyServices` para sacar el equipo — columna legacy
+// congelada que devolvía barberos ya borrados (ver CLAUDE.md § convención 4).
 // -----------------------------------------------------------------------------
-
-interface ServiceConfig {
-  name: string
-  duration: number
-  price?: number
-}
-
-interface BooksyService {
-  name?: string
-  barber?: string
-  staff?: string
-}
-
-interface BusinessHours {
-  start: string
-  end: string
-}
 
 export default async function AjustesRecepcionistaPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -61,32 +47,10 @@ export default async function AjustesRecepcionistaPage() {
     )
   }
 
-  const services = (client.chatbotServices as ServiceConfig[]) || []
-  const booksyServices = (client.booksyServices as BooksyService[]) || []
-  const hours = (client.chatbotHours as BusinessHours) || {
-    start: '09:00',
-    end: '20:00',
-  }
-
-  const barbers = [
-    ...new Set(
-      booksyServices
-        .map((s) => s.barber || s.staff || null)
-        .filter((b): b is string => typeof b === 'string' && b.length > 0),
-    ),
-  ]
-
   return (
     <AreaShell area="marketing">
       <div className="min-h-0 flex-1">
-        <VoiceTest
-          client={{
-            businessName: client.businessName,
-            services,
-            barbers,
-            hours,
-          }}
-        />
+        <VoiceTest client={{ businessName: client.businessName }} />
       </div>
     </AreaShell>
   )
