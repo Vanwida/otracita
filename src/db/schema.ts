@@ -179,6 +179,28 @@ export const clients = pgTable('clients', {
   sumupTokenExpiresAt: timestamp('sumup_token_expires_at', { withTimezone: true }),
   sumupReaderId: text('sumup_reader_id'),                // Reader pareado para iniciar checkouts
   sumupReaderName: text('sumup_reader_name'),            // nombre legible para UI
+  // Integración Google Business Profile — auto-respuesta a reseñas de Google
+  // Maps. Mismo patrón OAuth que SumUp: tokens planos en columnas de
+  // `clients`, refresh on-demand (ver src/lib/google-business/oauth.ts +
+  // client.ts). `googleBusinessLocationPath` guarda el path COMPLETO
+  // "accounts/{accountId}/locations/{locationId}" tal cual lo consume la
+  // Business Profile Reviews API (v4) — evita reconstruirlo en cada
+  // llamada. `googleReviewsAutoReply` es el opt-in real: conectar la cuenta
+  // ya permite sincronizar reseñas, pero el cron solo genera/publica
+  // respuestas cuando esto es true (por defecto false — el barbero activa
+  // desde ajustes).
+  googleBusinessAccessToken: text('google_business_access_token'),
+  googleBusinessRefreshToken: text('google_business_refresh_token'),
+  googleBusinessTokenExpiresAt: timestamp('google_business_token_expires_at', { withTimezone: true }),
+  googleBusinessLocationPath: text('google_business_location_path'),
+  // Nombre visible de la location ("Barbería X — Gràcia"), tal cual lo
+  // devuelve Google. Solo para mostrar en el panel — el path de arriba
+  // sigue siendo lo único que se usa para llamar a la API. Nullable a
+  // propósito: tenants conectados ANTES de que existiera este campo no
+  // tienen título — la UI cae a mostrar el path. No se hace backfill.
+  googleBusinessLocationTitle: text('google_business_location_title'),
+  googleBusinessConnectedAt: timestamp('google_business_connected_at', { withTimezone: true }),
+  googleReviewsAutoReply: boolean('google_reviews_auto_reply').default(false).notNull(),
   // Scheduling standards (Booksy/Treatwell conventions)
   // minLeadTimeMinutes: how far in advance a customer can book. Prevents
   //   "book in 2 minutes" scenarios where the barber wouldn't even see it.
@@ -1201,6 +1223,55 @@ export const ratings = pgTable('ratings', {
   channel: text('channel').notNull(),                                      // 'whatsapp' | 'pwa'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+// -----------------------------------------------------------------------------
+// google_reviews — espejo local de las reseñas de Google Business Profile
+// de cada barbería, más el estado de la respuesta (IA o manual).
+//
+// Se llena vía sync (src/lib/google-business/sync.ts), llamado por el cron
+// `/api/cron/google-reviews` cada 3h. `googleReviewId` es el ID que asigna
+// Google (NO nuestro uuid); el índice UNIQUE (clientId, googleReviewId) es
+// la garantía de idempotencia del upsert — sincronizar dos veces la misma
+// reseña actualiza la fila en vez de duplicarla.
+//
+// `replyStatus`:
+//   pending   → detectada, sin respuesta generada aún
+//   draft     → IA generó una respuesta pero la reseña es ≤3★ → se emailea
+//               al barbero para que la revise/publique manualmente (fuera
+//               del scope de este cron; UI pendiente)
+//   published → respuesta ya viva en Google (`replySource` dice si la
+//               publicó la IA automáticamente o el barbero a mano desde la
+//               app de Google — en ese caso el sync la detecta vía
+//               `reviewReply` en la respuesta de Google y NUNCA la
+//               sobrescribe)
+//   failed    → se agotaron los reintentos (`attempts` >= 5)
+//   skipped   → reservado para exclusiones futuras (p.ej. reseña marcada
+//               como spam por el barbero)
+//
+// `attempts`/`lastError` alimentan el backoff del cron: cada fallo al
+// generar/publicar incrementa `attempts`; a la 5ª se marca `failed` y deja
+// de reintentarse.
+// -----------------------------------------------------------------------------
+export const googleReviews = pgTable('google_reviews', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  googleReviewId: text('google_review_id').notNull(),
+  reviewerName: text('reviewer_name'),                                     // null si el reviewer es anónimo
+  starRating: integer('star_rating').notNull(),                            // 1-5, normalizado desde el enum de Google
+  comment: text('comment'),                                                // null si el cliente no dejó texto (muy común)
+  reviewCreatedAt: timestamp('review_created_at', { withTimezone: true }).notNull(),
+  reviewUpdatedAt: timestamp('review_updated_at', { withTimezone: true }).notNull(),
+  replyText: text('reply_text'),
+  replyStatus: text('reply_status').default('pending').notNull(),          // 'pending' | 'draft' | 'published' | 'failed' | 'skipped'
+  replySource: text('reply_source'),                                       // 'ia' | 'manual' | null
+  replyPublishedAt: timestamp('reply_published_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  attempts: integer('attempts').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  clientReviewUnique: unique('google_reviews_client_review_unique').on(table.clientId, table.googleReviewId),
+}));
 
 // Promo pushes log — una fila por cada cliente al que se le mandó una
 // promo "llenar huecos". Sirve para dos cosas:

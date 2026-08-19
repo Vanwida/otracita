@@ -50,3 +50,12 @@ next-env.d.ts
 
 # claude code — agent worktrees (efímeros, copias de src/)
 .claude/worktrees/
+
+# market-intel research (SQLite, raw scrapes, exports — never commit phones/leads)
+research/market-intel/data/**
+!research/market-intel/data/.gitkeep
+!research/market-intel/data/raw/.gitkeep
+!research/market-intel/data/out/.gitkeep
+
+# Playwright MCP: perfiles, logs y descargas (pueden contener credenciales)
+.playwright-mcp/
