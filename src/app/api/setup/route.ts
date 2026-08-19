@@ -149,6 +149,10 @@ export async function POST(request: Request) {
           fiscalPostalCode,
           ivaRate,
           invoiceNumberPrefix,
+          // Un alta por wizard no tiene Google Calendar: su disponibilidad
+          // sale del motor de DB. Explícito además del default del schema
+          // para no depender de cuándo se creó la fila.
+          useDbAvailability: true,
           status: "onboarding",
           updatedAt: new Date(),
           onboardedAt: new Date(),
@@ -179,6 +183,7 @@ export async function POST(request: Request) {
         fiscalPostalCode,
         ivaRate,
         invoiceNumberPrefix,
+        useDbAvailability: true,
         status: "onboarding",
         onboardedAt: new Date(),
       }).returning({ id: clients.id })

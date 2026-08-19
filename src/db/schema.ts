@@ -54,7 +54,11 @@ export const clients = pgTable('clients', {
   booksyProfileUrl: text('booksy_profile_url'),
   booksyServices: jsonb('booksy_services'), // scraped services from Booksy
   booksyInboundEmail: text('booksy_inbound_email').unique(), // sync-{clientId}@inbound.otracita.es
-  useDbAvailability: boolean('use_db_availability').notNull().default(false), // feature flag: use DB instead of GCal for availability
+  // Motor de disponibilidad: DB (por defecto) vs Google Calendar (legacy).
+  // Default true — un alta por wizard no tiene googleCalendarId, así que sin
+  // esto el bot no podía ofrecer huecos. Solo los tenants legacy con
+  // googleCalendarId siguen en false.
+  useDbAvailability: boolean('use_db_availability').notNull().default(true),
   // Google Calendar
   googleCalendarId: text('google_calendar_id'),
   googleCalendarConnected: boolean('google_calendar_connected').default(false),
