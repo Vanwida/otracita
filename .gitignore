@@ -59,3 +59,7 @@ research/market-intel/data/**
 
 # Playwright MCP: perfiles, logs y descargas (pueden contener credenciales)
 .playwright-mcp/
+
+# exports de clientes de Booksy/Treatwell/Fresha — traen teléfonos reales
+*.xlsx
+*.xls
