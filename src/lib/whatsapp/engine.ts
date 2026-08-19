@@ -54,7 +54,7 @@ const CANCEL_FLOW_STEPS: ConversationStep[] = ['cancelling', 'cancel_confirming'
 
 type Intent = 'booking' | 'cancel' | 'change' | 'question' | 'greeting';
 
-interface IncomingMessage {
+export interface IncomingMessage {
   from: string;
   phoneNumberId: string;
   messageText: string;
