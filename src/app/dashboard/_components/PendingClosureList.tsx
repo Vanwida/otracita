@@ -2,18 +2,24 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, CreditCard, UserX, AlertCircle, Loader2 } from 'lucide-react'
+import { CheckCircle2, CreditCard, UserX, Loader2 } from 'lucide-react'
 import ChargeFlow from './ChargeFlow'
 import { pushUndoToast } from './UndoToast'
 import { formatCents } from '@/lib/format'
+import { pluralizeEs } from '@/lib/i18n/plural-es'
 import { dispatchTracking } from '@/lib/tracking/dispatch'
+import { MS_IN_DAY } from '@/lib/time'
 
 // -----------------------------------------------------------------------------
 // PendingClosureList — citas confirmadas de días pasados sin cerrar.
 //
-// Vive en /dashboard como sección destacada (encima del AttentionPanel).
+// Vive dentro del slide-over «Citas por cerrar» que abre el contador de la
+// cabecera de Agenda (U-03). Antes colgaba de la portada /dashboard, que ya
+// no existe; el componente es agnóstico del contenedor — renderiza la lista
+// pelada y el chasis (título, scroll, cierre) lo pone quien lo monta.
+//
 // Permite al barbero cerrar al final del día (o al día siguiente) sin
-// tener que ir a agenda y abrir una a una. Cada fila tiene 2 botones:
+// tener que ir cita por cita en la rejilla. Cada fila tiene 2 botones:
 //
 //   · "Cobrar"    → abre ChargeFlow (motor unificado de cobro de la épica
 //                    Reni). Selección de método/fraccionado + propina inline.
@@ -24,8 +30,8 @@ import { dispatchTracking } from '@/lib/tracking/dispatch'
 //   · "No vino"   → POST /api/bookings/no-show. Marca no-show, anula factura
 //                    si la hubiera, suma al contador del cliente.
 //
-// Tras cada acción, hacemos optimistic remove + router.refresh para
-// mantener KPIs y AttentionPanel sincronizados.
+// Tras cada acción: optimistic remove + `onChanged()` (revalida la agenda y
+// el contador de la cabecera) + router.refresh (server components).
 // -----------------------------------------------------------------------------
 
 export interface PendingClosureBooking {
@@ -60,6 +66,11 @@ interface Props {
   stripeConnectActive?: boolean
   /** Sesión de caja abierta hoy → suprime warning "caja cerrada". */
   cashSessionOpen?: boolean
+  /** Se llama tras cada acción que cambia el estado de una cita (cobro,
+   *  cierre gratis, no-show y sus deshacer). El contenedor lo usa para
+   *  revalidar su fuente de datos — sin esto el contador de la cabecera
+   *  seguiría diciendo «3 por cerrar» con la lista ya vacía. */
+  onChanged?: () => void
 }
 
 export default function PendingClosureList({
@@ -69,6 +80,7 @@ export default function PendingClosureList({
   barbers = [],
   stripeConnectActive = false,
   cashSessionOpen = true,
+  onChanged,
 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -78,7 +90,13 @@ export default function PendingClosureList({
   const [chargeBooking, setChargeBooking] = useState<PendingClosureBooking | null>(null)
 
   const visible = bookings.filter((b) => !removedIds.has(b.id))
-  if (visible.length === 0) return null
+
+  // Revalidación tras cualquier acción: primero la fuente del contenedor
+  // (SWR de la agenda + contador), después los server components.
+  function revalidate() {
+    onChanged?.()
+    startTransition(() => router.refresh())
+  }
 
   function removeOptimistic(id: string) {
     setRemovedIds((prev) => {
@@ -118,7 +136,7 @@ export default function PendingClosureList({
             })
             return
           }
-          startTransition(() => router.refresh())
+          revalidate()
         } catch {
           restoreOptimistic(b.id)
           setErrorId({
@@ -176,11 +194,11 @@ export default function PendingClosureList({
               body: JSON.stringify({ bookingId: b.id }),
             })
           } finally {
-            startTransition(() => router.refresh())
+            revalidate()
           }
         },
       })
-      startTransition(() => router.refresh())
+      revalidate()
     } catch {
       restoreOptimistic(b.id)
       setErrorId({ id: b.id, message: 'Sin conexión. Revisa tu wifi e inténtalo otra vez.' })
@@ -189,20 +207,34 @@ export default function PendingClosureList({
     }
   }
 
+  // Etiqueta relativa honesta. Antes cualquier fecha que no fuera hoy/ayer
+  // se rotulaba "Anteayer" — con la ventana de 3 días eso mentía en el día
+  // más antiguo de la lista (el que está a punto de cerrarse solo).
   function dayLabel(date: string): string {
-    if (date === yesterdayStr) return 'Ayer'
     if (date === todayStr) return 'Hoy'
-    return 'Anteayer'
+    if (date === yesterdayStr) return 'Ayer'
+    const days = Math.round(
+      (Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / MS_IN_DAY,
+    )
+    if (!Number.isFinite(days) || days <= 1) return date
+    if (days === 2) return 'Anteayer'
+    return `Hace ${pluralizeEs(days, 'día', 'días')}`
+  }
+
+  if (visible.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+        <CheckCircle2 className="h-6 w-6 text-success" aria-hidden="true" />
+        <p className="text-sm font-medium text-ink">No queda nada por cerrar</p>
+        <p className="text-xs text-ink-2 leading-relaxed">
+          Todas las citas de los últimos días están cobradas o marcadas.
+        </p>
+      </div>
+    )
   }
 
   return (
-    <section className="mb-6 bg-surface border border-line rounded-2xl p-5 md:p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <AlertCircle className="h-4 w-4 text-ink-2" aria-hidden="true" />
-        <h2 className="text-xs font-semibold text-ink uppercase tracking-[0.18em]">
-          Citas por cerrar
-        </h2>
-      </div>
+    <div>
       <p className="text-xs text-ink-2 mb-4 leading-relaxed">
         Cobra o marca quién no vino. Las acciones sin cobro tienen 5 segundos para deshacerse.
       </p>
@@ -229,7 +261,7 @@ export default function PendingClosureList({
             const id = chargeBooking.id
             removeOptimistic(id)
             setChargeBooking(null)
-            startTransition(() => router.refresh())
+            revalidate()
           }}
         />
       )}
@@ -309,6 +341,6 @@ export default function PendingClosureList({
           )
         })}
       </ul>
-    </section>
+    </div>
   )
 }

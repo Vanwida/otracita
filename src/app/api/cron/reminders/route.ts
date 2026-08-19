@@ -10,6 +10,7 @@ import { MS_IN_DAY, BUSINESS_TIMEZONE } from '@/lib/time';
 import { publicAccountPath } from '@/lib/site';
 import { logBookingEvent } from '@/lib/bookings/events';
 import { isBackfilledImport } from '@/lib/bookings/source';
+import { PENDING_CLOSURE_WINDOW_DAYS } from '@/lib/bookings/pending-closure';
 
 type Lang = 'es' | 'en';
 
@@ -177,7 +178,10 @@ export async function GET(request: Request) {
   // él. `autoInvoiced` se mantiene en la respuesta (siempre 0) para no
   // romper el contrato del cron / monitorización existente.
   // ────────────────────────────────────────────────────────────────────────
-  const SAFETY_NET_DAYS = 3;
+  // Mismo número que la ventana "por cerrar" de la Agenda — importado, no
+  // reescrito: el contador de la cabecera y este barrido tienen que hablar
+  // del mismo margen o el barbero ve un número que no cuadra.
+  const SAFETY_NET_DAYS = PENDING_CLOSURE_WINDOW_DAYS;
   const safetyCutoff = new Date(Date.now() - SAFETY_NET_DAYS * MS_IN_DAY)
     .toLocaleDateString('en-CA', { timeZone: BUSINESS_TIMEZONE });
 
