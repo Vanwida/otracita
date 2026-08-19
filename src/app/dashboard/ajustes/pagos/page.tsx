@@ -25,8 +25,9 @@ import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 // CONFIGURACIÓN canónica de cobros (se define una vez, framing de Ajustes):
 // caja efectivo, datáfono SumUp, app móvil de cobro, Stripe Connect y datos
 // fiscales/facturación. Es el ÚNICO sitio donde se editan estos campos
-// (DRY — regla dura: un campo, un editor). Ventas → Cobros es solo la vista
-// operativa (qué ha entrado este periodo) y enlaza aquí para configurar.
+// (DRY — regla dura: un campo, un editor). /ventas/cobros es solo la vista
+// operativa (qué ha entrado este periodo): desde U-13 está fuera del nav y
+// cuelga de esta pantalla, que es donde se configura lo que la alimenta.
 //
 // LÓGICA DE SERVIDOR INTACTA: client resuelto por sesión; contador de
 // facturas con la MISMA query mensual que tenía caja/page; los componentes
@@ -96,6 +97,37 @@ export default async function AjustesPagosPage() {
                 : null,
             }}
           />
+
+          {/* Única puerta a /ventas/cobros — la vista operativa de lo que
+              entra por Stripe. Salió del nav de Ventas en U-13 (era una de
+              las cuatro pestañas que hablaban del mismo dinero); vive
+              colgada de donde se configura, que es aquí. */}
+          {client.stripeConnectStatus === 'active' && (
+            <Link
+              href="/dashboard/ventas/cobros"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-[var(--space-card)] py-4 transition-colors hover:border-brand md:px-6"
+            >
+              <div className="min-w-0">
+                <h3
+                  className="font-semibold text-ink"
+                  style={{ fontSize: 'var(--text-section-title)' }}
+                >
+                  Cobros online
+                </h3>
+                <p
+                  className="mt-1 text-ink-2"
+                  style={{ fontSize: 'var(--text-meta)' }}
+                >
+                  Qué ha entrado por Stripe este periodo y los últimos
+                  movimientos.
+                </p>
+              </div>
+              <ChevronRight
+                className="h-4 w-4 shrink-0 text-ink-2"
+                aria-hidden="true"
+              />
+            </Link>
+          )}
 
           <InvoicingCard
             initial={{

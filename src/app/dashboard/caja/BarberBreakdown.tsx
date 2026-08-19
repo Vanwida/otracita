@@ -406,7 +406,7 @@ function barberColumns({
         if (totalEur <= 0) return <span className="text-ink-3">—</span>
         // R-T3 — Solo mostramos el split cuando hay AMBOS métodos. Con
         // todo de un único método el desglose es ruido (ya se ve en el
-        // detalle de /ventas/propinas).
+        // detalle de /informes/propinas).
         const showSplit = cashEur > 0 && cardEur > 0
         return (
           <>

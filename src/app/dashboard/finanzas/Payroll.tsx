@@ -88,7 +88,7 @@ export default function Payroll({ month }: Props) {
       const count = json.updated ?? 0
       const cents = json.totalCents ?? 0
       setPayout(null)
-      // Toast informativo — sin undo aquí; el undo vive en /ventas/propinas
+      // Toast informativo — sin undo aquí; el undo vive en /informes/propinas
       // por fila (más claro a la hora de corregir un caso aislado).
       pushUndoToast({
         message: `${count} ${count === 1 ? 'propina marcada' : 'propinas marcadas'} (${formatEuros(cents)})`,

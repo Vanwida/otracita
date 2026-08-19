@@ -45,7 +45,7 @@ export interface MonthlyPayrollItem {
    * pagadas" → POST /api/tips/payout con estos ids.
    *
    * Solo CARD: las cash el barbero ya las tiene en mano, no se "liquidan"
-   * desde la nómina (se liquidan desde /ventas/propinas si el jefe quiere
+   * desde la nómina (se liquidan desde /informes/propinas si el jefe quiere
    * registrarlo).
    */
   pendingCardTipIds: string[]

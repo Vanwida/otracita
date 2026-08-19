@@ -74,7 +74,7 @@ export default async function FiscalPage({ searchParams }: PageProps) {
               title="Activa la facturación"
               description="El resumen IVA/IRPF se calcula a partir de las facturas que emites con cada venta. Actívalas para tener listo el Modelo 303 cada trimestre."
               action={
-                <Link href="/dashboard/ventas/cobros" className="btn-primary">
+                <Link href="/dashboard/ajustes/pagos" className="btn-primary">
                   Activar facturación
                   <ChevronRight className="h-4 w-4" />
                 </Link>
