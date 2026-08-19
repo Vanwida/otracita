@@ -44,8 +44,7 @@ export interface PendingClosureBooking {
   barber: string | null
   /** ID del barbero (para atribuir propina). Null si no asignado. */
   barberId?: string | null
-  /** Precio en EUROS (foot-gun del schema). Null si la cita no tiene precio. */
-  /** CÉNTIMOS (bookings.price_cents). */
+  /** CÉNTIMOS (`bookings.price_cents`). Null si la cita no tiene precio. */
   priceCents: number | null
 }
 

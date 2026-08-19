@@ -851,7 +851,7 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
             date: offeredDate,
             time: offeredTime,
             duration: wlSnapshot.duration,
-            price: wlSnapshot.price,
+            priceCents: eurosToCents(wlSnapshot.price),
             status: 'confirmed',
             googleEventId: result.eventId || null,
             source: 'bot',

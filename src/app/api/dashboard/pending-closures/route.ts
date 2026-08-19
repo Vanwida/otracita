@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       service: bookings.service,
       barber: bookings.barber,
       barberId: bookings.barberId,
-      price: bookings.price,
+      priceCents: bookings.priceCents,
     })
     .from(bookings)
     .where(
