@@ -19,7 +19,7 @@ import { computeRevenueCents, computeIvaBreakdown } from '@/lib/finanzas/pnl-mat
 // Devuelve el resumen financiero del mes: ingresos, gastos variables, costes
 // fijos, IVA repercutido/soportado, beneficio bruto, retiros e IRPF estimado.
 //
-// bookings.price está en EUROS — multiplicamos ×100 para normalizar a cents.
+// bookings.price_cents ya está en CÉNTIMOS — sin conversión.
 // -----------------------------------------------------------------------------
 
 const VALID_IVA_CATEGORIES = ['productos', 'suministros', 'publicidad'] as const

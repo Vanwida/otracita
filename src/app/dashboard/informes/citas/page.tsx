@@ -28,7 +28,7 @@ import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 //
 // Pura agregación sobre tablas existentes (bookings / customers), cero
 // schema nuevo. Tenant resuelto de la sesión. Periodo por `?period=`.
-// `bookings.price` está en EUROS (foot-gun); normalizamos a céntimos.
+// `bookings.price_cents` está en CÉNTIMOS, igual que el resto del schema.
 // -----------------------------------------------------------------------------
 
 interface PageProps {
@@ -77,7 +77,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
       COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
       COUNT(*) FILTER (WHERE status = 'no_show')::int AS no_show,
       COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
-      COALESCE(AVG(price) FILTER (WHERE status = 'completed'), 0) AS ticket_medio_eur
+      COALESCE(AVG(price_cents) FILTER (WHERE status = 'completed'), 0) AS ticket_medio_cents
     FROM ${bookings}
     WHERE client_id = ${client.id}
       AND date >= ${dateLo} AND date < ${periodEndIso}
@@ -91,7 +91,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
                 confirmed: number
                 no_show: number
                 cancelled: number
-                ticket_medio_eur: string | number
+                ticket_medio_cents: string | number
               }[]
             }
           ).rows,
@@ -105,9 +105,7 @@ export default async function InformesCitasPage({ searchParams }: PageProps) {
   }
   const totalCitas =
     counts.completed + counts.confirmed + counts.no_show + counts.cancelled
-  const ticketMedioCents = Math.round(
-    Number(row?.ticket_medio_eur ?? 0) * 100,
-  )
+  const ticketMedioCents = Math.round(Number(row?.ticket_medio_cents ?? 0))
 
   const noShowPct =
     totalCitas > 0 ? Math.round((counts.no_show / totalCitas) * 100) : 0

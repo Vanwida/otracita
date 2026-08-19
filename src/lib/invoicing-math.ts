@@ -64,7 +64,8 @@ export function generateInvoiceNumber(input: {
 }
 
 /**
- * Given a price in EUROS (as stored on `bookings.price`) and an IVA rate
+ * Given a price in EUROS (as typed by the barber / stored on the jsonb
+ * service catalogue) and an IVA rate
  * percentage, return the Spanish breakdown in CENTS. The input price is
  * interpreted as VAT-inclusive (the retail convention).
  */

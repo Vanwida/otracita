@@ -3,26 +3,27 @@ import assert from 'node:assert/strict'
 import { computeRevenueCents, computeIvaBreakdown } from './pnl-math.ts'
 
 // -----------------------------------------------------------------------------
-// computeRevenueCents — servicios+extras (EUROS) ×100 una vez + cents directos.
+// computeRevenueCents — todos los componentes llegan ya en CÉNTIMOS enteros.
+// Desde L-05 no hay ninguna columna de dinero en euros, así que la función
+// solo agrega: no queda ningún redondeo donde perder medio euro.
 // -----------------------------------------------------------------------------
 
-test('computeRevenueCents: principal + extras ×100 una sola vez', () => {
+test('computeRevenueCents: principal + extras se suman en céntimos', () => {
   const r = computeRevenueCents({
-    bookingPriceEuros: 100, // servicio principal
-    extrasEuros: 25, // 1 extra
+    bookingCents: 10000, // servicio principal, 100 €
+    extrasCents: 2500, // 1 extra, 25 €
     manualCents: 0,
     productsCents: 0,
     tipsCents: 0,
   })
-  // round((100 + 25) * 100) = 12500
   assert.equal(r.bookingCents, 12500)
   assert.equal(r.totalCents, 12500)
 })
 
 test('computeRevenueCents: suma todos los componentes', () => {
   const r = computeRevenueCents({
-    bookingPriceEuros: 200, // 20000c
-    extrasEuros: 0,
+    bookingCents: 20000, // 200 €
+    extrasCents: 0,
     manualCents: 5000, // efectivo manual
     productsCents: 3000, // productos
     tipsCents: 1500, // propinas
@@ -33,10 +34,10 @@ test('computeRevenueCents: suma todos los componentes', () => {
   assert.equal(r.totalCents, 20000 + 5000 + 3000 + 1500) // 29500
 })
 
-test('computeRevenueCents: cita simple sin extras = price*100 (no-regresión)', () => {
+test('computeRevenueCents: cita simple sin extras (no-regresión)', () => {
   const r = computeRevenueCents({
-    bookingPriceEuros: 25,
-    extrasEuros: 0,
+    bookingCents: 2500,
+    extrasCents: 0,
     manualCents: 0,
     productsCents: 0,
     tipsCents: 0,
@@ -44,12 +45,27 @@ test('computeRevenueCents: cita simple sin extras = price*100 (no-regresión)', 
   assert.equal(r.totalCents, 2500)
 })
 
-test('computeRevenueCents: redondeo único evita drift de céntimos', () => {
-  // 10.005 + 0.005 = 10.01 € → 1001c. Si se redondeara por separado:
-  // round(1000.5) + round(0.5) = 1001 + 1 = 1002 (mal). Una sola vez: 1001.
+// L-05 — el caso que motivó el cambio de unidad.
+test('computeRevenueCents: importes con decimales llegan intactos', () => {
+  // Dos citas de Reni: 12,50 € y 17,50 €. Antes el schema las truncaba a
+  // euros enteros y el P&L reportaba 30 € o 31 € según el redondeo.
   const r = computeRevenueCents({
-    bookingPriceEuros: 10.005,
-    extrasEuros: 0.005,
+    bookingCents: 1250 + 1750,
+    extrasCents: 0,
+    manualCents: 0,
+    productsCents: 0,
+    tipsCents: 0,
+  })
+  assert.equal(r.bookingCents, 3000)
+  assert.equal(r.totalCents, 3000)
+})
+
+test('computeRevenueCents: sumar céntimos enteros no acumula drift', () => {
+  // 10,01 € en dos trozos (10,005 + 0,005) era el caso frágil en euros-float.
+  // En céntimos ya no existe: 1000 + 1 = 1001, exacto.
+  const r = computeRevenueCents({
+    bookingCents: 1000,
+    extrasCents: 1,
     manualCents: 0,
     productsCents: 0,
     tipsCents: 0,

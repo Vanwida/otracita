@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
     date: string;
     time: string;
     duration: number;
-    price?: number;
+    /** CÉNTIMOS enteros (1250 = 12,50 €). Opcional — sin él se deriva del
+     *  catálogo de servicios del tenant. */
+    priceCents?: number;
     extraServices?: unknown;
     /** Dashboard-only: el barbero ya confirmó "sí, solapa, lo creo igual". */
     allowOverlap?: boolean;
@@ -42,8 +44,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { customerName, customerPhone, service, barber, barberId: bodyBarberId, date, time, duration, price } = body;
+  const { customerName, customerPhone, service, barber, barberId: bodyBarberId, date, time, duration, priceCents } = body;
   const extraServices = sanitizeExtraServices(body.extraServices);
+  // El importe llega del cliente → se normaliza aquí (entero, no negativo).
+  // `undefined` deja que createBooking lo derive del catálogo de servicios.
+  const normalisedPriceCents =
+    typeof priceCents === 'number' && Number.isFinite(priceCents) && priceCents >= 0
+      ? Math.round(priceCents)
+      : undefined;
 
   if (!customerPhone || !service || !date || !time || !duration) {
     return NextResponse.json(
@@ -95,7 +103,7 @@ export async function POST(req: NextRequest) {
     date,
     time,
     duration,
-    price,
+    priceCents: normalisedPriceCents,
     extraServices: extraServices.length > 0 ? extraServices : undefined,
     // Esta ruta es la del dashboard (Nueva cita) — `requireClientAccess`
     // arriba ya garantiza que viene de un barbero autenticado. El barbero

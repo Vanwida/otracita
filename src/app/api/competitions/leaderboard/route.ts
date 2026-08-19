@@ -65,11 +65,11 @@ export async function GET(request: Request) {
     .where(and(eq(barbersTable.clientId, access.client.id), eq(barbersTable.active, true)))
 
   // Agregado de la métrica en la ventana [weekStart, weekEnd] (citas
-  // completadas). bookings.price está en EUROS → ×100 a cents.
+  // completadas). bookings.price_cents ya está en céntimos.
   const agg = await db
     .select({
       barberId: bookings.barberId,
-      revenueEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+      revenueCents: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)`,
       bookingsCount: sql<number>`COUNT(*)::int`,
     })
     .from(bookings)
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
     if (!row.barberId) continue
     const value =
       comp.metric === 'revenue'
-        ? Math.round(parseFloat(row.revenueEur ?? '0') * 100)
+        ? parseInt(row.revenueCents ?? '0', 10)
         : Number(row.bookingsCount ?? 0)
     valueByBarber.set(row.barberId, value)
   }

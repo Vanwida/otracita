@@ -16,8 +16,7 @@ import { BUSINESS_TIMEZONE } from '@/lib/time';
 // barbero — para eso está `/api/yo/equipo` con `view_commissions`).
 //
 // Composición de "ingresos brutos":
-//   · bookings completados — sumamos `price * 100` (foot-gun: bookings.price
-//     está en EUROS, todo lo demás en cents).
+//   · bookings completados — `price_cents`, ya en céntimos como todo lo demás.
 //   · product_sales no internas (`consumption_kind IS NULL`).
 //   · propinas cash entregadas (`tips.payment_method='cash'`).
 //
@@ -65,7 +64,7 @@ async function totalsForRange(
   rangeEnd: string,
 ): Promise<DayTotals[]> {
   const bookingsResult = await db.execute(sql`
-    SELECT b.date AS date, COALESCE(SUM(b.price * 100), 0)::bigint AS cents
+    SELECT b.date AS date, COALESCE(SUM(b.price_cents), 0)::bigint AS cents
     FROM ${bookings} b
     WHERE b.client_id = ${clientId}
       AND b.status = 'completed'

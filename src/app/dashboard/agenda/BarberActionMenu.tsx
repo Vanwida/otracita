@@ -15,6 +15,7 @@ import AbsenceModal from '../equipo/turnos/AbsenceModal';
 import BlockModal from '../equipo/turnos/BlockModal';
 import type { CalendarEvent, Barber } from './types';
 import { barberColorVar } from './types';
+import { formatCents } from '@/lib/format';
 
 // -----------------------------------------------------------------------------
 // BarberActionMenu — menú contextual al clicar la cabecera de un barbero en
@@ -74,7 +75,7 @@ export default function BarberActionMenu({
         e.status !== 'cancelled',
     );
     const done = mine.filter((e) => e.status === 'completed');
-    const billed = done.reduce((acc, e) => acc + (e.price ?? 0), 0);
+    const billedCents = done.reduce((acc, e) => acc + (e.priceCents ?? 0), 0);
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
     const upcoming = mine
       .filter((e) => e.status === 'confirmed' && toMinutes(e.time) >= nowMin)
@@ -82,7 +83,7 @@ export default function BarberActionMenu({
     return {
       total: mine.length,
       doneCount: done.length,
-      billed,
+      billedCents,
       next: upcoming
         ? `${upcoming.time} · ${upcoming.customerName || upcoming.customerPhone}`
         : null,
@@ -162,7 +163,7 @@ export default function BarberActionMenu({
                       </span>
                       <span className="inline-flex items-center gap-1 tabular-nums">
                         <Wallet className="h-3 w-3 text-ink-3" />
-                        {summary.billed.toFixed(0)} €
+                        {formatCents(summary.billedCents, { compact: true })}
                       </span>
                       {summary.next && (
                         <span className="w-full text-ink-3">

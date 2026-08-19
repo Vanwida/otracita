@@ -230,18 +230,18 @@ async function backfillTodayMovements(
         WHEN 'card_online' THEN 'online'
         ELSE 'card'  -- card | card_physical | bizum | mixed | otros → card
       END,
-      -- Principal (bookings.price) + servicios EXTRA (R7, booking_services.
-      -- price_euros). Ambos en EUROS (foot-gun) → sumar en euros y ×100 una
-      -- sola vez, idéntico a bookingTotalCents. Cita simple ⇒ subquery 0.
-      round((
-        b.price
+      -- Principal (bookings.price_cents) + servicios EXTRA (R7,
+      -- booking_services.price_cents). Ambos en CÉNTIMOS enteros: suma
+      -- directa, idéntica a bookingTotalCents. Cita simple ⇒ subquery 0.
+      (
+        b.price_cents
         + COALESCE((
-            SELECT SUM(bs.price_euros)
+            SELECT SUM(bs.price_cents)
             FROM booking_services bs
             WHERE bs.booking_id = b.id
-              AND bs.price_euros IS NOT NULL
+              AND bs.price_cents IS NOT NULL
           ), 0)
-      ) * 100),
+      ),
       'booking',
       b.id,
       'Importado al abrir caja (cita completada antes de la apertura).',
@@ -251,8 +251,8 @@ async function backfillTodayMovements(
       AND b.status = 'completed'
       AND b.date = ${todayMadrid}
       AND b.payment_method IS NOT NULL
-      AND b.price IS NOT NULL
-      AND b.price > 0
+      AND b.price_cents IS NOT NULL
+      AND b.price_cents > 0
       AND NOT EXISTS (
         SELECT 1 FROM cash_movements m
         WHERE m.reference_type = 'booking' AND m.reference_id = b.id

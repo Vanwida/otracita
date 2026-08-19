@@ -30,12 +30,12 @@ import type { ClosedRegister } from '../caja/CajaRegisters'
 // consuman sin duplicar. Multi-tenancy igual: el client se resuelve siempre
 // de la sesión, nunca del request.
 //
-// bookings.price está en EUROS (foot-gun documentado en CLAUDE.md). tips,
+// bookings.price_cents está en CÉNTIMOS, igual que el resto. tips,
 // productSales e invoices viven en céntimos.
 // -----------------------------------------------------------------------------
 
 interface KpiRow {
-  billed_eur: number | string
+  billed_cents: number | string
   completed_count: number
   tips_cents: number | string
   upsells_cents: number | string
@@ -115,9 +115,9 @@ export async function loadVentasData(
     (await db
       .execute(sql`
     SELECT
-      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+      (SELECT COALESCE(SUM(price_cents), 0) FROM ${bookings}
         WHERE client_id = ${client.id} AND status = 'completed'
-        ${periodWhereDate})::bigint AS billed_eur,
+        ${periodWhereDate})::bigint AS billed_cents,
       (SELECT COUNT(*) FROM ${bookings}
         WHERE client_id = ${client.id} AND status = 'completed'
         ${periodWhereDate})::int AS completed_count,
@@ -133,7 +133,7 @@ export async function loadVentasData(
   `)
       .then((r) => (r as unknown as { rows: KpiRow[] }).rows)) ?? []
 
-  const billedEur = Number(kpiRow?.billed_eur ?? 0)
+  const billedEur = Number(kpiRow?.billed_cents ?? 0) / 100
   const completedCount = Number(kpiRow?.completed_count ?? 0)
   const tipsEur = Number(kpiRow?.tips_cents ?? 0) / 100
   const upsellsEur = Number(kpiRow?.upsells_cents ?? 0) / 100
@@ -147,10 +147,10 @@ export async function loadVentasData(
       (await db
         .execute(sql`
       SELECT
-        (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+        (SELECT COALESCE(SUM(price_cents), 0) FROM ${bookings}
           WHERE client_id = ${client.id} AND status = 'completed'
           AND date >= ${previousPeriod.startIso} AND date < ${periodStartIso ?? previousPeriod.endIso}
-        )::bigint AS billed_eur,
+        )::bigint AS billed_cents,
         (SELECT COUNT(*) FROM ${bookings}
           WHERE client_id = ${client.id} AND status = 'completed'
           AND date >= ${previousPeriod.startIso} AND date < ${periodStartIso ?? previousPeriod.endIso}
@@ -165,14 +165,14 @@ export async function loadVentasData(
             (
               r as unknown as {
                 rows: {
-                  billed_eur: string | number
+                  billed_cents: string | number
                   completed_count: number
                   tips_cents: string | number
                 }[]
               }
             ).rows,
         )) ?? []
-    billedPrev = prevRow ? Number(prevRow.billed_eur) : null
+    billedPrev = prevRow ? Number(prevRow.billed_cents) / 100 : null
     completedPrev = prevRow ? Number(prevRow.completed_count) : null
     tipsPrevEur = prevRow ? Number(prevRow.tips_cents) / 100 : null
   }

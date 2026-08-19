@@ -39,7 +39,7 @@ import {
 //   · method='mixed' (fraccionado) → mostrar todos los tramos en el header
 //     de método. El input "Recibido" del cambio aplica SOLO al tramo cash.
 //   · invoice null → desglose IVA mínimo (sin número de factura). Calcula
-//     IVA inferido del bookings.price y el ivaRate del tenant.
+//     IVA inferido del bookings.price_cents y el ivaRate del tenant.
 // -----------------------------------------------------------------------------
 
 interface ReceiptData {
@@ -48,7 +48,8 @@ interface ReceiptData {
     customerName: string | null
     customerPhone: string
     service: string
-    priceEuros: number | null
+    /** CÉNTIMOS (bookings.price_cents). */
+    priceCents: number | null
     paymentMethod: string | null
     startsAt: string
     durationMin: number
@@ -193,7 +194,7 @@ export default function ChargedReceiptStep({
   }, [data])
 
   // IVA: si hay invoice, usamos sus cents tal cual. Si no, fallback al
-  // booking.price + ivaRate del tenant (precio retail español incluye IVA).
+  // booking.priceCents + ivaRate del tenant (precio retail español incluye IVA).
   const breakdown = useMemo(() => {
     if (!data) return null
     if (data.invoice) {

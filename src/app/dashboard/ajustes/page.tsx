@@ -28,6 +28,7 @@ import {
   isCustomHex,
   type ServiceColorToken,
 } from '@/lib/service-colors'
+import { roundEuros } from '@/lib/format'
 
 interface ServiceItem {
   name: string
@@ -92,7 +93,21 @@ export default async function AjustesNegocioPage() {
     if (Array.isArray(chatbotServices)) {
       chatbotServices = chatbotServices.map((raw) => {
         if (typeof raw !== 'object' || raw === null) return raw
-        const svc = raw as Record<string, unknown>
+        const svc = { ...(raw as Record<string, unknown>) }
+
+        // El precio llega del <input> como string o number. Se persiste
+        // SIEMPRE como number con 2 decimales: `resolveServiceConfig` exige
+        // `typeof price === 'number'` y un "12.5" string se traduciría en
+        // una cita sin precio, en silencio. Y 2 decimales de verdad — 12,50
+        // no puede convertirse en 13 (L-05).
+        if ('price' in svc) {
+          svc.price = roundEuros(svc.price) ?? 0
+        }
+        if ('duration' in svc) {
+          const d = Number(svc.duration)
+          svc.duration = Number.isFinite(d) ? Math.round(d) : 30
+        }
+
         if (!('colorToken' in svc)) return svc
         const ct = svc.colorToken
         if (isServiceColorToken(ct)) return svc
@@ -100,9 +115,8 @@ export default async function AjustesNegocioPage() {
           // Normaliza a minúsculas — formato canónico que persistimos.
           return { ...svc, colorToken: (ct as string).toLowerCase() }
         }
-        const sanitized = { ...svc }
-        delete sanitized.colorToken
-        return sanitized
+        delete svc.colorToken
+        return svc
       })
     }
 

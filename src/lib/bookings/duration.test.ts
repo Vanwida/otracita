@@ -23,8 +23,8 @@ test('sin extras → duración == principal (no-regresión: 4/5 callers)', () =>
 
 test('multi-servicio → duración == suma (evita doble-booking)', () => {
   const extras: BookingServiceLine[] = [
-    { name: 'Barba', durationMin: 20, priceEuros: 10 },
-    { name: 'Cejas', durationMin: 10, priceEuros: 5 },
+    { name: 'Barba', durationMin: 20, priceCents: 1000 },
+    { name: 'Cejas', durationMin: 10, priceCents: 500 },
   ]
   // Corte 30 + Barba 20 + Cejas 10 = 60 → el motor reserva 60 min, no 30.
   assert.equal(computeBookingSnapshot(30, extras).durationMin, 60)
@@ -32,19 +32,16 @@ test('multi-servicio → duración == suma (evita doble-booking)', () => {
 
 test('extra a medio rellenar (duración <= 0) no envenena el snapshot', () => {
   const extras: BookingServiceLine[] = [
-    { name: 'Barba', durationMin: 20, priceEuros: 10 },
-    { name: '', durationMin: 0, priceEuros: null },
+    { name: 'Barba', durationMin: 20, priceCents: 1000 },
+    { name: '', durationMin: 0, priceCents: null },
   ]
   assert.equal(computeBookingSnapshot(30, extras).durationMin, 50)
 })
 
 test('principal inválido se trata como 0, no NaN', () => {
   assert.equal(computeBookingSnapshot(Number.NaN).durationMin, 0)
-  assert.equal(
-    computeBookingSnapshot(Number.NaN, [{ name: 'X', durationMin: 15, priceEuros: null }])
-      .durationMin,
-    15,
-  )
+  const one: BookingServiceLine[] = [{ name: 'X', durationMin: 15, priceCents: null }]
+  assert.equal(computeBookingSnapshot(Number.NaN, one).durationMin, 15)
 })
 
 // -----------------------------------------------------------------------------
@@ -53,25 +50,54 @@ test('principal inválido se trata como 0, no NaN', () => {
 
 test('descarta entradas sin nombre o sin duración válida', () => {
   const out = sanitizeExtraServices([
-    { name: 'Barba', durationMin: 20, priceEuros: 10 },
-    { name: '   ', durationMin: 30, priceEuros: 5 }, // nombre vacío → fuera
-    { name: 'Mascarilla', durationMin: 0, priceEuros: 8 }, // dur 0 → fuera
-    { name: 'Lavado', durationMin: -5, priceEuros: 3 }, // dur negativa → fuera
+    { name: 'Barba', durationMin: 20, priceCents: 1000 },
+    { name: '   ', durationMin: 30, priceCents: 500 }, // nombre vacío → fuera
+    { name: 'Mascarilla', durationMin: 0, priceCents: 800 }, // dur 0 → fuera
+    { name: 'Lavado', durationMin: -5, priceCents: 300 }, // dur negativa → fuera
     'basura',
     null,
   ])
-  assert.deepEqual(out, [{ name: 'Barba', durationMin: 20, priceEuros: 10 }])
+  assert.deepEqual(out, [{ name: 'Barba', durationMin: 20, priceCents: 1000 }])
 })
 
 test('precio ausente/negativo → null (extra de cortesía permitido)', () => {
   const out = sanitizeExtraServices([
     { name: 'Cortesía', durationMin: 10 },
-    { name: 'NegPrice', durationMin: 10, priceEuros: -2 },
+    { name: 'NegPrice', durationMin: 10, priceCents: -2 },
   ])
   assert.deepEqual(out, [
-    { name: 'Cortesía', durationMin: 10, priceEuros: null },
-    { name: 'NegPrice', durationMin: 10, priceEuros: null },
+    { name: 'Cortesía', durationMin: 10, priceCents: null },
+    { name: 'NegPrice', durationMin: 10, priceCents: null },
   ])
+})
+
+// L-05 — el wire habla céntimos; los decimales del barbero sobreviven.
+test('acepta céntimos con decimales reales (12,50 € = 1250c)', () => {
+  const out = sanitizeExtraServices([
+    { name: 'Arreglo barba', durationMin: 15, priceCents: 1250 },
+    { name: 'Ritual', durationMin: 20, priceCents: 1750 },
+  ])
+  assert.deepEqual(out, [
+    { name: 'Arreglo barba', durationMin: 15, priceCents: 1250 },
+    { name: 'Ritual', durationMin: 20, priceCents: 1750 },
+  ])
+})
+
+// Compat de despliegue: una pestaña abierta desde antes del deploy sigue
+// mandando `priceEuros` (euros). Sin este fallback el extra entraría como
+// cortesía y el local perdería ese dinero sin avisar.
+test('acepta el campo legacy priceEuros y lo convierte a céntimos', () => {
+  const out = sanitizeExtraServices([
+    { name: 'Barba', durationMin: 20, priceEuros: 12.5 },
+  ])
+  assert.deepEqual(out, [{ name: 'Barba', durationMin: 20, priceCents: 1250 }])
+})
+
+test('priceCents gana sobre el legacy priceEuros si vienen los dos', () => {
+  const out = sanitizeExtraServices([
+    { name: 'Barba', durationMin: 20, priceCents: 1250, priceEuros: 99 },
+  ])
+  assert.deepEqual(out, [{ name: 'Barba', durationMin: 20, priceCents: 1250 }])
 })
 
 test('no-array → []', () => {

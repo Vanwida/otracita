@@ -37,9 +37,11 @@ interface FormatOpts {
 
 /**
  * Formatea un importe en céntimos como string "X,XX €" (locale es-ES).
- * Convención otracita: `bookings.price` está en EUROS — para esa columna
- * usa `formatEuros(price)`. Todo lo demás (invoices, payments, tips,
- * payroll) está en céntimos → `formatCents(cents)`.
+ * Convención otracita: TODO el dinero persistido está en céntimos enteros
+ * (bookings, booking_services, invoices, payments, tips, payroll,
+ * products) → `formatCents(cents)`. `formatEuros` solo para valores que
+ * viven en euros por diseño (el catálogo `clients.chatbotServices`, que es
+ * jsonb editable por el barbero).
  */
 export function formatCents(cents: number, opts: FormatOpts = {}): string {
   const euros = cents / 100
@@ -50,12 +52,63 @@ export function formatCents(cents: number, opts: FormatOpts = {}): string {
 }
 
 /**
- * Formatea un importe en EUROS como string "X,XX €" (locale es-ES). Útil
- * solo para la columna `bookings.price` que está en euros (foot-gun en
- * CLAUDE.md). El resto del dashboard usa céntimos.
+ * Formatea un importe en EUROS como string "X,XX €" (locale es-ES). Para
+ * los pocos valores que viven en euros por diseño: el catálogo de servicios
+ * (`clients.chatbotServices`, jsonb) y los inputs del formulario antes de
+ * normalizarse a céntimos. Lo persistido usa `formatCents`.
  */
 export function formatEuros(euros: number, opts: FormatOpts = {}): string {
   return formatCents(Math.round(euros * 100), opts)
+}
+
+// -----------------------------------------------------------------------------
+// Conversión euros ⇄ céntimos. FUENTE ÚNICA.
+//
+// Todo el dinero se PERSISTE en céntimos enteros; los euros solo existen en
+// la frontera con el humano (inputs del dashboard, catálogo jsonb de
+// servicios, cuerpos de API legacy). Antes había `Math.round(x * 100)`
+// repartido por ~30 ficheros, cada uno con su propia idea de qué hacer con
+// null, NaN o negativos — y `bookings.price` era INTEGER en euros, así que
+// 12,50 € se truncaba a 13 antes de llegar aquí (L-05).
+//
+// El redondeo importa: `12.35 * 100` da 1234.9999999999998 en coma flotante,
+// así que el `Math.round` NO es opcional.
+// -----------------------------------------------------------------------------
+
+/**
+ * Euros (posible decimal) → céntimos enteros. `null`/`undefined`/no-finito
+ * → `null` (ausencia de importe, distinto de 0 = gratis).
+ */
+export function eurosToCents(euros: number | null | undefined): number | null {
+  if (euros == null || !Number.isFinite(euros)) return null
+  return Math.round(euros * 100)
+}
+
+/**
+ * Céntimos enteros → euros con 2 decimales exactos (1250 → 12.5). Para
+ * rellenar inputs editables y para el catálogo jsonb en euros.
+ * `null`/`undefined`/no-finito → `null`.
+ */
+export function centsToEuros(cents: number | null | undefined): number | null {
+  if (cents == null || !Number.isFinite(cents)) return null
+  return Math.round(cents) / 100
+}
+
+/**
+ * Normaliza un importe en euros al céntimo más cercano (12.499 → 12.5).
+ * Para los pocos sitios que PERSISTEN euros — hoy solo el catálogo de
+ * servicios en `clients.chatbotServices` (jsonb) — para que no se guarde un
+ * precio con más precisión de la que existe en la caja. `null` si no es un
+ * número finito: el caller decide si eso es "sin precio" o un error.
+ */
+export function roundEuros(euros: unknown): number | null {
+  // `Number('')` y `Number(null)` valen 0 — un campo vacío NO es "gratis",
+  // es "sin valor". El caller decide qué hacer con el null.
+  if (euros == null) return null
+  if (typeof euros === 'string' && euros.trim() === '') return null
+  const n = typeof euros === 'number' ? euros : Number(euros)
+  if (!Number.isFinite(n)) return null
+  return Math.round(n * 100) / 100
 }
 
 /**

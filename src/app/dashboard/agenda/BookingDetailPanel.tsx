@@ -7,7 +7,7 @@ import AddProductSaleModal from './AddProductSaleModal';
 import BookingActivityTimeline from './BookingActivityTimeline';
 import SlideOver from '../_components/SlideOver';
 import Modal from '../_components/Modal';
-import ServiceLinePicker from '../_components/ServiceLinePicker';
+import ServiceLinePicker, { type ServiceLineValue } from '../_components/ServiceLinePicker';
 import ChargeFlow from '../_components/ChargeFlow';
 import NumberInput from '../_components/NumberInput';
 import CustomerTypeahead from '../_components/CustomerTypeahead';
@@ -15,7 +15,7 @@ import RectificativaModal from '../facturas/_components/RectificativaModal';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/payments/methods';
 import { pushUndoToast } from '../_components/UndoToast';
 import { dispatchTracking } from '@/lib/tracking/dispatch';
-import { computeBookingSnapshot, type BookingServiceLine } from '@/lib/bookings/duration';
+import { computeBookingSnapshot } from '@/lib/bookings/duration';
 import ClientProfile from '../clientes/[id]/ClientProfile';
 import type { ClientProfileData } from '@/lib/clients/profile';
 import { hoursForDate, parseMinutes } from '@/lib/availability-hours';
@@ -27,7 +27,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { paymentBadge } from './types';
 import type { CalendarEvent, Barber } from './types';
-import { formatCents } from '@/lib/format';
+import { formatCents, centsToEuros, eurosToCents } from '@/lib/format';
 import { FEEDBACK_MS } from '@/lib/ui-timings'
 
 function addMinutesToTime(timeStr: string, mins: number): string {
@@ -277,8 +277,8 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
   const [productSalesCount, setProductSalesCount] = useState(0);
   const canCharge =
     !!booking &&
-    booking.price !== null &&
-    booking.price > 0 &&
+    booking.priceCents !== null &&
+    booking.priceCents > 0 &&
     booking.status === 'confirmed';
 
   const connectActive = stripeConnectStatus === 'active';
@@ -887,12 +887,14 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
               )}
 
               {/* Price */}
-              {booking.price !== null && (
+              {booking.priceCents !== null && (
                 <div className="space-y-1">
                   <p className="text-xs font-bold uppercase tracking-widest text-ink-2">
                     Precio
                   </p>
-                  <p className="text-sm font-semibold text-brand">{booking.price} €</p>
+                  <p className="text-sm font-semibold text-brand">
+                    {formatCents(booking.priceCents)}
+                  </p>
                 </div>
               )}
 
@@ -1025,7 +1027,7 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
                       className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-strong px-4 py-3 text-base font-semibold text-brand-ink transition-colors disabled:opacity-60 min-h-[48px]"
                     >
                       <CreditCard className="h-4 w-4" aria-hidden="true" />
-                      Cobrar · {formatCents(Math.round((booking.price ?? 0) * 100))}
+                      Cobrar · {formatCents(booking.priceCents ?? 0)}
                     </button>
                   ) : null}
                   <button
@@ -1175,13 +1177,13 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
             {/* Footer fijo con el TOTAL (Booksy 09.58.37: barra inferior
                 con "Total" grande). Sticky shrink-0 fuera del scroll. Solo
                 cuando la cita tiene precio. */}
-            {booking.price !== null && booking.price !== undefined && (
+            {booking.priceCents != null && (
               <div className="shrink-0 border-t border-line bg-surface px-5 py-3 flex items-baseline justify-between">
                 <span className="text-xs font-bold uppercase tracking-[0.16em] text-ink-2">
                   Total
                 </span>
                 <span className="text-2xl font-bold text-ink tabular-nums leading-none">
-                  {booking.price} €
+                  {formatCents(booking.priceCents)}
                 </span>
               </div>
             )}
@@ -1223,12 +1225,12 @@ export default function BookingDetailPanel({ booking, onClose, stripeConnectStat
       {/* ChargeFlow — motor de cobro unificado (épica Reni). Maneja método
           único, fraccionado, espera online y propina inline. Sólo se
           renderiza con price > 0 (las citas gratis usan PATCH legacy). */}
-      {booking && booking.price !== null && booking.price > 0 && (
+      {booking && booking.priceCents !== null && booking.priceCents > 0 && (
         <ChargeFlow
           key={booking.id}
           booking={{
             id: booking.id,
-            price: booking.price,
+            priceCents: booking.priceCents,
             customerName: booking.customerName,
             barberId: booking.barberId,
             serviceLabel: booking.service,
@@ -1366,9 +1368,12 @@ function EditServiceModal({
   onSaved: () => void;
 }) {
   const [service, setService] = useState(booking.service);
-  const [price, setPrice] = useState<number | null>(booking.price);
+  // El formulario habla EUROS (lo que teclea el barbero); la API y la DB
+  // hablan CÉNTIMOS. La conversión ocurre en los dos bordes de este
+  // componente: al hidratar (centsToEuros) y al enviar (eurosToCents).
+  const [price, setPrice] = useState<number | null>(centsToEuros(booking.priceCents));
   const [duration, setDuration] = useState<number | null>(booking.duration);
-  const [extras, setExtras] = useState<BookingServiceLine[]>([]);
+  const [extras, setExtras] = useState<ServiceLineValue[]>([]);
   const [loadingExtras, setLoadingExtras] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1378,8 +1383,16 @@ function EditServiceModal({
     const controller = new AbortController();
     fetch(`/api/bookings/${booking.id}/services`, { signal: controller.signal })
       .then((r) => r.json())
-      .then((d: { extraServices?: BookingServiceLine[] }) => {
-        if (Array.isArray(d.extraServices)) setExtras(d.extraServices);
+      .then((d: { extraServices?: Array<{ name: string; durationMin: number; priceCents: number | null }> }) => {
+        if (Array.isArray(d.extraServices)) {
+          setExtras(
+            d.extraServices.map((e) => ({
+              name: e.name,
+              durationMin: e.durationMin,
+              priceEuros: centsToEuros(e.priceCents),
+            })),
+          );
+        }
       })
       .catch(() => {
         /* aborted/red — el barbero puede re-añadir manualmente */
@@ -1390,7 +1403,7 @@ function EditServiceModal({
 
   const totalDuration = computeBookingSnapshot(duration ?? 0, extras).durationMin;
 
-  const updateExtra = (idx: number, patch: Partial<BookingServiceLine>) => {
+  const updateExtra = (idx: number, patch: Partial<ServiceLineValue>) => {
     setExtras((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   };
 
@@ -1411,11 +1424,15 @@ function EditServiceModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service: service.trim(),
-          price: price,
+          priceCents: eurosToCents(price),
           duration: duration,
-          extraServices: extras.filter(
-            (e) => e.name.trim() && e.durationMin > 0,
-          ),
+          extraServices: extras
+            .filter((e) => e.name.trim() && e.durationMin > 0)
+            .map((e) => ({
+              name: e.name,
+              durationMin: e.durationMin,
+              priceCents: eurosToCents(e.priceEuros),
+            })),
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -1762,7 +1779,8 @@ interface SaleData {
     customerName: string | null;
     customerPhone: string;
     service: string;
-    price: number | null;
+    /** CÉNTIMOS (bookings.price_cents). */
+    priceCents: number | null;
     paymentMethod: string | null;
     barberId: string | null;
     barber: string | null;
@@ -1831,8 +1849,8 @@ function EditSaleModal({
   // elige uno. Selector con grid de métodos válidos.
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [tipEnabled, setTipEnabled] = useState(false);
-  // Propina en euros con 2 decimales para coherencia con la columna `price`
-  // del booking — internamente se manda en céntimos.
+  // Propina en euros con 2 decimales, igual que el precio del servicio —
+  // internamente se manda en céntimos.
   const [tipEuros, setTipEuros] = useState<number | null>(null);
   const [tipMethod, setTipMethod] = useState<'cash' | 'card'>('cash');
   const [tipBarberId, setTipBarberId] = useState<string>('');
@@ -1880,7 +1898,7 @@ function EditSaleModal({
               : null,
           );
           setService(data.booking.service);
-          setPrice(data.booking.price ?? null);
+          setPrice(centsToEuros(data.booking.priceCents));
           const firstMethod = data.payments[0]?.method;
           if (firstMethod && (PAYMENT_METHODS as readonly string[]).includes(firstMethod)) {
             setPaymentMethod(firstMethod as PaymentMethod);
@@ -2075,8 +2093,8 @@ function EditSaleModal({
       if (service.trim() !== original.service) {
         body.service = service.trim();
       }
-      if ((price ?? null) !== (original.price ?? null)) {
-        body.price = price;
+      if (eurosToCents(price) !== original.priceCents) {
+        body.priceCents = eurosToCents(price);
       }
       if (paymentMethod !== original.paymentMethod) {
         body.paymentMethod = paymentMethod;
@@ -2253,15 +2271,16 @@ function EditSaleModal({
                   value={price}
                   onValueChange={setPrice}
                   min={0}
-                  decimals={0}
-                  placeholder="0"
+                  decimals={2}
+                  step="0.01"
+                  placeholder="0,00"
                   disabled={submitting}
                   aria-label="Precio en euros"
                   className="bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:border-brand outline-none transition-colors"
                 />
                 <p className="text-[11px] text-ink-3">
-                  Bookings se guardan en euros enteros. El cuadre de caja se
-                  reajusta automáticamente.
+                  Con céntimos: 12,50 € se guarda como 12,50 €. El cuadre de
+                  caja se reajusta automáticamente.
                 </p>
               </div>
             </div>

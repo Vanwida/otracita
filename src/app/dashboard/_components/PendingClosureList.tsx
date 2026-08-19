@@ -39,7 +39,8 @@ export interface PendingClosureBooking {
   /** ID del barbero (para atribuir propina). Null si no asignado. */
   barberId?: string | null
   /** Precio en EUROS (foot-gun del schema). Null si la cita no tiene precio. */
-  price: number | null
+  /** CÉNTIMOS (bookings.price_cents). */
+  priceCents: number | null
 }
 
 interface BarberMin {
@@ -209,12 +210,12 @@ export default function PendingClosureList({
       {/* ChargeFlow — único motor de cobro. Reutiliza la lógica del panel
           de agenda; aquí se invoca para cerrar una cita desde Inicio sin
           tener que entrar a su detalle. */}
-      {chargeBooking && chargeBooking.price !== null && chargeBooking.price > 0 && (
+      {chargeBooking && chargeBooking.priceCents !== null && chargeBooking.priceCents > 0 && (
         <ChargeFlow
           key={chargeBooking.id}
           booking={{
             id: chargeBooking.id,
-            price: chargeBooking.price,
+            priceCents: chargeBooking.priceCents,
             customerName: chargeBooking.customerName,
             barberId: chargeBooking.barberId ?? null,
             serviceLabel: chargeBooking.service,
@@ -239,7 +240,7 @@ export default function PendingClosureList({
           const customerLine = b.customerName?.trim() || b.customerPhone
           const barberLine = b.barber ? ` · ${b.barber}` : ''
           const error = errorId?.id === b.id ? errorId.message : null
-          const hasPrice = b.price !== null && b.price > 0
+          const hasPrice = b.priceCents !== null && b.priceCents > 0
           return (
             <li
               key={b.id}
@@ -257,7 +258,7 @@ export default function PendingClosureList({
                     <>
                       <span className="text-ink-3 mx-1">·</span>
                       <span className="tabular-nums text-ink">
-                        {formatCents(Math.round((b.price ?? 0) * 100))}
+                        {formatCents(b.priceCents ?? 0)}
                       </span>
                     </>
                   )}

@@ -35,8 +35,8 @@ interface SplitLine {
 }
 
 interface Props {
-  /** Total de la reserva en EUROS (foot-gun `bookings.price`). */
-  bookingPrice: number
+  /** Total de la cita en CÉNTIMOS enteros. */
+  bookingTotalCents: number
   /** Si false, ocultamos `card_online` del select. */
   stripeConnectActive: boolean
   /** Envía las líneas al padre; devuelve cuando termina (resolved o error). */
@@ -49,7 +49,7 @@ function genKey(): string {
 }
 
 export default function SplitPaymentBuilder({
-  bookingPrice,
+  bookingTotalCents,
   stripeConnectActive,
   onSubmit,
   onCancel,
@@ -66,7 +66,7 @@ export default function SplitPaymentBuilder({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const totalCents = Math.round(bookingPrice * 100)
+  const totalCents = bookingTotalCents
   const sumCents = useMemo(
     () =>
       lines.reduce(

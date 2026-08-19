@@ -3,26 +3,29 @@
 // valores ya leídos de DB. Separado del wrapper async (`bookingTotalCents`
 // en total.ts) para que sea testeable sin tocar la base de datos.
 //
+// Desde L-05 tanto el principal (`bookings.price_cents`) como los extras
+// (`booking_services.price_cents`) están ya en CÉNTIMOS enteros, así que
+// esto es una suma pura: no hay conversión ni redondeo que pueda perder
+// los 50 céntimos de un servicio de 12,50 €.
+//
 // Reglas (idénticas al motor de facturación en src/lib/invoicing.ts):
 //   · principal null/0/negativo → contribuye 0 (no resta).
 //   · extra null/0/negativo (cortesía) → contribuye 0.
-//   · ×100 se aplica UNA sola vez sobre la suma en euros, para que el
-//     redondeo coincida con el del invoicing.
 //
-// NOTA: el motor SOLO considera `bookings.price` + `bookingServices.priceEuros`.
+// NOTA: el motor SOLO considera `bookings.priceCents` + `bookingServices.priceCents`.
 // Las ventas de productos asociados a un booking viven en `product_sales` y
 // NO entran aquí — esa contabilidad es paralela (los productos tienen su
 // propio cuadre vía cash_movements y línea de factura separada).
 // -----------------------------------------------------------------------------
 
 export function computeBookingTotalCentsFromRows(
-  bookingPriceEuros: number | null | undefined,
-  extras: ReadonlyArray<{ priceEuros: number | null | undefined }>,
+  bookingPriceCents: number | null | undefined,
+  extras: ReadonlyArray<{ priceCents: number | null | undefined }>,
 ): number {
-  let totalEuros =
-    bookingPriceEuros != null && bookingPriceEuros > 0 ? bookingPriceEuros : 0;
+  let total =
+    bookingPriceCents != null && bookingPriceCents > 0 ? Math.round(bookingPriceCents) : 0;
   for (const ex of extras) {
-    if (ex.priceEuros != null && ex.priceEuros > 0) totalEuros += ex.priceEuros;
+    if (ex.priceCents != null && ex.priceCents > 0) total += Math.round(ex.priceCents);
   }
-  return Math.round(totalEuros * 100);
+  return total;
 }

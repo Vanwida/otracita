@@ -13,14 +13,14 @@ import type {
 //   · points  → 1 unidad = 1 punto
 // Así un mismo schema de ledger sirve para los dos modos sin ambigüedad.
 //
-// IMPORTANTE sobre precios: `bookings.price` se almacena en EUROS enteros
-// (legacy schema, inconsistente con invoices/payments que van en céntimos).
-// `computeBookingDelta` recibe bookingPriceEuros y lo convierte internamente.
+// Precios: desde L-05 `bookings.price_cents` está en CÉNTIMOS enteros, igual
+// que invoices/payments/tips. `computeBookingDelta` recibe céntimos y no
+// convierte nada — `minPriceCents` se compara directo.
 // -----------------------------------------------------------------------------
 
 interface BookingLike {
-  /** Precio del booking en EUROS (como está en bookings.price). Puede ser null. */
-  priceEuros: number | null
+  /** Precio del booking en CÉNTIMOS (como está en bookings.price_cents). Puede ser null. */
+  priceCents: number | null
   /** Nombre del servicio (coincide con clients.chatbotServices[i].name). */
   serviceName: string
 }
@@ -34,11 +34,9 @@ export function computeBookingDelta(
   config: LoyaltyConfig,
 ): number {
   // Sin precio registrado no awardamos (no podemos aplicar minPrice ni convertir a pts).
-  if (booking.priceEuros == null || booking.priceEuros <= 0) return 0
+  if (booking.priceCents == null || booking.priceCents <= 0) return 0
 
-  const priceCents = Math.round(booking.priceEuros * 100)
-
-  if (priceCents < config.minPriceCents) return 0
+  if (booking.priceCents < config.minPriceCents) return 0
 
   // Filtro por servicios elegibles (null/[] = todos).
   if (
@@ -53,7 +51,7 @@ export function computeBookingDelta(
 
   // mode === 'points'
   // Redondeamos al entero más cercano para evitar mostrar decimales al cliente.
-  const pts = booking.priceEuros * config.euroToPoints
+  const pts = (booking.priceCents / 100) * config.euroToPoints
   return Math.round(pts)
 }
 

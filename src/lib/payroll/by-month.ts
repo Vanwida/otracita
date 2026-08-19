@@ -99,7 +99,7 @@ export async function computePayrollTotalsByMonth(
       .select({
         month: dateMonth,
         barberId: bookings.barberId,
-        totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+        totalCents: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)`,
       })
       .from(bookings)
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, spanStart), lt(bookings.date, spanEnd)))
@@ -109,7 +109,7 @@ export async function computePayrollTotalsByMonth(
         month: dateMonth,
         barberId: bookings.barberId,
         serviceName: bookings.service,
-        totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+        totalCents: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)`,
       })
       .from(bookings)
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, spanStart), lt(bookings.date, spanEnd)))
@@ -119,7 +119,7 @@ export async function computePayrollTotalsByMonth(
         month: dateMonth,
         barberId: bookings.barberId,
         serviceName: bookingServices.name,
-        totalEur: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)`,
+        totalCents: sql<string>`COALESCE(SUM(${bookingServices.priceCents}), 0)`,
       })
       .from(bookingServices)
       .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
@@ -195,11 +195,11 @@ export async function computePayrollTotalsByMonth(
   for (const r of servicesRows) {
     if (!r.month || !r.barberId) continue
     const inner = mset(servicesRevenue, r.month)
-    inner.set(r.barberId, (inner.get(r.barberId) ?? 0) + Math.round(parseFloat(r.totalEur ?? '0') * 100))
+    inner.set(r.barberId, (inner.get(r.barberId) ?? 0) + parseInt(r.totalCents ?? '0', 10))
   }
   for (const r of serviceByNameRows) {
     if (!r.month || !r.barberId || !r.serviceName) continue
-    const cents = Math.round(parseFloat(r.totalEur ?? '0') * 100)
+    const cents = parseInt(r.totalCents ?? '0', 10)
     const inner = mset(serviceRows, r.month)
     const list = inner.get(r.barberId) ?? []
     list.push({ serviceName: r.serviceName, revenueCents: cents })
@@ -207,7 +207,7 @@ export async function computePayrollTotalsByMonth(
   }
   for (const r of extraRows) {
     if (!r.month || !r.barberId || !r.serviceName) continue
-    const cents = Math.round(parseFloat(r.totalEur ?? '0') * 100)
+    const cents = parseInt(r.totalCents ?? '0', 10)
     if (cents <= 0) continue
     const sInner = mset(servicesRevenue, r.month)
     sInner.set(r.barberId, (sInner.get(r.barberId) ?? 0) + cents)

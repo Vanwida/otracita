@@ -59,7 +59,7 @@ export async function GET(req: Request) {
     FROM ${customers} c
     LEFT JOIN (
       SELECT customer_phone,
-             SUM(price) * 100 AS spent_cents,
+             SUM(price_cents) AS spent_cents,
              COUNT(*) AS completed_count
       FROM ${bookings}
       WHERE client_id = ${client.id} AND status = 'completed'

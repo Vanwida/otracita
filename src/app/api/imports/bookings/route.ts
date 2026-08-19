@@ -321,7 +321,7 @@ export async function POST(request: Request) {
           date: it.date,
           time: it.time,
           duration: it.durationMinutes ?? undefined,
-          price: null,
+          priceCents: null,
           source: 'import_ical',
           silent: true,
           importedIcalUid: it.uid,

@@ -290,7 +290,11 @@ async function main() {
         date: dateStr,
         time,
         duration: svc.duration,
-        price: status === 'cancelled' || status === 'no_show' ? null : svc.price,
+        priceCents:
+          // El catálogo del seed está en euros; la cita se persiste en céntimos.
+          status === 'cancelled' || status === 'no_show'
+            ? null
+            : Math.round(svc.price * 100),
         status,
         source: 'bot' as const,
         reminderSent: status === 'completed',
@@ -384,9 +388,10 @@ async function main() {
   console.log('8/8  Resumen…')
   // Stats rápidas para mostrar a Alex
   const completedCount = bookingsRows.filter((b) => b.status === 'completed').length
-  const completedRevenueEur = bookingsRows
-    .filter((b) => b.status === 'completed' && b.price)
-    .reduce((a, b) => a + (b.price ?? 0), 0)
+  const completedRevenueEur =
+    bookingsRows
+      .filter((b) => b.status === 'completed' && b.priceCents)
+      .reduce((a, b) => a + (b.priceCents ?? 0), 0) / 100
   console.log(`     · Bookings completadas: ${completedCount}`)
   console.log(`     · Facturación bruta histórica: ${completedRevenueEur.toFixed(0)} € (6 meses)`)
   console.log(`     · Costes fijos mensuales: ${(totalFijos / 100).toFixed(0)} €`)

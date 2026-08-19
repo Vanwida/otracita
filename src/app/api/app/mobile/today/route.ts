@@ -33,7 +33,7 @@ export async function GET(req: Request) {
       customerPhone: bookings.customerPhone,
       service: bookings.service,
       barber: bookings.barber,
-      price: bookings.price,
+      priceCents: bookings.priceCents,
       status: bookings.status,
     })
     .from(bookings)
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
     .sort((a, b) => a.time.localeCompare(b.time))
 
   const pendingClosure = rows
-    .filter((b) => b.date < todayStr && b.status === 'confirmed' && b.price && b.price > 0)
+    .filter((b) => b.date < todayStr && b.status === 'confirmed' && !!b.priceCents && b.priceCents > 0)
     .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
 
   return Response.json({ today, pendingClosure, todayDateIso: todayStr })

@@ -7,6 +7,7 @@ import {
   ApiError,
 } from '../lib/api'
 import { SumupTapToPay, isNativeIos } from '../lib/sumup-bridge'
+import { formatCents } from '../lib/format'
 
 // -----------------------------------------------------------------------------
 // Checkout — pantalla full-screen del cobro Tap to Pay.
@@ -182,7 +183,7 @@ function AwaitingView({ amountCents, subtitle }: { amountCents: number; subtitle
   return (
     <>
       <p className="text-5xl font-bold text-ink tabular-nums mb-3">
-        {(amountCents / 100).toFixed(2)} €
+        {formatCents(amountCents)}
       </p>
       {subtitle && <p className="text-sm text-ink-3 text-center mb-10">{subtitle}</p>}
 
@@ -211,7 +212,7 @@ function SuccessView({ amountCents, onDone }: { amountCents: number; onDone: () 
       </div>
       <p className="text-lg font-semibold text-success">¡Cobrado!</p>
       <p className="text-4xl font-bold text-ink tabular-nums mt-2 mb-3">
-        {(amountCents / 100).toFixed(2)} €
+        {formatCents(amountCents)}
       </p>
       <p className="text-sm text-ink-3 text-center mb-1">Cita cerrada</p>
       <p className="text-sm text-ink-3 text-center mb-1">Factura emitida</p>

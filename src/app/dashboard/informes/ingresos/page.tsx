@@ -35,7 +35,7 @@ import { renderAdminLockGuard } from '@/lib/admin-lock/page-guard'
 // sesión (loadReportContext). Periodo por `?period=` (StatsPeriodTabs).
 //
 // `bookings.service` es texto libre → se agrupa por nombre exacto (limitación
-// conocida y aceptada). `bookings.price` está en EUROS (foot-gun); el resto
+// conocida y aceptada). Todos los importes están en CÉNTIMOS; el resto
 // en céntimos — todo se normaliza a céntimos para formatear con un helper.
 // -----------------------------------------------------------------------------
 
@@ -76,19 +76,19 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
       .execute(sql`
     SELECT service,
            COUNT(*)::int AS count,
-           COALESCE(SUM(price), 0)::bigint AS eur
+           COALESCE(SUM(price_cents), 0)::bigint AS cents
     FROM ${bookings}
     WHERE client_id = ${client.id} AND status = 'completed'
       AND date >= ${dateLo} AND date < ${periodEndIso}
     GROUP BY service
-    ORDER BY eur DESC, count DESC
+    ORDER BY cents DESC, count DESC
     LIMIT 10
   `)
       .then(
         (r) =>
           (
             r as unknown as {
-              rows: { service: string; count: number; eur: string | number }[]
+              rows: { service: string; count: number; cents: string | number }[]
             }
           ).rows,
       )) ?? []
@@ -96,7 +96,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
   const services: ServiceRow[] = serviceRows.map((r) => ({
     service: r.service,
     count: Number(r.count),
-    cents: Math.round(Number(r.eur) * 100),
+    cents: Number(r.cents),
   }))
 
   // ── Ventas por producto (uds + €), join a products para el nombre.
@@ -135,9 +135,9 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
     (await db
       .execute(sql`
     SELECT
-      (SELECT COALESCE(SUM(price), 0) FROM ${bookings}
+      (SELECT COALESCE(SUM(price_cents), 0) FROM ${bookings}
         WHERE client_id = ${client.id} AND status = 'completed'
-        AND date >= ${dateLo} AND date < ${periodEndIso})::bigint AS servicios_eur,
+        AND date >= ${dateLo} AND date < ${periodEndIso})::bigint AS servicios_cents,
       (SELECT COALESCE(SUM(total_cents), 0) FROM ${productSales}
         WHERE client_id = ${client.id} AND consumption_kind IS NULL
         AND sold_at >= ${dateLo}::date AND sold_at < ${periodEndIso}::date)::bigint AS productos_cents,
@@ -150,7 +150,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
           (
             r as unknown as {
               rows: {
-                servicios_eur: string | number
+                servicios_cents: string | number
                 productos_cents: string | number
                 propinas_cents: string | number
               }[]
@@ -158,7 +158,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
           ).rows,
       )) ?? []
 
-  const serviciosCents = Math.round(Number(typeRow?.servicios_eur ?? 0) * 100)
+  const serviciosCents = Number(typeRow?.servicios_cents ?? 0)
   const productosCents = Number(typeRow?.productos_cents ?? 0)
   const propinasCents = Number(typeRow?.propinas_cents ?? 0)
   const totalCents = serviciosCents + productosCents + propinasCents
@@ -195,14 +195,14 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
     WITH
       -- Bookings 'mixed' del periodo (los que necesitan despliegue via payments).
       mixed_bookings AS (
-        SELECT b.id, (b.price * 100)::bigint AS booking_cents
+        SELECT b.id, b.price_cents::bigint AS booking_cents
         FROM ${bookings} b
         WHERE b.client_id = ${client.id}
           AND b.status = 'completed'
           AND b.date >= ${dateLo}
           AND b.date < ${periodEndIso}
-          AND b.price IS NOT NULL
-          AND b.price > 0
+          AND b.price_cents IS NOT NULL
+          AND b.price_cents > 0
           AND b.payment_method = 'mixed'
       ),
       -- Splits cobrados de esos bookings (granular cash/card_physical/bizum/card_online).
@@ -229,14 +229,14 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
       all_rows AS (
         -- Bookings NO-mixed: granular method directo, o 'unknown' si NULL.
         SELECT COALESCE(NULLIF(b.payment_method, ''), 'unknown') AS method,
-               (b.price * 100)::bigint AS cents
+               b.price_cents::bigint AS cents
         FROM ${bookings} b
         WHERE b.client_id = ${client.id}
           AND b.status = 'completed'
           AND b.date >= ${dateLo}
           AND b.date < ${periodEndIso}
-          AND b.price IS NOT NULL
-          AND b.price > 0
+          AND b.price_cents IS NOT NULL
+          AND b.price_cents > 0
           AND (b.payment_method IS DISTINCT FROM 'mixed')
 
         UNION ALL
@@ -332,7 +332,7 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
     (await db
       .execute(sql`
     SELECT to_char(date::date, 'YYYY-MM') AS ym,
-           COALESCE(SUM(price), 0)::bigint AS eur
+           COALESCE(SUM(price_cents), 0)::bigint AS cents
     FROM ${bookings}
     WHERE client_id = ${client.id} AND status = 'completed'
       AND date::date >= (${periodEndIso}::date - INTERVAL '12 months')
@@ -342,13 +342,13 @@ export default async function InformesIngresosPage({ searchParams }: PageProps) 
   `)
       .then(
         (r) =>
-          (r as unknown as { rows: { ym: string; eur: string | number }[] })
+          (r as unknown as { rows: { ym: string; cents: string | number }[] })
             .rows,
       )) ?? []
 
   const monthly = monthlyRows.map((r) => ({
     ym: r.ym,
-    cents: Math.round(Number(r.eur) * 100),
+    cents: Number(r.cents),
   }))
   const monthlyMax = Math.max(1, ...monthly.map((m) => m.cents))
 

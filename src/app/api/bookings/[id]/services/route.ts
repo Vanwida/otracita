@@ -80,7 +80,7 @@ export async function PUT(
 
   let body: {
     service?: unknown
-    price?: unknown
+    priceCents?: unknown
     duration?: unknown
     extraServices?: unknown
   }
@@ -114,16 +114,21 @@ export async function PUT(
     )
   }
 
-  // price puede ser null (servicio sin cobro registrado) — NO se fuerza a 0.
-  let price: number | null = null
-  if (body.price === null || body.price === undefined || body.price === '') {
-    price = null
-  } else if (
-    typeof body.price === 'number' &&
-    Number.isFinite(body.price) &&
-    body.price >= 0
+  // priceCents puede ser null (servicio sin cobro registrado) — NO se fuerza
+  // a 0. Céntimos enteros: 1250 = 12,50 €.
+  let priceCents: number | null = null
+  if (
+    body.priceCents === null ||
+    body.priceCents === undefined ||
+    body.priceCents === ''
   ) {
-    price = body.price
+    priceCents = null
+  } else if (
+    typeof body.priceCents === 'number' &&
+    Number.isFinite(body.priceCents) &&
+    body.priceCents >= 0
+  ) {
+    priceCents = Math.round(body.priceCents)
   } else {
     return Response.json(
       { error: 'El precio debe ser un número >= 0 o estar vacío.' },
@@ -194,7 +199,7 @@ export async function PUT(
     .update(bookings)
     .set({
       service,
-      price,
+      priceCents,
       duration: durationMin,
     })
     .where(eq(bookings.id, id))
@@ -206,7 +211,7 @@ export async function PUT(
         bookingId: id,
         name: s.name,
         durationMin: s.durationMin,
-        priceEuros: s.priceEuros ?? null,
+        priceCents: s.priceCents ?? null,
         displayOrder: idx,
       })),
     )
@@ -258,7 +263,7 @@ export async function GET(
     extraServices: extras.map((e) => ({
       name: e.name,
       durationMin: e.durationMin,
-      priceEuros: e.priceEuros,
+      priceCents: e.priceCents,
     })),
   })
 }

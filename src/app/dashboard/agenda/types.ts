@@ -14,7 +14,8 @@ export interface CalendarEvent {
   status: string;
   customerPhone: string;
   customerName: string | null;
-  price: number | null;
+  /** CÉNTIMOS (bookings.price_cents). null = cita sin importe. */
+  priceCents: number | null;
   service: string;
   /** Método de cobro registrado al completar (cash/card/online). Null si
    *  aún no se cobró o el tenant no tiene caja activa. Pinta el badge R6

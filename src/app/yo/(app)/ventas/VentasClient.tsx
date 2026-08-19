@@ -47,7 +47,7 @@ export default function VentasClient() {
     for (const b of completed) {
       const cur = byDate.get(b.date) || { count: 0, cents: 0 };
       cur.count += 1;
-      cur.cents += (b.price ?? 0) * 100;
+      cur.cents += b.priceCents ?? 0;
       byDate.set(b.date, cur);
     }
     return Array.from(byDate.entries())

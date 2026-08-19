@@ -75,7 +75,7 @@ export async function GET(request: Request) {
     }
 
     const delta = computeBookingDelta(
-      { priceEuros: booking.price, serviceName: booking.service },
+      { priceCents: booking.priceCents, serviceName: booking.service },
       config,
     )
     if (delta <= 0) {

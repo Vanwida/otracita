@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { getMe, getToday, type BookingRow, type MeResponse } from '../lib/api'
+import { formatCents } from '../lib/format'
 
 // -----------------------------------------------------------------------------
 // Home — la pantalla principal del barbero. Lista de bookings de hoy con
@@ -23,7 +24,7 @@ export function HomePage() {
     try {
       const [meData, todayData] = await Promise.all([getMe(), getToday()])
       setMe(meData)
-      setToday(todayData.today.filter((b) => b.price && b.price > 0))
+      setToday(todayData.today.filter((b) => b.priceCents && b.priceCents > 0))
       setPendingClosure(todayData.pendingClosure)
     } catch {
       setError('No se pudo cargar')
@@ -122,7 +123,7 @@ export function HomePage() {
                 key={b.id}
                 booking={b}
                 onCobrar={() =>
-                  startCheckout(Math.round((b.price ?? 0) * 100), {
+                  startCheckout(b.priceCents ?? 0, {
                     bookingId: b.id,
                     subtitle: `${b.service} · ${b.customerName ?? b.customerPhone}`,
                   })
@@ -146,7 +147,7 @@ export function HomePage() {
                 booking={b}
                 accent
                 onCobrar={() =>
-                  startCheckout(Math.round((b.price ?? 0) * 100), {
+                  startCheckout(b.priceCents ?? 0, {
                     bookingId: b.id,
                     subtitle: `${b.service} · ${b.customerName ?? b.customerPhone}`,
                   })
@@ -176,7 +177,9 @@ function BookingCard({
   accent?: boolean
 }) {
   const customer = booking.customerName?.trim() || booking.customerPhone
-  const eur = Math.round(booking.price ?? 0)
+  // CÉNTIMOS → "12,50 €" (es-ES). Antes era euros enteros y 12,50 salía
+  // como 13 (L-05).
+  const amount = formatCents(booking.priceCents ?? 0)
   return (
     <li
       className={`rounded-2xl bg-surface p-4 ${accent ? 'border border-warning/30' : 'border border-line'}`}
@@ -186,14 +189,14 @@ function BookingCard({
           <span className="text-ink-3 font-normal mr-1.5">{booking.time}</span>
           {customer}
         </p>
-        <p className="text-base font-bold text-ink tabular-nums shrink-0">{eur} €</p>
+        <p className="text-base font-bold text-ink tabular-nums shrink-0">{amount}</p>
       </div>
       <p className="text-xs text-ink-3 mb-3 truncate">
         {booking.service}
         {booking.barber ? ` · ${booking.barber}` : ''}
       </p>
       <Button size="lg" className="w-full" onClick={onCobrar}>
-        Cobrar {eur} €
+        Cobrar {amount}
       </Button>
     </li>
   )

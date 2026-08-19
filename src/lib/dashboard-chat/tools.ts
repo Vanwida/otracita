@@ -27,6 +27,7 @@ import {
 import { and, eq, gte, lte, isNull, desc, sql } from 'drizzle-orm';
 import { getTodayDate } from '@/lib/google-calendar';
 import { BUSINESS_TIMEZONE } from '@/lib/time';
+import { centsToEuros } from '@/lib/format';
 
 // -----------------------------------------------------------------------------
 // Tool registry — schemas pasados al LLM (OpenAI/OpenRouter function calling).
@@ -215,7 +216,7 @@ export async function getBookingsToday(clientId: string) {
       customerPhone: bookings.customerPhone,
       status: bookings.status,
       duration: bookings.duration,
-      priceEuros: bookings.price,
+      priceCents: bookings.priceCents,
     })
     .from(bookings)
     .where(and(eq(bookings.clientId, clientId), eq(bookings.date, today)))
@@ -224,7 +225,8 @@ export async function getBookingsToday(clientId: string) {
   return {
     date: today,
     total: rows.length,
-    bookings: rows,
+    // El LLM lee mejor euros que céntimos; la DB los guarda en céntimos.
+    bookings: rows.map((r) => ({ ...r, priceEuros: centsToEuros(r.priceCents) })),
   };
 }
 
@@ -277,7 +279,7 @@ export async function getTopClients(clientId: string, limit = 5) {
       customerPhone: bookings.customerPhone,
       customerName: bookings.customerName,
       visitsThisYear: sql<number>`COUNT(*)::int`,
-      totalRevenueEuros: sql<number>`COALESCE(SUM(${bookings.price}), 0)::int`,
+      totalRevenueCents: sql<number>`COALESCE(SUM(${bookings.priceCents}), 0)::int`,
     })
     .from(bookings)
     .where(
@@ -293,7 +295,10 @@ export async function getTopClients(clientId: string, limit = 5) {
 
   return {
     yearStart,
-    clients: rows,
+    clients: rows.map((r) => ({
+      ...r,
+      totalRevenueEuros: (r.totalRevenueCents ?? 0) / 100,
+    })),
   };
 }
 
@@ -523,7 +528,7 @@ export async function getWeeklyNarrativeSummary(clientId: string) {
       status: bookings.status,
       service: bookings.service,
       customerPhone: bookings.customerPhone,
-      priceEuros: bookings.price,
+      priceCents: bookings.priceCents,
     })
     .from(bookings)
     .where(

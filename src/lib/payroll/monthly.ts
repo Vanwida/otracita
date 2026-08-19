@@ -75,11 +75,11 @@ export async function computeMonthlyPayroll(
     return { items: [], totalCents: 0 }
   }
 
-  // 2) Servicios facturados por barbero (bookings.price en EUROS → ×100).
+  // 2) Servicios facturados por barbero (bookings.price_cents, ya céntimos).
   const servicesByBarber = await db
     .select({
       barberId: bookings.barberId,
-      totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+      totalCents: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)`,
     })
     .from(bookings)
     .where(
@@ -95,16 +95,16 @@ export async function computeMonthlyPayroll(
   const servicesRevenueMap = new Map<string, number>()
   for (const row of servicesByBarber) {
     if (!row.barberId) continue
-    servicesRevenueMap.set(row.barberId, Math.round(parseFloat(row.totalEur ?? '0') * 100))
+    servicesRevenueMap.set(row.barberId, parseInt(row.totalCents ?? '0', 10))
   }
 
   // 2b) R8 — facturación de servicios partida por (barbero, servicio) para
-  // poder aplicar overrides de comisión por-servicio. bookings.price EUROS → ×100.
+  // poder aplicar overrides de comisión por-servicio. Ya en céntimos.
   const serviceRevByBarberService = await db
     .select({
       barberId: bookings.barberId,
       serviceName: bookings.service,
-      totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+      totalCents: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)`,
     })
     .from(bookings)
     .where(
@@ -120,23 +120,23 @@ export async function computeMonthlyPayroll(
   const serviceRowsByBarber = new Map<string, ServiceRevenueRow[]>()
   for (const row of serviceRevByBarberService) {
     if (!row.barberId || !row.serviceName) continue
-    const cents = Math.round(parseFloat(row.totalEur ?? '0') * 100)
+    const cents = parseInt(row.totalCents ?? '0', 10)
     const list = serviceRowsByBarber.get(row.barberId) ?? []
     list.push({ serviceName: row.serviceName, revenueCents: cents })
     serviceRowsByBarber.set(row.barberId, list)
   }
 
-  // 2d) Servicios EXTRA (R7) — booking_services.priceEuros. Sin esto el
+  // 2d) Servicios EXTRA (R7) — booking_services.price_cents. Sin esto el
   // barbero cobra comisión SOLO del servicio principal y se le infrapaga
   // toda cita multi-servicio. El barbero lo hereda del booking padre
-  // (FK bookingId). priceEuros EUROS (foot-gun) → ×100. Se agrupa por
+  // (FK bookingId). Ya en céntimos. Se agrupa por
   // (barbero, nombre del extra) para que un override por-servicio del
   // extra aplique igual que al principal (computeServicesCommissionCents).
   const extraRevByBarberService = await db
     .select({
       barberId: bookings.barberId,
       serviceName: bookingServices.name,
-      totalEur: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)`,
+      totalCents: sql<string>`COALESCE(SUM(${bookingServices.priceCents}), 0)`,
     })
     .from(bookingServices)
     .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
@@ -152,7 +152,7 @@ export async function computeMonthlyPayroll(
 
   for (const row of extraRevByBarberService) {
     if (!row.barberId || !row.serviceName) continue
-    const cents = Math.round(parseFloat(row.totalEur ?? '0') * 100)
+    const cents = parseInt(row.totalCents ?? '0', 10)
     if (cents <= 0) continue
     // 2a — sube también el total mostrado del barbero.
     servicesRevenueMap.set(

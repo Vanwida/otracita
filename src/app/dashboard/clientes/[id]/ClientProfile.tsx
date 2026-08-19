@@ -22,6 +22,7 @@ import CustomerRgpdActions from './CustomerRgpdActions'
 import SourceChip from '@/app/dashboard/_components/SourceChip'
 import BlockCustomerButton from '@/app/dashboard/_components/BlockCustomerButton'
 import UnblockCustomerButton from '@/app/dashboard/_components/UnblockCustomerButton'
+import { formatCents } from '@/lib/format'
 import type {
   ClientProfileData,
   ClientProfileBooking,
@@ -165,7 +166,7 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
       {/* KPIs de VALOR — edge deliberado nuestro (Booksy no lo tiene):
           cuánto vale el cliente, no solo cuántas veces vino. No-vanity. */}
       <div className="grid grid-cols-2 gap-px bg-line rounded-xl overflow-hidden border border-line mb-4">
-        <Kpi value={`${stats.spentEur.toFixed(0)}€`} label="Gastado" />
+        <Kpi value={formatCents(stats.spentCents, { compact: true })} label="Gastado" />
         <Kpi
           value={stats.avgRating !== null ? stats.avgRating.toFixed(1) : '—'}
           label="Nota"
@@ -265,9 +266,9 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
                     <BookingStatusLabel status={b.status} />
                   </div>
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    {b.price !== null && b.price !== undefined && b.price > 0 && (
+                    {b.priceCents != null && b.priceCents > 0 && (
                       <p className="font-semibold text-ink text-sm tabular-nums">
-                        {b.price} €
+                        {formatCents(b.priceCents, { compact: true })}
                       </p>
                     )}
                     {/* Acción inline por fila (Booksy 10.04.x: "REAGENDAR").
@@ -306,8 +307,8 @@ export default function ClientProfile({ data, variant = 'page' }: Props) {
                 <p className="text-xs text-ink-3 mt-0.5">
                   {stats.completedCount}{' '}
                   {stats.completedCount === 1 ? 'servicio' : 'servicios'} ·{' '}
-                  {stats.tipsEur > 0
-                    ? `${stats.tipsEur.toFixed(2)} € en propinas`
+                  {stats.tipsCents > 0
+                    ? `${formatCents(stats.tipsCents)} en propinas`
                     : 'sin propinas'}
                 </p>
               </div>

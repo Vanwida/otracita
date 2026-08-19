@@ -397,7 +397,7 @@ async function synthesizeDayBreakdown(
   // 1) Bookings completados del día. Dos casos:
   //    a) `paymentMethod` simple ('cash' | 'card_physical' | 'bizum' |
   //       'card_online') → una sola línea con el método del booking y
-  //       el importe = price*100.
+  //       el importe = price_cents.
   //    b) `paymentMethod = 'mixed'` o null + payments(N) → desplegamos UNA
   //       línea por payment para preservar el split (cash/card/online en
   //       proporciones distintas dentro del mismo booking, mismo flow que
@@ -407,7 +407,7 @@ async function synthesizeDayBreakdown(
       b.id::text AS id,
       'booking'::text AS kind,
       NULLIF(b.payment_method, '') AS raw_method,
-      (b.price * 100)::int AS "amountCents",
+      b.price_cents::int AS "amountCents",
       b.barber_id::text AS "barberId",
       b.created_at AS "createdAt",
       COALESCE(b.customer_name, b.customer_phone) AS "referenceLabel"
@@ -415,8 +415,8 @@ async function synthesizeDayBreakdown(
     WHERE b.client_id = ${clientId}
       AND b.status = 'completed'
       AND b.date = ${day}
-      AND b.price IS NOT NULL
-      AND b.price > 0
+      AND b.price_cents IS NOT NULL
+      AND b.price_cents > 0
   `)
   const bookingHeader = (
     bookingResult as unknown as {

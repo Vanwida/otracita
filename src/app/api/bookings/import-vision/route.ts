@@ -9,6 +9,7 @@ import {
 import { createBooking } from '@/lib/bookings/create'
 import { canonicalizePhone } from '@/lib/phone'
 import { BUSINESS_TIMEZONE } from '@/lib/time';
+import { eurosToCents } from '@/lib/format'
 
 // -----------------------------------------------------------------------------
 // Vision-based import — accepts 1-N screenshots (Booksy "Appointment List" or
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
         date: it.date,
         time: it.time,
         duration: it.durationMinutes ?? undefined,
-        price: it.priceEuros ?? null,
+        priceCents: eurosToCents(it.priceEuros),
         source: 'import',
         // Importación masiva (capturas Vision) → silenciar push. Sin esto,
         // cada cliente con la PWA recibiría "Cita confirmada" por cada cita

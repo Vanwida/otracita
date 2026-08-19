@@ -71,7 +71,7 @@ export async function GET(req: Request) {
   if (canCommissions) {
     const salesResult = await db.execute(sql`
       SELECT b.barber_id::text AS "barberId",
-             COALESCE(SUM(b.price * 100), 0)::bigint AS cents
+             COALESCE(SUM(b.price_cents), 0)::bigint AS cents
       FROM ${bookings} b
       WHERE b.client_id = ${client.id}
         AND b.status = 'completed'

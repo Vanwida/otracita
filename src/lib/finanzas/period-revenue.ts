@@ -14,7 +14,7 @@ import type { RevenueComponents } from './pnl-math';
 // string en ese formato); para tablas con timestamp (product_sales.soldAt,
 // tips.paidAt) se castea a Date — mismo criterio que summary/route.ts.
 //
-// extras separados (no LEFT JOIN) para no inflar SUM(bookings.price) por
+// extras separados (no LEFT JOIN) para no inflar SUM(bookings.price_cents) por
 // fan-out cuando una cita tiene varios servicios extra.
 // -----------------------------------------------------------------------------
 
@@ -32,11 +32,11 @@ export async function periodRevenueComponents(
 
   const [bookingRes, extrasRes, manualRes, productsRes, tipsRes] = await Promise.all([
     db
-      .select({ total: sql<string>`COALESCE(SUM(${bookings.price}), 0)` })
+      .select({ total: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)` })
       .from(bookings)
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
     db
-      .select({ total: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)` })
+      .select({ total: sql<string>`COALESCE(SUM(${bookingServices.priceCents}), 0)` })
       .from(bookingServices)
       .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, start), lt(bookings.date, end))),
@@ -58,8 +58,8 @@ export async function periodRevenueComponents(
   ]);
 
   return {
-    bookingPriceEuros: parseFloat(bookingRes[0]?.total ?? '0'),
-    extrasEuros: parseFloat(extrasRes[0]?.total ?? '0'),
+    bookingCents: parseInt(bookingRes[0]?.total ?? '0', 10),
+    extrasCents: parseInt(extrasRes[0]?.total ?? '0', 10),
     manualCents: parseInt(manualRes[0]?.total ?? '0', 10),
     productsCents: parseInt(productsRes[0]?.total ?? '0', 10),
     tipsCents: parseInt(tipsRes[0]?.total ?? '0', 10),
@@ -81,7 +81,7 @@ export async function annualRevenueComponentsByMonth(
     db
       .select({
         month: sql<number>`EXTRACT(MONTH FROM ${bookings.date}::date)::int`,
-        totalEur: sql<string>`COALESCE(SUM(${bookings.price}), 0)`,
+        total: sql<string>`COALESCE(SUM(${bookings.priceCents}), 0)`,
       })
       .from(bookings)
       .where(and(eq(bookings.clientId, clientId), eq(bookings.status, 'completed'), gte(bookings.date, yearStart), lt(bookings.date, yearEnd)))
@@ -89,7 +89,7 @@ export async function annualRevenueComponentsByMonth(
     db
       .select({
         month: sql<number>`EXTRACT(MONTH FROM ${bookings.date}::date)::int`,
-        totalEur: sql<string>`COALESCE(SUM(${bookingServices.priceEuros}), 0)`,
+        total: sql<string>`COALESCE(SUM(${bookingServices.priceCents}), 0)`,
       })
       .from(bookingServices)
       .innerJoin(bookings, eq(bookingServices.bookingId, bookings.id))
@@ -126,14 +126,14 @@ export async function annualRevenueComponentsByMonth(
   const ensure = (m: number): RevenueComponents => {
     let r = byMonth.get(m);
     if (!r) {
-      r = { bookingPriceEuros: 0, extrasEuros: 0, manualCents: 0, productsCents: 0, tipsCents: 0 };
+      r = { bookingCents: 0, extrasCents: 0, manualCents: 0, productsCents: 0, tipsCents: 0 };
       byMonth.set(m, r);
     }
     return r;
   };
 
-  for (const row of bookingRows) ensure(row.month).bookingPriceEuros = parseFloat(row.totalEur);
-  for (const row of extrasRows) ensure(row.month).extrasEuros = parseFloat(row.totalEur);
+  for (const row of bookingRows) ensure(row.month).bookingCents = parseInt(row.total, 10);
+  for (const row of extrasRows) ensure(row.month).extrasCents = parseInt(row.total, 10);
   for (const row of manualRows) ensure(row.month).manualCents = parseInt(row.total, 10);
   for (const row of productRows) ensure(row.month).productsCents = parseInt(row.total, 10);
   for (const row of tipRows) ensure(row.month).tipsCents = parseInt(row.total, 10);

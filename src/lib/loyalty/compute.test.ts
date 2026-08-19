@@ -33,42 +33,59 @@ const points1: LoyaltyPointsConfig = {
 }
 
 test('stamps: booking con precio >= min da 1 sello', () => {
-  assert.equal(computeBookingDelta({ priceEuros: 15, serviceName: 'Corte' }, stamps10), 1)
-  assert.equal(computeBookingDelta({ priceEuros: 10, serviceName: 'Corte' }, stamps10), 1)
+  assert.equal(computeBookingDelta({ priceCents: 1500, serviceName: 'Corte' }, stamps10), 1)
+  assert.equal(computeBookingDelta({ priceCents: 1000, serviceName: 'Corte' }, stamps10), 1)
 })
 
 test('stamps: booking por debajo del min no da sello', () => {
-  assert.equal(computeBookingDelta({ priceEuros: 9, serviceName: 'Corte' }, stamps10), 0)
+  assert.equal(computeBookingDelta({ priceCents: 900, serviceName: 'Corte' }, stamps10), 0)
 })
 
 test('stamps: booking sin precio no da sello', () => {
-  assert.equal(computeBookingDelta({ priceEuros: null, serviceName: 'Corte' }, stamps10), 0)
-  assert.equal(computeBookingDelta({ priceEuros: 0, serviceName: 'Corte' }, stamps10), 0)
+  assert.equal(computeBookingDelta({ priceCents: null, serviceName: 'Corte' }, stamps10), 0)
+  assert.equal(computeBookingDelta({ priceCents: 0, serviceName: 'Corte' }, stamps10), 0)
 })
 
 test('stamps: respeta eligibleServiceNames si está set', () => {
   const cfg: LoyaltyStampsConfig = { ...stamps10, eligibleServiceNames: ['Corte'] }
-  assert.equal(computeBookingDelta({ priceEuros: 15, serviceName: 'Corte' }, cfg), 1)
-  assert.equal(computeBookingDelta({ priceEuros: 15, serviceName: 'Barba' }, cfg), 0)
+  assert.equal(computeBookingDelta({ priceCents: 1500, serviceName: 'Corte' }, cfg), 1)
+  assert.equal(computeBookingDelta({ priceCents: 1500, serviceName: 'Barba' }, cfg), 0)
 })
 
 test('stamps: null o [] en eligibleServiceNames acepta todos', () => {
   const cfg: LoyaltyStampsConfig = { ...stamps10, eligibleServiceNames: [] }
-  assert.equal(computeBookingDelta({ priceEuros: 15, serviceName: 'Cualquiera' }, cfg), 1)
+  assert.equal(computeBookingDelta({ priceCents: 1500, serviceName: 'Cualquiera' }, cfg), 1)
 })
 
 test('points: 12 € * 1 pt/€ = 12 pts', () => {
-  assert.equal(computeBookingDelta({ priceEuros: 12, serviceName: 'Corte' }, points1), 12)
+  assert.equal(computeBookingDelta({ priceCents: 1200, serviceName: 'Corte' }, points1), 12)
 })
 
 test('points: redondea al entero más cercano', () => {
   const cfg: LoyaltyPointsConfig = { ...points1, euroToPoints: 1.5 }
-  assert.equal(computeBookingDelta({ priceEuros: 13, serviceName: 'Corte' }, cfg), 20) // 19.5 → 20
-  assert.equal(computeBookingDelta({ priceEuros: 10, serviceName: 'Corte' }, cfg), 15)
+  assert.equal(computeBookingDelta({ priceCents: 1300, serviceName: 'Corte' }, cfg), 20) // 19.5 → 20
+  assert.equal(computeBookingDelta({ priceCents: 1000, serviceName: 'Corte' }, cfg), 15)
 })
 
 test('points: respeta minPriceCents', () => {
-  assert.equal(computeBookingDelta({ priceEuros: 9, serviceName: 'Corte' }, points1), 0)
+  assert.equal(computeBookingDelta({ priceCents: 900, serviceName: 'Corte' }, points1), 0)
+})
+
+// L-05 — precios con decimales. Antes el importe llegaba en euros ENTEROS
+// (12,50 € se guardaba como 13), así que un servicio de 12,50 € otorgaba
+// puntos de 13 € y podía cruzar un minPrice que en realidad no cruzaba.
+test('L-05: 12,50 € (1250c) compara contra minPriceCents sin redondear a euro', () => {
+  const cfg: LoyaltyStampsConfig = { ...stamps10, minPriceCents: 1300 }
+  // 1250 < 1300 → no hay sello. Con el bug viejo (12,50 → 13 €) sí lo daba.
+  assert.equal(computeBookingDelta({ priceCents: 1250, serviceName: 'Corte' }, cfg), 0)
+  assert.equal(computeBookingDelta({ priceCents: 1300, serviceName: 'Corte' }, cfg), 1)
+})
+
+test('L-05: los puntos usan el importe real con decimales', () => {
+  // 17,50 € × 1 pt/€ = 17,5 → 18 pts (redondeo al entero más cercano).
+  assert.equal(computeBookingDelta({ priceCents: 1750, serviceName: 'Corte' }, points1), 18)
+  // 12,50 € × 1 pt/€ = 12,5 → 13 pts.
+  assert.equal(computeBookingDelta({ priceCents: 1250, serviceName: 'Corte' }, points1), 13)
 })
 
 // -----------------------------------------------------------------------------

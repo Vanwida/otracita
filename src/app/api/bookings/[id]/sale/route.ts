@@ -45,7 +45,7 @@ import {
 //     customerName?:  string | null
 //     customerPhone?: string
 //     service?:       string
-//     price?:         number | null   // EUROS (foot-gun bookings.price)
+//     priceCents?:    number | null   // CÉNTIMOS (1250 = 12,50 €)
 //     paymentMethod?: PaymentMethod    // sustituye la línea de payment única
 //     paymentNotes?:  string           // libre, se persiste en payments.notes
 //     tip?: { amountCents: number; method: 'cash'|'card'; barberId: string } | null
@@ -76,7 +76,7 @@ interface SaleEditBody {
   customerName?: unknown;
   customerPhone?: unknown;
   service?: unknown;
-  price?: unknown;
+  priceCents?: unknown;
   paymentMethod?: unknown;
   paymentNotes?: unknown;
   /** `null` borra la propina (refund interno: borra la fila + cash_movement). */
@@ -238,21 +238,24 @@ export async function PATCH(
     bookingPatch.service = body.service.trim();
   }
 
-  if ('price' in body) {
-    if (body.price === null) {
-      bookingPatch.price = null;
-      priceChanged = booking.price !== null;
+  if ('priceCents' in body) {
+    if (body.priceCents === null) {
+      bookingPatch.priceCents = null;
+      priceChanged = booking.priceCents !== null;
     } else if (
-      typeof body.price === 'number' &&
-      Number.isFinite(body.price) &&
-      body.price >= 0
+      typeof body.priceCents === 'number' &&
+      Number.isFinite(body.priceCents) &&
+      body.priceCents >= 0
     ) {
-      const intPrice = Math.round(body.price);
-      bookingPatch.price = intPrice;
-      priceChanged = booking.price !== intPrice;
+      // Redondeo a céntimo entero, NO a euro entero: 1250 se guarda como
+      // 1250 (12,50 €). Este era el sitio donde 12,50 € se convertía en
+      // 13 € (L-05).
+      const cents = Math.round(body.priceCents);
+      bookingPatch.priceCents = cents;
+      priceChanged = booking.priceCents !== cents;
     } else {
       return Response.json(
-        { error: 'price debe ser un número >= 0 o null.' },
+        { error: 'priceCents debe ser un número >= 0 o null.' },
         { status: 400 },
       );
     }
@@ -677,7 +680,7 @@ export async function GET(
       customerName: booking.customerName,
       customerPhone: booking.customerPhone,
       service: booking.service,
-      price: booking.price,
+      priceCents: booking.priceCents,
       paymentMethod: booking.paymentMethod,
       barberId: booking.barberId,
       barber: booking.barber,
