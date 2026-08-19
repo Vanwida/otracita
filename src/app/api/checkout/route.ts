@@ -7,6 +7,11 @@ import { TIER_PRICES, TRIAL_DAYS_BY_TIER, type Tier, type BillingInterval } from
 //     refresh 2026-04-30)
 //   - plan=chatbot (legacy, compat con la landing v1; mapea a Pro mensual)
 //
+// NO hay modo demo aquí: el endpoint es público y un `{demo:true}` devolvía
+// una URL de /gracias sin session_id, que era la puerta de entrada al
+// create-account sin verificar pago (L-06, 2026-08-18). La demo del producto
+// vive en /demo (barbería de ejemplo), no en el checkout.
+//
 // Solo (gratis) NO pasa por Stripe — su signup es directo via /login.
 // Estudio se vende high-touch via WhatsApp; el pricing card lleva al
 // número del equipo. Si alguien fuerza tier=estudio aquí, lo aceptamos
@@ -46,7 +51,6 @@ interface ParsedBody {
   email?: string;
   businessName?: string;
   phone?: string;
-  demo: boolean;
 }
 
 function parseBody(body: Record<string, unknown>): ParsedBody {
@@ -67,7 +71,6 @@ function parseBody(body: Record<string, unknown>): ParsedBody {
     email: typeof body.email === 'string' ? body.email : undefined,
     businessName: typeof body.businessName === 'string' ? body.businessName.trim() : undefined,
     phone: typeof body.phone === 'string' ? body.phone.trim() : undefined,
-    demo: body.demo === true,
   };
 }
 
@@ -95,16 +98,6 @@ export async function POST(request: Request) {
     const plan = buildPlan(parsed.tier, parsed.billingInterval);
     if (!plan) {
       return Response.json({ error: 'Plan no disponible' }, { status: 400 });
-    }
-
-    // Demo mode — saltarse Stripe, ir directo a /gracias
-    if (parsed.demo) {
-      const params = new URLSearchParams({
-        demo: 'true',
-        tier: parsed.tier,
-        interval: parsed.billingInterval,
-      });
-      return Response.json({ url: SITE_URL + '/gracias?' + params.toString() });
     }
 
     const session = await stripe.checkout.sessions.create({

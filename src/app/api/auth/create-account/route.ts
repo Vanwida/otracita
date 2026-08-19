@@ -2,10 +2,15 @@ import Stripe from 'stripe';
 import { auth } from '@/lib/auth/server';
 import { db } from '@/db';
 import { clients } from '@/db/schema';
-import { eq, ne, and } from 'drizzle-orm';
+import { eq, or, sql } from 'drizzle-orm';
+import {
+  validateCheckoutSession,
+  validateClaim,
+  type CheckoutSessionFacts,
+} from '@/lib/billing/account-claim';
 
 // -----------------------------------------------------------------------------
-// Crea la cuenta otracita tras completar el pago en Stripe.
+// Crea la cuenta otracita tras completar el checkout en Stripe.
 //
 // Diseño (2026-04-24 — iteración): el email de facturación en Stripe puede
 // ser distinto del email que el barbero quiere usar para entrar al panel
@@ -15,16 +20,44 @@ import { eq, ne, and } from 'drizzle-orm';
 //   · La cuenta otracita usa el email que el barbero elija libremente en
 //     el form de /gracias. Ese email será su usuario de Better Auth.
 //
-// Gate antihijack: antes de crear cuenta validamos que
-//   (a) la sesión Stripe tiene `payment_status === 'paid'`, y
-//   (b) el `stripeCustomerId` de esa sesión no tiene ya una cuenta
-//       otracita ligada (evita que el mismo pago cree 2 cuentas y evita
-//       que un atacante reutilice un session_id ajeno).
+// Gate antihijack (2026-08-18 — L-06): esta ruta SIEMPRE exige un
+// `sessionId` de una sesión de checkout completada. Antes el gate vivía
+// dentro de `if (sessionId)`, así que un POST sin sessionId se saltaba la
+// verificación entera y podía reclamar por email cualquier tenant que el
+// webhook hubiera dejado en `pending`. Las reglas viven en
+// `src/lib/billing/account-claim.ts` (puras, testeadas).
+//
+// El signup de Better Auth de /login NO pasa por aquí — el tier solo es
+// gratis y se registra directo. Esta ruta es sólo el post-checkout de pago.
 //
 // Stripe webhook (checkout.session.completed) ya crea el row de `clients`
 // con el email de facturación como placeholder. Aquí actualizamos ese
 // mismo row con el email de login elegido por el barbero.
 // -----------------------------------------------------------------------------
+
+async function fetchSessionFacts(sessionId: string): Promise<CheckoutSessionFacts | null> {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    console.error('[create-account] STRIPE_SECRET_KEY missing — rejecting');
+    return null;
+  }
+
+  const stripe = new Stripe(key, {
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    return {
+      status: session.status,
+      paymentStatus: session.payment_status,
+      customerId: typeof session.customer === 'string' ? session.customer : null,
+    };
+  } catch (retrieveError) {
+    console.error('[create-account] session retrieve failed:', retrieveError);
+    return null;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -39,86 +72,37 @@ export async function POST(request: Request) {
 
     const loginEmail = String(email).trim().toLowerCase();
 
-    // ── Validar pago con Stripe ────────────────────────────────────────
-    let stripeCustomerId: string | null = null;
-    if (sessionId) {
-      const key = process.env.STRIPE_SECRET_KEY;
-      if (key) {
-        const stripe = new Stripe(key, {
-          httpClient: Stripe.createFetchHttpClient(),
-        });
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
+    // ── Gate 1: sesión de Stripe completada. Sin esto no se toca nada ──
+    const facts =
+      typeof sessionId === 'string' && sessionId.trim().length > 0
+        ? await fetchSessionFacts(sessionId.trim())
+        : null;
 
-        if (session.payment_status !== 'paid') {
-          return Response.json(
-            { error: 'El pago no se ha completado' },
-            { status: 400 }
-          );
-        }
-
-        stripeCustomerId =
-          typeof session.customer === 'string' ? session.customer : null;
-
-        if (!stripeCustomerId) {
-          console.error(
-            `[create-account] paid session ${sessionId} without customer id — rejecting`,
-          );
-          return Response.json(
-            { error: 'No pudimos verificar tu suscripción' },
-            { status: 400 }
-          );
-        }
-      }
+    const gate = validateCheckoutSession(facts);
+    if (!gate.ok) {
+      return Response.json({ error: gate.error }, { status: gate.httpStatus });
     }
+    const { stripeCustomerId } = gate;
 
-    // ── Antihijack: el stripeCustomerId no puede ya tener otra cuenta
-    // de login vinculada (sería un intento de duplicar o secuestrar).
-    // ──────────────────────────────────────────────────────────────────
-    if (stripeCustomerId) {
-      const existing = await db
-        .select()
-        .from(clients)
-        .where(eq(clients.stripeCustomerId, stripeCustomerId));
+    // ── Gate 2: ni el pago ni el email pueden ser de otro ──────────────
+    // `lower(email)`: el webhook guarda el email de Stripe sin normalizar,
+    // así que un `Victima@x.com` en DB no puede parecer email libre.
+    const candidateRows = await db
+      .select()
+      .from(clients)
+      .where(
+        or(
+          eq(clients.stripeCustomerId, stripeCustomerId),
+          sql`lower(${clients.email}) = ${loginEmail}`,
+        ),
+      );
 
-      // Si ya hay un cliente con ese stripeCustomerId Y tiene un email de
-      // login distinto al billing original (= ya alguien creó cuenta),
-      // rechazamos. Detectamos "ya creada" por `status != 'pending'` o por
-      // la existencia de un user en Better Auth con ese email.
-      const alreadyClaimed = existing.find((c) => c.status !== 'pending');
-      if (alreadyClaimed && alreadyClaimed.email !== loginEmail) {
-        return Response.json(
-          {
-            error:
-              'Este pago ya tiene una cuenta otracita asociada. Entra en /login o contacta con soporte si no recuerdas el email.',
-          },
-          { status: 409 }
-        );
-      }
-    }
-
-    // ── Check: no permitir loginEmail que ya está ocupado por OTRO
-    //    cliente (distinto stripeCustomerId). Importante: si el barbero
-    //    escribe el mismo email que el billing (coincide con la row
-    //    pending existente), está OK — la row es SUYA.
-    // ──────────────────────────────────────────────────────────────────
-    if (stripeCustomerId) {
-      const sameEmailOther = await db
-        .select()
-        .from(clients)
-        .where(
-          and(
-            eq(clients.email, loginEmail),
-            ne(clients.stripeCustomerId, stripeCustomerId),
-          ),
-        );
-      if (sameEmailOther.length > 0) {
-        return Response.json(
-          {
-            error: 'Ese email ya está registrado en otracita. Usa otro distinto o entra en /login.',
-          },
-          { status: 409 }
-        );
-      }
+    const claimFailure = validateClaim(loginEmail, stripeCustomerId, candidateRows);
+    if (claimFailure) {
+      return Response.json(
+        { error: claimFailure.error },
+        { status: claimFailure.httpStatus }
+      );
     }
 
     // ── Crear user Better Auth con el email ELEGIDO ────────────────────
@@ -151,18 +135,18 @@ export async function POST(request: Request) {
     // que su `email` sea el de login. Así, en el dashboard el lookup
     // `SELECT * FROM clients WHERE email = session.user.email` funciona.
     // ──────────────────────────────────────────────────────────────────
-    if (stripeCustomerId) {
-      const [existingClient] = await db
-        .select()
-        .from(clients)
-        .where(eq(clients.stripeCustomerId, stripeCustomerId));
+    // Re-consultamos en vez de reusar `candidateRows`: el webhook de Stripe
+    // puede haber insertado la fila mientras corría el signup.
+    const [ownClient] = await db
+      .select()
+      .from(clients)
+      .where(eq(clients.stripeCustomerId, stripeCustomerId));
 
-      if (existingClient && existingClient.email !== loginEmail) {
-        await db
-          .update(clients)
-          .set({ email: loginEmail, updatedAt: new Date() })
-          .where(eq(clients.id, existingClient.id));
-      }
+    if (ownClient && ownClient.email !== loginEmail) {
+      await db
+        .update(clients)
+        .set({ email: loginEmail, updatedAt: new Date() })
+        .where(eq(clients.id, ownClient.id));
     }
 
     return Response.json({ success: true });
