@@ -44,6 +44,12 @@ export const clients = pgTable('clients', {
     submittedAt: string;
   } | null>(),
   whatsappBotRequestedAt: timestamp('whatsapp_bot_requested_at', { withTimezone: true }),
+  // Última vez que avisamos a Alex de que a esta barbería le entran mensajes
+  // de WhatsApp con el bot gateado por plan (ver L-17 y
+  // `src/lib/whatsapp/gated-alert.ts`). Sirve de cerrojo: el aviso se "reclama"
+  // con un UPDATE condicional sobre esta columna, así que como mucho sale uno
+  // cada 24 h por barbería aunque entren cien mensajes.
+  botGatedAlertAt: timestamp('bot_gated_alert_at', { withTimezone: true }),
   // Booksy integration
   booksyProfileUrl: text('booksy_profile_url'),
   booksyServices: jsonb('booksy_services'), // scraped services from Booksy
